@@ -1,5 +1,3 @@
-const env = require('../config/env');
-
 function parseDurationMs(value) {
   const raw = String(value || '7d').trim();
   const match = raw.match(/^(\d+)([smhd])$/i);
@@ -23,13 +21,13 @@ function isCrossOriginRequest(req) {
 }
 
 function getRefreshCookieOptions(req) {
-  const isProd = env.nodeEnv === 'production';
+  const isProd = process.env.NODE_ENV === 'production';
   const crossOrigin = isCrossOriginRequest(req);
   return {
     httpOnly: true,
     secure: isProd || crossOrigin,
     sameSite: crossOrigin ? 'none' : 'lax',
-    maxAge: parseDurationMs(env.jwtRefreshExpires),
+    maxAge: parseDurationMs(process.env.JWT_REFRESH_EXPIRES || '30d'),
     path: '/',
   };
 }

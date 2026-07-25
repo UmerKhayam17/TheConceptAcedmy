@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node scripts/dev.js",
+    "dev:api": "node --watch src/server.js",
+    "dev:worker": "node scripts/dev.js --worker-only"
   },
   "engines": {
     "node": ">=18"

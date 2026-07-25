@@ -64,6 +64,8 @@ const academyStudentSchema = new mongoose.Schema(
     activatedAt: { type: Date },
     activatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    /** Linked face ID in AIAttendance (`STU-…`). */
+    aiEmployeeId: { type: String, trim: true, index: true },
   },
   { timestamps: true, collection: 'students' }
 );

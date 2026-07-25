@@ -64,6 +64,7 @@ async function markAttendance({ date, entries }, userId) {
           status: e.status,
           notes: e.notes,
           markedBy: userId,
+          source: 'manual',
         },
         $setOnInsert: { createdBy: userId },
       },

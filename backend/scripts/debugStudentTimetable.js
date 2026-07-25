@@ -1,10 +1,12 @@
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
+
 const mongoose = require('mongoose');
-const env = require('../src/config/env');
 const AcademyStudent = require('../src/models/academy/AcademyStudent');
 const studentRecordService = require('../src/services/academy/academyStudentRecordService');
 
 async function run(studentId) {
-    await mongoose.connect(env.mongoUri);
+    const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/academy_management';
+    await mongoose.connect(mongoUri);
     try {
         const student = await AcademyStudent.findById(studentId)
             .populate('classId', 'className sessionId')
@@ -20,9 +22,9 @@ async function run(studentId) {
     }
 }
 
-const studentId = process.argv[2];
-if (!studentId) {
-    console.error('Usage: node debugStudentTimetable.js <studentId>');
+const id = process.argv[2];
+if (!id) {
+    console.error('Usage: node scripts/debugStudentTimetable.js <studentId>');
     process.exit(1);
 }
-run(studentId);
+run(id);

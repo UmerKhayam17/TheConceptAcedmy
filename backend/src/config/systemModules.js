@@ -280,6 +280,15 @@ const SYSTEM_MODULES = [
     order: 41,
     actions: ['view', 'create'],
   },
+  {
+    key: 'aiAttendance',
+    panelSlug: 'ai-attendance',
+    label: 'AI Attendance',
+    icon: 'ScanFace',
+    description: 'Face enrollment, cameras, and AI attendance sync',
+    order: 42,
+    actions: ['view', 'create', 'edit'],
+  },
 ];
 
 /**

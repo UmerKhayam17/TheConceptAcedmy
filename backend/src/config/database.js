@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
-const env = require('./env');
 
 async function connectDatabase() {
   mongoose.set('strictQuery', true);
-  await mongoose.connect(env.mongoUri);
+  const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/academy_management';
+  await mongoose.connect(mongoUri);
   return mongoose.connection;
 }
 

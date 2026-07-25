@@ -24,5 +24,6 @@ router.use('/student-management', studentManagementRoutes);
 router.use('/chat', chatRoutes);
 router.use('/datasheets', datasheetRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/ai-attendance', require('./aiAttendanceRoutes'));
 
 module.exports = router;

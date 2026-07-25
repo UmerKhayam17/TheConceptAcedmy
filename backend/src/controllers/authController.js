@@ -10,8 +10,8 @@ const {
   verifyRefreshToken,
   hashToken,
 } = require('../utils/tokenService');
-const env = require('../config/env');
 const { getRefreshCookieOptions } = require('../utils/authCookies');
+const MODULES = require('../modules/moduleConfig');
 
 const otpStore = new Map();
 
@@ -32,8 +32,24 @@ function hasExplicitModulePermissions(plain) {
   );
 }
 
+/** Every module from systemModules with all actions — used for admin sessions. */
+function allModulesFullPermissions() {
+  const out = {};
+  Object.keys(MODULES).forEach((key) => {
+    out[key] = Array.isArray(MODULES[key].actions) ? [...MODULES[key].actions] : [];
+  });
+  return out;
+}
+
 /** Session module map for the panel: role baseline, unless the user has their own module rows (then use user only — no union with role). */
 function collectSessionModulePermissions(user) {
+  const roleName =
+    (user.role && typeof user.role === 'object' && user.role.name) ||
+    String(user.role || '');
+  // Admin always receives every module (including ones added after account creation).
+  if (String(roleName).toLowerCase() === 'admin') {
+    return allModulesFullPermissions();
+  }
   const userModulePermissions = toPlainModulePermissions(user.modulePermissions);
   const roleModulePermissions = toPlainModulePermissions(user.role?.modulePermissions);
   if (hasExplicitModulePermissions(userModulePermissions)) {
@@ -81,7 +97,7 @@ const login = catchAsync(async (req, res) => {
     success: true,
     data: {
       accessToken,
-      expiresIn: env.jwtAccessExpires,
+      expiresIn: process.env.JWT_ACCESS_EXPIRES || '12h',
       user: {
         id: user._id,
         name: user.name,
@@ -131,7 +147,7 @@ const refresh = catchAsync(async (req, res) => {
     success: true,
     data: {
       accessToken,
-      expiresIn: env.jwtAccessExpires,
+      expiresIn: process.env.JWT_ACCESS_EXPIRES || '12h',
       modulePermissions,
     },
   });
@@ -159,7 +175,7 @@ const sendOtp = catchAsync(async (req, res) => {
   const code = String(crypto.randomInt(100000, 999999));
   otpStore.set(phone, { code, exp: Date.now() + 5 * 60 * 1000 });
   const payload = { success: true, message: 'OTP sent' };
-  if (env.nodeEnv !== 'production') {
+  if (process.env.NODE_ENV !== 'production') {
     payload.devCode = code;
   }
   res.json(payload);

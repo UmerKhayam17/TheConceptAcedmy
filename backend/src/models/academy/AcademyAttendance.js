@@ -14,6 +14,15 @@ const academyAttendanceSchema = new mongoose.Schema(
       enum: ['present', 'absent', 'late', 'leave'],
       default: 'present',
     },
+    /** manual | ai — how this day was marked */
+    source: {
+      type: String,
+      enum: ['manual', 'ai'],
+      default: 'manual',
+    },
+    checkIn: { type: Date },
+    checkOut: { type: Date },
+    confidence: { type: Number },
     subjectId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademySubject' },
     notes: { type: String, trim: true },
     markedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

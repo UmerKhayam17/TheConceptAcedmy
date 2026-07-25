@@ -18,7 +18,8 @@ export const usePermissions = () => {
     for (const role of roles) {
       out[role] = applyBackendModulePermissions(
         DEFAULT_PERMISSIONS[role],
-        role === user?.role ? user?.modulePermissions : undefined
+        role === user?.role ? user?.modulePermissions : undefined,
+        role,
       );
     }
     return out;

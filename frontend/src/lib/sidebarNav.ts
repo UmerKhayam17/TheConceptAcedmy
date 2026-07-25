@@ -22,6 +22,7 @@ import {
   Receipt,
   MessageSquare,
   Bell,
+  ScanFace,
   BarChart3,
   FileText,
   Users,
@@ -201,6 +202,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: ClipboardList,
         moduleKey: "attendance",
         href: (role) => moduleHref(role, "attendance"),
+      },
+      {
+        id: "ai-attendance",
+        label: "AI Attendance",
+        icon: ScanFace,
+        moduleKey: "ai-attendance",
+        href: (role) => moduleHref(role, "ai-attendance"),
       },
       {
         id: "student-timetable",

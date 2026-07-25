@@ -364,10 +364,16 @@ function AttendanceTab({ record }: { record: AcademyStudentRecord }) {
         <EmptyBlock message="No attendance records match your search." />
       ) : (
         <DataTable
-          headers={["Date", "Status", "Subject", "Notes"]}
+          headers={["Date", "Status", "First check-in", "Last check-out", "Subject", "Notes"]}
           rows={recordsFiltered.map((r: AcademyAttendanceRecord) => [
             formatDate(r.date),
             <StatusBadge key="st" status={r.status} />,
+            r.checkIn
+              ? new Date(r.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              : "—",
+            r.checkOut
+              ? new Date(r.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              : "—",
             r.subjectId ? subjectName(r.subjectId as AcademySubject) : "General",
             r.notes || "—",
           ])}

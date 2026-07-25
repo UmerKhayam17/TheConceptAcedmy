@@ -2,9 +2,15 @@ const Permission = require('../models/Permission');
 const Role = require('../models/Role');
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
-const env = require('../config/env');
 const MODULES = require('../modules/moduleConfig');
 
+function isProd() {
+  return process.env.NODE_ENV === 'production';
+}
+
+function seedAdminEmail() {
+  return (process.env.SEED_ADMIN_EMAIL || 'admin@academy.local').toLowerCase().trim();
+}
 const PERMISSIONS = [
   { name: 'manage_users', module: 'user', action: 'create', description: 'Manage users' },
   { name: 'manage_roles', module: 'user', action: 'update', description: 'Manage roles & permissions' },
@@ -46,10 +52,10 @@ const PERMISSIONS = [
 ];
 
 async function ensureDefaultAdmin() {
-  const email = env.seedAdminEmail;
+  const email = seedAdminEmail();
   const adminRole = await Role.findOne({ name: 'admin' });
   if (!adminRole) {
-    if (env.nodeEnv !== 'production') {
+    if (!isProd()) {
       // eslint-disable-next-line no-console
       console.warn('[seed] Admin role not found; cannot create default admin.');
     }
@@ -66,56 +72,41 @@ async function ensureDefaultAdmin() {
     modulePermissions.set(moduleName, MODULES[moduleName].actions);
   });
 
-  let user = await User.findOne({ email });
+  const user = await User.findOne({ email }).lean();
 
   if (!user) {
-    const passwordHash = await bcrypt.hash(env.seedAdminPassword, 12);
+    const passwordHash = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD || 'Admin@123456', 12);
     await User.create({
-      name: env.seedAdminName,
+      name: process.env.SEED_ADMIN_NAME || 'System Admin',
       email,
       password: passwordHash,
-      phone: env.seedAdminPhone,
+      phone: process.env.SEED_ADMIN_PHONE || '00000000000',
       role: adminRole._id,
       permissions: permissionIds,
       modulePermissions,
       isActive: true,
     });
-    if (env.nodeEnv !== 'production') {
+    if (!isProd()) {
       // eslint-disable-next-line no-console
       console.log(`[seed] Default admin created: ${email}`);
     }
     return;
   }
 
-  let changed = false;
-  if (String(user.role) !== String(adminRole._id)) {
-    user.role = adminRole._id;
-    changed = true;
+  // Atomic $set avoids Mongoose optimistic-locking VersionError on the modulePermissions Map.
+  const set = {
+    role: adminRole._id,
+    isActive: true,
+    permissions: permissionIds,
+    modulePermissions: Object.fromEntries(modulePermissions),
+  };
+  if (process.env.SEED_ADMIN_RESET_PASSWORD === 'true') {
+    set.password = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD || 'Admin@123456', 12);
   }
-  if (!user.isActive) {
-    user.isActive = true;
-    changed = true;
-  }
-  if (env.seedAdminResetPassword) {
-    user.password = await bcrypt.hash(env.seedAdminPassword, 12);
-    changed = true;
-  }
-  // Always ensure admin has all permissions
-  if (!user.permissions || user.permissions.length === 0) {
-    user.permissions = permissionIds;
-    changed = true;
-  }
-  // Always ensure admin has all module permissions
-  if (!user.modulePermissions || user.modulePermissions.size === 0) {
-    user.modulePermissions = modulePermissions;
-    changed = true;
-  }
-  if (changed) {
-    await user.save();
-    if (env.nodeEnv !== 'production') {
-      // eslint-disable-next-line no-console
-      console.log(`[seed] Default admin updated: ${email}`);
-    }
+  await User.updateOne({ _id: user._id }, { $set: set });
+  if (!isProd()) {
+    // eslint-disable-next-line no-console
+    console.log(`[seed] Default admin ensured: ${email}`);
   }
 }
 
@@ -224,7 +215,7 @@ async function ensureDefaultRoles() {
       modulePermissions: def.modulePermissions,
     });
     createdAny = true;
-    if (env.nodeEnv !== 'production') {
+    if (!isProd()) {
       // eslint-disable-next-line no-console
       console.log(`[seed] Role created: ${def.name}`);
     }
@@ -237,22 +228,26 @@ async function syncBuiltInRolePermissions() {
   const adminRole = await Role.findOne({ name: 'admin' });
   if (adminRole) {
     const all = await Permission.find();
-    adminRole.permissions = all.map((p) => p._id);
-    const mp = adminRole.modulePermissions || new Map();
-    if (!mp.has('studentManagement')) {
-      mp.set(
-        'studentManagement',
-        MODULES.studentManagement?.actions || ['view', 'create', 'edit', 'delete', 'record', 'generate']
-      );
-    }
-    if (MODULES.config && !mp.has('config')) {
-      mp.set('config', MODULES.config.actions);
-    }
-    adminRole.modulePermissions = mp;
-    await adminRole.save();
+    const permissionIds = all.map((p) => p._id);
+    const modulePermsObj = {};
+    Object.keys(MODULES).forEach((moduleName) => {
+      modulePermsObj[moduleName] = MODULES[moduleName].actions;
+    });
+
+    // Atomic updates avoid Mongoose optimistic-locking VersionError on the Map field.
+    await Role.updateOne(
+      { _id: adminRole._id },
+      { $set: { permissions: permissionIds, modulePermissions: modulePermsObj } }
+    );
+
+    // Keep every admin user in sync with full module access
+    await User.updateMany(
+      { role: adminRole._id },
+      { $set: { permissions: permissionIds, modulePermissions: modulePermsObj } }
+    );
   }
 
-  const accountantRole = await Role.findOne({ name: 'accountant' });
+  const accountantRole = await Role.findOne({ name: 'accountant' }).lean();
   if (accountantRole) {
     const {
       ACCOUNTANT_PERMISSION_NAMES,
@@ -260,9 +255,10 @@ async function syncBuiltInRolePermissions() {
       accountantModulePermissionsMap,
     } = require('../config/accountantDefaults');
     const accountantPerms = await permissionIdsByNames(ACCOUNTANT_PERMISSION_NAMES);
-    accountantRole.permissions = accountantPerms;
     const mp = accountantModulePermissionsMap();
-    const existing = accountantRole.modulePermissions || new Map();
+    const existing = accountantRole.modulePermissions instanceof Map
+      ? accountantRole.modulePermissions
+      : new Map(Object.entries(accountantRole.modulePermissions || {}));
     Object.entries(ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS).forEach(([key, actions]) => {
       if (!existing.has(key) || !Array.isArray(existing.get(key)) || existing.get(key).length === 0) {
         mp.set(key, actions);
@@ -270,12 +266,19 @@ async function syncBuiltInRolePermissions() {
         mp.set(key, existing.get(key));
       }
     });
-    accountantRole.modulePermissions = mp;
-    accountantRole.description = 'Finance — default accountant portal access';
-    await accountantRole.save();
+    await Role.updateOne(
+      { _id: accountantRole._id },
+      {
+        $set: {
+          permissions: accountantPerms,
+          modulePermissions: Object.fromEntries(mp),
+          description: 'Finance — default accountant portal access',
+        },
+      }
+    );
   }
 
-  const parentRole = await Role.findOne({ name: 'parent' });
+  const parentRole = await Role.findOne({ name: 'parent' }).lean();
   if (parentRole) {
     const parentPerms = await permissionIdsByNames([
       'view_attendance',
@@ -285,19 +288,25 @@ async function syncBuiltInRolePermissions() {
       'view_academy_students',
       'view_academy_fee_reports',
     ]);
-    parentRole.permissions = parentPerms;
-    parentRole.modulePermissions = new Map([
-      ['student', ['view']],
-      ['attendance', ['view']],
-      ['exam', ['view']],
-      ['timetable', ['view']],
-      ['chat', ['view', 'create', 'participate']],
-      ['fee', ['view']],
-    ]);
-    await parentRole.save();
+    await Role.updateOne(
+      { _id: parentRole._id },
+      {
+        $set: {
+          permissions: parentPerms,
+          modulePermissions: {
+            student: ['view'],
+            attendance: ['view'],
+            exam: ['view'],
+            timetable: ['view'],
+            chat: ['view', 'create', 'participate'],
+            fee: ['view'],
+          },
+        },
+      }
+    );
   }
 
-  const teacherRole = await Role.findOne({ name: 'teacher' });
+  const teacherRole = await Role.findOne({ name: 'teacher' }).lean();
   if (teacherRole) {
     const {
       TEACHER_PERMISSION_NAMES,
@@ -305,10 +314,11 @@ async function syncBuiltInRolePermissions() {
       teacherModulePermissionsMap,
     } = require('../config/teacherDefaults');
     const teacherPerms = await permissionIdsByNames(TEACHER_PERMISSION_NAMES);
-    teacherRole.permissions = teacherPerms;
     const mp = teacherModulePermissionsMap();
     // Keep any admin-added extras on the role, but ensure defaults exist
-    const existing = teacherRole.modulePermissions || new Map();
+    const existing = teacherRole.modulePermissions instanceof Map
+      ? teacherRole.modulePermissions
+      : new Map(Object.entries(teacherRole.modulePermissions || {}));
     Object.entries(TEACHER_DEFAULT_MODULE_PERMISSIONS).forEach(([key, actions]) => {
       if (!existing.has(key) || !Array.isArray(existing.get(key)) || existing.get(key).length === 0) {
         mp.set(key, actions);
@@ -316,9 +326,16 @@ async function syncBuiltInRolePermissions() {
         mp.set(key, existing.get(key));
       }
     });
-    teacherRole.modulePermissions = mp;
-    teacherRole.description = 'Academic — default teacher portal access';
-    await teacherRole.save();
+    await Role.updateOne(
+      { _id: teacherRole._id },
+      {
+        $set: {
+          permissions: teacherPerms,
+          modulePermissions: Object.fromEntries(mp),
+          description: 'Academic — default teacher portal access',
+        },
+      }
+    );
   }
 }
 
@@ -416,7 +433,7 @@ async function seedPermissionsAndRoles() {
   await ensureDefaultAdmin();
 
   const sessions = await Session.find().select('_id');
-  const adminUser = await User.findOne({ email: env.seedAdminEmail });
+  const adminUser = await User.findOne({ email: seedAdminEmail() });
   const userId = adminUser?._id;
   if (userId) {
     for (const s of sessions) {
@@ -424,7 +441,7 @@ async function seedPermissionsAndRoles() {
     }
   }
 
-  if (rolesCreated && env.nodeEnv !== 'production') {
+  if (rolesCreated && !isProd()) {
     // eslint-disable-next-line no-console
     console.log('[seed] Default roles initialized.');
   }

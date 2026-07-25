@@ -18,6 +18,8 @@ const userSchema = new mongoose.Schema(
     /** Monthly / contractual salary for staff (teacher, accountant); PKR */
     salary: { type: Number, default: 0, min: 0 },
     profileImage: { type: String },
+    /** Linked face ID in AIAttendance (`STF-…`). */
+    aiEmployeeId: { type: String, trim: true, index: true },
     fcmToken: { type: String },
     lastLogin: { type: Date },
     refreshToken: { type: String, select: false },

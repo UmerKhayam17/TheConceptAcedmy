@@ -31,6 +31,8 @@ import DatasheetsModule from "@/components/modules/DatasheetsModule";
 import PermissionsModule from "@/components/modules/PermissionsModule";
 import StudentManagementModule from "@/components/modules/StudentManagementModule";
 import PermissionCatalogModule from "@/components/modules/PermissionCatalogModule";
+import AiAttendanceModule from "@/components/modules/AiAttendanceModule";
+import StaffAttendanceModule from "@/components/modules/StaffAttendanceModule";
 import TeacherFeatureModule from "@/components/modules/TeacherFeatureModule";
 import { fetchExams } from "@/lib/examApi";
 import { fetchAnnouncements } from "@/lib/announcementApi";
@@ -56,7 +58,6 @@ const TEACHER_FEATURE_KEYS = new Set<ModuleKey>([
   "school-calendar",
   "notifications",
   "leave",
-  "staff-attendance",
 ]);
 
 const Dashboard = ({
@@ -71,8 +72,8 @@ const Dashboard = ({
   const cfg = roleMeta[role];
   const HeaderIcon = cfg.Icon;
   const { perms } = usePermissions();
-  const rolePerms = applyBackendModulePermissions(perms[role], modulePermissions);
-  const items = buildMenu(rolePerms, modulePermissions).filter((m) => m.key !== "dashboard");
+  const rolePerms = applyBackendModulePermissions(perms[role], modulePermissions, role);
+  const items = buildMenu(rolePerms, modulePermissions, role).filter((m) => m.key !== "dashboard");
 
   const today = new Date().toISOString().slice(0, 10);
   const { data: termExams = [] } = useQuery({
@@ -257,9 +258,9 @@ const Panel = () => {
   const mod = findModule(slug);
   if (!mod) return <Navigate to={`/panel/${r}`} replace />;
 
-  const rolePerms = applyBackendModulePermissions(perms[r], session.modulePermissions);
+  const rolePerms = applyBackendModulePermissions(perms[r], session.modulePermissions, r);
   const perm = rolePerms[mod.key as ModuleKey];
-  const caps = resolveModuleCaps(mod.key as ModuleKey, perm, session.modulePermissions);
+  const caps = resolveModuleCaps(mod.key as ModuleKey, perm, session.modulePermissions, r);
 
   if (mod.key === "system-config" && !section) {
     return <Navigate to={systemConfigHref(r)} replace />;
@@ -297,6 +298,8 @@ const Panel = () => {
         <StudentsRecordsModule perm={perm} caps={caps} section={section} action={action} />
       );
       case "attendance":    return <AttendanceModule perm={perm} caps={caps} />;
+      case "staff-attendance": return <StaffAttendanceModule caps={caps} />;
+      case "ai-attendance": return <AiAttendanceModule caps={caps} />;
       case "system-config": return <SystemConfigModule caps={caps} section={section} action={action} />;
       case "timetable":     return <TimetableModule caps={caps} section={section} role={r} />;
       case "exams":         return <ExamsModule perm={perm} caps={caps} section={section} action={action} subAction={subAction} />;

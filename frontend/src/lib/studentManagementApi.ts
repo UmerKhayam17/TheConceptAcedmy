@@ -238,6 +238,10 @@ export interface AcademyAttendanceRecord {
   studentId: string;
   date: string;
   status: "present" | "absent" | "late" | "leave";
+  source?: "manual" | "ai";
+  checkIn?: string;
+  checkOut?: string;
+  confidence?: number;
   subjectId?: AcademySubject | string;
   notes?: string;
   createdAt?: string;

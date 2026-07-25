@@ -32,6 +32,7 @@ export type ModuleKey =
   | "my-subjects"
   | "attendance"
   | "staff-attendance"
+  | "ai-attendance"
   | "timetable"
   | "homework"
   | "study-materials"
@@ -99,6 +100,12 @@ export const MODULES: ModuleDef[] = [
     label: "My Attendance",
     icon: "Clock",
     desc: "Own attendance and correction requests",
+  },
+  {
+    key: "ai-attendance",
+    label: "AI Attendance",
+    icon: "ScanFace",
+    desc: "Face enrollment, cameras, and sync with recognition service",
   },
   { key: "timetable", label: "Timetable", icon: "Calendar", desc: "View class and own schedules" },
   {
@@ -199,6 +206,28 @@ export const MODULES: ModuleDef[] = [
   { key: "settings", label: "My Profile", icon: "User", desc: "Update profile and change password" },
 ];
 
+/** Every panel module key (from MODULES — add new modules there first). */
+export function allModuleKeys(): ModuleKey[] {
+  return MODULES.map((m) => m.key);
+}
+
+/** Full access on every module — used for admin (auto-updates when MODULES grows). */
+export function fullAccessMatrix(): Record<ModuleKey, PermLevel> {
+  const o = {} as Record<ModuleKey, PermLevel>;
+  for (const m of MODULES) o[m.key] = "full";
+  return o;
+}
+
+/** Baseline matrix: every module at `fill`, then apply overrides. */
+export function modulePermMatrix(
+  overrides: Partial<Record<ModuleKey, PermLevel>>,
+  fill: PermLevel = "none",
+): Record<ModuleKey, PermLevel> {
+  const o = {} as Record<ModuleKey, PermLevel>;
+  for (const m of MODULES) o[m.key] = fill;
+  return { ...o, ...overrides };
+}
+
 /** Dashboard tile groups (sidebar uses `sidebarNav.ts`). */
 export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey[] }[] = [
   { id: "overview", label: "Dashboard", modules: ["dashboard"] },
@@ -210,70 +239,121 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
   {
     id: "student-management",
     label: "Student Management",
-    modules: ["students", "attendance"],
+    modules: ["students", "attendance", "ai-attendance", "staff-attendance"],
   },
   {
     id: "teaching",
     label: "Teaching",
-    modules: ["exams"],
+    modules: [
+      "my-classes",
+      "my-subjects",
+      "homework",
+      "study-materials",
+      "lesson-plans",
+      "exams",
+      "student-progress",
+      "behaviour",
+      "parent-meetings",
+      "online-classes",
+    ],
   },
   { id: "finance", label: "Finance", modules: ["fees", "salary", "expenses"] },
-  { id: "communication", label: "Communication", modules: ["chat", "announcements"] },
+  {
+    id: "communication",
+    label: "Communication",
+    modules: ["chat", "announcements", "notifications", "library", "school-calendar", "leave"],
+  },
   { id: "reports", label: "Reports", modules: ["reports", "datasheets"] },
   {
     id: "administration",
     label: "Administration",
-    modules: ["users", "staff-management", "permissions"],
+    modules: ["users", "staff-management", "permissions", "settings"],
   },
 ];
 
-// Default matrix — mirrors the reference spec sheet
+// Default matrix — admin is always full on every MODULES entry (do not list by hand).
 export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
-  admin: {
-    dashboard: "full", users: "crud", "staff-management": "crud", "student-management": "crud", students: "crud",
-    "my-classes": "full", "my-subjects": "full", attendance: "crud", "staff-attendance": "full",
-    timetable: "crud", homework: "full", "study-materials": "full", "lesson-plans": "full",
-    exams: "crud", "student-progress": "full", behaviour: "full", "parent-meetings": "full",
-    "online-classes": "full", library: "full", "school-calendar": "full", notifications: "full", leave: "full",
-    fees: "crud", salary: "crud", expenses: "crud", chat: "full", announcements: "crud",
-    reports: "full", datasheets: "full", "system-config": "crud", settings: "full", permissions: "full", "permission-catalog": "full",
-  },
-  accountant: {
-    dashboard: "view", users: "none", "staff-management": "none", "student-management": "process", students: "view",
-    "my-classes": "none", "my-subjects": "none", attendance: "view", "staff-attendance": "view",
-    timetable: "none", homework: "none", "study-materials": "none", "lesson-plans": "none",
-    exams: "view", "student-progress": "none", behaviour: "none", "parent-meetings": "none",
-    "online-classes": "none", library: "none", "school-calendar": "view", notifications: "view", leave: "mark",
-    fees: "crud", salary: "process", expenses: "crud", chat: "view", announcements: "none",
-    reports: "view", datasheets: "crud", "system-config": "none", settings: "view", permissions: "none", "permission-catalog": "none",
-  },
-  teacher: {
-    dashboard: "full", users: "none", "staff-management": "none", "student-management": "view", students: "view",
-    "my-classes": "view", "my-subjects": "view", attendance: "mark", "staff-attendance": "view",
-    timetable: "view", homework: "crud", "study-materials": "crud", "lesson-plans": "grade",
-    exams: "grade", "student-progress": "view", behaviour: "grade", "parent-meetings": "grade",
-    "online-classes": "crud", library: "view", "school-calendar": "view", notifications: "view", leave: "mark",
-    fees: "none", salary: "view", expenses: "none", chat: "view", announcements: "grade",
-    reports: "view", datasheets: "none", "system-config": "none", settings: "view", permissions: "none", "permission-catalog": "none",
-  },
-  parent: {
-    dashboard: "view", users: "none", "staff-management": "none", "student-management": "none", students: "view",
-    "my-classes": "none", "my-subjects": "none", attendance: "view", "staff-attendance": "none",
-    timetable: "view", homework: "view", "study-materials": "view", "lesson-plans": "none",
-    exams: "view", "student-progress": "view", behaviour: "none", "parent-meetings": "view",
-    "online-classes": "view", library: "none", "school-calendar": "view", notifications: "view", leave: "none",
-    fees: "view", salary: "none", expenses: "none", chat: "view", announcements: "none",
-    reports: "none", datasheets: "none", "system-config": "none", settings: "none", permissions: "none", "permission-catalog": "none",
-  },
-  student: {
-    dashboard: "view", users: "none", "staff-management": "none", "student-management": "none", students: "view",
-    "my-classes": "none", "my-subjects": "none", attendance: "view", "staff-attendance": "none",
-    timetable: "view", homework: "view", "study-materials": "view", "lesson-plans": "none",
-    exams: "view", "student-progress": "view", behaviour: "none", "parent-meetings": "none",
-    "online-classes": "view", library: "view", "school-calendar": "view", notifications: "view", leave: "none",
-    fees: "view", salary: "none", expenses: "none", chat: "view", announcements: "view",
-    reports: "none", datasheets: "view", "system-config": "none", settings: "view", permissions: "none", "permission-catalog": "none",
-  },
+  admin: fullAccessMatrix(),
+  accountant: modulePermMatrix({
+    dashboard: "view",
+    "student-management": "process",
+    students: "view",
+    attendance: "view",
+    "staff-attendance": "view",
+    exams: "view",
+    "school-calendar": "view",
+    notifications: "view",
+    leave: "mark",
+    fees: "crud",
+    salary: "process",
+    expenses: "crud",
+    chat: "view",
+    reports: "view",
+    datasheets: "crud",
+    settings: "view",
+  }),
+  teacher: modulePermMatrix({
+    dashboard: "full",
+    "student-management": "view",
+    students: "view",
+    "my-classes": "view",
+    "my-subjects": "view",
+    attendance: "mark",
+    "staff-attendance": "view",
+    timetable: "view",
+    homework: "crud",
+    "study-materials": "crud",
+    "lesson-plans": "grade",
+    exams: "grade",
+    "student-progress": "view",
+    behaviour: "grade",
+    "parent-meetings": "grade",
+    "online-classes": "crud",
+    library: "view",
+    "school-calendar": "view",
+    notifications: "view",
+    leave: "mark",
+    salary: "view",
+    chat: "view",
+    announcements: "grade",
+    reports: "view",
+    settings: "view",
+  }),
+  parent: modulePermMatrix({
+    dashboard: "view",
+    students: "view",
+    attendance: "view",
+    timetable: "view",
+    homework: "view",
+    "study-materials": "view",
+    exams: "view",
+    "student-progress": "view",
+    "parent-meetings": "view",
+    "online-classes": "view",
+    "school-calendar": "view",
+    notifications: "view",
+    fees: "view",
+    chat: "view",
+  }),
+  student: modulePermMatrix({
+    dashboard: "view",
+    students: "view",
+    attendance: "view",
+    timetable: "view",
+    homework: "view",
+    "study-materials": "view",
+    exams: "view",
+    "student-progress": "view",
+    "online-classes": "view",
+    library: "view",
+    "school-calendar": "view",
+    notifications: "view",
+    fees: "view",
+    chat: "view",
+    announcements: "view",
+    datasheets: "view",
+    settings: "view",
+  }),
 };
 
 const PERM_KEY = "tces_permissions_v1";
@@ -299,6 +379,7 @@ export const BACKEND_MODULE_KEY_MAP: Record<string, ModuleKey> = {
   profile: "settings",
   leave: "leave",
   staffAttendance: "staff-attendance",
+  aiAttendance: "ai-attendance",
   fee: "fees",
   timetable: "timetable",
   announcement: "announcements",
@@ -437,7 +518,11 @@ export function resolveModuleCaps(
   moduleKey: ModuleKey,
   rolePermLevel: PermLevel,
   backendPerms?: Record<string, string[]>,
+  role?: Role,
 ): ModuleActionCaps {
+  // Admin always has full UI access to every module (including newly added ones).
+  if (role === "admin") return capsFromPermLevel("full");
+
   const explicit = sessionHasExplicitModulePayload(backendPerms);
   const backendKey = PANEL_MODULE_TO_BACKEND_KEY[moduleKey];
   if (explicit && backendPerms) {
@@ -467,22 +552,21 @@ export function resolveModuleCaps(
 }
 
 function emptyPanelMatrix(): Record<ModuleKey, PermLevel> {
-  const o = {} as Record<ModuleKey, PermLevel>;
-  (Object.keys(DEFAULT_PERMISSIONS.admin) as ModuleKey[]).forEach((k) => {
-    o[k] = "none";
-  });
-  return o;
+  return modulePermMatrix({}, "none");
 }
 
 /**
  * Combine default/local role matrix with modulePermissions from `/auth/me`.
- * When the API sends real module rows, the menu is built from that payload only (no extra modules from local defaults).
- * When the payload is empty, keep `rolePerms` (defaults + admin localStorage matrix).
+ * Admin always gets full access to every entry in MODULES (ignores sparse backend maps).
+ * When the API sends real module rows for other roles, the menu is built from that payload.
  */
 export function applyBackendModulePermissions(
   rolePerms: Record<ModuleKey, PermLevel>,
   backendPerms?: Record<string, string[]>,
+  role?: Role,
 ): Record<ModuleKey, PermLevel> {
+  if (role === "admin") return fullAccessMatrix();
+
   if (!backendPerms || typeof backendPerms !== "object") return rolePerms;
 
   const hasExplicitBackend = Object.entries(backendPerms).some(
@@ -533,9 +617,13 @@ export const loadPermissions = (): Record<Role, Record<ModuleKey, PermLevel>> =>
     const raw = localStorage.getItem(PERM_KEY);
     if (!raw) return DEFAULT_PERMISSIONS;
     const parsed = JSON.parse(raw);
-    // Merge with defaults so newly added modules still appear
-    const merged: any = {};
+    // Merge with defaults so newly added modules still appear; admin always stays full.
+    const merged = {} as Record<Role, Record<ModuleKey, PermLevel>>;
     (Object.keys(DEFAULT_PERMISSIONS) as Role[]).forEach((r) => {
+      if (r === "admin") {
+        merged[r] = fullAccessMatrix();
+        return;
+      }
       merged[r] = { ...DEFAULT_PERMISSIONS[r], ...(parsed[r] || {}) };
     });
     return merged;

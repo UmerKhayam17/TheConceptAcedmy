@@ -1,9 +1,14 @@
 const crypto = require('crypto');
-const env = require('../config/env');
 
 const key = crypto
   .createHash('sha256')
-  .update(String(process.env.FIELD_ENCRYPTION_KEY || env.jwtAccessSecret).slice(0, 32))
+  .update(
+    String(
+      process.env.FIELD_ENCRYPTION_KEY ||
+        process.env.JWT_ACCESS_SECRET ||
+        'dev-access-secret-change-in-prod-32chars'
+    ).slice(0, 32)
+  )
   .digest();
 
 const IV_LENGTH = 16;

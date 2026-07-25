@@ -32,6 +32,15 @@ function sectionLabel(s: AcademyStudent) {
   return "—";
 }
 
+function fmtTime(iso?: string) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+}
+
 const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleActionCaps }) => {
   const { user } = useAuth();
   const isParent = user?.role === "parent";
@@ -176,7 +185,7 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
     );
   };
 
-  const colSpan = canMark ? 6 : 5;
+  const colSpan = canMark ? 7 : 6;
 
   return (
     <div>
@@ -291,7 +300,8 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
                   <th className="text-left px-4 py-3">Class</th>
                   <th className="text-left px-4 py-3">Section</th>
                   <th className="text-left px-4 py-3">Status</th>
-                  <th className="text-left px-4 py-3">Time</th>
+                  <th className="text-left px-4 py-3">First check-in</th>
+                  <th className="text-left px-4 py-3">Last check-out</th>
                   {canMark && <th className="text-right px-4 py-3">Mark</th>}
                 </tr>
               </thead>
@@ -322,9 +332,6 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
                 {studentsFiltered.map((s) => {
                   const cur = recordMap.get(s._id)?.status;
                   const record = recordMap.get(s._id);
-                  const markedTime = record?.createdAt
-                    ? new Date(record.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                    : "—";
                   return (
                     <tr key={s._id} className="border-t border-border">
                       <td className="px-4 py-3 font-medium text-primary">{s.studentName}</td>
@@ -343,8 +350,14 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
                         >
                           {cur || "unmarked"}
                         </span>
+                        {record?.source === "ai" && (
+                          <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary/80">
+                            AI
+                          </span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{markedTime}</td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">{fmtTime(record?.checkIn)}</td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">{fmtTime(record?.checkOut)}</td>
                       {canMark && (
                         <td className="px-4 py-3 text-right whitespace-nowrap space-x-1">
                           <Button
