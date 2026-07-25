@@ -38,3 +38,12 @@ uploads/
 # Temporary files
 tmp/
 temp/
+
+# Face worker (Python) — local venv & bytecode, never commit
+face-worker/.venv/
+face-worker/**/__pycache__/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
