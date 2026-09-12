@@ -1,7 +1,11 @@
 const AcademyStudent = require('../../models/academy/AcademyStudent');
+const Session = require('../../models/Session');
 const timetableVersionService = require('../timetable/timetableVersionService');
-
-const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const {
+  weekdayName,
+  minutesSinceMidnight,
+  DEFAULT_TZ,
+} = require('../../utils/schoolDay');
 
 /** Fallback when no published class timetable exists for the student today. */
 const FALLBACK_LATE_AFTER_HOUR = 9;
@@ -28,27 +32,33 @@ function statusFromMinutes(checkInMinutes, startMinutes, graceMinutes = 0) {
   return checkInMinutes <= startMinutes + graceMinutes ? 'present' : 'late';
 }
 
+async function resolveSessionTimezone(sessionId) {
+  if (!sessionId) return DEFAULT_TZ;
+  const session = await Session.findById(sessionId).select('timezone').lean();
+  return session?.timezone || DEFAULT_TZ;
+}
+
 /**
  * Earliest class start today from the student's published section timetable.
- * Uses lecture/assembly/prayer periods; falls back to academyStartTime, then 09:30.
  */
 async function getStudentFirstPeriodStartMinutes(studentId, checkIn) {
   const student = await AcademyStudent.findById(studentId)
     .populate('classId', 'sessionId')
     .select('classId sectionId')
     .lean();
-  if (!student) return null;
+  if (!student) return { startMinutes: null, timeZone: DEFAULT_TZ };
 
   const sessionId = student.classId?.sessionId?._id || student.classId?.sessionId;
   const sectionId = student.sectionId?._id || student.sectionId;
-  if (!sessionId || !sectionId) return null;
+  const timeZone = await resolveSessionTimezone(sessionId);
+  if (!sessionId || !sectionId) return { startMinutes: null, timeZone };
 
   const version = await timetableVersionService.getPublishedVersion(sessionId, sectionId);
-  if (!version) return null;
+  if (!version) return { startMinutes: null, timeZone };
 
   const grid = await timetableVersionService.getVersionGrid(version._id);
   const periods = grid.periods || [];
-  const weekday = WEEKDAYS[checkIn.getDay()];
+  const weekday = weekdayName(checkIn, timeZone);
 
   const todayStarts = (grid.slots || [])
     .filter((slot) => String(slot.day || '').toLowerCase() === weekday)
@@ -59,28 +69,24 @@ async function getStudentFirstPeriodStartMinutes(studentId, checkIn) {
     .filter((n) => n != null);
 
   if (todayStarts.length) {
-    return Math.min(...todayStarts);
+    return { startMinutes: Math.min(...todayStarts), timeZone };
   }
 
   const academyStart =
     version.periodTemplate?.academyStartTime ||
     grid.version?.periodTemplate?.academyStartTime;
-  return hhmmToMinutes(academyStart);
+  return { startMinutes: hhmmToMinutes(academyStart), timeZone };
 }
 
-/**
- * Present if check-in is on/before the first class period (+ optional grace).
- * Late otherwise. Falls back to 09:30 when no timetable is available.
- */
 async function resolveStudentAttendanceStatus(studentId, checkIn = new Date()) {
-  const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
   const grace = Number(process.env.AI_ATTENDANCE_LATE_GRACE_MINUTES) || 0;
-  const firstStart = await getStudentFirstPeriodStartMinutes(studentId, checkIn);
-  return statusFromMinutes(checkInMinutes, firstStart, grace);
+  const { startMinutes, timeZone } = await getStudentFirstPeriodStartMinutes(studentId, checkIn);
+  const checkInMinutes = minutesSinceMidnight(checkIn, timeZone);
+  return statusFromMinutes(checkInMinutes, startMinutes, grace);
 }
 
 function resolveFallbackAttendanceStatus(checkIn = new Date()) {
-  const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
+  const checkInMinutes = minutesSinceMidnight(checkIn, DEFAULT_TZ);
   return statusFromMinutes(checkInMinutes, null, 0);
 }
 

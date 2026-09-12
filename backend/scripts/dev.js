@@ -157,7 +157,14 @@ async function startWorker() {
       '--timeout-keep-alive',
       '5',
     ],
-    { cwd: WORKER_DIR, shell: false }
+    {
+      cwd: WORKER_DIR,
+      shell: false,
+      env: {
+        ...process.env,
+        FACE_WORKER_SECRET: process.env.FACE_WORKER_SECRET || '',
+      },
+    }
   );
   children.push(child);
   pipeWithPrefix(child, 'face-worker');

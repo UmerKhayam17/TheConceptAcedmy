@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchMyStaffAttendance, fetchStaffAttendanceDay } from "@/lib/aiAttendanceApi";
 import { useAuth } from "@/hooks/useAuth";
+import { localTodayYmd } from "@/lib/localDate";
 
 function fmtTime(iso?: string) {
   if (!iso) return "—";
@@ -20,7 +21,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const now = new Date();
-  const [date, setDate] = useState(now.toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => localTodayYmd());
   const [month] = useState(now.getMonth() + 1);
   const [year] = useState(now.getFullYear());
 

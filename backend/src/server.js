@@ -43,3 +43,13 @@ bootstrap().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.error('[unhandledRejection]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  // eslint-disable-next-line no-console
+  console.error('[uncaughtException]', err);
+});

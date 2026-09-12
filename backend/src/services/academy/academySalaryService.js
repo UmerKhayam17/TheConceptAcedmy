@@ -142,8 +142,8 @@ async function recordSalaryPayment(id, { paymentMethod, notes }, userId) {
   return record;
 }
 
-async function getSalarySummary({ month, year, roleName }) {
-  const q = await buildSalaryQuery({ month, year, roleName });
+async function getSalarySummary({ month, year, roleName, staffId }) {
+  const q = await buildSalaryQuery({ month, year, roleName, staffId });
   const records = await AcademySalaryRecord.find(q).lean();
 
   const byStatus = { pending: 0, paid: 0, cancelled: 0 };

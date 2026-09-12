@@ -1,48 +1,25 @@
 const catchAsync = require('../../utils/catchAsync');
 const ApiError = require('../../utils/ApiError');
 const feeService = require('../../services/academy/academyFeeService');
-const AcademyStudent = require('../../models/academy/AcademyStudent');
+const { renderFeeReceiptPdf } = require('../../services/academy/academyFeeReceiptService');
 const rt = require('../../services/realtime/academyRealtime');
-
-async function assertParentOwnsStudent(req, studentId) {
-  const roleName = req.user?.roleDoc?.name || req.user?.role?.name || req.user?.role;
-  if (String(roleName) !== 'parent') return;
-
-  const student = await AcademyStudent.findById(studentId).select('guardianEmail');
-  if (!student) throw new ApiError(404, 'Student not found');
-
-  const guardianEmail = String(student.guardianEmail || '').trim().toLowerCase();
-  const userEmail = String(req.user?.email || '').trim().toLowerCase();
-  if (!guardianEmail || guardianEmail !== userEmail) {
-    throw new ApiError(403, 'Access denied');
-  }
-}
-
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+const {
+  roleNameOf,
+  linkedStudentIdsForParent,
+  assertParentOwnsStudent,
+} = require('../../utils/parentScope');
 
 const list = catchAsync(async (req, res) => {
-  const roleName = req.user?.roleDoc?.name || req.user?.role?.name || req.user?.role;
-  const isParent = String(roleName) === 'parent';
+  const isParent = roleNameOf(req) === 'parent';
 
   const studentId = req.query.studentId;
   if (isParent && studentId) {
     await assertParentOwnsStudent(req, studentId);
   }
 
-  // If parent is requesting without a specific student, scope fees to all their children.
   let studentIds;
   if (isParent && !studentId) {
-    const email = String(req.user?.email || '').trim();
-    const escaped = escapeRegExp(email);
-    const rows = await AcademyStudent.find({
-      guardianEmail: { $regex: `^${escaped}$`, $options: 'i' },
-      status: 'active',
-    })
-      .select('_id')
-      .lean();
-    studentIds = rows.map((s) => s._id);
+    studentIds = await linkedStudentIdsForParent(req);
   }
 
   const result = await feeService.listFeeRecords({
@@ -53,9 +30,9 @@ const list = catchAsync(async (req, res) => {
     status: req.query.status,
     month: req.query.month,
     year: req.query.year,
-    classId: req.query.classId,
+    classId: isParent ? undefined : req.query.classId,
     feeType: req.query.feeType,
-    sessionId: req.query.sessionId,
+    sessionId: isParent ? undefined : req.query.sessionId,
   });
   res.json({ success: true, data: result.items, pagination: result.pagination });
 });
@@ -64,6 +41,38 @@ const generate = catchAsync(async (req, res) => {
   const data = await feeService.generateMonthlyFees(req.body, req.user._id);
   rt.feeCrud('generated', data?._id || 'batch');
   res.status(201).json({ success: true, data });
+});
+
+const receipt = catchAsync(async (req, res) => {
+  const record = await feeService.getFeeRecordById(req.params.id);
+  const studentId = record.studentId?._id || record.studentId;
+  await assertParentOwnsStudent(req, studentId);
+
+  if (record.status !== 'paid') {
+    throw new ApiError(400, 'Receipt is available after the fee is paid');
+  }
+
+  const size = String(req.query.size || 'a4').toLowerCase();
+  if (!['a4', 'thermal'].includes(size)) {
+    throw new ApiError(400, 'Receipt size must be a4 or thermal');
+  }
+
+  const buffer = await renderFeeReceiptPdf(
+    record,
+    {
+      generatedAt: new Date(),
+      generatedBy: req.user?.name || req.user?.email || '',
+    },
+    size
+  );
+  const suffix = size === 'thermal' ? 'thermal' : 'a4';
+  const filename = `${record.receiptNumber || `fee-receipt-${record._id}`}-${suffix}.pdf`.replace(
+    /[^\w.-]+/g,
+    '_'
+  );
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.send(buffer);
 });
 
 const pay = catchAsync(async (req, res) => {
@@ -79,8 +88,7 @@ const studentHistory = catchAsync(async (req, res) => {
 });
 
 const summary = catchAsync(async (req, res) => {
-  const roleName = req.user?.roleDoc?.name || req.user?.role?.name || req.user?.role;
-  const isParent = String(roleName) === 'parent';
+  const isParent = roleNameOf(req) === 'parent';
 
   const studentId = req.query.studentId;
   if (isParent && studentId) {
@@ -89,24 +97,16 @@ const summary = catchAsync(async (req, res) => {
 
   let studentIds;
   if (isParent && !studentId) {
-    const email = String(req.user?.email || '').trim();
-    const escaped = escapeRegExp(email);
-    const rows = await AcademyStudent.find({
-      guardianEmail: { $regex: `^${escaped}$`, $options: 'i' },
-      status: 'active',
-    })
-      .select('_id')
-      .lean();
-    studentIds = rows.map((s) => s._id);
+    studentIds = await linkedStudentIdsForParent(req);
   }
 
   const data = await feeService.getFeeSummary({
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
-    classId: req.query.classId,
+    classId: isParent ? undefined : req.query.classId,
     studentId: studentId || undefined,
     studentIds,
-    sessionId: req.query.sessionId,
+    sessionId: isParent ? undefined : req.query.sessionId,
   });
   res.json({ success: true, data });
 });
@@ -151,6 +151,7 @@ module.exports = {
   list,
   generate,
   pay,
+  receipt,
   studentHistory,
   summary,
   defaulters,

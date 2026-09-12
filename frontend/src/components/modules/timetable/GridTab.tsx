@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertCircle, Copy, GripVertical, Plus, Send } from "lucide-react";
+import { AlertCircle, Check, Copy, Pencil, Plus, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -121,12 +121,14 @@ export default function GridTab({
   }>({ optionKey: "", teachersBySubject: {}, roomId: "" });
   const [draggingSlotId, setDraggingSlotId] = useState<string | null>(null);
   const [dropOver, setDropOver] = useState<{ day: Weekday; periodId: string } | null>(null);
+  const [editingLive, setEditingLive] = useState(false);
   const skipClickRef = useRef(false);
 
   useEffect(() => {
     setClassId("");
     setSectionId("");
     setVersionId("");
+    setEditingLive(false);
   }, [sessionId]);
 
   const { data: classes = [] } = useQuery({
@@ -263,9 +265,10 @@ export default function GridTab({
       qc.invalidateQueries({ queryKey: ["timetable-grid", activeVersionId] });
       qc.invalidateQueries({ queryKey: ["section-schedule", sessionId, sectionId] });
       qc.invalidateQueries({ queryKey: ["my-teacher-schedule", sessionId] });
+      setEditingLive(true);
       toast({
         title: "Timetable published",
-        description: "You can keep editing this published version — changes apply live.",
+        description: "Use Edit timetable anytime to change the live schedule.",
       });
     },
     onError: (e: Error) => toast({ title: "Cannot publish", description: e.message, variant: "destructive" }),
@@ -341,12 +344,15 @@ export default function GridTab({
     return next;
   };
 
+  const canManageGrid = caps.canEdit || caps.canCreate;
+  const isPublished =
+    activeVersion?.status === "published" || grid?.version.status === "published";
   const canEditGrid =
-    caps.canEdit &&
-    (activeVersion?.status === "draft" || activeVersion?.status === "published") &&
+    canManageGrid &&
+    (activeVersion?.status === "draft" || (isPublished && editingLive)) &&
     (grid?.version.status === "draft" || grid?.version.status === "published");
   const canPublishVersion =
-    caps.canEdit &&
+    canManageGrid &&
     activeVersion &&
     (activeVersion.status === "draft" || activeVersion.status === "archived");
 
@@ -401,7 +407,12 @@ export default function GridTab({
           <select
             className="mt-1 w-full h-10 rounded-md border px-3 text-sm"
             value={classId}
-            onChange={(e) => { setClassId(e.target.value); setSectionId(""); setVersionId(""); }}
+            onChange={(e) => {
+              setClassId(e.target.value);
+              setSectionId("");
+              setVersionId("");
+              setEditingLive(false);
+            }}
           >
             <option value="">Select class</option>
             {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
@@ -412,7 +423,11 @@ export default function GridTab({
           <select
             className="mt-1 w-full h-10 rounded-md border px-3 text-sm"
             value={sectionId}
-            onChange={(e) => { setSectionId(e.target.value); setVersionId(""); }}
+            onChange={(e) => {
+              setSectionId(e.target.value);
+              setVersionId("");
+              setEditingLive(false);
+            }}
             disabled={!classId}
           >
             <option value="">Select section</option>
@@ -425,7 +440,10 @@ export default function GridTab({
             <select
               className="mt-1 w-full h-10 rounded-md border px-3 text-sm"
               value={activeVersionId}
-              onChange={(e) => setVersionId(e.target.value)}
+              onChange={(e) => {
+                setVersionId(e.target.value);
+                setEditingLive(false);
+              }}
             >
               {versions.map((v) => (
                 <option key={v._id} value={v._id}>
@@ -435,13 +453,29 @@ export default function GridTab({
             </select>
           </div>
         )}
-        {sectionId && caps.canCreate && !draftVersion && (
+        {sectionId && caps.canCreate && !draftVersion && !publishedVersion && (
           <Button className="gap-2" onClick={() => createVersionMut.mutate()} disabled={createVersionMut.isPending}>
             <Plus className="h-4 w-4" /> New draft
           </Button>
         )}
-        {activeVersionId && caps.canEdit && (
+        {activeVersionId && canManageGrid && (
           <>
+            {isPublished && !editingLive && (
+              <Button
+                className="gap-2"
+                onClick={() => {
+                  if (publishedVersion?._id) setVersionId(publishedVersion._id);
+                  setEditingLive(true);
+                }}
+              >
+                <Pencil className="h-4 w-4" /> Edit timetable
+              </Button>
+            )}
+            {isPublished && editingLive && (
+              <Button variant="outline" className="gap-2" onClick={() => setEditingLive(false)}>
+                <Check className="h-4 w-4" /> Done editing
+              </Button>
+            )}
             <Button variant="outline" className="gap-2" onClick={() => validateMut.mutate()}>
               <AlertCircle className="h-4 w-4" /> Validate
             </Button>
@@ -466,8 +500,13 @@ export default function GridTab({
             <Badge variant={grid.version.status === "published" ? "default" : "secondary"}>
               v{grid.version.version} · {grid.version.status}
             </Badge>
-            {canEditGrid && grid.version.status === "published" && (
-              <span className="text-xs text-muted-foreground">Click a cell to edit — changes go live</span>
+            {isPublished && !editingLive && canManageGrid && (
+              <span className="text-xs text-muted-foreground">Published — click Edit timetable to make changes</span>
+            )}
+            {canEditGrid && isPublished && (
+              <span className="text-xs text-amber-700 dark:text-amber-400">
+                Editing live timetable — click a cell to change a period
+              </span>
             )}
           </div>
 

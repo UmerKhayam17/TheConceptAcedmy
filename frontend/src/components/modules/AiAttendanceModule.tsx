@@ -64,6 +64,7 @@ function grabFromVideo(video: HTMLVideoElement | null): string | null {
 export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const canWrite = caps.canEdit || caps.canCreate;
   const [tab, setTab] = useState<Tab>("enrolled");
   const [selected, setSelected] = useState<AiPerson | null>(null);
   const [search, setSearch] = useState("");
@@ -131,7 +132,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
 
   // Auto-start active cameras when opening AI CCTV (Node --watch clears in-memory poller)
   useEffect(() => {
-    if (tab !== "cameras" || !cameras.length || camActionBusy) return;
+    if (!canWrite || tab !== "cameras" || !cameras.length || camActionBusy) return;
     const anyRunning = cameras.some((c) => c.runtime?.running);
     if (anyRunning) return;
     let cancelled = false;
@@ -139,8 +140,14 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       try {
         await aiCameraAction("start_all");
         if (!cancelled) await refetchCameras();
-      } catch {
-        /* start errors show via snapshot lastError */
+      } catch (e) {
+        if (!cancelled) {
+          toast({
+            title: "Could not auto-start cameras",
+            description: e instanceof Error ? e.message : String(e),
+            variant: "destructive",
+          });
+        }
       }
     })();
     return () => {
@@ -148,7 +155,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     };
     // intentionally only when entering cameras tab / camera list first loads
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, cameras.length]);
+  }, [tab, cameras.length, canWrite]);
 
   // Poll live snapshot for selected camera
   useEffect(() => {
@@ -268,7 +275,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     if (!webcamSupported) {
       toast({
         title: "Webcam needs HTTPS",
-        description: "Open https://192.168.88.41:8080 and accept the certificate, or use Mobile Camera.",
+        description: `Open ${typeof window !== "undefined" ? window.location.origin : "this site"} and accept the certificate, or use Mobile Camera.`,
         variant: "destructive",
       });
       return;
@@ -324,6 +331,13 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     onError: (e: Error) => toast({ title: "Capture failed", description: e.message, variant: "destructive" }),
   });
 
+  const invalidateAttendanceQueries = () => {
+    qc.invalidateQueries({ queryKey: ["academy-attendance-day"] });
+    qc.invalidateQueries({ queryKey: ["staff-attendance-day"] });
+    qc.invalidateQueries({ queryKey: ["staff-attendance-mine"] });
+    qc.invalidateQueries({ queryKey: ["academy-attendance-today-dashboard"] });
+  };
+
   const identifyMut = useMutation({
     mutationFn: async () => {
       const image = grabFromVideo(monitorVideoRef.current);
@@ -331,6 +345,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       return identifyAiFace(image, true);
     },
     onSuccess: (data) => {
+      invalidateAttendanceQueries();
       toast({
         title: "Identified",
         description: String((data as { message?: string }).message || JSON.stringify(data)),
@@ -340,6 +355,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   });
 
   const onEnrollFiles = async (files: FileList | null) => {
+    if (!canWrite) return;
     if (!files?.length) return;
     if (!selected) {
       toast({ title: "Select a person first", variant: "destructive" });
@@ -373,11 +389,13 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   };
 
   const onIdentifyFile = async (files: FileList | null) => {
+    if (!canWrite) return;
     if (!files?.length) return;
     setUploadBusy(true);
     try {
       const image = await fileToJpegBase64(files[0]);
       const data = await identifyAiFace(image, true);
+      invalidateAttendanceQueries();
       toast({
         title: "Identified",
         description: String((data as { message?: string }).message || JSON.stringify(data)),
@@ -492,13 +510,15 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button
-              size="sm"
-              disabled={!caps.canEdit || rosterMut.isPending}
-              onClick={() => rosterMut.mutate()}
-            >
-              {rosterMut.isPending ? "Linking IDs…" : "Link student/staff IDs"}
-            </Button>
+            {canWrite && (
+              <Button
+                size="sm"
+                disabled={rosterMut.isPending}
+                onClick={() => rosterMut.mutate()}
+              >
+                {rosterMut.isPending ? "Linking IDs…" : "Link student/staff IDs"}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -610,7 +630,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                   {!enrollCamOn ? (
                     <Button
                       size="sm"
-                      disabled={!selected || !webcamSupported}
+                      disabled={!canWrite || !selected || !webcamSupported}
                       onClick={() =>
                         void startWebcam(
                           enrollVideoRef.current,
@@ -627,20 +647,22 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                       Stop webcam
                     </Button>
                   )}
-                  <Button
-                    size="sm"
-                    disabled={!selected || !enrollCamReady || captureMut.isPending}
-                    onClick={() => captureMut.mutate()}
-                  >
-                    {captureMut.isPending ? "Capturing…" : "Capture face"}
-                  </Button>
+                  {canWrite && (
+                    <Button
+                      size="sm"
+                      disabled={!selected || !enrollCamReady || captureMut.isPending}
+                      onClick={() => captureMut.mutate()}
+                    >
+                      {captureMut.isPending ? "Capturing…" : "Capture face"}
+                    </Button>
+                  )}
                 </div>
                 {enrollCamOn && !enrollCamReady && (
                   <p className="text-xs text-amber-600">Waiting for camera preview…</p>
                 )}
                 {!webcamSupported && (
                   <p className="text-xs text-amber-600">
-                    Webcam needs HTTPS. Open https://{typeof window !== "undefined" ? window.location.host : "…"} or
+                    Webcam needs HTTPS. Open {typeof window !== "undefined" ? window.location.origin : "this site"} or
                     switch to Mobile camera.
                   </p>
                 )}
@@ -657,21 +679,25 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    disabled={!selected || uploadBusy}
-                    onClick={() => mobileFileRef.current?.click()}
-                  >
-                    {uploadBusy ? "Uploading…" : "Take photo"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!selected || uploadBusy}
-                    onClick={() => galleryFileRef.current?.click()}
-                  >
-                    Choose from gallery
-                  </Button>
+                  {canWrite && (
+                    <>
+                      <Button
+                        size="sm"
+                        disabled={!selected || uploadBusy}
+                        onClick={() => mobileFileRef.current?.click()}
+                      >
+                        {uploadBusy ? "Uploading…" : "Take photo"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!selected || uploadBusy}
+                        onClick={() => galleryFileRef.current?.click()}
+                      >
+                        Choose from gallery
+                      </Button>
+                    </>
+                  )}
                 </div>
                 {/* capture=user → phone front camera */}
                 <input
@@ -729,7 +755,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
             {!monitorCamOn ? (
               <Button
                 size="sm"
-                disabled={!webcamSupported}
+                disabled={!canWrite || !webcamSupported}
                 onClick={() =>
                   void startWebcam(
                     monitorVideoRef.current,
@@ -746,21 +772,25 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                 Stop webcam
               </Button>
             )}
-            <Button
-              size="sm"
-              disabled={!monitorCamReady || identifyMut.isPending}
-              onClick={() => identifyMut.mutate()}
-            >
-              {identifyMut.isPending ? "Recognizing…" : "Identify & mark"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={uploadBusy}
-              onClick={() => identifyFileRef.current?.click()}
-            >
-              Upload photo
-            </Button>
+            {canWrite && (
+              <>
+                <Button
+                  size="sm"
+                  disabled={!monitorCamReady || identifyMut.isPending}
+                  onClick={() => identifyMut.mutate()}
+                >
+                  {identifyMut.isPending ? "Recognizing…" : "Identify & mark"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={uploadBusy}
+                  onClick={() => identifyFileRef.current?.click()}
+                >
+                  Upload photo
+                </Button>
+              </>
+            )}
           </div>
           <input
             ref={identifyFileRef}
@@ -793,17 +823,21 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
               </Button>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" disabled={camActionBusy} onClick={() => void runCameraAction("start_all")}>
-                Start all
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={camActionBusy}
-                onClick={() => void runCameraAction("stop_all")}
-              >
-                Stop all
-              </Button>
+              {canWrite && (
+                <>
+                  <Button size="sm" disabled={camActionBusy} onClick={() => void runCameraAction("start_all")}>
+                    Start all
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={camActionBusy}
+                    onClick={() => void runCameraAction("stop_all")}
+                  >
+                    Stop all
+                  </Button>
+                </>
+              )}
             </div>
             <div className="space-y-2 max-h-[520px] overflow-y-auto">
               {cameras.map((cam: AiCamera) => {
@@ -845,25 +879,27 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                       <p className="text-[11px] text-destructive line-clamp-2">{cam.runtime.lastError}</p>
                     ) : null}
                     <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
-                      {!running ? (
-                        <Button
-                          size="sm"
-                          className="h-7 text-xs"
-                          disabled={camActionBusy}
-                          onClick={() => void runCameraAction("start", cam._id)}
-                        >
-                          Start
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          disabled={camActionBusy}
-                          onClick={() => void runCameraAction("stop", cam._id)}
-                        >
-                          Stop
-                        </Button>
+                      {canWrite && (
+                        !running ? (
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs"
+                            disabled={camActionBusy}
+                            onClick={() => void runCameraAction("start", cam._id)}
+                          >
+                            Start
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={camActionBusy}
+                            onClick={() => void runCameraAction("stop", cam._id)}
+                          >
+                            Stop
+                          </Button>
+                        )
                       )}
                     </div>
                   </button>

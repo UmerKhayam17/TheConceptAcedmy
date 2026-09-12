@@ -22,6 +22,15 @@ export interface LinkedStudentSummary {
   status?: string;
 }
 
+/** Permission row from Mongo (GET /permissions). */
+export interface PermissionDefinition {
+  _id: string;
+  name: string;
+  module: string;
+  action: string;
+  description?: string;
+}
+
 export interface StaffUser {
   _id: string;
   name: string;
@@ -33,17 +42,9 @@ export interface StaffUser {
   modulePermissions?: Record<string, string[]>;
   role?: RoleOption | string;
   createdAt?: string;
+  permissions?: PermissionDefinition[];
   /** Populated for parent users on GET /users (all-users list). */
   linkedStudents?: LinkedStudentSummary[];
-}
-
-/** Permission row from Mongo (GET /permissions). */
-export interface PermissionDefinition {
-  _id: string;
-  name: string;
-  module: string;
-  action: string;
-  description?: string;
 }
 
 export interface UserWithAccess extends StaffUser {
@@ -247,4 +248,20 @@ export async function uploadStaffProfilePhoto(userId: string, file: File): Promi
   if (!res.ok) throw new Error(body.message || "Upload failed");
   if (!body.data) throw new Error("Invalid response");
   return body.data;
+}
+
+export type StaffReportFormat = "xlsx" | "pdf";
+
+export async function exportStaffReport(
+  staffId: string,
+  params: { format?: StaffReportFormat; month?: number; year?: number; sessionId?: string } = {},
+) {
+  const format = params.format || "xlsx";
+  const q = new URLSearchParams({ format });
+  if (params.month) q.set("month", String(params.month));
+  if (params.year) q.set("year", String(params.year));
+  if (params.sessionId) q.set("sessionId", params.sessionId);
+  const res = await authedFetch(`/users/${staffId}/report?${q}`, { method: "GET" });
+  if (!res.ok) throw new Error("Export failed");
+  return res.blob();
 }

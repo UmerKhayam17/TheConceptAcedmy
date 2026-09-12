@@ -583,13 +583,19 @@ export const getAcademyStudentRecord = (id: string) =>
 export const deleteAcademyStudent = (id: string) =>
   api<{ deleted: boolean; studentId?: string }>(`/students/${id}`, { method: "DELETE" });
 
-export const exportStudentsCsv = async (params?: {
-  search?: string;
-  classId?: string;
-  status?: string;
-  sessionId?: string;
-}) => {
+export type StudentExportFormat = "xlsx" | "pdf" | "csv";
+
+export const exportStudents = async (
+  params?: {
+    search?: string;
+    classId?: string;
+    status?: string;
+    sessionId?: string;
+  },
+  format: StudentExportFormat = "xlsx",
+) => {
   const q = new URLSearchParams();
+  q.set("format", format);
   if (params?.search) q.set("search", params.search);
   if (params?.classId) q.set("classId", params.classId);
   if (params?.status) q.set("status", params.status);
@@ -598,6 +604,14 @@ export const exportStudentsCsv = async (params?: {
   if (!res.ok) throw new Error("Export failed");
   return res.blob();
 };
+
+/** @deprecated Use exportStudents(params, "csv") */
+export const exportStudentsCsv = (params?: {
+  search?: string;
+  classId?: string;
+  status?: string;
+  sessionId?: string;
+}) => exportStudents(params, "csv");
 
 export interface AcademyFeeSummary {
   recordsCount: number;
@@ -657,6 +671,114 @@ export const fetchAcademyFeeSummary = (params?: {
   const qs = q.toString();
   return api<AcademyFeeSummary>(`/fees/summary${qs ? `?${qs}` : ""}`);
 };
+
+export type DashboardOverview = {
+  generatedAt: string;
+  today: string;
+  period: { month: number; year: number };
+  kpis: {
+    activeStudents: number;
+    inactiveStudents: number;
+    pendingAdmissions: number;
+    teacherCount: number;
+    accountantCount: number;
+    staffCount: number;
+    classCount: number;
+    sectionCount: number;
+    subjectCount: number;
+    feesCollectedAll: number;
+    feesOutstandingAll: number;
+    feesCollectedMonth: number;
+    feesOutstandingMonth: number;
+    feeVouchersMonth: number;
+    expensesMonth: number;
+    salaryPendingMonth: number;
+    salaryPaidMonth: number;
+    netCashMonth: number;
+    defaulterCount: number;
+    defaulterOutstanding: number;
+    presentToday: number;
+    lateToday: number;
+    absentToday: number;
+    leaveToday: number;
+    unmarkedToday: number;
+    staffPresentToday: number;
+    staffAbsentToday: number;
+    upcomingExamsCount: number;
+    attendanceRateToday: number | null;
+  };
+  charts: {
+    monthlyTrends: {
+      label: string;
+      month: number;
+      year: number;
+      feesCollected: number;
+      feesPending: number;
+      expenses: number;
+      salaryPaid: number;
+      salaryPending: number;
+      attendancePresent: number;
+      attendanceAbsent: number;
+      attendanceLate: number;
+      attendanceLeave: number;
+      enrollments: number;
+    }[];
+    feeStatusMonth: { name: string; value: number; count: number }[];
+    attendanceToday: { name: string; value: number }[];
+    expensesByCategory: { category: string; total: number; count: number }[];
+    studentsByClass: { classId: string | null; className: string; count: number }[];
+    genderDistribution: { name: string; value: number }[];
+  };
+  widgets: {
+    upcomingExams: {
+      id: string;
+      title: string;
+      type?: string;
+      status: string;
+      startDate: string;
+      endDate?: string;
+      className: string;
+    }[];
+    upcomingBirthdays: {
+      id: string;
+      name: string;
+      studentId: string;
+      className: string;
+      dateOfBirth: string;
+      nextBirthday: string;
+      daysUntil: number;
+      isToday: boolean;
+    }[];
+    recentAdmissions: {
+      id: string;
+      name: string;
+      studentId: string;
+      status: string;
+      className: string;
+      at: string;
+    }[];
+    recentPayments: {
+      id: string;
+      amount: number;
+      paidAt: string;
+      feeType: string;
+      month: number;
+      year: number;
+      voucherNumber: string;
+      studentName: string;
+      studentId: string;
+    }[];
+    recentAnnouncements: {
+      id: string;
+      title: string;
+      at: string;
+      audience: string;
+    }[];
+  };
+};
+
+export const fetchDashboardOverview = (months = 6) =>
+  api<DashboardOverview>(`/dashboard/overview?months=${months}`);
 
 export interface DiscountReportStaffSummary {
   staffId: string | null;
@@ -737,6 +859,48 @@ export const generateMonthlyFees = (body: { month: number; year: number; classId
 
 export const payAcademyFee = (id: string, body?: { paymentMethod?: string; notes?: string }) =>
   api<AcademyFeeRecord>(`/fees/${id}/pay`, { method: "PATCH", body: JSON.stringify(body || {}) });
+
+export type FeeReceiptSize = "a4" | "thermal";
+
+export const fetchFeeReceiptPdf = async (id: string, size: FeeReceiptSize = "a4") => {
+  const q = new URLSearchParams({ size });
+  const res = await authedFetch(`/student-management/fees/${id}/receipt?${q}`);
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res);
+    throw new Error(body.message || "Failed to load receipt");
+  }
+  return res.blob();
+};
+
+export async function printFeeReceipt(id: string, size: FeeReceiptSize = "a4") {
+  const preview = window.open("about:blank", "_blank");
+  try {
+    const blob = await fetchFeeReceiptPdf(id, size);
+    const url = URL.createObjectURL(blob);
+    if (preview && !preview.closed) {
+      preview.location.replace(url);
+      window.setTimeout(() => {
+        try {
+          preview.focus();
+          preview.print();
+        } catch {
+          /* browser PDF viewer */
+        }
+      }, 800);
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = size === "thermal" ? "fee-receipt-thermal.pdf" : "fee-receipt-a4.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (err) {
+    preview?.close();
+    throw err;
+  }
+}
 
 export const fetchStudentFeeHistory = (studentId: string) =>
   api<{ student: AcademyStudent; records: AcademyFeeRecord[] }>(`/fees/student/${studentId}`);
@@ -865,6 +1029,7 @@ export const fetchAcademySalaries = async (params?: {
   month?: number;
   year?: number;
   roleName?: string;
+  staffId?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.page) q.set("page", String(params.page));
@@ -873,6 +1038,7 @@ export const fetchAcademySalaries = async (params?: {
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
   if (params?.roleName) q.set("roleName", params.roleName);
+  if (params?.staffId) q.set("staffId", params.staffId);
   const res = await authedFetch(`/student-management/salaries?${q}`);
   const body = await parseJson<{
     success?: boolean;
@@ -888,11 +1054,13 @@ export const fetchAcademySalarySummary = (params?: {
   month?: number;
   year?: number;
   roleName?: string;
+  staffId?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
   if (params?.roleName) q.set("roleName", params.roleName);
+  if (params?.staffId) q.set("staffId", params.staffId);
   const qs = q.toString();
   return api<AcademySalarySummary>(`/salaries/summary${qs ? `?${qs}` : ""}`);
 };
@@ -1040,11 +1208,13 @@ export const fetchAcademyAttendanceDay = (params: {
   classId?: string;
   sectionId?: string;
   sessionId?: string;
+  studentId?: string;
 }) => {
   const q = new URLSearchParams({ date: params.date });
   if (params.classId) q.set("classId", params.classId);
   if (params.sectionId) q.set("sectionId", params.sectionId);
   if (params.sessionId) q.set("sessionId", params.sessionId);
+  if (params.studentId) q.set("studentId", params.studentId);
   return api<AcademyAttendanceDay>(`/attendance?${q}`);
 };
 
@@ -1063,6 +1233,28 @@ export const fetchAcademyAttendanceSummary = (params: { month: number; year: num
     year: String(params.year),
   });
   return api<AcademyAttendanceMonthSummary>(`/attendance/summary?${q}`);
+};
+
+export type AttendanceExportFormat = "xlsx" | "pdf";
+
+export const exportAcademyAttendance = async (
+  params: {
+    date: string;
+    classId?: string;
+    sectionId?: string;
+    sessionId?: string;
+    studentId?: string;
+  },
+  format: AttendanceExportFormat = "xlsx",
+) => {
+  const q = new URLSearchParams({ date: params.date, format });
+  if (params.classId) q.set("classId", params.classId);
+  if (params.sectionId) q.set("sectionId", params.sectionId);
+  if (params.sessionId) q.set("sessionId", params.sessionId);
+  if (params.studentId) q.set("studentId", params.studentId);
+  const res = await authedFetch(`/student-management/attendance/export?${q}`, { method: "GET" });
+  if (!res.ok) throw new Error("Export failed");
+  return res.blob();
 };
 
 // Assessments (ongoing tests — single subject per row)

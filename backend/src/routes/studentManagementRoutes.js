@@ -15,10 +15,22 @@ const expenseCtrl = require('../controllers/academy/academyExpenseController');
 const attendanceCtrl = require('../controllers/academy/academyAttendanceController');
 const assessmentCtrl = require('../controllers/academy/academyAssessmentController');
 const classTestCtrl = require('../controllers/academy/academyClassTestController');
+const dashboardCtrl = require('../controllers/academy/academyDashboardController');
 const { uploadImage } = require('../middleware/uploadImage');
 
 const router = Router();
 router.use(protect);
+
+router.get(
+  '/dashboard/overview',
+  requireAnyPermission(
+    'view_academy_fee_reports',
+    'manage_academy_fees',
+    'view_attendance',
+    'manage_users'
+  ),
+  dashboardCtrl.overview
+);
 
 // Classes
 router.get(
@@ -191,7 +203,7 @@ router.post(
 router.get(
   '/students/export',
   requirePermission('view_academy_students'),
-  studentCtrl.exportCsv
+  studentCtrl.exportStudents
 );
 router.get('/students', requirePermission('view_academy_students'), studentCtrl.list);
 router.get(
@@ -321,6 +333,11 @@ router.post(
   validate(schemas.academyFeeGenerate),
   feeCtrl.generate
 );
+router.get(
+  '/fees/:id/receipt',
+  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  feeCtrl.receipt
+);
 router.patch(
   '/fees/:id/pay',
   requirePermission('manage_academy_fees'),
@@ -391,6 +408,11 @@ router.get(
   '/attendance/summary',
   requirePermission('view_attendance'),
   attendanceCtrl.summary
+);
+router.get(
+  '/attendance/export',
+  requireAnyPermission('view_attendance', 'mark_attendance'),
+  attendanceCtrl.exportAttendance
 );
 router.get(
   '/attendance',

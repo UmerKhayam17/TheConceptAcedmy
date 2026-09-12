@@ -319,6 +319,7 @@ async function listStudents({
   guardianEmail,
   sessionId,
   sort = '-createdAt',
+  forExport = false,
 }) {
   const q = {};
   if (status) q.status = status;
@@ -346,8 +347,9 @@ async function listStudents({
     q.classId = { $in: classes.map((c) => c._id) };
   }
 
-  const skip = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
-  const perPage = Math.min(100, Math.max(1, limit));
+  const cap = forExport ? 10000 : 100;
+  const perPage = Math.min(cap, Math.max(1, limit));
+  const skip = (Math.max(1, page) - 1) * perPage;
 
   const [items, total] = await Promise.all([
     AcademyStudent.find(q)
@@ -436,7 +438,18 @@ async function deleteStudent(id) {
     throw new ApiError(400, 'Cannot delete student with paid fee records. Set status to inactive instead.');
   }
 
-  await AcademyFeeRecord.deleteMany({ studentId: id });
+  const AcademyAttendance = require('../../models/academy/AcademyAttendance');
+  const AcademyAssessment = require('../../models/academy/AcademyAssessment');
+  const AiFaceEnrollment = require('../../models/AiFaceEnrollment');
+  const { studentAiEmployeeId } = require('../aiAttendance/aiAttendanceIds');
+  const personKey = student.aiEmployeeId || studentAiEmployeeId(student);
+
+  await Promise.all([
+    AcademyFeeRecord.deleteMany({ studentId: id }),
+    AcademyAttendance.deleteMany({ studentId: id }),
+    AcademyAssessment.deleteMany({ studentId: id }),
+    personKey ? AiFaceEnrollment.deleteOne({ personKey }) : Promise.resolve(),
+  ]);
   await student.deleteOne();
   return { deleted: true, studentId: student.studentId };
 }

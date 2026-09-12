@@ -2,20 +2,25 @@ const ApiError = require('../../utils/ApiError');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const AcademyClass = require('../../models/academy/AcademyClass');
+const { dayBounds } = require('../../utils/schoolDay');
 
-function dayRange(dateStr) {
-  const day = new Date(dateStr);
-  if (Number.isNaN(day.getTime())) throw new ApiError(400, 'Invalid date');
-  day.setHours(0, 0, 0, 0);
-  const end = new Date(day);
-  end.setHours(23, 59, 59, 999);
-  return { start: day, end };
+function resolveDay(dateStr) {
+  try {
+    return dayBounds(dateStr);
+  } catch (err) {
+    throw new ApiError(400, err.message || 'Invalid date');
+  }
 }
 
-async function listByDate({ date, classId, sectionId, sessionId }) {
-  const { start, end } = dayRange(date);
+async function listByDate({ date, classId, sectionId, sessionId, studentIds, studentId }) {
+  const { start, end, ymd } = resolveDay(date);
   const studentQ = { status: 'active' };
-  if (classId) {
+
+  if (Array.isArray(studentIds)) {
+    studentQ._id = { $in: studentIds };
+  } else if (studentId) {
+    studentQ._id = studentId;
+  } else if (classId) {
     studentQ.classId = classId;
   } else if (sessionId) {
     const classes = await AcademyClass.find({ sessionId }).select('_id');
@@ -29,10 +34,25 @@ async function listByDate({ date, classId, sectionId, sessionId }) {
       .populate('sectionId', 'sectionName')
       .sort({ studentName: 1 })
       .lean(),
-    AcademyAttendance.find({ date: { $gte: start, $lte: end } }).lean(),
+    AcademyAttendance.find({
+      date: { $gte: start, $lte: end },
+      $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+    }).lean(),
   ]);
 
-  const recordByStudent = new Map(records.map((r) => [String(r.studentId), r]));
+  // Prefer day-level record; if duplicates exist, keep earliest checkIn
+  const recordByStudent = new Map();
+  for (const r of records) {
+    const key = String(r.studentId);
+    const prev = recordByStudent.get(key);
+    if (!prev) {
+      recordByStudent.set(key, r);
+      continue;
+    }
+    const prevIn = prev.checkIn ? new Date(prev.checkIn).getTime() : Infinity;
+    const nextIn = r.checkIn ? new Date(r.checkIn).getTime() : Infinity;
+    if (nextIn < prevIn) recordByStudent.set(key, r);
+  }
 
   const summary = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
   students.forEach((s) => {
@@ -41,11 +61,16 @@ async function listByDate({ date, classId, sectionId, sessionId }) {
     else if (summary[rec.status] !== undefined) summary[rec.status] += 1;
   });
 
-  return { date: start.toISOString().slice(0, 10), students, records, summary };
+  return {
+    date: ymd,
+    students,
+    records: [...recordByStudent.values()],
+    summary,
+  };
 }
 
 async function markAttendance({ date, entries }, userId) {
-  const { start, end } = dayRange(date);
+  const { start, end } = resolveDay(date);
   const results = [];
 
   for (const e of entries) {
@@ -54,19 +79,31 @@ async function markAttendance({ date, entries }, userId) {
       date: { $gte: start, $lte: end },
       $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
     };
+
+    const set = {
+      studentId: e.studentId,
+      date: start,
+      status: e.status,
+      notes: e.notes,
+      markedBy: userId,
+      source: 'manual',
+    };
+
+    // Keep times consistent with status
+    if (e.status === 'absent' || e.status === 'leave') {
+      set.checkIn = null;
+      set.checkOut = null;
+    } else if (e.checkIn) {
+      set.checkIn = new Date(e.checkIn);
+    }
+
     // eslint-disable-next-line no-await-in-loop
     const doc = await AcademyAttendance.findOneAndUpdate(
       filter,
       {
-        $set: {
-          studentId: e.studentId,
-          date: start,
-          status: e.status,
-          notes: e.notes,
-          markedBy: userId,
-          source: 'manual',
-        },
+        $set: set,
         $setOnInsert: { createdBy: userId },
+        $unset: e.status === 'absent' || e.status === 'leave' ? { confidence: 1 } : {},
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
@@ -80,7 +117,10 @@ async function getSummary({ month, year }) {
   if (!month || !year) throw new ApiError(400, 'month and year required');
   const start = new Date(Number(year), Number(month) - 1, 1);
   const end = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
-  const rows = await AcademyAttendance.find({ date: { $gte: start, $lte: end } });
+  const rows = await AcademyAttendance.find({
+    date: { $gte: start, $lte: end },
+    $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+  });
   const summary = { total: rows.length, present: 0, absent: 0, late: 0, leave: 0 };
   rows.forEach((r) => {
     if (summary[r.status] !== undefined) summary[r.status] += 1;

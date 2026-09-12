@@ -15,6 +15,7 @@ const aiFaceEnrollmentSchema = new mongoose.Schema(
     embedding: { type: [Number], default: undefined },
     isTrained: { type: Boolean, default: false },
     modelVersion: { type: String, default: 'insightface-buffalo_l' },
+    lastTrainError: { type: String, trim: true },
   },
   { timestamps: true, collection: 'ai_face_enrollments' }
 );

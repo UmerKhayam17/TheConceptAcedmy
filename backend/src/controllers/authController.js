@@ -166,25 +166,80 @@ const logout = catchAsync(async (req, res) => {
       /* ignore */
     }
   }
-  res.clearCookie('refreshToken', { path: '/' });
+  res.clearCookie('refreshToken', getRefreshCookieOptions(req));
   res.json({ success: true, message: 'Logged out' });
 });
 
+async function deliverOtpSms(phone, code) {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM;
+  if (!sid || !token || !from) {
+    return { sent: false, reason: 'Twilio not configured' };
+  }
+  try {
+    const auth = Buffer.from(`${sid}:${token}`).toString('base64');
+    const body = new URLSearchParams({
+      To: phone.startsWith('+') ? phone : `+${phone}`,
+      From: from,
+      Body: `Your academy login code is ${code}. It expires in 5 minutes.`,
+    });
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body,
+      }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      return { sent: false, reason: text.slice(0, 200) };
+    }
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, reason: err.message };
+  }
+}
+
 const sendOtp = catchAsync(async (req, res) => {
-  const { phone } = req.body;
+  const phone = String(req.body.phone || '').trim();
+  if (!phone || phone.length < 8) throw new ApiError(400, 'Valid phone required');
+
+  const recent = otpStore.get(phone);
+  if (recent?.sentAt && Date.now() - recent.sentAt < 30_000) {
+    throw new ApiError(429, 'Please wait before requesting another OTP');
+  }
+
   const code = String(crypto.randomInt(100000, 999999));
-  otpStore.set(phone, { code, exp: Date.now() + 5 * 60 * 1000 });
-  const payload = { success: true, message: 'OTP sent' };
-  if (process.env.NODE_ENV !== 'production') {
+  const codeHash = hashToken(code);
+  otpStore.set(phone, { codeHash, exp: Date.now() + 5 * 60 * 1000, sentAt: Date.now() });
+
+  const delivery = await deliverOtpSms(phone, code);
+  const isProd = process.env.NODE_ENV === 'production';
+
+  if (isProd && !delivery.sent) {
+    throw new ApiError(503, 'OTP delivery unavailable. Configure Twilio SMS.');
+  }
+
+  const payload = {
+    success: true,
+    message: delivery.sent ? 'OTP sent' : 'OTP generated (dev — SMS not configured)',
+  };
+  if (!isProd) {
     payload.devCode = code;
   }
   res.json(payload);
 });
 
 const verifyOtp = catchAsync(async (req, res) => {
-  const { phone, code } = req.body;
+  const phone = String(req.body.phone || '').trim();
+  const code = String(req.body.code || '').trim();
   const row = otpStore.get(phone);
-  if (!row || row.exp < Date.now() || row.code !== code) {
+  if (!row || row.exp < Date.now() || row.codeHash !== hashToken(code)) {
     throw new ApiError(400, 'Invalid or expired OTP');
   }
   otpStore.delete(phone);
@@ -192,9 +247,11 @@ const verifyOtp = catchAsync(async (req, res) => {
   if (!parentRole) throw new ApiError(500, 'Roles not initialized');
   let user = await User.findOne({ phone }).populate('role');
   if (!user) {
+    // Prefer linking via student guardianEmail if a matching guardian phone student exists later;
+    // email uses phone placeholder only when no real guardian email is known.
     user = await User.create({
       name: 'Parent',
-      email: `${phone}@parent.temp`,
+      email: `${phone.replace(/\D/g, '')}@parent.local`,
       password: await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 12),
       phone,
       role: parentRole._id,
@@ -214,6 +271,8 @@ const verifyOtp = catchAsync(async (req, res) => {
         id: user._id,
         name: user.name,
         role: user.role?.name,
+        phone: user.phone,
+        email: user.email,
         modulePermissions,
       },
     },

@@ -1,9 +1,15 @@
 const catchAsync = require('../../utils/catchAsync');
 const ApiError = require('../../utils/ApiError');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
+const AcademyClass = require('../../models/academy/AcademyClass');
+const Session = require('../../models/Session');
 const studentService = require('../../services/academy/academyStudentService');
 const recordService = require('../../services/academy/academyStudentRecordService');
 const feeStructureService = require('../../services/academy/academyFeeStructureService');
+const {
+  renderStudentsExcel,
+  renderStudentsPdf,
+} = require('../../services/academy/academyStudentExportService');
 const rt = require('../../services/realtime/academyRealtime');
 
 async function assertParentOwnsStudent(req, studentId) {
@@ -80,7 +86,36 @@ const list = catchAsync(async (req, res) => {
   res.json({ success: true, data: result.items, pagination: result.pagination });
 });
 
-const exportCsv = catchAsync(async (req, res) => {
+async function resolveExportMeta(req) {
+  let className = '';
+  let sessionName = '';
+  if (req.query.classId) {
+    const cls = await AcademyClass.findById(req.query.classId)
+      .select('className sessionId')
+      .populate('sessionId', 'name');
+    className = cls?.className || '';
+    sessionName = cls?.sessionId?.name || '';
+  }
+  if (!sessionName && req.query.sessionId) {
+    const session = await Session.findById(req.query.sessionId).select('name');
+    sessionName = session?.name || '';
+  }
+  return {
+    search: req.query.search || '',
+    status: req.query.status || '',
+    className,
+    sessionName,
+    generatedAt: new Date(),
+    generatedBy: req.user?.name || req.user?.email || '',
+  };
+}
+
+const exportStudents = catchAsync(async (req, res) => {
+  const format = String(req.query.format || 'xlsx').toLowerCase();
+  if (!['xlsx', 'pdf', 'csv'].includes(format)) {
+    throw new ApiError(400, 'Export format must be xlsx, pdf, or csv');
+  }
+
   const result = await studentService.listStudents({
     page: 1,
     limit: 10000,
@@ -88,9 +123,29 @@ const exportCsv = catchAsync(async (req, res) => {
     classId: req.query.classId,
     status: req.query.status,
     sessionId: req.query.sessionId,
+    forExport: true,
   });
+  const meta = await resolveExportMeta(req);
+
+  if (format === 'pdf') {
+    const buffer = await renderStudentsPdf(result.items, meta);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="academy-students.pdf"');
+    return res.send(buffer);
+  }
+
+  if (format === 'xlsx') {
+    const buffer = await renderStudentsExcel(result.items, meta);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', 'attachment; filename="academy-students.xlsx"');
+    return res.send(Buffer.from(buffer));
+  }
+
   const csv = studentService.studentsToCsv(result.items);
-  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="academy-students.csv"');
   res.send(csv);
 });
@@ -134,7 +189,8 @@ module.exports = {
   getById,
   getRecord,
   list,
-  exportCsv,
+  exportStudents,
+  exportCsv: exportStudents,
   previewFees,
   remove,
   discountReport,

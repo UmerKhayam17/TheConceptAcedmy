@@ -83,30 +83,37 @@ async function tick(cameraId) {
 
     // Lazy require to avoid circular load with aiAttendanceService
     const ai = require('./aiAttendanceService');
-    const result = await ai.identifyAndMark(frame.image, {
-      markAttendance: true,
+
+    // Identify first without marking — apply cooldown before writing attendance
+    const preview = await ai.identifyAndMark(frame.image, {
+      markAttendance: false,
       source: 'cctv',
     });
-    if (result?.matched) {
-      const personKey = result.employee_id;
-      const coolKey = `${cameraId}:${personKey}`;
-      const prev = lastMatchAt.get(coolKey) || 0;
-      if (Date.now() - prev < MATCH_COOLDOWN_MS) {
-        return;
-      }
-      lastMatchAt.set(coolKey, Date.now());
-      log(
-        `${camera.name}: matched ${result.employee_name || personKey || 'person'} ` +
-          `(${Math.round((result.confidence || 0) * 100)}%)`
-      );
-      runtime.status.lastMatch = {
-        at: new Date().toISOString(),
-        personKey,
-        name: result.employee_name,
-        confidence: result.confidence,
-        attendance: result.attendance_action,
-      };
+    if (!preview?.matched) return;
+
+    const personKey = preview.employee_id;
+    const coolKey = `${cameraId}:${personKey}`;
+    const prev = lastMatchAt.get(coolKey) || 0;
+    if (Date.now() - prev < MATCH_COOLDOWN_MS) {
+      return;
     }
+    lastMatchAt.set(coolKey, Date.now());
+
+    const result = await ai.markFromPersonKey(personKey, {
+      confidence: preview.confidence,
+      source: 'cctv',
+    });
+    log(
+      `${camera.name}: matched ${preview.employee_name || personKey || 'person'} ` +
+        `(${Math.round((preview.confidence || 0) * 100)}%)`
+    );
+    runtime.status.lastMatch = {
+      at: new Date().toISOString(),
+      personKey,
+      name: preview.employee_name,
+      confidence: preview.confidence,
+      attendance: result?.action || result?.doc?.status,
+    };
   } catch (err) {
     runtime.workerReady = false;
     runtime.status = {

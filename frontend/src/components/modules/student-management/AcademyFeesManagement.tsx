@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, FileText, Loader2, Printer, Receipt } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -22,8 +29,10 @@ import {
   fetchAcademyStudents,
   generateMonthlyFees,
   payAcademyFee,
+  printFeeReceipt,
   type AcademyFeeRecord,
   type AcademyStudentRoutes,
+  type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
@@ -233,10 +242,18 @@ export default function AcademyFeesManagement({
       setPaymentNotes("");
       toast({
         title: "Payment recorded",
-        description: rec.receiptNumber ? `Receipt ${rec.receiptNumber}` : undefined,
+        description: rec.receiptNumber
+          ? `Receipt ${rec.receiptNumber}. Use Print receipt to print it.`
+          : "Use Print receipt on the row to print it.",
       });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const printMut = useMutation({
+    mutationFn: ({ id, size }: { id: string; size: FeeReceiptSize }) => printFeeReceipt(id, size),
+    onError: (e: Error) =>
+      toast({ title: "Could not print receipt", description: e.message, variant: "destructive" }),
   });
 
   const records = data?.records ?? [];
@@ -477,10 +494,47 @@ export default function AcademyFeesManagement({
                           Record payment
                         </Button>
                       )}
-                      {r.status === "paid" && r.paidAt && (
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(r.paidAt).toLocaleDateString()}
-                        </span>
+                      {r.status === "paid" && (
+                        <div className="flex flex-col items-end gap-1">
+                          {r.paidAt && (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(r.paidAt).toLocaleDateString()}
+                            </span>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={printMut.isPending && printMut.variables?.id === r._id}
+                              >
+                                {printMut.isPending && printMut.variables?.id === r._id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Printer className="h-3.5 w-3.5" />
+                                )}
+                                Print receipt
+                                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() => printMut.mutate({ id: r._id, size: "thermal" })}
+                              >
+                                <Receipt className="h-4 w-4" />
+                                Thermal print (80mm)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() => printMut.mutate({ id: r._id, size: "a4" })}
+                              >
+                                <FileText className="h-4 w-4" />
+                                A4 print
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       )}
                     </td>
                   </tr>

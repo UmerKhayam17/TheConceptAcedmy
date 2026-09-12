@@ -16,11 +16,18 @@ function hasModulePermission(user, moduleName, action) {
     if (!user || !moduleName || !action) return false;
 
     // Admin has access to all modules and actions
-    if (user.role?.name === 'admin') return true;
+    if (user.role?.name === 'admin' || user.roleDoc?.name === 'admin') return true;
 
-    // Check modulePermissions map
-    const userModulePerms = user.modulePermissions?.get?.(moduleName) || user.modulePermissions?.[moduleName] || [];
-    return Array.isArray(userModulePerms) && userModulePerms.includes(action);
+    const fromMap = (map) => {
+      if (!map) return [];
+      if (map instanceof Map) return map.get(moduleName) || [];
+      return map[moduleName] || [];
+    };
+
+    const userActions = fromMap(user.modulePermissions);
+    const roleActions = fromMap(user.roleDoc?.modulePermissions || user.role?.modulePermissions);
+    const actions = [...new Set([...(userActions || []), ...(roleActions || [])])];
+    return Array.isArray(actions) && actions.includes(action);
 }
 
 /**
@@ -32,10 +39,16 @@ function hasModulePermission(user, moduleName, action) {
 function hasModuleAccess(user, moduleName) {
     if (!user || !moduleName) return false;
 
-    if (user.role?.name === 'admin') return true;
+    if (user.role?.name === 'admin' || user.roleDoc?.name === 'admin') return true;
 
-    const userModulePerms = user.modulePermissions?.get?.(moduleName) || user.modulePermissions?.[moduleName] || [];
-    return Array.isArray(userModulePerms) && userModulePerms.length > 0;
+    const fromMap = (map) => {
+      if (!map) return [];
+      if (map instanceof Map) return map.get(moduleName) || [];
+      return map[moduleName] || [];
+    };
+    const userModulePerms = fromMap(user.modulePermissions);
+    const roleModulePerms = fromMap(user.roleDoc?.modulePermissions || user.role?.modulePermissions);
+    return [...userModulePerms, ...roleModulePerms].length > 0;
 }
 
 /**

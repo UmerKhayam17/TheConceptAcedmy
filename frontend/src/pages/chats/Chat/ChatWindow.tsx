@@ -79,7 +79,7 @@ function OpeningDMToast() {
 
 const WA_BG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='412' height='412'%3E%3Cdefs%3E%3Cpattern id='p' width='412' height='412' patternUnits='userSpaceOnUse'%3E%3Crect width='412' height='412' fill='%23eae6df'/%3E%3Cg fill='none' stroke='%23d4cfc8' stroke-width='1.1' opacity='0.55'%3E%3Ccircle cx='34' cy='34' r='16'/%3E%3Ccircle cx='100' cy='100' r='10'/%3E%3Crect x='150' y='20' width='28' height='28' rx='4'/%3E%3Cpath d='M220 60 l20-20 20 20 -20 20z'/%3E%3Ccircle cx='300' cy='50' r='14'/%3E%3Crect x='360' y='10' width='24' height='24' rx='3'/%3E%3Ccircle cx='34' cy='150' r='12'/%3E%3Cpath d='M80 180 l14-14 14 14 -14 14z'/%3E%3Crect x='120' y='140' width='22' height='22' rx='3'/%3E%3Ccircle cx='200' cy='160' r='16'/%3E%3Cpath d='M260 180 l18-18 18 18 -18 18z'/%3E%3Ccircle cx='340' cy='140' r='10'/%3E%3Crect x='370' y='130' width='26' height='26' rx='4'/%3E%3Ccircle cx='60' cy='260' r='14'/%3E%3Crect x='110' y='250' width='20' height='20' rx='3'/%3E%3Cpath d='M170 270 l16-16 16 16 -16 16z'/%3E%3Ccircle cx='240' cy='280' r='12'/%3E%3Crect x='290' y='255' width='24' height='24' rx='4'/%3E%3Ccircle cx='370' cy='260' r='16'/%3E%3Ccircle cx='30' cy='370' r='10'/%3E%3Cpath d='M80 380 l14-14 14 14 -14 14z'/%3E%3Ccircle cx='150' cy='380' r='14'/%3E%3Crect x='200' y='360' width='22' height='22' rx='3'/%3E%3Ccircle cx='280' cy='390' r='12'/%3E%3Cpath d='M330 370 l18-18 18 18 -18 18z'/%3E%3C/g%3E%3C/pattern%3E%3C/defs%3E%3Crect width='412' height='412' fill='url(%23p)'/%3E%3C/svg%3E")`;
 
-export default function ChatWindow({ conversationId }) {
+export default function ChatWindow({ conversationId, canParticipate = true }) {
   const qc = useQueryClient();
   const { myId, setActiveId } = useChatUi();
   const { data: bucket, isLoading: messagesLoading } = useMessages(conversationId);
@@ -269,6 +269,7 @@ export default function ChatWindow({ conversationId }) {
           conversation={conv}
           replyTo={replyToMessage}
           onCancelReply={() => setReplyToMessage(null)}
+          canParticipate={canParticipate}
         />
 
         <ForwardMessageModal

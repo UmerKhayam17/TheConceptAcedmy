@@ -3,6 +3,7 @@ const path = require('path');
 const { Router } = require('express');
 const multer = require('multer');
 const { protect } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/permissions');
 const conversationCtrl = require('../controllers/chat/conversation.controller');
 const messageCtrl = require('../controllers/chat/message.controller');
 const fileCtrl = require('../controllers/chat/file.controller');
@@ -24,6 +25,7 @@ const chatUpload = multer({
 
 const router = Router();
 router.use(protect);
+router.use(requirePermission('use_chat'));
 
 router.get('/users/search', userChatCtrl.searchUsers);
 

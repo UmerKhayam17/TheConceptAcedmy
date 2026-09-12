@@ -31,6 +31,23 @@ const academyAttendanceSchema = new mongoose.Schema(
   { timestamps: true, collection: 'attendances' }
 );
 
-academyAttendanceSchema.index({ studentId: 1, date: 1, subjectId: 1 }, { unique: true, sparse: true });
+// Day-level marks (no subject): one row per student per calendar day
+academyAttendanceSchema.index(
+  { studentId: 1, date: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+    },
+  }
+);
+// Subject-period marks
+academyAttendanceSchema.index(
+  { studentId: 1, date: 1, subjectId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { subjectId: { $type: 'objectId' } },
+  }
+);
 
 module.exports = mongoose.model('AcademyAttendance', academyAttendanceSchema);

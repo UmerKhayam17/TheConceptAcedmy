@@ -157,3 +157,10 @@ export const fetchMyStaffAttendance = (month?: number, year?: number) => {
   const qs = q.toString();
   return api<StaffAttendanceRecord[]>(`/staff-attendance/mine${qs ? `?${qs}` : ""}`);
 };
+
+export const fetchStaffAttendanceHistory = (userId: string, month?: number, year?: number) => {
+  const q = new URLSearchParams({ userId });
+  if (month) q.set("month", String(month));
+  if (year) q.set("year", String(year));
+  return api<StaffAttendanceRecord[]>(`/staff-attendance/history?${q}`);
+};

@@ -78,7 +78,7 @@ export default function TeacherFeatureModule({
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6">
       <Card className="p-6 space-y-3 max-w-2xl">
-        <h2 className="text-xl font-semibold text-primary">{copy.title}</h2>
+        <h2 className="text-xl font-semibold text-primary">{copy.title} — Coming soon</h2>
         <p className="text-sm text-muted-foreground">{copy.body}</p>
         <p className="text-xs text-muted-foreground">
           Access:{" "}

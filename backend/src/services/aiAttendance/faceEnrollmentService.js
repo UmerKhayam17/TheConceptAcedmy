@@ -78,8 +78,12 @@ async function enrollmentStatus(personKey) {
     try {
       await applyEmbeddingFromImages(doc);
       doc = await AiFaceEnrollment.findOne({ personKey });
-    } catch {
-      /* keep status untrained until clearer captures exist */
+    } catch (err) {
+      doc.lastTrainError = err.message || String(err);
+      await AiFaceEnrollment.updateOne(
+        { personKey },
+        { $set: { lastTrainError: doc.lastTrainError } }
+      );
     }
   }
   const hasEmbedding = Array.isArray(doc.embedding) && doc.embedding.length > 0;
@@ -94,6 +98,7 @@ async function enrollmentStatus(personKey) {
     is_trained: Boolean(doc.isTrained && hasEmbedding),
     model_version: doc.modelVersion,
     image_paths: doc.imagePaths,
+    last_train_error: doc.lastTrainError || null,
   };
 }
 

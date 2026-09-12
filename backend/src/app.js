@@ -32,7 +32,13 @@ app.use(
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+const uploadsRoot = path.join(__dirname, '../uploads');
+// Biometric face enrollments — never public
+app.use('/uploads/ai-faces', (req, res) => {
+  res.status(403).json({ success: false, message: 'Face images are not publicly accessible' });
+});
+app.use('/uploads', express.static(uploadsRoot));
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'academy-backend' });

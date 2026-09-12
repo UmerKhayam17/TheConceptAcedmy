@@ -16,14 +16,11 @@ const syncRoster = catchAsync(async (req, res) => {
 
 /** Kept for UI compatibility — attendance is written live on identify (Mongo only). */
 const syncAttendance = catchAsync(async (req, res) => {
-  res.json({
-    success: true,
+  res.status(410).json({
+    success: false,
+    message: 'External attendance sync is retired. Marks are written to MongoDB on face match.',
     data: {
-      message: 'Attendance is stored directly in MongoDB on face match — no external sync needed.',
-      date: req.body?.date || new Date().toISOString().slice(0, 10),
-      students: 0,
-      staff: 0,
-      totalRecords: 0,
+      date: req.body?.date || require('../utils/schoolDay').todayYmd(),
     },
   });
 });
@@ -73,7 +70,15 @@ const cctvAction = catchAsync(async (req, res) => {
 });
 
 const webhook = catchAsync(async (req, res) => {
-  // Legacy no-op: everything is Mongo-local now
+  const secret = (process.env.AI_ATTENDANCE_WEBHOOK_SECRET || '').trim();
+  if (!secret) {
+    return res.status(410).json({
+      success: false,
+      message: 'Webhook retired (Mongo-only AI attendance). Set AI_ATTENDANCE_WEBHOOK_SECRET only if re-enabling.',
+    });
+  }
+  const header = req.get('x-webhook-secret') || req.get('authorization')?.replace(/^Bearer\s+/i, '');
+  if (header !== secret) throw new ApiError(401, 'Invalid webhook secret');
   res.json({ success: true, data: { ignored: true, reason: 'Mongo-only AI attendance' } });
 });
 
@@ -81,7 +86,8 @@ const listStaffAttendance = catchAsync(async (req, res) => {
   const role = req.user?.roleDoc || req.user?.role;
   const roleName = typeof role === 'object' && role?.name ? role.name : '';
   const isAdmin = roleName === 'admin';
-  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const { todayYmd } = require('../utils/schoolDay');
+  const date = req.query.date || todayYmd();
   const userId = isAdmin && req.query.userId ? req.query.userId : !isAdmin ? req.user._id : req.query.userId;
   const data = await staffAttendanceService.listByDate({ date, userId });
   res.json({ success: true, data });
@@ -91,6 +97,20 @@ const myStaffAttendance = catchAsync(async (req, res) => {
   const month = req.query.month ? Number(req.query.month) : undefined;
   const year = req.query.year ? Number(req.query.year) : undefined;
   const data = await staffAttendanceService.listForUser(req.user._id, { month, year });
+  res.json({ success: true, data });
+});
+
+const staffAttendanceHistory = catchAsync(async (req, res) => {
+  const role = req.user?.roleDoc || req.user?.role;
+  const roleName = typeof role === 'object' && role?.name ? role.name : '';
+  const isAdmin = roleName === 'admin';
+  if (req.query.userId && String(req.query.userId) !== String(req.user._id) && !isAdmin) {
+    throw new ApiError(403, "Not allowed to view another staff member's attendance");
+  }
+  const userId = req.query.userId || req.user._id;
+  const month = req.query.month ? Number(req.query.month) : undefined;
+  const year = req.query.year ? Number(req.query.year) : undefined;
+  const data = await staffAttendanceService.listForUser(userId, { month, year });
   res.json({ success: true, data });
 });
 
@@ -119,5 +139,6 @@ module.exports = {
   webhook,
   listStaffAttendance,
   myStaffAttendance,
+  staffAttendanceHistory,
   markStaffAttendance,
 };

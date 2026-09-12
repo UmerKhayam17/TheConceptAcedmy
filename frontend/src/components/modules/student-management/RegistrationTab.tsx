@@ -3,8 +3,14 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Eye, Pencil, Plus, Trash2, UserCheck } from "lucide-react";
+import { ChevronDown, Download, Eye, FileSpreadsheet, FileText, Pencil, Plus, Trash2, UserCheck } from "lucide-react";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -14,11 +20,12 @@ import {
 } from "@/lib/studentManagementMenus";
 import {
   deleteAcademyStudent,
-  exportStudentsCsv,
+  exportStudents,
   fetchAcademyClasses,
   fetchAcademyStudents,
   type AcademyStudent,
   type AcademyStudentStatus,
+  type StudentExportFormat,
 } from "@/lib/studentManagementApi";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { classLabel, formatDate, formatPkr, sessionLabelFromClass } from "./studentDisplayUtils";
@@ -65,6 +72,7 @@ export default function RegistrationTab({
   const [statusFilter, setStatusFilter] = useState<"" | AcademyStudentStatus>("");
   const [page, setPage] = useState(1);
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const [exporting, setExporting] = useState<StudentExportFormat | null>(null);
   const intakeParamHandled = useRef(false);
 
   const routes =
@@ -146,22 +154,29 @@ export default function RegistrationTab({
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const handleExport = async () => {
+  const handleExport = async (format: StudentExportFormat) => {
+    setExporting(format);
     try {
-      const blob = await exportStudentsCsv({
-        search: search || undefined,
-        classId: classFilter || undefined,
-        status: statusFilter || undefined,
-        sessionId: apiSessionId,
-      });
+      const blob = await exportStudents(
+        {
+          search: search || undefined,
+          classId: classFilter || undefined,
+          status: statusFilter || undefined,
+          sessionId: apiSessionId,
+        },
+        format,
+      );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "academy-students.csv";
+      a.download = format === "pdf" ? "academy-students.pdf" : "academy-students.xlsx";
       a.click();
       URL.revokeObjectURL(url);
+      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
     } catch {
       toast({ title: "Export failed", variant: "destructive" });
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -238,9 +253,25 @@ export default function RegistrationTab({
               <option key={c._id} value={c._id}>{c.className}</option>
             ))}
           </select>
-          <Button variant="outline" size="sm" className="gap-1" onClick={handleExport}>
-            <Download className="h-4 w-4" /> Export
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1" disabled={!!exporting}>
+                <Download className="h-4 w-4" />
+                {exporting ? "Exporting…" : "Export"}
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
+                <FileSpreadsheet className="h-4 w-4" />
+                Excel (.xlsx)
+              </DropdownMenuItem>
+              <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
+                <FileText className="h-4 w-4" />
+                PDF report
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

@@ -13,13 +13,28 @@ from typing import Any
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, HTTPException
+import os
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("face-worker")
 
 app = FastAPI(title="School Face Worker", version="1.0.0")
+
+FACE_WORKER_SECRET = (os.environ.get("FACE_WORKER_SECRET") or "").strip()
+
+
+@app.middleware("http")
+async def verify_shared_secret(request: Request, call_next):
+    if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
+        return await call_next(request)
+    if FACE_WORKER_SECRET:
+        header = request.headers.get("x-face-worker-secret") or ""
+        if header != FACE_WORKER_SECRET:
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 _engine = None
 _lock = threading.Lock()

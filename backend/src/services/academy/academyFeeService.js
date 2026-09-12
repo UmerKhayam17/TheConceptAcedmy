@@ -136,7 +136,8 @@ async function buildFeeQuery({ studentId, studentIds, status, month, year, class
     q.studentId = studentId;
     return q;
   }
-  if (studentIds?.length) {
+  // Array (including empty) means an explicit scope — never fall through to all fees
+  if (Array.isArray(studentIds)) {
     q.studentId = { $in: studentIds };
     return q;
   }
@@ -166,6 +167,22 @@ async function syncOverdueFees(filter = {}) {
     },
     { $set: { status: 'overdue' } }
   );
+}
+
+async function getFeeRecordById(id) {
+  const record = await AcademyFeeRecord.findById(id)
+    .populate({
+      path: 'studentId',
+      select: 'studentId studentName fatherName phone classId',
+      populate: {
+        path: 'classId',
+        select: 'className sessionId',
+        populate: { path: 'sessionId', select: 'name status' },
+      },
+    })
+    .populate('recordedBy', 'name email');
+  if (!record) throw new ApiError(404, 'Fee record not found');
+  return record;
 }
 
 async function listFeeRecords({
@@ -289,7 +306,13 @@ async function getFeeSummary({ month, year, classId, studentId, studentIds, sess
   });
 
   let activeStudents = 0;
-  if (!studentId && !(studentIds?.length)) {
+  if (studentId) {
+    activeStudents = await AcademyStudent.countDocuments({ _id: studentId, status: 'active' });
+  } else if (Array.isArray(studentIds)) {
+    activeStudents = studentIds.length
+      ? await AcademyStudent.countDocuments({ _id: { $in: studentIds }, status: 'active' })
+      : 0;
+  } else {
     const studentQ = { status: 'active' };
     if (classId) {
       studentQ.classId = classId;
@@ -298,8 +321,6 @@ async function getFeeSummary({ month, year, classId, studentId, studentIds, sess
       studentQ.classId = { $in: classes.map((c) => c._id) };
     }
     activeStudents = await AcademyStudent.countDocuments(studentQ);
-  } else if (studentIds?.length) {
-    activeStudents = await AcademyStudent.countDocuments({ _id: { $in: studentIds }, status: 'active' });
   }
 
   return {
@@ -466,6 +487,7 @@ async function exportFeeDefaulters({ classId, month, year, search, sessionId }) 
 
 module.exports = {
   listFeeRecords,
+  getFeeRecordById,
   generateMonthlyFees,
   recordPayment,
   getStudentFeeHistory,

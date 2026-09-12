@@ -2,12 +2,37 @@ import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
 import { moduleHref } from "@/lib/panelMenus";
 import { Role } from "@/lib/auth";
+import {
+  applyBackendModulePermissions,
+  resolveModuleCaps,
+  type ModuleKey,
+} from "@/lib/permissions";
 
 const SettingsModule = () => {
   const { user } = useAuth();
+  const { perms } = usePermissions();
   const role = (user?.role ?? "admin") as Role;
+
+  const rolePerms = applyBackendModulePermissions(
+    perms[role],
+    user?.modulePermissions,
+    role,
+  );
+  const catalogCaps = resolveModuleCaps(
+    "permission-catalog" as ModuleKey,
+    rolePerms["permission-catalog"],
+    user?.modulePermissions,
+    role,
+  );
+  const permissionsCaps = resolveModuleCaps(
+    "permissions" as ModuleKey,
+    rolePerms.permissions,
+    user?.modulePermissions,
+    role,
+  );
 
   // Get module permissions for display
   const modulePerms = user?.modulePermissions ? Object.entries(user.modulePermissions) : [];
@@ -54,20 +79,23 @@ const SettingsModule = () => {
         </Card>
       )}
 
-      <Card className="p-4 space-y-2">
-        <div className="font-semibold text-primary">Access & permissions</div>
-        {(role === "admin" || user?.modulePermissions) && (
-          <Button variant="outline" size="sm" asChild>
-            <Link to={moduleHref(role, "permissions")}>Open Permissions</Link>
-          </Button>
-        )}
-        <Button variant="ghost" size="sm" asChild className="block">
-          <Link to={moduleHref(role, "permission-catalog")}>View permission catalog</Link>
-        </Button>
-      </Card>
+      {(permissionsCaps.canView || catalogCaps.canView) && (
+        <Card className="p-4 space-y-2">
+          <div className="font-semibold text-primary">Access & permissions</div>
+          {permissionsCaps.canView && (
+            <Button variant="outline" size="sm" asChild>
+              <Link to={moduleHref(role, "permissions")}>Open Permissions</Link>
+            </Button>
+          )}
+          {catalogCaps.canView && (
+            <Button variant="ghost" size="sm" asChild className="block">
+              <Link to={moduleHref(role, "permission-catalog")}>View permission catalog</Link>
+            </Button>
+          )}
+        </Card>
+      )}
     </div>
   );
 };
 
 export default SettingsModule;
-

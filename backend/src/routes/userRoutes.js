@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const ctrl = require('../controllers/userController');
+const staffReportCtrl = require('../controllers/staffReportController');
 const { protect } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
 const { validate } = require('../middleware/validate');
@@ -18,6 +19,7 @@ router.patch('/:id/permissions', requirePermission('manage_roles'), validate(sch
 router.patch('/:id/module-permissions', requirePermission('manage_roles'), ctrl.patchModulePermissions);
 router.delete('/:id/module-permissions', requirePermission('manage_roles'), ctrl.revokeModulePermissions);
 router.get('/:id/parent-students', requirePermission('manage_users'), ctrl.getParentStudents);
+router.get('/:id/report', requirePermission('manage_users'), staffReportCtrl.exportStaffReport);
 router.patch('/:id/parent-students', requirePermission('manage_users'), validate(schemas.parentStudentAccess), ctrl.patchParentStudents);
 
 module.exports = router;

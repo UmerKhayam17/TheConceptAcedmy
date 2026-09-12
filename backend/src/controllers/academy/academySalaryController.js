@@ -20,6 +20,7 @@ const summary = catchAsync(async (req, res) => {
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
     roleName: req.query.roleName,
+    staffId: req.query.staffId,
   });
   res.json({ success: true, data });
 });

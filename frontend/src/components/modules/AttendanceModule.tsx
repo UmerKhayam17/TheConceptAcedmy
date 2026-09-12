@@ -1,12 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, Download, FileSpreadsheet, FileText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
 import PanelToolbar from "@/components/modules/PanelToolbar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import {
+  exportAcademyAttendance,
   fetchAcademyAttendanceDay,
   fetchAcademyClasses,
   fetchAcademyStudents,
@@ -14,11 +22,13 @@ import {
   markAcademyAttendance,
   type AcademyAttendanceRecord,
   type AcademyStudent,
+  type AttendanceExportFormat,
 } from "@/lib/studentManagementApi";
 import { useAuth } from "@/hooks/useAuth";
 import SessionBar, { useActiveSessionId, useSessionScope } from "@/components/modules/timetable/SessionBar";
+import { localTodayYmd } from "@/lib/localDate";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localTodayYmd();
 
 function classLabel(s: AcademyStudent) {
   const c = s.classId;
@@ -30,6 +40,10 @@ function sectionLabel(s: AcademyStudent) {
   const sec = s.sectionId;
   if (typeof sec === "object" && sec && "sectionName" in sec) return sec.sectionName;
   return "—";
+}
+
+function studentRef(s: AcademyStudent) {
+  return s.rollNumber || s.studentId || s.registrationNumber || "";
 }
 
 function fmtTime(iso?: string) {
@@ -53,6 +67,8 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
   const [date, setDate] = useState(today());
   const [classFilter, setClassFilter] = useState("");
   const [sectionFilter, setSectionFilter] = useState("");
+  const [studentFilter, setStudentFilter] = useState("");
+  const [exporting, setExporting] = useState<AttendanceExportFormat | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
     try {
       return localStorage.getItem("parent_selected_student_id") || "";
@@ -66,11 +82,17 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
   useEffect(() => {
     setClassFilter("");
     setSectionFilter("");
+    setStudentFilter("");
   }, [sessionId]);
 
   useEffect(() => {
     setSectionFilter("");
+    setStudentFilter("");
   }, [classFilter]);
+
+  useEffect(() => {
+    setStudentFilter("");
+  }, [sectionFilter]);
 
   const { data: classes = [] } = useQuery({
     queryKey: ["academy-classes-attendance", sessionId],
@@ -85,15 +107,16 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
   });
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["academy-attendance-day", date, sessionId, classFilter, sectionFilter],
+    queryKey: ["academy-attendance-day", date, sessionId, classFilter, sectionFilter, isParent, selectedStudentId],
     queryFn: () =>
       fetchAcademyAttendanceDay({
         date,
-        classId: classFilter || undefined,
-        sectionId: sectionFilter || undefined,
-        sessionId: classFilter ? undefined : apiSessionId,
+        classId: isParent ? undefined : classFilter || undefined,
+        sectionId: isParent ? undefined : sectionFilter || undefined,
+        sessionId: isParent || classFilter ? undefined : apiSessionId,
+        studentId: isParent ? selectedStudentId || undefined : undefined,
       }),
-    enabled: isParent || hasScope,
+    enabled: isParent ? Boolean(selectedStudentId) : hasScope,
   });
 
   const { data: parentStudents = [] } = useQuery({
@@ -149,26 +172,56 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
   }, [data?.records]);
 
   const students = data?.students ?? [];
-  const summary = data?.summary;
 
   const studentsFiltered = useMemo(() => {
-    const base = isParent && selectedStudentId
-      ? students.filter((s) => s._id === selectedStudentId)
-      : students;
+    let base = students;
+    if (isParent && selectedStudentId) {
+      base = students.filter((s) => s._id === selectedStudentId);
+    } else if (studentFilter) {
+      base = students.filter((s) => s._id === studentFilter);
+    }
     if (!search.trim()) return base;
     return base.filter((s) =>
-      matchesPanelSearch(search, s.studentName, s.studentId, classLabel(s), sectionLabel(s), s.phone)
+      matchesPanelSearch(search, s.studentName, s.studentId, studentRef(s), classLabel(s), sectionLabel(s), s.phone)
     );
-  }, [students, search, isParent, selectedStudentId]);
+  }, [students, search, isParent, selectedStudentId, studentFilter]);
 
-  const parentSummary = useMemo(() => {
-    if (!isParent || !selectedStudentId) return summary;
-    const rec = recordMap.get(selectedStudentId);
+  const visibleSummary = useMemo(() => {
     const counts = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
-    if (!rec) counts.unmarked = 1;
-    else if (rec.status in counts) (counts as Record<string, number>)[rec.status] += 1;
+    studentsFiltered.forEach((s) => {
+      const rec = recordMap.get(s._id);
+      if (!rec) counts.unmarked += 1;
+      else if (rec.status in counts) (counts as Record<string, number>)[rec.status] += 1;
+    });
     return counts;
-  }, [isParent, selectedStudentId, recordMap, summary]);
+  }, [studentsFiltered, recordMap]);
+
+  const handleExport = async (format: AttendanceExportFormat) => {
+    setExporting(format);
+    try {
+      const blob = await exportAcademyAttendance(
+        {
+          date,
+          classId: classFilter || undefined,
+          sectionId: sectionFilter || undefined,
+          sessionId: classFilter ? undefined : apiSessionId,
+          studentId: studentFilter || undefined,
+        },
+        format,
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = format === "pdf" ? `attendance-${date}.pdf` : `attendance-${date}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+    } catch {
+      toast({ title: "Export failed", variant: "destructive" });
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const mark = (studentId: string, status: "present" | "absent" | "late" | "leave") => {
     if (!writable) {
@@ -191,29 +244,35 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
     <div>
       {!isParent && <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />}
       <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <Card className="p-4">
             <div className="text-xs text-muted-foreground">Present</div>
             <div className="font-display text-2xl font-bold text-accent">
-              {parentSummary?.present ?? "—"}
+              {visibleSummary.present}
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs text-muted-foreground">Late</div>
+            <div className="font-display text-2xl font-bold text-primary">
+              {visibleSummary.late}
             </div>
           </Card>
           <Card className="p-4">
             <div className="text-xs text-muted-foreground">Absent</div>
             <div className="font-display text-2xl font-bold text-destructive">
-              {parentSummary?.absent ?? "—"}
+              {visibleSummary.absent}
             </div>
           </Card>
           <Card className="p-4">
             <div className="text-xs text-muted-foreground">Leave</div>
             <div className="font-display text-2xl font-bold text-primary">
-              {parentSummary?.leave ?? "—"}
+              {visibleSummary.leave}
             </div>
           </Card>
           <Card className="p-4">
             <div className="text-xs text-muted-foreground">Unmarked</div>
             <div className="font-display text-2xl font-bold text-muted-foreground">
-              {parentSummary?.unmarked ?? "—"}
+              {visibleSummary.unmarked}
             </div>
           </Card>
         </div>
@@ -270,7 +329,7 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
                   onChange={(e) => setSectionFilter(e.target.value)}
                   disabled={!classFilter || sections.length === 0}
                 >
-                  <option value="">All sections</option>
+                  <option value="">{classFilter ? "All sections" : "Select class first"}</option>
                   {sections.map((s) => (
                     <option key={s._id} value={s._id}>
                       {s.sectionName}
@@ -278,6 +337,42 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Student</label>
+                <select
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm min-w-[14rem]"
+                  value={studentFilter}
+                  onChange={(e) => setStudentFilter(e.target.value)}
+                  disabled={!classFilter}
+                >
+                  <option value="">{classFilter ? "All students" : "Select class first"}</option>
+                  {students.map((s) => (
+                    <option key={s._id} value={s._id}>
+                      {s.studentName}
+                      {studentRef(s) ? ` (${studentRef(s)})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1 h-9" disabled={!!exporting || !hasScope}>
+                    <Download className="h-4 w-4" />
+                    {exporting ? "Exporting…" : "Export"}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Excel (.xlsx)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
+                    <FileText className="h-4 w-4" />
+                    PDF report
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           )}
         </div>
@@ -367,6 +462,14 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
                             onClick={() => mark(s._id, "present")}
                           >
                             P
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={cur === "late" ? "hero" : "outline"}
+                            disabled={markMut.isPending}
+                            onClick={() => mark(s._id, "late")}
+                          >
+                            Late
                           </Button>
                           <Button
                             size="sm"

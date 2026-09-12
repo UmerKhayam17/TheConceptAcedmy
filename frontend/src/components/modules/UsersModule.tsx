@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -488,7 +489,8 @@ const UsersModule = ({
 
   const cols = tableColumns();
   const showLinkedStudents = scope === "all";
-  const tableColSpan = cols.length + 3 + (showLinkedStudents ? 1 : 0);
+  const showActions = scope === "staff" || caps.canEdit || caps.canDelete;
+  const tableColSpan = cols.length + 2 + (showLinkedStudents ? 1 : 0) + (showActions ? 1 : 0);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -676,7 +678,7 @@ const UsersModule = ({
                   <th className="text-left font-medium px-4 py-3 min-w-[10rem]">Linked students</th>
                 )}
                 <th className="text-left font-medium px-4 py-3">Modules</th>
-                {(caps.canEdit || caps.canDelete) && <th className="px-4 py-3 w-24" />}
+                {showActions && <th className="px-4 py-3 w-28" />}
               </tr>
             </thead>
             <tbody>
@@ -744,8 +746,15 @@ const UsersModule = ({
                           );
                         })()}
                       </td>
-                      {(caps.canEdit || caps.canDelete) && (
+                      {showActions && (
                         <td className="px-4 py-3 text-right whitespace-nowrap">
+                          {scope === "staff" && (
+                            <Button size="sm" variant="ghost" className="gap-1" asChild aria-label="View staff">
+                              <Link to={u._id}>
+                                <Eye className="h-4 w-4" /> View
+                              </Link>
+                            </Button>
+                          )}
                           {caps.canEdit && (
                             <Button size="sm" variant="ghost" onClick={() => openEdit(u)} aria-label="Edit">
                               <Pencil className="h-4 w-4" />

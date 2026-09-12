@@ -17,11 +17,14 @@ async function request(method, path, body, { timeoutMs = 12000 } = {}) {
     );
   }
   const url = `${base}${path.startsWith('/') ? path : `/${path}`}`;
+  const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+  const secret = (process.env.FACE_WORKER_SECRET || '').trim();
+  if (secret) headers['X-Face-Worker-Secret'] = secret;
   let res;
   try {
     res = await fetch(url, {
       method,
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(timeoutMs),
     });

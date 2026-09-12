@@ -33,7 +33,9 @@ import StudentManagementModule from "@/components/modules/StudentManagementModul
 import PermissionCatalogModule from "@/components/modules/PermissionCatalogModule";
 import AiAttendanceModule from "@/components/modules/AiAttendanceModule";
 import StaffAttendanceModule from "@/components/modules/StaffAttendanceModule";
+import StaffDetailPage from "@/components/modules/staff/StaffDetailPage";
 import TeacherFeatureModule from "@/components/modules/TeacherFeatureModule";
+import AdminDashboard from "@/components/modules/AdminDashboard";
 import { fetchExams } from "@/lib/examApi";
 import { fetchAnnouncements } from "@/lib/announcementApi";
 import {
@@ -43,6 +45,7 @@ import {
   fetchAcademyExpenseSummary,
   fetchAcademyStudents,
 } from "@/lib/studentManagementApi";
+import { localTodayYmd } from "@/lib/localDate";
 
 const TEACHER_FEATURE_KEYS = new Set<ModuleKey>([
   "my-classes",
@@ -75,7 +78,7 @@ const Dashboard = ({
   const rolePerms = applyBackendModulePermissions(perms[role], modulePermissions, role);
   const items = buildMenu(rolePerms, modulePermissions, role).filter((m) => m.key !== "dashboard");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localTodayYmd();
   const { data: termExams = [] } = useQuery({
     queryKey: ["dashboard-term-exams"],
     queryFn: () => fetchExams(),
@@ -250,7 +253,11 @@ const Panel = () => {
     return (
       <>
         <SEO title={`${roleMeta[r].title} | The Concept`} description={`${roleMeta[r].title} dashboard.`} />
-        <Dashboard role={r} name={session.name} modulePermissions={session.modulePermissions} />
+        {r === "admin" || r === "accountant" ? (
+          <AdminDashboard role={r} name={session.name} />
+        ) : (
+          <Dashboard role={r} name={session.name} modulePermissions={session.modulePermissions} />
+        )}
       </>
     );
   }
@@ -290,7 +297,11 @@ const Panel = () => {
   const renderModule = () => {
     switch (mod.key) {
       case "users":         return <UsersModule perm={perm} caps={caps} scope="all" />;
-      case "staff-management": return <UsersModule perm={perm} caps={caps} scope="staff" />;
+      case "staff-management":
+        if (section && /^[a-f0-9]{24}$/i.test(section)) {
+          return <StaffDetailPage staffId={section} />;
+        }
+        return <UsersModule perm={perm} caps={caps} scope="staff" />;
       case "student-management": return (
         <StudentManagementModule perm={perm} caps={caps} section={section} action={action} subAction={subAction} />
       );

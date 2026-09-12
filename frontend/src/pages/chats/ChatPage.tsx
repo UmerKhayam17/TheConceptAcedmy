@@ -11,7 +11,7 @@ import {
   useConversations,
 } from "@/services/socket/chat.api";
 
-function ChatPageInner() {
+function ChatPageInner({ canParticipate }: { canParticipate: boolean }) {
   const { activeId, setActiveId } = useChatUi();
   const [searchParams] = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
@@ -41,7 +41,12 @@ function ChatPageInner() {
 
       <div className="flex-1 flex flex-col min-w-0">
         {activeId ? (
-          <ChatWindow conversationId={activeId} collapsed={collapsed} setCollapsed={setCollapsed} />
+          <ChatWindow
+            conversationId={activeId}
+            collapsed={collapsed}
+            setCollapsed={setCollapsed}
+            canParticipate={canParticipate}
+          />
         ) : (
           <EmptyChatPlaceholder />
         )}
@@ -50,10 +55,10 @@ function ChatPageInner() {
   );
 }
 
-export default function ChatPage() {
+export default function ChatPage({ canParticipate = true }: { canParticipate?: boolean }) {
   return (
     <ChatUiProvider>
-      <ChatPageInner />
+      <ChatPageInner canParticipate={canParticipate} />
     </ChatUiProvider>
   );
 }

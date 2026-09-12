@@ -16,87 +16,92 @@ const {
   resolveStudentAttendanceStatus,
   resolveFallbackAttendanceStatus,
 } = require('./attendanceStatusFromTimetable');
+const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
 
-function dayStart(dateStrOrDate) {
-  const d = dateStrOrDate instanceof Date ? new Date(dateStrOrDate) : new Date(dateStrOrDate);
-  if (Number.isNaN(d.getTime())) throw new ApiError(400, 'Invalid date');
-  d.setHours(0, 0, 0, 0);
-  return d;
+function dayWindow(forDate = new Date()) {
+  const ymd = formatDateInTz(forDate);
+  return dayBounds(ymd);
 }
 
 async function applyStudentAttendance(studentId, { status, checkIn, checkOut, confidence, notes, source = 'ai' }) {
-  const now = checkIn || new Date();
-  const start = dayStart(now);
-  const end = new Date(start);
-  end.setHours(23, 59, 59, 999);
-
-  const existing = await AcademyAttendance.findOne({
+  const now = checkIn instanceof Date ? checkIn : new Date(checkIn || Date.now());
+  const { start, end } = dayWindow(now);
+  const filter = {
     studentId,
     date: { $gte: start, $lte: end },
     $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
-  });
+  };
 
+  const existing = await AcademyAttendance.findOne(filter);
   if (!existing) {
-    return AcademyAttendance.create({
-      studentId,
-      date: start,
-      status,
-      source,
-      checkIn: now,
-      checkOut,
-      confidence,
-      notes,
-    });
+    try {
+      return await AcademyAttendance.create({
+        studentId,
+        date: start,
+        status,
+        source,
+        checkIn: now,
+        checkOut,
+        confidence,
+        notes,
+      });
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      // Race: another writer inserted — fall through to update
+    }
   }
+
+  const doc = existing || (await AcademyAttendance.findOne(filter));
+  if (!doc) throw new ApiError(500, 'Attendance write race failed');
+
+  if (!doc.checkIn) {
+    doc.checkIn = now;
+    doc.status = status;
+    doc.source = source;
+    doc.confidence = confidence;
+  } else if (now - doc.checkIn > 60 * 1000) {
+    doc.checkOut = now;
+    doc.confidence = confidence ?? doc.confidence;
+  }
+  if (notes) doc.notes = notes;
+  await doc.save();
+  return doc;
+}
+
+async function applyStaffAttendance(userId, { status, checkIn, checkOut, confidence, notes, source = 'ai' }) {
+  const now = checkIn instanceof Date ? checkIn : new Date(checkIn || Date.now());
+  const { start, end } = dayWindow(now);
+  const filter = { userId, date: { $gte: start, $lte: end } };
+
+  let existing = await StaffAttendance.findOne(filter);
+  if (!existing) {
+    try {
+      return await StaffAttendance.create({
+        userId,
+        date: start,
+        status,
+        source,
+        checkIn: now,
+        checkOut,
+        confidence,
+        notes,
+      });
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      existing = await StaffAttendance.findOne(filter);
+    }
+  }
+
+  if (!existing) throw new ApiError(500, 'Staff attendance write race failed');
 
   if (!existing.checkIn) {
     existing.checkIn = now;
     existing.status = status;
-    existing.source = source;
     existing.confidence = confidence;
+    existing.source = source;
   } else if (now - existing.checkIn > 60 * 1000) {
     existing.checkOut = now;
     existing.confidence = confidence ?? existing.confidence;
-  }
-  if (notes) existing.notes = notes;
-  await existing.save();
-  return existing;
-}
-
-async function applyStaffAttendance(userId, { status, checkIn, checkOut, confidence, notes, source = 'ai' }) {
-  const start = dayStart(checkIn || new Date());
-  const end = new Date(start);
-  end.setHours(23, 59, 59, 999);
-  const existing = await StaffAttendance.findOne({
-    userId,
-    date: { $gte: start, $lte: end },
-  });
-
-  if (!existing) {
-    return StaffAttendance.create({
-      userId,
-      date: start,
-      status,
-      source,
-      checkIn: checkIn || new Date(),
-      checkOut: checkOut,
-      confidence,
-      notes,
-    });
-  }
-
-  // First sight = check-in; later = check-out
-  if (!existing.checkIn) {
-    existing.checkIn = checkIn || new Date();
-    existing.status = status;
-    existing.confidence = confidence;
-    existing.source = source;
-  } else {
-    const elapsed = (checkIn || new Date()) - existing.checkIn;
-    if (elapsed > 60 * 1000) {
-      existing.checkOut = checkIn || new Date();
-      existing.confidence = confidence ?? existing.confidence;
-    }
   }
   if (notes) existing.notes = notes;
   await existing.save();

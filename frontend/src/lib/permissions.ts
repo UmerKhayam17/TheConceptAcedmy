@@ -535,6 +535,10 @@ export function resolveModuleCaps(
     if (moduleKey === "expenses") {
       return capsForExpensesModule(backendPerms);
     }
+    if (moduleKey === "permission-catalog") {
+      const arr = backendPerms.role;
+      return capsFromBackendActions(Array.isArray(arr) ? arr : []);
+    }
     if (backendKey !== undefined) {
       if (Object.prototype.hasOwnProperty.call(backendPerms, backendKey)) {
         const arr = backendPerms[backendKey];
@@ -599,6 +603,10 @@ export function applyBackendModulePermissions(
   if (backendPerms.user) {
     const userLevel = permLevelFromActionCaps(capsFromBackendActions(backendPerms.user));
     if (userLevel !== "none") next["staff-management"] = userLevel;
+  }
+  if (backendPerms.role) {
+    const roleLevel = permLevelFromActionCaps(capsFromBackendActions(backendPerms.role));
+    if (roleLevel !== "none") next["permission-catalog"] = roleLevel;
   }
   if (backendPerms.salary) {
     const salaryLevel = permLevelFromActionCaps(capsForSalaryModule(backendPerms));

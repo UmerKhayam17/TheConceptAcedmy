@@ -222,6 +222,7 @@ export default function MessageInput({
   conversation,
   replyTo,
   onCancelReply,
+  canParticipate = true,
 }) {
   const { myId } = useChatUi();
 
@@ -426,8 +427,19 @@ export default function MessageInput({
   const myRole      = conversation?.participants?.find(
     (p) => userIdStr(p.userId) === userIdStr(myId)
   )?.role;
-  const canSend         = !onlyAdmins || myRole === "admin";
+  const canSend         = canParticipate && (!onlyAdmins || myRole === "admin");
   const canDocumentSend = conversation?.settings?.allowFileSharing !== false;
+
+  if (!canParticipate) {
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-3.5 text-[13px] text-[#8696a0]"
+        style={{ background: "#f0f2f5", borderTop: "1px solid #e9edef" }}
+      >
+        View-only — you cannot send messages
+      </div>
+    );
+  }
 
   if (!canSend) {
     return (

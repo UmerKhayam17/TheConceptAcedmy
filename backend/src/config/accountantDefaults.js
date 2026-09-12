@@ -2,6 +2,7 @@
  * Default module permissions for the Accountant (Staff) role.
  * Finance-focused access — fees, salaries, expenses, student activation.
  */
+
 const ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS = {
   student: ['view', 'activate'],
   studentManagement: ['view', 'create', 'edit', 'record', 'generate'],

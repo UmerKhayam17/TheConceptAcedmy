@@ -372,6 +372,14 @@ async function dropLegacyDuplicateCollections() {
   for (const [from, to] of renames) {
     if (!names.has(from)) continue;
     if (names.has(to)) {
+      if (process.env.ALLOW_LEGACY_DROP !== 'true') {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[seed] Both "${from}" and "${to}" exist — NOT dropping "${from}". ` +
+            `Set ALLOW_LEGACY_DROP=true after backup if you intend to remove the old collection.`
+        );
+        continue;
+      }
       await db.dropCollection(from);
       // eslint-disable-next-line no-console
       console.log(`[seed] Dropped duplicate old collection: ${from} (kept ${to})`);
