@@ -15,6 +15,7 @@ export interface AcademyClass {
   _id: string;
   sessionId?: string | { _id: string; name?: string; status?: string };
   className: string;
+  disciplines?: string[];
   totalSubjects: number;
   status: "active" | "inactive";
   createdAt?: string;
@@ -93,6 +94,7 @@ export interface AcademyStudentProvisionalBody {
   phone: string;
   dateOfBirth: string;
   classId: string;
+  discipline?: string;
   description?: string;
 }
 
@@ -119,6 +121,7 @@ export interface AcademyStudentRegisterBody {
   gender: string;
   classId: string;
   sectionId: string;
+  discipline?: string;
   selectedSubjects: string[];
   isFullPackage: boolean;
   discountAmount?: number;
@@ -180,6 +183,7 @@ export interface AcademyStudent {
   gender?: "male" | "female" | "other";
   address?: string;
   classId: string | AcademyClass;
+  discipline?: string;
   sectionId?: string | AcademySection;
   selectedSubjects: AcademySubject[] | string[];
   isFullPackage: boolean;
@@ -320,6 +324,7 @@ export const fetchAcademyClasses = (params?: { search?: string; status?: string;
 export const createAcademyClass = (body: {
   sessionId: string;
   className: string;
+  disciplines?: string[];
   totalSubjects?: number;
   status?: string;
 }) =>
@@ -493,6 +498,14 @@ export const previewFees = (body: {
   api<FeePreview>("/fee-structures/preview", { method: "POST", body: JSON.stringify(body) });
 
 // Students
+export type StudentListCounts = {
+  total: number;
+  active: number;
+  pending_fee: number;
+  inactive: number;
+  suspended: number;
+};
+
 export const fetchAcademyStudents = async (params?: {
   page?: number;
   limit?: number;
@@ -500,6 +513,9 @@ export const fetchAcademyStudents = async (params?: {
   classId?: string;
   sectionId?: string;
   status?: string;
+  fee?: "pending" | "charged";
+  discipline?: string;
+  sort?: string;
   sessionId?: string;
 }) => {
   const q = new URLSearchParams();
@@ -509,16 +525,20 @@ export const fetchAcademyStudents = async (params?: {
   if (params?.classId) q.set("classId", params.classId);
   if (params?.sectionId) q.set("sectionId", params.sectionId);
   if (params?.status) q.set("status", params.status);
+  if (params?.fee) q.set("fee", params.fee);
+  if (params?.discipline) q.set("discipline", params.discipline);
+  if (params?.sort) q.set("sort", params.sort);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
   const res = await authedFetch(`/student-management/students?${q}`);
   const body = await parseJson<{
     success?: boolean;
     data?: AcademyStudent[];
     pagination?: Pagination;
+    counts?: StudentListCounts;
     message?: string;
   }>(res);
   if (!res.ok) throw new Error(body.message || "Failed to load students");
-  return { students: body.data || [], pagination: body.pagination };
+  return { students: body.data || [], pagination: body.pagination, counts: body.counts };
 };
 
 export const registerAcademyStudent = (body: AcademyStudentRegisterBody) =>
@@ -526,6 +546,38 @@ export const registerAcademyStudent = (body: AcademyStudentRegisterBody) =>
 
 export const registerProvisionalStudent = (body: AcademyStudentProvisionalBody) =>
   api<AcademyStudent>("/students/provisional", { method: "POST", body: JSON.stringify(body) });
+
+export type StudentImportResult = {
+  sessionId: string;
+  createdCount: number;
+  failedCount: number;
+  created: { row: number; id: string; studentName: string; rollNumber?: string }[];
+  failed: { row: number; error: string }[];
+};
+
+export async function importAcademyStudents(
+  file: File,
+  sessionId: string,
+  classId?: string,
+): Promise<StudentImportResult> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("sessionId", sessionId);
+  if (classId) fd.append("classId", classId);
+  const res = await authedFetch("/student-management/students/import", {
+    method: "POST",
+    body: fd,
+  });
+  const parsed = await parseJson<{ success?: boolean; data?: StudentImportResult; message?: string }>(res);
+  if (parsed.data) return parsed.data;
+  throw new Error(parsed.message || "Import failed");
+}
+
+export async function downloadStudentImportTemplate(): Promise<Blob> {
+  const res = await authedFetch("/student-management/students/import/template");
+  if (!res.ok) throw new Error("Could not download the import template");
+  return res.blob();
+}
 
 export async function registerDirectAcademyStudent(body: AcademyStudentDirectRegisterBody) {
   const res = await authedFetch("/student-management/students/direct", {

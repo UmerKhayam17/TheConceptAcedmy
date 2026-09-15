@@ -78,13 +78,18 @@ const StudentsRecordsModule = ({
         showHeading={false}
         enrollmentFlow="both"
         emptyHint="No students on record yet."
+        sessionBar={
+          <SessionBar layout="inline" sessionId={sessionId} onSessionChange={setSessionId} />
+        }
       />
     );
   })();
 
+  const isList = !section;
+
   return (
     <div>
-      <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />
+      {!isList && <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />}
       {body}
     </div>
   );

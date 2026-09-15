@@ -55,6 +55,7 @@ import {
   classTestSeriesHref,
 } from "@/lib/testExamsMenus";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
+import { ClassDisciplinesEditor } from "./ClassDisciplinesEditor";
 import {
   generateSubjectCode,
   subjectCodePlaceholder,
@@ -137,7 +138,11 @@ export default function ClassDetailPage({
 
   // Class edit
   const [classOpen, setClassOpen] = useState(false);
-  const [classForm, setClassForm] = useState({ className: "", status: "active" as "active" | "inactive" });
+  const [classForm, setClassForm] = useState({
+    className: "",
+    status: "active" as "active" | "inactive",
+    disciplines: [] as string[],
+  });
 
   // Subject dialog
   const [subjectOpen, setSubjectOpen] = useState(false);
@@ -319,7 +324,7 @@ export default function ClassDetailPage({
   const { class: cls, stats, feeStructure, feeStructureHistory } = record;
 
   const openClassEdit = () => {
-    setClassForm({ className: cls.className, status: cls.status });
+    setClassForm({ className: cls.className, status: cls.status, disciplines: cls.disciplines ?? [] });
     setClassOpen(true);
   };
 
@@ -388,6 +393,9 @@ export default function ClassDetailPage({
             <GraduationCap className="h-8 w-8 text-primary shrink-0" />
             <div>
               <h1 className="text-2xl font-bold tracking-tight">{cls.className}</h1>
+              {cls.disciplines?.length ? (
+                <p className="text-sm text-muted-foreground">{cls.disciplines.join(" · ")}</p>
+              ) : null}
               <CreatedByLine createdBy={cls.createdBy} />
             </div>
             <StatusBadge status={cls.status} />
@@ -458,6 +466,10 @@ export default function ClassDetailPage({
               <div>
                 <p className="text-xs text-muted-foreground uppercase">Status</p>
                 <StatusBadge status={cls.status} />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase">Disciplines</p>
+                <p className="font-medium">{cls.disciplines?.length ? cls.disciplines.join(", ") : "—"}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground uppercase">Total subjects (counter)</p>
@@ -769,6 +781,10 @@ export default function ClassDetailPage({
                 onChange={(e) => setClassForm((f) => ({ ...f, className: e.target.value }))}
               />
             </div>
+            <ClassDisciplinesEditor
+              value={classForm.disciplines}
+              onChange={(disciplines) => setClassForm((f) => ({ ...f, disciplines }))}
+            />
             <div>
               <Label>Status</Label>
               <select

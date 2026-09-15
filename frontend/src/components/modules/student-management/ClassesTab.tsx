@@ -19,6 +19,7 @@ import {
 } from "@/lib/studentManagementApi";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { sessionLabelFromAcademyClass } from "./studentDisplayUtils";
+import { ClassDisciplinesEditor } from "./ClassDisciplinesEditor";
 
 const QK = ["academy-classes"] as const;
 
@@ -31,7 +32,7 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<AcademyClass | null>(null);
-  const [form, setForm] = useState({ className: "", status: "active" as "active" | "inactive" });
+  const [form, setForm] = useState({ className: "", status: "active" as "active" | "inactive", disciplines: [] as string[] });
   const { apiSessionId, writable, isAll, hasScope } = useSessionScope(sessionId);
   const showSessionCol = isAll || !writable;
 
@@ -75,7 +76,7 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
       return;
     }
     setEdit(null);
-    setForm({ className: "", status: "active" });
+    setForm({ className: "", status: "active", disciplines: [] });
     setOpen(true);
   };
 
@@ -89,11 +90,11 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
       return;
     }
     setEdit(c);
-    setForm({ className: c.className, status: c.status });
+    setForm({ className: c.className, status: c.status, disciplines: c.disciplines ?? [] });
     setOpen(true);
   };
 
-  const colSpan = 3 + (showSessionCol ? 1 : 0) + ((writable && (caps.canEdit || caps.canDelete)) ? 1 : 0);
+  const colSpan = 4 + (showSessionCol ? 1 : 0) + ((writable && (caps.canEdit || caps.canDelete)) ? 1 : 0);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
@@ -118,6 +119,7 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
               <tr>
                 <th className="text-left p-3 font-medium">Class</th>
                 {showSessionCol && <th className="text-left p-3 font-medium">Session</th>}
+                <th className="text-left p-3 font-medium">Disciplines</th>
                 <th className="text-left p-3 font-medium">Subjects</th>
                 <th className="text-left p-3 font-medium">Status</th>
                 {writable && (caps.canEdit || caps.canDelete) && (
@@ -153,6 +155,9 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
                       {sessionLabelFromAcademyClass(c) || "—"}
                     </td>
                   )}
+                  <td className="p-3 text-muted-foreground text-xs">
+                    {c.disciplines?.length ? c.disciplines.join(", ") : "—"}
+                  </td>
                   <td className="p-3">{c.totalSubjects}</td>
                   <td className="p-3">
                     <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${
@@ -196,8 +201,12 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
           <div className="space-y-4 py-2">
             <div>
               <Label>Class name</Label>
-              <Input value={form.className} onChange={(e) => setForm((f) => ({ ...f, className: e.target.value }))} placeholder="e.g. 9th" required />
+              <Input value={form.className} onChange={(e) => setForm((f) => ({ ...f, className: e.target.value }))} placeholder="e.g. 11th" required />
             </div>
+            <ClassDisciplinesEditor
+              value={form.disciplines}
+              onChange={(disciplines) => setForm((f) => ({ ...f, disciplines }))}
+            />
             <div>
               <Label>Status</Label>
               <select

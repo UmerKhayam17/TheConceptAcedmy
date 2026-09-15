@@ -44,6 +44,8 @@ const academyStudentSchema = new mongoose.Schema(
     gender: { type: String, enum: ['male', 'female', 'other'] },
     address: { type: String, trim: true },
     classId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademyClass', required: true, index: true },
+    /** Stream/group for the class, e.g. Medical — only when the class defines disciplines. */
+    discipline: { type: String, trim: true, default: '' },
     sectionId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademySection', index: true },
     selectedSubjects: [{ type: mongoose.Schema.Types.ObjectId, ref: 'AcademySubject' }],
     isFullPackage: { type: Boolean, default: false },

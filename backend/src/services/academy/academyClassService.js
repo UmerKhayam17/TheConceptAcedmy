@@ -3,6 +3,7 @@ const AcademyClass = require('../../models/academy/AcademyClass');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const { assertSessionWritable } = require('../session/sessionGuard');
+const { normalizeDisciplineList } = require('../../utils/academyDiscipline');
 
 async function listClasses({ status, search, sessionId }) {
   const q = {};
@@ -28,6 +29,7 @@ async function createClass(payload, userId) {
     ...payload,
     sessionId,
     className,
+    disciplines: normalizeDisciplineList(payload.disciplines),
     createdBy: userId,
   });
   return doc;
@@ -44,6 +46,9 @@ async function updateClass(id, payload) {
     });
     if (dup) throw new ApiError(409, 'Class name already exists for this session');
     doc.className = payload.className.trim();
+  }
+  if (payload.disciplines !== undefined) {
+    doc.disciplines = normalizeDisciplineList(payload.disciplines);
   }
   if (payload.totalSubjects !== undefined) doc.totalSubjects = payload.totalSubjects;
   if (payload.status) doc.status = payload.status;

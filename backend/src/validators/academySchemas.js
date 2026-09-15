@@ -5,11 +5,18 @@ const objectId = Joi.string().hex().length(24);
 const academyClassBody = Joi.object({
   sessionId: objectId.required(),
   className: Joi.string().trim().required(),
+  disciplines: Joi.array().items(Joi.string().trim().max(80)).max(20),
   totalSubjects: Joi.number().integer().min(0).optional(),
   status: Joi.string().valid('active', 'inactive').optional(),
 });
 
-const academyClassPatch = academyClassBody.min(1);
+const academyClassPatch = Joi.object({
+  sessionId: objectId,
+  className: Joi.string().trim(),
+  disciplines: Joi.array().items(Joi.string().trim().max(80)).max(20),
+  totalSubjects: Joi.number().integer().min(0),
+  status: Joi.string().valid('active', 'inactive'),
+}).min(1);
 
 const academySubjectBody = Joi.object({
   subjectName: Joi.string().trim().required(),
@@ -112,6 +119,7 @@ const academyStudentRegister = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId.required(),
   sectionId: objectId.required(),
+  discipline: Joi.string().trim().allow('').max(80),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -129,6 +137,7 @@ const academyStudentProvisional = Joi.object({
   phone: Joi.string().trim().required(),
   dateOfBirth: Joi.date().required(),
   classId: objectId.required(),
+  discipline: Joi.string().trim().allow('').max(80),
   description: Joi.string().allow('').trim().max(2000),
 });
 
@@ -139,6 +148,7 @@ const academyStudentActivate = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId,
   sectionId: objectId.required(),
+  discipline: Joi.string().trim().allow('').max(80),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -175,6 +185,7 @@ const academyStudentDirectRegister = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId.required(),
   sectionId: objectId.required(),
+  discipline: Joi.string().trim().allow('').max(80),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -208,6 +219,7 @@ const academyStudentPatch = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other'),
   classId: objectId,
   sectionId: objectId,
+  discipline: Joi.string().trim().allow('').max(80),
   selectedSubjects: Joi.array().items(objectId),
   isFullPackage: Joi.boolean(),
   discountAmount: Joi.number().min(0),

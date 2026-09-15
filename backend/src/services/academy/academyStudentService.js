@@ -13,9 +13,10 @@ const {
   getByClass,
   calculateFeesWithDiscount,
 } = require('./academyFeeStructureService');
-const { validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
+const { getEnrollmentLayout, validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
 const { generateAcademyRollNumber, generateTemporaryRollNumber } = require('../../utils/academyRollNumber');
 const { generateRegistrationNumber } = require('../../utils/academyRegistrationNumber');
+const { normalizeDisciplineList, assertDiscipline } = require('../../utils/academyDiscipline');
 
 const STUDENT_PHOTO_DIR = path.join(__dirname, '../../../uploads/students');
 
@@ -125,6 +126,7 @@ async function registerStudent(payload, userId) {
   }
 
   const subjectIds = await validateSubjects(payload.classId, payload.sectionId, payload.selectedSubjects, isFullPackage);
+  const discipline = assertDiscipline(cls, payload.discipline);
 
   const fees = calculateFeesWithDiscount(feeStructure, {
     selectedSubjectIds: subjectIds,
@@ -174,6 +176,7 @@ async function registerStudent(payload, userId) {
     ...profile,
     classId: payload.classId,
     sectionId: payload.sectionId,
+    discipline,
     selectedSubjects: subjectIds,
     isFullPackage,
     ...fees,
@@ -223,6 +226,10 @@ async function updateStudent(id, payload) {
       student.classId = payload.classId;
       student.rollNumber = await generateTemporaryRollNumber(payload.classId);
     }
+    if (payload.discipline !== undefined || payload.classId) {
+      const cls = await AcademyClass.findById(student.classId);
+      student.discipline = assertDiscipline(cls, payload.discipline !== undefined ? payload.discipline : student.discipline);
+    }
     await student.save();
     return student.populate([
       { path: 'classId', select: 'className' },
@@ -251,6 +258,13 @@ async function updateStudent(id, payload) {
   if (payload.status) student.status = payload.status;
   if (payload.classId) student.classId = payload.classId;
   if (payload.sectionId) student.sectionId = payload.sectionId;
+  if (payload.discipline !== undefined || payload.classId) {
+    const clsForDisc = await AcademyClass.findById(classId);
+    student.discipline = assertDiscipline(
+      clsForDisc,
+      payload.discipline !== undefined ? payload.discipline : student.discipline
+    );
+  }
 
   if (needsFeeRecalc) {
     const feeStructure = await getByClass(classId);
@@ -316,6 +330,8 @@ async function listStudents({
   classId,
   sectionId,
   status,
+  fee,
+  discipline,
   guardianEmail,
   sessionId,
   sort = '-createdAt',
@@ -323,7 +339,13 @@ async function listStudents({
 }) {
   const q = {};
   if (status) q.status = status;
+  if (fee === 'pending') q.status = 'pending_fee';
+  else if (fee === 'charged') {
+    if (status === 'pending_fee') q._id = { $exists: false };
+    else if (!status) q.status = { $ne: 'pending_fee' };
+  }
   if (sectionId) q.sectionId = sectionId;
+  if (discipline) q.discipline = discipline;
   if (guardianEmail) {
     const escaped = String(guardianEmail).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     q.guardianEmail = { $regex: `^${escaped}$`, $options: 'i' };
@@ -350,12 +372,15 @@ async function listStudents({
   const cap = forExport ? 10000 : 100;
   const perPage = Math.min(cap, Math.max(1, limit));
   const skip = (Math.max(1, page) - 1) * perPage;
+  const countMatch = { ...q };
+  delete countMatch.status;
+  delete countMatch._id;
 
-  const [items, total] = await Promise.all([
+  const [items, total, totalAll, active, pendingFee, inactive, suspended] = await Promise.all([
     AcademyStudent.find(q)
       .populate({
         path: 'classId',
-        select: 'className sessionId',
+        select: 'className sessionId disciplines',
         populate: { path: 'sessionId', select: 'name status' },
       })
       .populate('sectionId', 'sectionName')
@@ -365,6 +390,11 @@ async function listStudents({
       .skip(skip)
       .limit(perPage),
     AcademyStudent.countDocuments(q),
+    AcademyStudent.countDocuments(countMatch),
+    AcademyStudent.countDocuments({ ...countMatch, status: 'active' }),
+    AcademyStudent.countDocuments({ ...countMatch, status: 'pending_fee' }),
+    AcademyStudent.countDocuments({ ...countMatch, status: 'inactive' }),
+    AcademyStudent.countDocuments({ ...countMatch, status: 'suspended' }),
   ]);
 
   return {
@@ -374,6 +404,13 @@ async function listStudents({
       limit: perPage,
       total,
       pages: Math.ceil(total / perPage) || 1,
+    },
+    counts: {
+      total: totalAll,
+      active,
+      pending_fee: pendingFee,
+      inactive,
+      suspended,
     },
   };
 }
@@ -639,12 +676,29 @@ async function registerProvisionalStudent(payload, userId) {
     throw new ApiError(400, 'Class must belong to an academic session');
   }
 
-  const registrationNumber = await generateRegistrationNumber();
+  let registrationNumber = (payload.registrationNumber || '').trim();
+  if (registrationNumber) {
+    const taken = await AcademyStudent.findOne({ registrationNumber }).select('_id');
+    if (taken) throw new ApiError(400, `Reg No ${registrationNumber} already exists`);
+  } else {
+    registrationNumber = await generateRegistrationNumber();
+  }
   const rollNumber = await generateTemporaryRollNumber(payload.classId);
   const phone = (payload.phone || '').trim();
   if (!phone) throw new ApiError(400, 'Phone number is required');
 
+  let sectionId;
+  if (payload.sectionId) {
+    const section = await AcademySection.findById(payload.sectionId);
+    if (!section) throw new ApiError(404, 'Section not found');
+    if (String(section.classId) !== String(payload.classId)) {
+      throw new ApiError(400, 'Section does not belong to this class');
+    }
+    sectionId = section._id;
+  }
+
   const intakeNotes = (payload.description || payload.intakeNotes || '').trim();
+  const discipline = assertDiscipline(cls, payload.discipline);
 
   const student = await AcademyStudent.create({
     registrationNumber,
@@ -655,12 +709,93 @@ async function registerProvisionalStudent(payload, userId) {
     dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : undefined,
     intakeNotes,
     classId: payload.classId,
+    sectionId,
+    discipline,
     status: 'pending_fee',
     createdBy: userId,
   });
 
   return student.populate([
     { path: 'classId', select: 'className sessionId' },
+    { path: 'createdBy', select: 'name email' },
+  ]);
+}
+
+/** Bulk register import — already-enrolled (active) students, no Activate step. */
+async function registerImportedActiveStudent(payload, userId) {
+  const cls = await AcademyClass.findById(payload.classId);
+  if (!cls) throw new ApiError(404, 'Class not found');
+  if (cls.status !== 'active') throw new ApiError(400, 'Class is not active');
+  if (!cls.sessionId) {
+    throw new ApiError(400, 'Class must belong to an academic session');
+  }
+  if (!payload.sectionId) throw new ApiError(400, 'SECTION is required');
+
+  const section = await AcademySection.findById(payload.sectionId);
+  if (!section) throw new ApiError(404, 'Section not found');
+  if (String(section.classId) !== String(payload.classId)) {
+    throw new ApiError(400, 'Section does not belong to this class');
+  }
+
+  let registrationNumber = (payload.registrationNumber || '').trim();
+  if (registrationNumber) {
+    const taken = await AcademyStudent.findOne({ registrationNumber }).select('_id');
+    if (taken) throw new ApiError(400, `Reg No ${registrationNumber} already exists`);
+  } else {
+    registrationNumber = await generateRegistrationNumber();
+  }
+
+  const phone = (payload.phone || '').trim();
+  if (!phone) throw new ApiError(400, 'Phone number is required');
+  if (!payload.studentName?.trim()) throw new ApiError(400, 'Student name is required');
+  if (!payload.fatherName?.trim()) throw new ApiError(400, 'Father name is required');
+
+  const layout = await getEnrollmentLayout(payload.classId, payload.sectionId);
+  const subjectIds = Array.isArray(payload.selectedSubjects)
+    ? payload.selectedSubjects
+    : layout.coreSubjects.map((s) => s._id);
+  const isFullPackage = false;
+
+  const feeStructure = await getByClass(payload.classId);
+  const fees = feeStructure
+    ? calculateFeesWithDiscount(feeStructure, {
+        selectedSubjectIds: subjectIds,
+        isFullPackage: false,
+      })
+    : { monthlyFee: 0, admissionFee: 0, totalFee: 0, monthlyFeeDiscount: 0, admissionFeeDiscount: 0, discountAmount: 0 };
+
+  const discipline = assertDiscipline(cls, payload.discipline);
+  const intakeNotes = (payload.description || payload.intakeNotes || '').trim();
+  const studentId = await generateStudentId();
+  const rollNumber = await generateAcademyRollNumber(payload.classId);
+  const now = new Date();
+
+  const student = await AcademyStudent.create({
+    studentId,
+    registrationNumber,
+    rollNumber,
+    studentName: payload.studentName.trim(),
+    fatherName: payload.fatherName.trim(),
+    phone,
+    dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : undefined,
+    intakeNotes,
+    classId: payload.classId,
+    sectionId: section._id,
+    discipline,
+    selectedSubjects: subjectIds,
+    isFullPackage,
+    ...fees,
+    feeStructureId: feeStructure?._id,
+    status: 'active',
+    enrolledAt: now,
+    activatedAt: now,
+    activatedBy: userId,
+    createdBy: userId,
+  });
+
+  return student.populate([
+    { path: 'classId', select: 'className sessionId' },
+    { path: 'sectionId', select: 'sectionName' },
     { path: 'createdBy', select: 'name email' },
   ]);
 }
@@ -736,6 +871,7 @@ async function activateStudent(id, payload, userId) {
   applyProfileToStudent(student, payload);
   student.classId = classId;
   student.sectionId = payload.sectionId;
+  student.discipline = assertDiscipline(cls, payload.discipline !== undefined ? payload.discipline : student.discipline);
   student.selectedSubjects = subjectIds;
   student.isFullPackage = isFullPackage;
   Object.assign(student, fees);
@@ -809,6 +945,7 @@ async function registerDirectStudent(payload, userId) {
     payload.selectedSubjects || [],
     isFullPackage
   );
+  const discipline = assertDiscipline(cls, payload.discipline);
 
   const fees = calculateFeesWithDiscount(feeStructure, {
     selectedSubjectIds: subjectIds,
@@ -857,6 +994,7 @@ async function registerDirectStudent(payload, userId) {
     ...profile,
     classId,
     sectionId: payload.sectionId,
+    discipline,
     selectedSubjects: subjectIds,
     isFullPackage,
     ...fees,
@@ -910,6 +1048,7 @@ module.exports = {
   generateStudentId,
   registerStudent,
   registerProvisionalStudent,
+  registerImportedActiveStudent,
   registerDirectStudent,
   activateStudent,
   updateStudent,

@@ -24,6 +24,7 @@ const emptyForm = {
   phone: "",
   dateOfBirth: "",
   classId: "",
+  discipline: "",
   description: "",
 };
 
@@ -56,6 +57,7 @@ export default function ProvisionalIntakeDialog({
   });
 
   const selectedClass = classes.find((c) => c._id === form.classId);
+  const classDisciplines = selectedClass?.disciplines ?? [];
 
   useEffect(() => {
     if (!open) {
@@ -72,6 +74,7 @@ export default function ProvisionalIntakeDialog({
         phone: form.phone.trim(),
         dateOfBirth: form.dateOfBirth,
         classId: form.classId,
+        discipline: form.discipline || undefined,
         description: form.description.trim() || undefined,
       }),
     onSuccess: (student) => {
@@ -93,7 +96,8 @@ export default function ProvisionalIntakeDialog({
     && form.fatherName.trim()
     && isValidMobile(form.phone)
     && form.dateOfBirth
-    && form.classId;
+    && form.classId
+    && (classDisciplines.length === 0 || Boolean(form.discipline));
 
   const handleOpenChange = (next: boolean) => {
     if (!next) setForm(emptyForm);
@@ -159,7 +163,7 @@ export default function ProvisionalIntakeDialog({
               id="intake-class"
               className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm font-sans"
               value={form.classId}
-              onChange={(e) => setForm((f) => ({ ...f, classId: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, classId: e.target.value, discipline: "" }))}
             >
               <option value="">Choose class…</option>
               {classes.map((c) => (
@@ -167,6 +171,23 @@ export default function ProvisionalIntakeDialog({
               ))}
             </select>
           </div>
+
+          {classDisciplines.length > 0 && (
+            <div className="space-y-1.5">
+              <Label htmlFor="intake-discipline">Discipline</Label>
+              <select
+                id="intake-discipline"
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm font-sans"
+                value={form.discipline}
+                onChange={(e) => setForm((f) => ({ ...f, discipline: e.target.value }))}
+              >
+                <option value="">Choose discipline…</option>
+                {classDisciplines.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {form.classId && (
             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">

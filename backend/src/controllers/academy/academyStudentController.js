@@ -10,6 +10,7 @@ const {
   renderStudentsExcel,
   renderStudentsPdf,
 } = require('../../services/academy/academyStudentExportService');
+const importService = require('../../services/academy/academyStudentImportService');
 const rt = require('../../services/realtime/academyRealtime');
 
 async function assertParentOwnsStudent(req, studentId) {
@@ -79,11 +80,13 @@ const list = catchAsync(async (req, res) => {
     classId: req.query.classId,
     sectionId: req.query.sectionId,
     status: req.query.status,
+    fee: req.query.fee,
+    discipline: req.query.discipline,
     sessionId: req.query.sessionId,
     sort: req.query.sort,
     guardianEmail,
   });
-  res.json({ success: true, data: result.items, pagination: result.pagination });
+  res.json({ success: true, data: result.items, pagination: result.pagination, counts: result.counts });
 });
 
 async function resolveExportMeta(req) {
@@ -109,6 +112,26 @@ async function resolveExportMeta(req) {
     generatedBy: req.user?.name || req.user?.email || '',
   };
 }
+
+const importTemplate = catchAsync(async (req, res) => {
+  const buffer = await importService.buildImportTemplate();
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader('Content-Disposition', 'attachment; filename="STUDENT DETAIL.xlsx"');
+  res.send(Buffer.from(buffer));
+});
+
+const importStudents = catchAsync(async (req, res) => {
+  const data = await importService.importStudentsFromFile({
+    file: req.file,
+    sessionId: req.body.sessionId || req.query.sessionId,
+    classId: req.body.classId || req.query.classId || '',
+    userId: req.user._id,
+  });
+  res.status(data.createdCount ? 201 : 400).json({ success: data.createdCount > 0, data });
+});
 
 const exportStudents = catchAsync(async (req, res) => {
   const format = String(req.query.format || 'xlsx').toLowerCase();
@@ -189,6 +212,8 @@ module.exports = {
   getById,
   getRecord,
   list,
+  importTemplate,
+  importStudents,
   exportStudents,
   exportCsv: exportStudents,
   previewFees,

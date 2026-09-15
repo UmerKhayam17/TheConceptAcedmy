@@ -17,6 +17,7 @@ const assessmentCtrl = require('../controllers/academy/academyAssessmentControll
 const classTestCtrl = require('../controllers/academy/academyClassTestController');
 const dashboardCtrl = require('../controllers/academy/academyDashboardController');
 const { uploadImage } = require('../middleware/uploadImage');
+const { uploadSpreadsheet } = require('../middleware/uploadSpreadsheet');
 
 const router = Router();
 router.use(protect);
@@ -204,6 +205,17 @@ router.get(
   '/students/export',
   requirePermission('view_academy_students'),
   studentCtrl.exportStudents
+);
+router.get(
+  '/students/import/template',
+  requireAnyPermission('temporary_register_student', 'manage_academy_students', 'activate_student'),
+  studentCtrl.importTemplate
+);
+router.post(
+  '/students/import',
+  requireAnyPermission('temporary_register_student', 'manage_academy_students', 'activate_student'),
+  uploadSpreadsheet.single('file'),
+  studentCtrl.importStudents
 );
 router.get('/students', requirePermission('view_academy_students'), studentCtrl.list);
 router.get(

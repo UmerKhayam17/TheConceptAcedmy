@@ -594,6 +594,10 @@ export default function RegisterStudentPage({
     }
     if (!form.classId) missing.push("Class");
     if (!form.sectionId) missing.push("Section");
+    const enrollClass = classes.find((c) => c._id === form.classId);
+    if ((enrollClass?.disciplines?.length ?? 0) > 0 && !form.discipline.trim()) {
+      missing.push("Discipline");
+    }
     if (!subjectSelectionValid) {
       if (form.isFullPackage && hasChoiceGroups) {
         missing.push("One elective per group (section 6)");
@@ -620,12 +624,14 @@ export default function RegisterStudentPage({
     && (!form.contactPhoneRes.trim() || isValidLandline(form.contactPhoneRes))
     && form.classId
     && form.sectionId
+    && ((classes.find((c) => c._id === form.classId)?.disciplines?.length ?? 0) === 0 || Boolean(form.discipline.trim()))
     && subjectSelectionValid
     && (isEdit || isAccountsEnrollment
       ? true
       : Boolean(form.guardianEmail.trim()) && form.parentPassword.trim().length >= 8);
 
   const selectedClassName = classes.find((c) => c._id === form.classId)?.className;
+  const classDisciplines = classes.find((c) => c._id === form.classId)?.disciplines ?? [];
 
   const cnicError = fieldTouched.fatherGuardianCnic ? cnicValidationMessage(form.fatherGuardianCnic) : null;
   const mobileError = fieldTouched.mobileNo ? mobileValidationMessage(form.mobileNo) : null;
@@ -1055,6 +1061,7 @@ export default function RegisterStudentPage({
                   ...f,
                   classId: e.target.value,
                   sectionId: "",
+                  discipline: "",
                   selectedSubjects: [],
                   isFullPackage: false,
                 }));
@@ -1067,6 +1074,22 @@ export default function RegisterStudentPage({
               ))}
             </IconSelect>
           </FormField>
+
+          {classDisciplines.length > 0 && (
+            <FormField label="Discipline" required>
+              <IconSelect
+                id="enroll-discipline"
+                icon={GraduationCap}
+                value={form.discipline}
+                onChange={(e) => setForm((f) => ({ ...f, discipline: e.target.value }))}
+              >
+                <option value="">Choose discipline…</option>
+                {classDisciplines.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </IconSelect>
+            </FormField>
+          )}
 
           <FormField label="Section" required>
             <IconSelect

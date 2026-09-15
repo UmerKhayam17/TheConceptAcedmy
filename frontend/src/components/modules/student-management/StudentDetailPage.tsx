@@ -248,6 +248,7 @@ function ProfileTab({ student }: { student: AcademyStudent }) {
         <SectionTitle>Fee structure at registration</SectionTitle>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
           <DetailRow label="Class" value={classLabel(student.classId)} />
+          <DetailRow label="Discipline" value={student.discipline || "—"} />
           <DetailRow label="Monthly fee" value={formatPkr(student.monthlyFee)} />
           <DetailRow label="Admission fee" value={formatPkr(student.admissionFee)} />
           <DetailRow label="Monthly fee discount" value={formatPkr(student.monthlyFeeDiscount)} />
