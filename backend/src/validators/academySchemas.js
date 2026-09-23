@@ -409,7 +409,12 @@ const academyAssessmentBulkBody = Joi.object({
 });
 
 const academyAttendanceMark = Joi.object({
-  date: Joi.string().isoDate().required(),
+  // Keep the calendar day. isoDate() rewrites YYYY-MM-DD into a UTC timestamp,
+  // which dayBounds then rejects.
+  date: Joi.string()
+    .pattern(/^\d{4}-\d{2}-\d{2}$/)
+    .required()
+    .messages({ 'string.pattern.base': 'date must be YYYY-MM-DD' }),
   entries: Joi.array()
     .items(
       Joi.object({

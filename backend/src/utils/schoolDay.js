@@ -34,7 +34,9 @@ function todayYmd(timeZone = DEFAULT_TZ) {
  */
 function dayBounds(ymd, timeZone = DEFAULT_TZ) {
   const tz = resolveTimezone(timeZone);
-  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const raw = ymd instanceof Date ? formatDateInTz(ymd, tz) : String(ymd || '').trim();
+  // Accept a calendar day, or an ISO timestamp that starts with one.
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
   if (!m) {
     const err = new Error('Invalid date (expected YYYY-MM-DD)');
     err.statusCode = 400;
