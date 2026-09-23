@@ -10,7 +10,7 @@ const {
   verifyRefreshToken,
   hashToken,
 } = require('../utils/tokenService');
-const { getRefreshCookieOptions } = require('../utils/authCookies');
+const { setRefreshCookie, clearRefreshCookie } = require('../utils/authCookies');
 const MODULES = require('../modules/moduleConfig');
 
 const otpStore = new Map();
@@ -89,7 +89,7 @@ const login = catchAsync(async (req, res) => {
   user.lastLogin = new Date();
   await user.save();
 
-  res.cookie('refreshToken', refreshToken, getRefreshCookieOptions(req));
+  setRefreshCookie(res, req, refreshToken);
 
   const modulePermissions = collectSessionModulePermissions(user);
 
@@ -141,7 +141,7 @@ const refresh = catchAsync(async (req, res) => {
   const { accessToken, refreshToken } = issueTokens(user);
   user.refreshToken = hashToken(refreshToken);
   await user.save();
-  res.cookie('refreshToken', refreshToken, getRefreshCookieOptions(req));
+  setRefreshCookie(res, req, refreshToken);
   const modulePermissions = collectSessionModulePermissions(user);
   res.json({
     success: true,
@@ -166,7 +166,7 @@ const logout = catchAsync(async (req, res) => {
       /* ignore */
     }
   }
-  res.clearCookie('refreshToken', getRefreshCookieOptions(req));
+  clearRefreshCookie(res);
   res.json({ success: true, message: 'Logged out' });
 });
 
@@ -261,7 +261,7 @@ const verifyOtp = catchAsync(async (req, res) => {
   const { accessToken, refreshToken } = issueTokens(user);
   user.refreshToken = hashToken(refreshToken);
   await user.save();
-  res.cookie('refreshToken', refreshToken, getRefreshCookieOptions(req));
+  setRefreshCookie(res, req, refreshToken);
   const modulePermissions = collectSessionModulePermissions(user);
   res.json({
     success: true,
