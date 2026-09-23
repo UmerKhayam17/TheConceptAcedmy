@@ -15,6 +15,10 @@ const academyFeeRecordSchema = new mongoose.Schema(
     notes: { type: String, trim: true },
     recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    /** Set once when staff are told this voucher is unpaid. */
+    pendingNoticeAt: { type: Date, select: false },
+    /** Set once when staff are told this voucher became overdue. */
+    overdueNoticeAt: { type: Date, select: false },
   },
   { timestamps: true, collection: 'feerecords' }
 );

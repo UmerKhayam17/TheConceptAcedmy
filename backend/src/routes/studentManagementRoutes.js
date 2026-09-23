@@ -318,6 +318,11 @@ router.get(
   feeCtrl.exportDefaulters
 );
 router.get(
+  '/fees/defaulters/export-month-wise',
+  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  feeCtrl.exportDefaultersMonthWise
+);
+router.get(
   '/fees/defaulters',
   requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
   feeCtrl.defaulters
@@ -334,9 +339,20 @@ router.post(
   feeCtrl.generate
 );
 router.get(
+  '/fees/challan/:studentId',
+  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  feeCtrl.challan
+);
+router.get(
   '/fees/:id/receipt',
   requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
   feeCtrl.receipt
+);
+router.post(
+  '/fees/pay',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeePayMany),
+  feeCtrl.payMany
 );
 router.patch(
   '/fees/:id/pay',

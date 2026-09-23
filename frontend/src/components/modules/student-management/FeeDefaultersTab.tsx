@@ -1,22 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Download, Phone } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { AlertTriangle, Download, FileText, Loader2, Phone, Printer, Receipt } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
   exportFeeDefaultersCsv,
+  exportFeeDefaultersMonthWise,
+  type DefaulterReportFormat,
   fetchAcademyClasses,
   fetchFeeDefaulters,
   fetchFeeDefaultersSummary,
+  printFeeChallan,
   type FeeDefaulter,
+  type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
+import { DefaulterListDownload } from "./DefaulterListDownload";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
@@ -68,6 +79,14 @@ export default function FeeDefaultersTab({
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
+
+  const printMut = useMutation({
+    mutationFn: ({ studentId, size }: { studentId: string; size: FeeReceiptSize }) =>
+      printFeeChallan(studentId, size),
+    onError: (e: Error) =>
+      toast({ title: "Could not print challan", description: e.message, variant: "destructive" }),
+  });
 
   const filterParams = useMemo(
     () => ({
@@ -143,6 +162,28 @@ export default function FeeDefaultersTab({
     }
   };
 
+  const handleMonthWiseExport = async (format: DefaulterReportFormat) => {
+    setExportingMonthWise(format);
+    try {
+      const blob = await exportFeeDefaultersMonthWise(filterParams, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = format === "pdf" ? "fee-defaulters.pdf" : "fee-defaulters.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+    } catch (e) {
+      toast({
+        title: "Export failed",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setExportingMonthWise(null);
+    }
+  };
+
   const canExport = caps.canView;
 
   return (
@@ -155,16 +196,22 @@ export default function FeeDefaultersTab({
           </h2>
         </div>
         {canExport && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 shrink-0"
-            disabled={exporting || defaulters.length === 0}
-            onClick={() => void handleExport()}
-          >
-            <Download className="h-4 w-4" />
-            {exporting ? "Exporting…" : "Export CSV"}
-          </Button>
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              disabled={exporting || defaulters.length === 0}
+              onClick={() => void handleExport()}
+            >
+              <Download className="h-4 w-4" />
+              {exporting ? "Exporting…" : "Export CSV"}
+            </Button>
+            <DefaulterListDownload
+              exporting={exportingMonthWise}
+              onDownload={(format) => void handleMonthWiseExport(format)}
+            />
+          </div>
         )}
       </div>
 
@@ -290,14 +337,14 @@ export default function FeeDefaultersTab({
                 const detailHref = routes ? routes.detail(d.student._id) : null;
                 const tel = d.student.phone?.replace(/\s/g, "");
                 return (
-                  <tr key={d.studentId} className="border-b last:border-0 hover:bg-muted/30">
+                  <tr key={d.studentId} className="border-b last:border-0 bg-red-500/10 text-red-700 dark:text-red-300">
                     <td className="p-2.5">
                       {detailHref ? (
-                        <Link to={detailHref} className="font-medium text-primary hover:underline">
+                        <Link to={detailHref} className="font-semibold text-red-700 dark:text-red-300 hover:underline">
                           {d.student.studentName}
                         </Link>
                       ) : (
-                        <div className="font-medium">{d.student.studentName}</div>
+                        <div className="font-semibold text-red-700 dark:text-red-300">{d.student.studentName}</div>
                       )}
                       <p className="text-xs text-muted-foreground">{d.student.studentId}</p>
                       <p className="text-xs text-muted-foreground lg:hidden">{d.student.fatherName}</p>
@@ -328,11 +375,47 @@ export default function FeeDefaultersTab({
                       <SeverityBadge days={d.daysOverdue} />
                     </td>
                     <td className="p-2.5 text-right">
-                      {(caps.canEdit || caps.canCreate) && detailHref && (
-                        <Button size="sm" variant="outline" asChild>
-                          <Link to={detailHref}>Collect fee</Link>
-                        </Button>
-                      )}
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8"
+                              disabled={printMut.isPending && printMut.variables?.studentId === d.student._id}
+                              aria-label="Print challan"
+                              title="Print challan"
+                            >
+                              {printMut.isPending && printMut.variables?.studentId === d.student._id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Printer className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "thermal" })}
+                            >
+                              <Receipt className="h-4 w-4" />
+                              Thermal
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "a4" })}
+                            >
+                              <FileText className="h-4 w-4" />
+                              A4
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        {(caps.canEdit || caps.canCreate) && detailHref && (
+                          <Button size="sm" variant="outline" asChild>
+                            <Link to={detailHref}>Collect fee</Link>
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

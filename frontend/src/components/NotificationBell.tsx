@@ -19,6 +19,20 @@ import {
   type AppNotification,
 } from "@/lib/notificationsApi";
 
+function showDesktopNotification(n: AppNotification) {
+  if (typeof window === "undefined" || typeof Notification === "undefined") return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const note = new Notification(n.title, { body: n.body || "", tag: n._id });
+    note.onclick = () => {
+      window.focus();
+      note.close();
+    };
+  } catch {
+    /* desktop notifications unavailable */
+  }
+}
+
 function formatWhen(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -66,6 +80,7 @@ export default function NotificationBell() {
       );
       setLiveUnread((c) => c + 1);
       toast({ title: n.title, description: n.body || undefined });
+      showDesktopNotification(n);
     };
 
     socketService.onNotificationNew(onNew);
@@ -124,7 +139,18 @@ export default function NotificationBell() {
   );
 
   return (
-    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) void refetch(); }}>
+    <Popover
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (v) {
+          void refetch();
+          if (typeof Notification !== "undefined" && Notification.permission === "default") {
+            void Notification.requestPermission();
+          }
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative shrink-0" aria-label="Notifications">
           <Bell className="h-4 w-4" />
