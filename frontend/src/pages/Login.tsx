@@ -39,7 +39,7 @@ const highlights = [
 ];
 
 const fieldClass =
-  "h-[52px] rounded-[9px] border-[#D7DCE5] bg-white pl-11 text-[15px] shadow-none focus-visible:border-[#D9A441] focus-visible:ring-[3px] focus-visible:ring-[#D9A441]/20";
+  "h-11 rounded-[9px] border-[#D7DCE5] bg-white pl-11 text-[15px] shadow-none focus-visible:border-[#D9A441] focus-visible:ring-[3px] focus-visible:ring-[#D9A441]/20";
 
 function AcademyMark() {
   return (
@@ -165,17 +165,17 @@ const Login = () => {
           </div>
         </div>
 
-        <div className="relative order-1 flex items-center justify-center overflow-hidden bg-white px-5 py-8 md:order-2 md:h-full md:overflow-y-auto md:px-6 min-[1100px]:px-8">
+        <div className="relative order-1 flex items-center justify-center overflow-hidden bg-white px-5 py-6 md:order-2 md:h-full md:px-8">
           <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full border border-[#F0DFC0] bg-[#FFFBF2]" />
           <div className="pointer-events-none absolute -bottom-28 -left-16 h-52 w-52 rounded-full border border-[#F0DFC0]/80 bg-[#FFFBF2]" />
 
-          <div className="relative z-10 w-full max-w-[620px] rounded-[20px] border border-[rgba(15,23,42,0.06)] bg-white px-5 py-6 shadow-none motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 sm:px-8 sm:py-8 md:px-8 md:py-8 md:shadow-[0_20px_60px_rgba(15,23,42,0.08)] min-[1100px]:px-10">
+          <div className="relative z-10 w-full max-w-[460px] rounded-[20px] border border-[rgba(15,23,42,0.06)] bg-white px-5 py-5 shadow-none motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 sm:px-7 md:shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
             <PwaInstallPrompt />
 
-            <h2 className="font-display text-[32px] font-bold leading-none text-[#071426] min-[1100px]:text-[38px]">Sign in</h2>
-            <p className="mt-2 text-[15px] text-[#667085]">Use the email and password issued by your academy.</p>
+            <h2 className="font-display text-[30px] font-bold leading-none text-[#071426]">Sign in</h2>
+            <p className="mt-1.5 text-sm text-[#667085]">Use the email and password issued by your academy.</p>
 
-            <form onSubmit={(e) => void handleSubmit(e)} className="mt-6 space-y-4" noValidate>
+            <form onSubmit={(e) => void handleSubmit(e)} className="mt-4 space-y-3" noValidate>
               <div className="space-y-1.5">
                 <Label htmlFor="email" className="text-sm font-medium text-[#111827]">Email</Label>
                 <div className="relative">
@@ -237,7 +237,7 @@ const Login = () => {
 
               <Button
                 type="submit"
-                className="h-[54px] w-full rounded-[9px] border-0 bg-[linear-gradient(135deg,#F2B632,#D99618)] text-base font-semibold text-white shadow-none transition-all duration-200 hover:brightness-105"
+                className="h-11 w-full rounded-[9px] border-0 bg-[linear-gradient(135deg,#F2B632,#D99618)] text-base font-semibold text-white shadow-none transition-all duration-200 hover:brightness-105"
                 disabled={submitting}
               >
                 {submitting ? "Signing in..." : "Sign in"}
@@ -245,14 +245,14 @@ const Login = () => {
               </Button>
             </form>
 
-            <p className="mt-5 text-center text-sm text-[#4B5563]">
+            <p className="mt-3.5 text-center text-sm text-[#4B5563]">
               <Link to="/" className="inline-flex items-center gap-1.5 transition-colors duration-200 hover:text-[#C99028]">
                 <ArrowLeft className="h-4 w-4" strokeWidth={2} aria-hidden />
                 Back to homepage
               </Link>
             </p>
 
-            <div className="mt-5 border-t border-[#D9DEE7] pt-4">
+            <div className="mt-3.5 border-t border-[#D9DEE7] pt-3">
               <div className="flex flex-col items-center justify-center gap-2 text-[11px] text-[#667085] sm:flex-row sm:gap-3">
                 <p className="flex items-center gap-1.5">
                   <ShieldCheck className="h-3.5 w-3.5 text-[#C99028]" />

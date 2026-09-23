@@ -37,7 +37,7 @@ const PwaInstallPrompt = () => {
   };
 
   return (
-    <div className="mb-5 rounded-xl border border-[#F0DFC0] bg-[#FFFBF2] p-[18px]">
+    <div className="mb-4 rounded-xl border border-[#F0DFC0] bg-[#FFFBF2] p-3.5">
       <div className="flex gap-3">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#D9A441]/15 text-[#C99028]">
           <Smartphone className="h-4 w-4" />
@@ -51,7 +51,7 @@ const PwaInstallPrompt = () => {
       </div>
       <Button
         type="button"
-        className="mt-3 h-12 w-full rounded-[9px] border-0 bg-[#D9A441] text-sm font-semibold text-white shadow-none transition-all duration-200 hover:bg-[#C99028]"
+        className="mt-2.5 h-10 w-full rounded-[9px] border-0 bg-[#D9A441] text-sm font-semibold text-white shadow-none transition-all duration-200 hover:bg-[#C99028]"
         onClick={() => void onInstall()}
       >
         <Download className="h-4 w-4" />
