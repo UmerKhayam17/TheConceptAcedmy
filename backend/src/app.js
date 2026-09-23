@@ -14,6 +14,10 @@ const clientOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
 
 const app = express();
 
+// Nginx (and the Vite dev proxy) set X-Forwarded-For. Trust one hop so
+// rate limits use the visitor's address instead of the proxy address.
+app.set('trust proxy', 1);
+
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },

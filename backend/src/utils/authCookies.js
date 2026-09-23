@@ -8,13 +8,28 @@ function parseDurationMs(value) {
   return n * (multipliers[unit] || multipliers.d);
 }
 
+function forwardedValue(req, name) {
+  const raw = req.get(name);
+  if (!raw) return '';
+  return String(raw).split(',')[0].trim();
+}
+
+/** Host the browser used. Vite rewrites Host to the API, so prefer the forwarded host. */
+function browserHost(req) {
+  return forwardedValue(req, 'x-forwarded-host') || req.get('host') || '';
+}
+
+function browserIsHttps(req) {
+  const proto = forwardedValue(req, 'x-forwarded-proto');
+  if (proto) return proto === 'https';
+  return Boolean(req.secure);
+}
+
 function isCrossOriginRequest(req) {
   const origin = req.get('origin');
   if (!origin) return false;
   try {
-    const originHost = new URL(origin).host;
-    const requestHost = req.get('host');
-    return Boolean(requestHost && originHost !== requestHost);
+    return new URL(origin).host !== browserHost(req);
   } catch {
     return false;
   }
@@ -23,13 +38,36 @@ function isCrossOriginRequest(req) {
 function getRefreshCookieOptions(req) {
   const isProd = process.env.NODE_ENV === 'production';
   const crossOrigin = isCrossOriginRequest(req);
+  const secure = isProd || browserIsHttps(req) || crossOrigin;
   return {
     httpOnly: true,
-    secure: isProd || crossOrigin,
-    sameSite: crossOrigin ? 'none' : 'lax',
+    secure,
+    sameSite: crossOrigin && secure ? 'none' : 'lax',
     maxAge: parseDurationMs(process.env.JWT_REFRESH_EXPIRES || '30d'),
     path: '/',
   };
 }
 
-module.exports = { getRefreshCookieOptions, parseDurationMs };
+/** Drop older copies saved with different Secure / SameSite flags. */
+function clearRefreshCookie(res) {
+  const variants = [
+    { path: '/', httpOnly: true, sameSite: 'lax', secure: false },
+    { path: '/', httpOnly: true, sameSite: 'lax', secure: true },
+    { path: '/', httpOnly: true, sameSite: 'none', secure: true },
+    { path: '/', httpOnly: true, sameSite: 'strict', secure: false },
+    { path: '/', httpOnly: true, sameSite: 'strict', secure: true },
+  ];
+  variants.forEach((opts) => res.clearCookie('refreshToken', opts));
+}
+
+function setRefreshCookie(res, req, refreshToken) {
+  clearRefreshCookie(res);
+  res.cookie('refreshToken', refreshToken, getRefreshCookieOptions(req));
+}
+
+module.exports = {
+  getRefreshCookieOptions,
+  parseDurationMs,
+  clearRefreshCookie,
+  setRefreshCookie,
+};

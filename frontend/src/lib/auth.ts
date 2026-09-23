@@ -26,7 +26,15 @@ function dispatch() {
 
 export function getAccessToken(): string | null {
   try {
-    return sessionStorage.getItem(ACCESS_KEY);
+    const saved = localStorage.getItem(ACCESS_KEY);
+    if (saved) return saved;
+    const legacy = sessionStorage.getItem(ACCESS_KEY);
+    if (legacy) {
+      localStorage.setItem(ACCESS_KEY, legacy);
+      sessionStorage.removeItem(ACCESS_KEY);
+      return legacy;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -34,8 +42,9 @@ export function getAccessToken(): string | null {
 
 function setAccessToken(token: string | null) {
   try {
-    if (token) sessionStorage.setItem(ACCESS_KEY, token);
-    else sessionStorage.removeItem(ACCESS_KEY);
+    if (token) localStorage.setItem(ACCESS_KEY, token);
+    else localStorage.removeItem(ACCESS_KEY);
+    sessionStorage.removeItem(ACCESS_KEY);
   } catch {
     /* ignore */
   }
@@ -229,11 +238,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     }
 
     try {
-      let result = await fetchRefreshOnce();
-      if (!result.token && result.authFailed) {
-        await sleep(400);
-        result = await fetchRefreshOnce();
-      }
+      const result = await fetchRefreshOnce();
 
       if (result.token) {
         setAccessToken(result.token);
@@ -296,7 +301,7 @@ export async function restoreSession(): Promise<SessionUser | null> {
     return cachedUser;
   }
 
-  return readStoredUser();
+  return null;
 }
 
 let sessionRestorePromise: Promise<SessionUser | null> | null = null;
