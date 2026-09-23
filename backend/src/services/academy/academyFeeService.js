@@ -1,8 +1,16 @@
+const mongoose = require('mongoose');
 const ApiError = require('../../utils/ApiError');
 const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const { populateCreatedBy } = require('../../utils/createdBy');
+const { notifyByAccess } = require('../realtime/realtimeService');
+const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 function daysSince(date) {
   if (!date) return 0;
@@ -154,11 +162,59 @@ async function buildFeeQuery({ studentId, studentIds, status, month, year, class
   return q;
 }
 
-/** Mark pending vouchers past due date as overdue. */
+function periodText(month, year, feeType) {
+  if (feeType === 'admission') return 'Admission';
+  const name = MONTH_NAMES[(Number(month) || 1) - 1] || '';
+  return `${name} ${year || ''}`.trim();
+}
+
+function studentLabel(record) {
+  const student = record.studentId;
+  const name = student && typeof student === 'object' ? student.studentName : 'Student';
+  return `${name} (${periodText(record.month, record.year, record.feeType)})`;
+}
+
+function unpaidSummary(records) {
+  const names = records.slice(0, 5).map(studentLabel);
+  const extra = records.length > 5 ? ` and ${records.length - 5} more` : '';
+  return `${names.join(', ')}${extra}`;
+}
+
+async function notifyFeeStaff(notification) {
+  await notifyByAccess(
+    {
+      roles: ['accountant', 'admin'],
+      permissions: ['manage_academy_fees', 'view_academy_fee_reports'],
+      moduleKey: 'fee',
+      moduleAction: 'view',
+    },
+    notification,
+    null
+  );
+}
+
+async function safeNotify(fn) {
+  try {
+    await fn();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[fees] notification failed:', err.message);
+  }
+}
+
+/** Mark pending vouchers past due date as overdue, and alert staff once. */
 async function syncOverdueFees(filter = {}) {
   const q = await buildFeeQuery(filter);
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
+
+  const flipping = await AcademyFeeRecord.find({
+    ...q,
+    status: 'pending',
+    dueDate: { $lt: startOfToday },
+    overdueNoticeAt: null,
+  }).populate({ path: 'studentId', select: 'studentName studentId' });
+
   await AcademyFeeRecord.updateMany(
     {
       ...q,
@@ -167,6 +223,47 @@ async function syncOverdueFees(filter = {}) {
     },
     { $set: { status: 'overdue' } }
   );
+
+  if (flipping.length) {
+    await AcademyFeeRecord.updateMany(
+      { _id: { $in: flipping.map((r) => r._id) } },
+      { $set: { overdueNoticeAt: new Date() } }
+    );
+    await safeNotify(() => notifyFeeStaff({
+      type: 'fee_overdue',
+      title: flipping.length === 1 ? 'Unpaid fee is overdue' : `${flipping.length} unpaid fees are overdue`,
+      body: unpaidSummary(flipping),
+      path: '/fees',
+      moduleKey: 'fee',
+      resource: 'fees',
+      resourceId: String(flipping[0]._id),
+      meta: { feeRecordIds: flipping.map((r) => String(r._id)), count: flipping.length },
+    }));
+  }
+
+  const unseen = await AcademyFeeRecord.find({
+    ...q,
+    status: { $in: ['pending', 'overdue'] },
+    pendingNoticeAt: null,
+    overdueNoticeAt: null,
+  }).populate({ path: 'studentId', select: 'studentName studentId' });
+
+  if (unseen.length) {
+    await AcademyFeeRecord.updateMany(
+      { _id: { $in: unseen.map((r) => r._id) } },
+      { $set: { pendingNoticeAt: new Date() } }
+    );
+    await safeNotify(() => notifyFeeStaff({
+      type: 'fee_unpaid',
+      title: unseen.length === 1 ? 'Student has an unpaid fee' : `${unseen.length} students have unpaid fees`,
+      body: unpaidSummary(unseen),
+      path: '/fees',
+      moduleKey: 'fee',
+      resource: 'fees',
+      resourceId: String(unseen[0]._id),
+      meta: { feeRecordIds: unseen.map((r) => String(r._id)), count: unseen.length },
+    }));
+  }
 }
 
 async function getFeeRecordById(id) {
@@ -204,28 +301,103 @@ async function listFeeRecords({
   const skip = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
   const perPage = Math.min(100, Math.max(1, limit));
 
-  const [items, total] = await Promise.all([
-    populateCreatedBy(
-      AcademyFeeRecord.find(q).populate({
-        path: 'studentId',
-        select: 'studentId studentName fatherName phone classId monthlyFee',
-        populate: {
-          path: 'classId',
-          select: 'className sessionId',
-          populate: { path: 'sessionId', select: 'name status' },
+  const ranked = await AcademyFeeRecord.aggregate([
+    { $match: q },
+    {
+      $addFields: {
+        statusRank: {
+          $switch: {
+            branches: [
+              { case: { $eq: ['$status', 'overdue'] }, then: 0 },
+              { case: { $eq: ['$status', 'pending'] }, then: 1 },
+              { case: { $eq: ['$status', 'waived'] }, then: 2 },
+            ],
+            default: 3,
+          },
         },
-      })
-    )
-      .sort({ year: -1, month: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(perPage),
+      },
+    },
+    { $sort: { statusRank: 1, year: -1, month: -1, createdAt: -1 } },
+    { $skip: skip },
+    { $limit: perPage },
+    { $project: { _id: 1 } },
+  ]);
+  const ids = ranked.map((row) => row._id);
+  const [docs, total] = await Promise.all([
+    ids.length
+      ? populateCreatedBy(
+          AcademyFeeRecord.find({ _id: { $in: ids } }).populate({
+            path: 'studentId',
+            select: 'studentId studentName fatherName phone classId monthlyFee',
+            populate: {
+              path: 'classId',
+              select: 'className sessionId',
+              populate: { path: 'sessionId', select: 'name status' },
+            },
+          })
+        )
+      : [],
     AcademyFeeRecord.countDocuments(q),
   ]);
+  const order = new Map(ids.map((id, index) => [String(id), index]));
+  const sorted = docs.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+  const items = await attachUnpaidMonthCounts(sorted);
 
   return {
     items,
     pagination: { page: Math.max(1, page), limit: perPage, total, pages: Math.ceil(total / perPage) || 1 },
   };
+}
+
+async function attachUnpaidMonthCounts(docs) {
+  const studentIds = [
+    ...new Set(
+      docs
+        .map((doc) => {
+          const student = doc.studentId;
+          return student && student._id ? student._id : student;
+        })
+        .filter(Boolean)
+        .map((id) => String(id))
+    ),
+  ];
+  const counts = new Map();
+  if (studentIds.length) {
+    const rows = await AcademyFeeRecord.aggregate([
+      {
+        $match: {
+          studentId: { $in: studentIds.map((id) => new mongoose.Types.ObjectId(id)) },
+          status: { $in: ['pending', 'overdue'] },
+          feeType: 'monthly',
+        },
+      },
+      { $sort: { year: 1, month: 1 } },
+      {
+        $group: {
+          _id: '$studentId',
+          count: { $sum: 1 },
+          firstMonth: { $first: '$month' },
+          firstYear: { $first: '$year' },
+          lastMonth: { $last: '$month' },
+          lastYear: { $last: '$year' },
+        },
+      },
+    ]);
+    rows.forEach((row) => counts.set(String(row._id), row));
+  }
+
+  return docs.map((doc) => {
+    const row = typeof doc.toObject === 'function' ? doc.toObject({ virtuals: true }) : { ...doc };
+    const student = row.studentId;
+    const key = String(student && student._id ? student._id : student || '');
+    const info = counts.get(key);
+    row.unpaidMonthCount = info?.count || 0;
+    if (info?.count) {
+      row.unpaidFrom = periodText(info.firstMonth, info.firstYear, 'monthly');
+      row.unpaidTo = periodText(info.lastMonth, info.lastYear, 'monthly');
+    }
+    return row;
+  });
 }
 
 async function generateMonthlyFees({ month, year, classId }, userId) {
@@ -258,11 +430,51 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       receiptNumber: receiptNumber(student, month, year, 'monthly'),
       recordedBy: userId,
       createdBy: userId,
+      pendingNoticeAt: new Date(),
     });
     created.push(record);
+    record.studentId = student;
+  }
+
+  if (created.length) {
+    const label = periodText(month, year, 'monthly');
+    await safeNotify(() => notifyFeeStaff({
+      type: 'fee_challan',
+      title: created.length === 1 ? 'Fee challan issued' : `${created.length} fee challans issued`,
+      body: `${label} is unpaid for ${unpaidSummary(created)}.`,
+      path: '/fees',
+      moduleKey: 'fee',
+      resource: 'fees',
+      resourceId: `issued-${year}-${month}-${created[0]._id}`,
+      meta: { month, year, count: created.length },
+    }));
   }
 
   return { created: created.length, skipped: skipped.length };
+}
+
+async function listUnpaidForChallan(studentId, months) {
+  const student = await AcademyStudent.findById(studentId);
+  if (!student) throw new ApiError(404, 'Student not found');
+  await syncOverdueFees({ studentId });
+  let query = AcademyFeeRecord.find({
+    studentId,
+    status: { $in: ['pending', 'overdue'] },
+  })
+    .sort({ year: 1, month: 1, createdAt: 1 })
+    .populate({
+      path: 'studentId',
+      select: 'studentId studentName fatherName phone classId',
+      populate: {
+        path: 'classId',
+        select: 'className sessionId',
+        populate: { path: 'sessionId', select: 'name status' },
+      },
+    })
+    .populate('recordedBy', 'name email');
+  const count = Number(months);
+  if (Number.isInteger(count) && count > 0) query = query.limit(count);
+  return query;
 }
 
 async function recordPayment(feeRecordId, { paymentMethod, notes }, userId) {
@@ -280,6 +492,25 @@ async function recordPayment(feeRecordId, { paymentMethod, notes }, userId) {
   }
   await record.save();
   return record;
+}
+
+async function recordPayments(feeRecordIds, payload, userId) {
+  const ids = [...new Set((feeRecordIds || []).map(String))];
+  const records = await AcademyFeeRecord.find({ _id: { $in: ids } }).sort({ year: 1, month: 1 });
+  if (records.length !== ids.length) throw new ApiError(404, 'One or more fee records were not found');
+  const students = new Set(records.map((r) => String(r.studentId)));
+  if (students.size !== 1) throw new ApiError(400, 'Pay fees for one student at a time');
+  if (records.some((r) => r.status === 'paid')) throw new ApiError(400, 'One of the selected fees is already paid');
+
+  const paid = [];
+  for (const record of records) {
+    paid.push(await recordPayment(record._id, payload, userId));
+  }
+  return {
+    paid: paid.length,
+    total: paid.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
+    records: paid,
+  };
 }
 
 async function getStudentFeeHistory(studentId) {
@@ -485,15 +716,171 @@ async function exportFeeDefaulters({ classId, month, year, search, sessionId }) 
   return defaultersToCsv(items);
 }
 
+function monthKey(record) {
+  return `${record.year}-${String(record.month).padStart(2, '0')}`;
+}
+
+function monthHeader(record, sameYear) {
+  const name = MONTH_NAMES[(Number(record.month) || 1) - 1] || '';
+  return sameYear ? name : `${name} ${record.year}`;
+}
+
+function buildDefaulterReport(records) {
+  const monthOrder = [];
+  const seenMonths = new Set();
+  records.forEach((record) => {
+    const key = monthKey(record);
+    if (seenMonths.has(key)) return;
+    seenMonths.add(key);
+    monthOrder.push({ key, month: record.month, year: record.year });
+  });
+  const years = new Set(monthOrder.map((m) => m.year));
+  const sameYear = years.size <= 1;
+
+  const byStudent = new Map();
+  records.forEach((record) => {
+    const student = record.studentId;
+    const id = String(student._id);
+    if (!byStudent.has(id)) {
+      byStudent.set(id, {
+        regNo: student.studentId || student.registrationNumber || '',
+        name: student.studentName || '',
+        className: student.classId?.className || '',
+        amounts: {},
+        total: 0,
+      });
+    }
+    const row = byStudent.get(id);
+    const key = monthKey(record);
+    row.amounts[key] = (row.amounts[key] || 0) + (Number(record.amount) || 0);
+    row.total += Number(record.amount) || 0;
+  });
+
+  const students = [...byStudent.values()].sort(
+    (a, b) => a.className.localeCompare(b.className) || a.name.localeCompare(b.name)
+  );
+
+  const rows = students.map((student, index) => {
+    const row = {
+      serial: index + 1,
+      regNo: student.regNo,
+      name: student.name,
+      className: student.className,
+      total: student.total,
+    };
+    monthOrder.forEach((m) => {
+      row[m.key] = student.amounts[m.key] ?? null;
+    });
+    return row;
+  });
+
+  if (rows.length) {
+    const totalRow = { serial: '', regNo: '', name: 'Total', className: '', total: 0 };
+    monthOrder.forEach((m) => {
+      const sum = rows.reduce((acc, row) => acc + (Number(row[m.key]) || 0), 0);
+      totalRow[m.key] = sum || null;
+      totalRow.total += sum;
+    });
+    rows.push(totalRow);
+  }
+
+  const monthPdf = Math.max(40, Math.min(58, Math.floor(420 / Math.max(monthOrder.length, 1))));
+  const columns = [
+    { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 28, align: 'center' },
+    { key: 'regNo', header: 'Reg No', excelWidth: 22, pdfWidth: 88 },
+    { key: 'name', header: 'Name', excelWidth: 24, pdfWidth: 120 },
+    { key: 'className', header: 'Class', excelWidth: 14, pdfWidth: 52 },
+    ...monthOrder.map((m) => ({
+      key: m.key,
+      header: monthHeader(m, sameYear),
+      excelWidth: 12,
+      pdfWidth: monthPdf,
+      align: 'right',
+      numFmt: '#,##0',
+    })),
+    { key: 'total', header: 'Total pending', excelWidth: 16, pdfWidth: 68, align: 'right', numFmt: '#,##0' },
+  ];
+
+  return { columns, rows, monthCount: monthOrder.length };
+}
+
+async function loadUnpaidMonthlyFees({ classId, month, year, search, sessionId }) {
+  await syncOverdueFees({ classId, month, year, sessionId });
+
+  let studentIds;
+  if (classId || sessionId) {
+    studentIds = await resolveActiveStudentIds(classId, sessionId);
+    if (!studentIds.length) return [];
+  }
+
+  const feeMatch = {
+    ...buildDefaulterFeeMatch({ classId, month, year, studentIds }),
+    feeType: 'monthly',
+  };
+  let records = await AcademyFeeRecord.find(feeMatch)
+    .populate({
+      path: 'studentId',
+      select: 'studentId registrationNumber studentName classId status',
+      populate: { path: 'classId', select: 'className' },
+    })
+    .sort({ year: 1, month: 1 })
+    .lean();
+
+  records = records.filter((r) => r.studentId && r.studentId.status === 'active');
+  const term = String(search || '').trim().toLowerCase();
+  if (term) {
+    records = records.filter((r) => {
+      const student = r.studentId;
+      return [student.studentName, student.studentId, student.registrationNumber].some((value) =>
+        String(value || '').toLowerCase().includes(term)
+      );
+    });
+  }
+  return records;
+}
+
+async function exportFeeDefaultersMonthWise({ classId, month, year, search, sessionId, format }) {
+  const records = await loadUnpaidMonthlyFees({ classId, month, year, search, sessionId });
+  const { columns, rows } = buildDefaulterReport(records);
+  const title = 'Fee defaulter list';
+  const filterBits = [];
+  if (month && year) filterBits.push(`${MONTH_NAMES[Number(month) - 1]} ${year}`);
+  else if (year) filterBits.push(String(year));
+  else filterBits.push('All unpaid months');
+  const studentCount = rows.length ? rows.length - 1 : 0;
+  const meta = {
+    filterLine: filterBits.join(' · '),
+    countLabel: `${studentCount} student${studentCount === 1 ? '' : 's'}`,
+    generatedAt: new Date(),
+  };
+  const payload = {
+    title,
+    sheetName: 'Defaulters',
+    confidentialLabel: 'Fee defaulter list',
+    subject: 'Fee defaulters by month',
+    columns,
+    rows,
+    meta,
+    emptyMessage: 'No fee defaulters for the selected filters.',
+  };
+  if (String(format).toLowerCase() === 'pdf') {
+    return renderBrandedPdf(payload);
+  }
+  return renderBrandedExcel(payload);
+}
+
 module.exports = {
   listFeeRecords,
   getFeeRecordById,
+  listUnpaidForChallan,
   generateMonthlyFees,
   recordPayment,
+  recordPayments,
   getStudentFeeHistory,
   getFeeSummary,
   listFeeDefaulters,
   getDefaultersSummary,
   exportFeeDefaulters,
+  exportFeeDefaultersMonthWise,
   receiptNumber,
 };

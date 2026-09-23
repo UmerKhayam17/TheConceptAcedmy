@@ -237,6 +237,12 @@ const academyFeePay = Joi.object({
   notes: Joi.string().allow('').optional(),
 });
 
+const academyFeePayMany = Joi.object({
+  feeRecordIds: Joi.array().items(objectId).min(1).max(24).required(),
+  paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').default('cash'),
+  notes: Joi.string().allow('').optional(),
+});
+
 const academyFeeGenerate = Joi.object({
   month: Joi.number().integer().min(1).max(12).required(),
   year: Joi.number().integer().min(2000).max(2100).required(),
@@ -438,6 +444,7 @@ module.exports = {
   academyStudentDirectRegister,
   academyStudentPatch,
   academyFeePay,
+  academyFeePayMany,
   academyFeeGenerate,
   feeDefaultersQuery,
   academySalaryPay,

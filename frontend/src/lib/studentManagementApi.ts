@@ -220,6 +220,10 @@ export interface AcademyFeeRecord {
   paidAt?: string;
   paymentMethod?: string;
   notes?: string;
+  /** Unpaid monthly vouchers for this student, across every month. */
+  unpaidMonthCount?: number;
+  unpaidFrom?: string;
+  unpaidTo?: string;
 }
 
 export interface AcademyTimetableSlot {
@@ -860,6 +864,9 @@ export const generateMonthlyFees = (body: { month: number; year: number; classId
 export const payAcademyFee = (id: string, body?: { paymentMethod?: string; notes?: string }) =>
   api<AcademyFeeRecord>(`/fees/${id}/pay`, { method: "PATCH", body: JSON.stringify(body || {}) });
 
+export const payAcademyFees = (body: { feeRecordIds: string[]; paymentMethod?: string; notes?: string }) =>
+  api<{ paid: number; total: number }>(`/fees/pay`, { method: "POST", body: JSON.stringify(body) });
+
 export type FeeReceiptSize = "a4" | "thermal";
 
 export const fetchFeeReceiptPdf = async (id: string, size: FeeReceiptSize = "a4") => {
@@ -872,10 +879,10 @@ export const fetchFeeReceiptPdf = async (id: string, size: FeeReceiptSize = "a4"
   return res.blob();
 };
 
-export async function printFeeReceipt(id: string, size: FeeReceiptSize = "a4") {
+async function openPdfForPrint(load: () => Promise<Blob>, downloadName: string) {
   const preview = window.open("about:blank", "_blank");
   try {
-    const blob = await fetchFeeReceiptPdf(id, size);
+    const blob = await load();
     const url = URL.createObjectURL(blob);
     if (preview && !preview.closed) {
       preview.location.replace(url);
@@ -890,7 +897,7 @@ export async function printFeeReceipt(id: string, size: FeeReceiptSize = "a4") {
     } else {
       const a = document.createElement("a");
       a.href = url;
-      a.download = size === "thermal" ? "fee-receipt-thermal.pdf" : "fee-receipt-a4.pdf";
+      a.download = downloadName;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -900,6 +907,36 @@ export async function printFeeReceipt(id: string, size: FeeReceiptSize = "a4") {
     preview?.close();
     throw err;
   }
+}
+
+export function printFeeReceipt(id: string, size: FeeReceiptSize = "a4") {
+  return openPdfForPrint(
+    () => fetchFeeReceiptPdf(id, size),
+    size === "thermal" ? "fee-receipt-thermal.pdf" : "fee-receipt-a4.pdf"
+  );
+}
+
+export const fetchFeeChallanPdf = async (
+  studentId: string,
+  size: FeeReceiptSize = "a4",
+  months?: number
+) => {
+  const q = new URLSearchParams({ size });
+  if (months) q.set("months", String(months));
+  const res = await authedFetch(`/student-management/fees/challan/${studentId}?${q}`);
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res);
+    throw new Error(body.message || "Failed to load challan");
+  }
+  return res.blob();
+};
+
+export function printFeeChallan(studentId: string, size: FeeReceiptSize = "a4", months?: number) {
+  const label = months ? `${months}m` : "unpaid";
+  return openPdfForPrint(
+    () => fetchFeeChallanPdf(studentId, size, months),
+    size === "thermal" ? `fee-challan-${label}-thermal.pdf` : `fee-challan-${label}-a4.pdf`
+  );
 }
 
 export const fetchStudentFeeHistory = (studentId: string) =>
@@ -988,6 +1025,30 @@ export const exportFeeDefaultersCsv = async (params?: {
   if (params?.search) q.set("search", params.search);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
   const res = await authedFetch(`/student-management/fees/defaulters/export?${q}`, { method: "GET" });
+  if (!res.ok) throw new Error("Export failed");
+  return res.blob();
+};
+
+export type DefaulterReportFormat = "xlsx" | "pdf";
+
+export const exportFeeDefaultersMonthWise = async (
+  params?: {
+    classId?: string;
+    month?: number;
+    year?: number;
+    search?: string;
+    sessionId?: string;
+  },
+  format: DefaulterReportFormat = "xlsx"
+) => {
+  const q = new URLSearchParams();
+  q.set("format", format);
+  if (params?.classId) q.set("classId", params.classId);
+  if (params?.month) q.set("month", String(params.month));
+  if (params?.year) q.set("year", String(params.year));
+  if (params?.search) q.set("search", params.search);
+  if (params?.sessionId) q.set("sessionId", params.sessionId);
+  const res = await authedFetch(`/student-management/fees/defaulters/export-month-wise?${q}`, { method: "GET" });
   if (!res.ok) throw new Error("Export failed");
   return res.blob();
 };

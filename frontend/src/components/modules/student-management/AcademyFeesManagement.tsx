@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, FileText, Loader2, Printer, Receipt } from "lucide-react";
+import { FileText, Loader2, Printer, Receipt } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DefaulterListDownload } from "./DefaulterListDownload";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -27,8 +28,12 @@ import {
   fetchAcademyFeeSummary,
   fetchAcademyFees,
   fetchAcademyStudents,
+  fetchStudentFeeHistory,
+  exportFeeDefaultersMonthWise,
+  type DefaulterReportFormat,
   generateMonthlyFees,
-  payAcademyFee,
+  payAcademyFees,
+  printFeeChallan,
   printFeeReceipt,
   type AcademyFeeRecord,
   type AcademyStudentRoutes,
@@ -69,6 +74,10 @@ function classNameFromRecord(rec: AcademyFeeRecord) {
 function periodLabel(r: AcademyFeeRecord) {
   if (r.feeType === "admission") return "Admission";
   return `${MONTH_NAMES[(r.month || 1) - 1]} ${r.year}`;
+}
+
+function isUnpaid(status: string) {
+  return status === "pending" || status === "overdue";
 }
 
 function StatusPill({ status }: { status: string }) {
@@ -131,8 +140,10 @@ export default function AcademyFeesManagement({
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [payRecord, setPayRecord] = useState<AcademyFeeRecord | null>(null);
+  const [selectedFeeIds, setSelectedFeeIds] = useState<string[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
 
   const effectiveStudentId = studentId || (isParent ? selectedParentStudentId || undefined : undefined);
 
@@ -228,32 +239,66 @@ export default function AcademyFeesManagement({
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const payStudentId = payRecord ? studentMongoId(payRecord) : "";
+  const { data: payHistory, isLoading: payHistoryLoading } = useQuery({
+    queryKey: ["academy-fee-history", payStudentId],
+    queryFn: () => fetchStudentFeeHistory(payStudentId),
+    enabled: Boolean(payStudentId),
+  });
+
+  const unpaidForPay = useMemo(() => {
+    return (payHistory?.records || [])
+      .filter((r) => r.status === "pending" || r.status === "overdue")
+      .sort((a, b) => a.year - b.year || a.month - b.month);
+  }, [payHistory]);
+
+  useEffect(() => {
+    if (!payRecord || !payHistory) return;
+    const ids = unpaidForPay.map((r) => r._id);
+    setSelectedFeeIds(ids.length ? ids : [payRecord._id]);
+  }, [payRecord, payHistory, unpaidForPay]);
+
+  const selectedUnpaid = unpaidForPay.filter((r) => selectedFeeIds.includes(r._id));
+  const selectedTotal = selectedUnpaid.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
   const payMut = useMutation({
     mutationFn: () =>
-      payAcademyFee(payRecord!._id, {
+      payAcademyFees({
+        feeRecordIds: selectedFeeIds,
         paymentMethod,
         notes: paymentNotes.trim() || undefined,
       }),
-    onSuccess: (rec) => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["academy-fees"] });
       qc.invalidateQueries({ queryKey: ["academy-fees-summary"] });
+      qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
       qc.invalidateQueries({ queryKey: ["academy-student-record"] });
+      qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
       setPayRecord(null);
+      setSelectedFeeIds([]);
       setPaymentNotes("");
       toast({
         title: "Payment recorded",
-        description: rec.receiptNumber
-          ? `Receipt ${rec.receiptNumber}. Use Print receipt to print it.`
-          : "Use Print receipt on the row to print it.",
+        description: `${result.paid} month${result.paid === 1 ? "" : "s"} · ${formatPkr(result.total)}`,
       });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const printMut = useMutation({
-    mutationFn: ({ id, size }: { id: string; size: FeeReceiptSize }) => printFeeReceipt(id, size),
+    mutationFn: ({
+      id,
+      studentId: sid,
+      size,
+      months,
+    }: {
+      id?: string;
+      studentId?: string;
+      size: FeeReceiptSize;
+      months?: number;
+    }) => (sid ? printFeeChallan(sid, size, months) : printFeeReceipt(id!, size)),
     onError: (e: Error) =>
-      toast({ title: "Could not print receipt", description: e.message, variant: "destructive" }),
+      toast({ title: "Could not print", description: e.message, variant: "destructive" }),
   });
 
   const records = data?.records ?? [];
@@ -278,6 +323,35 @@ export default function AcademyFeesManagement({
 
   const canPay = caps.canEdit || caps.canCreate;
   const canGenerate = showGenerate && !studentId && writable && (caps.canCreate || caps.canEdit);
+
+  const downloadMonthWise = async (format: DefaulterReportFormat) => {
+    setExportingMonthWise(format);
+    try {
+      const blob = await exportFeeDefaultersMonthWise(
+        {
+          year: Number(year) || undefined,
+          classId: !isParent && classFilter ? classFilter : undefined,
+          sessionId: !isParent ? apiSessionId : undefined,
+        },
+        format
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = format === "pdf" ? "fee-defaulters.pdf" : "fee-defaulters.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+    } catch (e) {
+      toast({
+        title: "Download failed",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setExportingMonthWise(null);
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -312,96 +386,110 @@ export default function AcademyFeesManagement({
 
       {showFilters && !studentId && (
         <Card className="p-3">
-          <div className="flex flex-wrap gap-3 items-end">
-            {isParent && (
-              <div>
-                <Label className="text-xs">Child</Label>
+          <div className="flex items-end gap-3">
+            <div className={`grid min-w-0 flex-1 items-end gap-3 ${isParent ? "grid-cols-6" : "grid-cols-5"}`}>
+              {isParent && (
+                <div className="min-w-0">
+                  <Label className="mb-1 block text-xs">Child</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={selectedParentStudentId}
+                    onChange={(e) => setSelectedParentStudentId(e.target.value)}
+                  >
+                    <option value="">Select child…</option>
+                    {parentStudents.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.studentName} ({s.studentId})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="min-w-0">
+                <Label className="mb-1 block text-xs">Month</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={12}
+                  className="h-9 w-full"
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                />
+              </div>
+              <div className="min-w-0">
+                <Label className="mb-1 block text-xs">Year</Label>
+                <Input
+                  type="number"
+                  className="h-9 w-full"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                />
+              </div>
+              {!isParent && (
+                <div className="min-w-0">
+                  <Label className="mb-1 block text-xs">Class</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={classFilter}
+                    onChange={(e) => setClassFilter(e.target.value)}
+                  >
+                    <option value="">All classes</option>
+                    {classes.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {c.className}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="min-w-0">
+                <Label className="mb-1 block text-xs">Status</Label>
                 <select
-                  className="h-9 rounded-md border border-input bg-background px-2 text-sm min-w-[14rem]"
-                  value={selectedParentStudentId}
-                  onChange={(e) => setSelectedParentStudentId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
                 >
-                  <option value="">Select child…</option>
-                  {parentStudents.map((s) => (
-                    <option key={s._id} value={s._id}>
-                      {s.studentName} ({s.studentId})
-                    </option>
-                  ))}
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="waived">Waived</option>
                 </select>
               </div>
-            )}
-            <div>
-              <Label className="text-xs">Month</Label>
-              <Input
-                type="number"
-                min={1}
-                max={12}
-                className="w-20 h-9"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Year</Label>
-              <Input
-                type="number"
-                className="w-24 h-9"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-              />
-            </div>
-            {!isParent && (
-              <div>
-                <Label className="text-xs">Class</Label>
+              <div className="min-w-0">
+                <Label className="mb-1 block text-xs">Type</Label>
                 <select
-                  className="h-9 rounded-md border border-input bg-background px-2 text-sm min-w-[8rem]"
-                  value={classFilter}
-                  onChange={(e) => setClassFilter(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={feeTypeFilter}
+                  onChange={(e) => setFeeTypeFilter(e.target.value)}
                 >
-                  <option value="">All classes</option>
-                  {classes.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.className}
-                    </option>
-                  ))}
+                  <option value="">All types</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="admission">Admission</option>
                 </select>
               </div>
-            )}
-            <div>
-              <Label className="text-xs">Status</Label>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="">All</option>
-                <option value="pending">Pending</option>
-                <option value="paid">Paid</option>
-                <option value="overdue">Overdue</option>
-                <option value="waived">Waived</option>
-              </select>
             </div>
-            <div>
-              <Label className="text-xs">Type</Label>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                value={feeTypeFilter}
-                onChange={(e) => setFeeTypeFilter(e.target.value)}
-              >
-                <option value="">All types</option>
-                <option value="monthly">Monthly</option>
-                <option value="admission">Admission</option>
-              </select>
-            </div>
-            {canGenerate && !isParent && (
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={genMut.isPending}
-                onClick={() => genMut.mutate()}
-              >
-                {genMut.isPending ? "Generating…" : "Generate monthly fees"}
-              </Button>
+            {!isParent && (canGenerate || caps.canView) && (
+              <div className="flex shrink-0 items-end gap-3">
+                {canGenerate && (
+                  <Button
+                    size="sm"
+                    variant="gold"
+                    className="whitespace-nowrap"
+                    disabled={genMut.isPending}
+                    onClick={() => genMut.mutate()}
+                  >
+                    {genMut.isPending ? "Generating…" : "Generate monthly fees"}
+                  </Button>
+                )}
+                {!studentId && caps.canView && (
+                  <DefaulterListDownload
+                    className="whitespace-nowrap"
+                    exporting={exportingMonthWise}
+                    onDownload={(format) => void downloadMonthWise(format)}
+                  />
+                )}
+              </div>
             )}
           </div>
         </Card>
@@ -426,20 +514,21 @@ export default function AcademyFeesManagement({
                 <th className="text-left p-2.5 font-medium">Type</th>
                 <th className="text-left p-2.5 font-medium">Amount</th>
                 <th className="text-left p-2.5 font-medium">Status</th>
+                <th className="text-left p-2.5 font-medium">Pending months</th>
                 <th className="text-right p-2.5 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={studentId ? 7 : 8} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={studentId ? 8 : 9} className="p-6 text-center text-muted-foreground">
                     Loading fee records…
                   </td>
                 </tr>
               )}
               {!isLoading && records.length === 0 && (
                 <tr>
-                  <td colSpan={studentId ? 7 : 8} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={studentId ? 8 : 9} className="p-6 text-center text-muted-foreground">
                     {studentId
                       ? "No fee records for this student yet."
                       : "No fee records for this period. Generate monthly fees or register students."}
@@ -448,7 +537,7 @@ export default function AcademyFeesManagement({
               )}
               {!isLoading && records.length > 0 && recordsFiltered.length === 0 && (
                 <tr>
-                  <td colSpan={studentId ? 7 : 8} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={studentId ? 8 : 9} className="p-6 text-center text-muted-foreground">
                     No records match your filters.
                   </td>
                 </tr>
@@ -456,19 +545,36 @@ export default function AcademyFeesManagement({
               {recordsFiltered.map((r) => {
                 const sid = studentMongoId(r);
                 const detailHref = routes && sid ? routes.detail(sid) : null;
-                const payable = r.status === "pending" || r.status === "overdue";
+                const payable = isUnpaid(r.status);
+                const printing =
+                  printMut.isPending &&
+                  (printMut.variables?.id === r._id || printMut.variables?.studentId === sid);
                 return (
-                  <tr key={r._id} className="border-b last:border-0 hover:bg-muted/30">
+                  <tr
+                    key={r._id}
+                    className={
+                      payable
+                        ? "border-b last:border-0 bg-red-500/10 text-red-700 dark:text-red-300"
+                        : "border-b last:border-0 hover:bg-muted/30"
+                    }
+                  >
                     <td className="p-2.5 font-mono text-xs">{r.receiptNumber || "—"}</td>
                     <td className="p-2.5">
                       {detailHref ? (
-                        <Link to={detailHref} className="font-medium text-primary hover:underline">
+                        <Link
+                          to={detailHref}
+                          className={`font-medium hover:underline ${payable ? "text-red-700 dark:text-red-300" : "text-primary"}`}
+                        >
                           {studentName(r)}
                         </Link>
                       ) : (
-                        <div className="font-medium">{studentName(r)}</div>
+                        <div className={`font-medium ${payable ? "text-red-700 dark:text-red-300" : ""}`}>
+                          {studentName(r)}
+                        </div>
                       )}
-                      <p className="text-xs text-muted-foreground">{studentCode(r)}</p>
+                      <p className={`text-xs ${payable ? "text-red-700/80 dark:text-red-300/80" : "text-muted-foreground"}`}>
+                        {studentCode(r)}
+                      </p>
                     </td>
                     {!studentId && (
                       <td className="p-2.5 hidden md:table-cell">{classNameFromRecord(r)}</td>
@@ -478,6 +584,20 @@ export default function AcademyFeesManagement({
                     <td className="p-2.5">{formatPkr(r.amount)}</td>
                     <td className="p-2.5">
                       <StatusPill status={r.status} />
+                    </td>
+                    <td className="p-2.5">
+                      {(r.unpaidMonthCount || 0) > 0 ? (
+                        <div>
+                          <p className="font-semibold">
+                            {r.unpaidMonthCount} month{r.unpaidMonthCount === 1 ? "" : "s"}
+                          </p>
+                          {(r.unpaidMonthCount || 0) > 1 && r.unpaidFrom && r.unpaidTo && (
+                            <p className="text-xs opacity-80">{r.unpaidFrom} – {r.unpaidTo}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="p-2.5 text-right">
                       {payable && canPay && (
@@ -494,9 +614,9 @@ export default function AcademyFeesManagement({
                           Record payment
                         </Button>
                       )}
-                      {r.status === "paid" && (
-                        <div className="flex flex-col items-end gap-1">
-                          {r.paidAt && (
+                      {(payable || r.status === "paid") && (
+                        <div className="inline-flex items-center justify-end gap-1.5 ml-2">
+                          {r.status === "paid" && r.paidAt && (
                             <span className="text-xs text-muted-foreground">
                               {new Date(r.paidAt).toLocaleDateString()}
                             </span>
@@ -504,33 +624,44 @@ export default function AcademyFeesManagement({
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
-                                size="sm"
+                                size="icon"
                                 variant="outline"
-                                disabled={printMut.isPending && printMut.variables?.id === r._id}
+                                className="h-8 w-8"
+                                disabled={printing}
+                                aria-label={payable ? "Print challan" : "Print receipt"}
+                                title={payable ? "Print challan" : "Print receipt"}
                               >
-                                {printMut.isPending && printMut.variables?.id === r._id ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                {printing ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
-                                  <Printer className="h-3.5 w-3.5" />
+                                  <Printer className="h-4 w-4" />
                                 )}
-                                Print receipt
-                                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 className="gap-2"
-                                onClick={() => printMut.mutate({ id: r._id, size: "thermal" })}
+                                onClick={() =>
+                                  printMut.mutate(
+                                    payable && sid
+                                      ? { studentId: sid, size: "thermal" }
+                                      : { id: r._id, size: "thermal" }
+                                  )
+                                }
                               >
                                 <Receipt className="h-4 w-4" />
-                                Thermal print (80mm)
+                                Thermal
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="gap-2"
-                                onClick={() => printMut.mutate({ id: r._id, size: "a4" })}
+                                onClick={() =>
+                                  printMut.mutate(
+                                    payable && sid ? { studentId: sid, size: "a4" } : { id: r._id, size: "a4" }
+                                  )
+                                }
                               >
                                 <FileText className="h-4 w-4" />
-                                A4 print
+                                A4
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -563,8 +694,16 @@ export default function AcademyFeesManagement({
         )}
       </Card>
 
-      <Dialog open={Boolean(payRecord)} onOpenChange={(o) => !o && setPayRecord(null)}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog
+        open={Boolean(payRecord)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPayRecord(null);
+            setSelectedFeeIds([]);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Record payment</DialogTitle>
           </DialogHeader>
@@ -574,13 +713,51 @@ export default function AcademyFeesManagement({
                 <span className="text-muted-foreground">Student:</span>{" "}
                 <span className="font-medium">{studentName(payRecord)}</span>
               </p>
-              <p>
-                <span className="text-muted-foreground">Amount:</span>{" "}
-                <span className="font-semibold">{formatPkr(payRecord.amount)}</span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">For:</span> {periodLabel(payRecord)}
-              </p>
+              <div className="rounded-md border">
+                <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
+                  Unpaid months
+                </div>
+                {payHistoryLoading && (
+                  <p className="px-3 py-4 text-muted-foreground">Loading remaining fees…</p>
+                )}
+                {!payHistoryLoading && unpaidForPay.length === 0 && (
+                  <p className="px-3 py-4 text-muted-foreground">No unpaid months left.</p>
+                )}
+                {!payHistoryLoading && unpaidForPay.length > 0 && (
+                  <ul className="max-h-52 overflow-y-auto divide-y">
+                    {unpaidForPay.map((fee) => {
+                      const checked = selectedFeeIds.includes(fee._id);
+                      return (
+                        <li key={fee._id}>
+                          <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={checked}
+                              onChange={() =>
+                                setSelectedFeeIds((current) =>
+                                  checked ? current.filter((id) => id !== fee._id) : [...current, fee._id]
+                                )
+                              }
+                            />
+                            <span className="flex-1">
+                              <span className="font-medium">{periodLabel(fee)}</span>
+                              <span className="ml-2 text-xs capitalize text-muted-foreground">{fee.status}</span>
+                            </span>
+                            <span className="font-semibold">{formatPkr(fee.amount)}</span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/30">
+                  <span className="text-muted-foreground">
+                    {selectedUnpaid.length} month{selectedUnpaid.length === 1 ? "" : "s"} selected
+                  </span>
+                  <span className="font-semibold">{formatPkr(selectedTotal)}</span>
+                </div>
+              </div>
               <div className="space-y-1.5">
                 <Label>Payment method</Label>
                 <select
@@ -608,7 +785,11 @@ export default function AcademyFeesManagement({
             <Button variant="outline" onClick={() => setPayRecord(null)}>
               Cancel
             </Button>
-            <Button variant="hero" disabled={payMut.isPending} onClick={() => payMut.mutate()}>
+            <Button
+              variant="hero"
+              disabled={payMut.isPending || selectedFeeIds.length === 0}
+              onClick={() => payMut.mutate()}
+            >
               Confirm payment
             </Button>
           </DialogFooter>
