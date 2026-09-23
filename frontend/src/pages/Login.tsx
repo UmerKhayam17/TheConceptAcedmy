@@ -41,15 +41,24 @@ const highlights = [
 const fieldClass =
   "h-11 rounded-[9px] border-[#D7DCE5] bg-white pl-11 text-[15px] shadow-none focus-visible:border-[#D9A441] focus-visible:ring-[3px] focus-visible:ring-[#D9A441]/20";
 
-function AcademyMark() {
+function AcademyMark({ variant = "hero" }: { variant?: "hero" | "mobile" }) {
+  const mobile = variant === "mobile";
   return (
-    <div className="flex items-center gap-4 text-white">
-      <span className="grid h-16 w-16 place-items-center rounded-full border-2 border-[#D9A441] text-[#F4B72A]">
-        <GraduationCap className="h-9 w-9" strokeWidth={1.75} />
+    <div className={`flex items-center text-white ${mobile ? "flex-col gap-3 text-center text-[#071426]" : "gap-4"}`}>
+      <span
+        className={`grid place-items-center rounded-full border-2 border-[#D9A441] text-[#C99028] ${
+          mobile ? "h-24 w-24" : "h-16 w-16 text-[#F4B72A]"
+        }`}
+      >
+        <GraduationCap className={mobile ? "h-12 w-12" : "h-9 w-9"} strokeWidth={1.75} />
       </span>
       <span>
-        <span className="block text-xl font-semibold tracking-[0.16em] sm:text-2xl">THE CONCEPT ACADEMY</span>
-        <span className="mt-1.5 block text-sm tracking-[0.32em] text-[#D9A441] sm:text-base">LEARN • GROW • SUCCEED</span>
+        <span className={`block font-semibold ${mobile ? "text-2xl tracking-[0.12em]" : "text-xl tracking-[0.16em] lg:text-2xl"}`}>
+          THE CONCEPT ACADEMY
+        </span>
+        <span className={`block text-[#D9A441] ${mobile ? "mt-2 text-base tracking-[0.26em]" : "mt-1.5 text-sm tracking-[0.32em] lg:text-base"}`}>
+          LEARN • GROW • SUCCEED
+        </span>
       </span>
     </div>
   );
@@ -107,7 +116,7 @@ const Login = () => {
         description="Sign in with your academy portal account — staff and families only."
       />
       <section className="flex min-h-screen flex-col bg-white md:grid md:h-screen md:grid-cols-[45fr_55fr] md:overflow-hidden min-[1100px]:grid-cols-[54fr_46fr]">
-        <div className="relative order-2 min-h-[520px] overflow-hidden text-white md:order-1 md:min-h-0 md:h-full">
+        <div className="relative hidden overflow-hidden text-white md:order-1 md:flex md:h-full">
           <img src={campus} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
           <div
             className="absolute inset-0"
@@ -169,7 +178,11 @@ const Login = () => {
           <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full border border-[#F0DFC0] bg-[#FFFBF2]" />
           <div className="pointer-events-none absolute -bottom-28 -left-16 h-52 w-52 rounded-full border border-[#F0DFC0]/80 bg-[#FFFBF2]" />
 
-          <div className="relative z-10 w-full max-w-[460px] rounded-[20px] border border-[rgba(15,23,42,0.06)] bg-white px-5 py-5 shadow-none motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 sm:px-7 md:shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+          <div className="relative z-10 w-full max-w-[460px]">
+            <div className="mb-5 flex justify-center md:hidden">
+              <AcademyMark variant="mobile" />
+            </div>
+            <div className="rounded-[20px] border border-[rgba(15,23,42,0.06)] bg-white px-5 py-5 shadow-none motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 sm:px-7 md:shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
             <PwaInstallPrompt />
 
             <h2 className="font-display text-[30px] font-bold leading-none text-[#071426]">Sign in</h2>
@@ -266,6 +279,7 @@ const Login = () => {
                   </Link>
                 </p>
               </div>
+            </div>
             </div>
           </div>
         </div>
