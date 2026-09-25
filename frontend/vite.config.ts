@@ -41,7 +41,8 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-          if (id.includes("recharts") || id.includes("d3-")) return "charts";
+          // Do not force-split recharts/d3 — that creates circular chunks
+          // ("Cannot access 'S' before initialization" in production).
           if (id.includes("socket.io")) return "socket";
           if (id.includes("@tanstack/react-query")) return "query";
           if (id.includes("react-router")) return "router";
