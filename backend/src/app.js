@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const v1 = require('./routes/v1');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { protectUpload } = require('./middleware/auth');
 
 const clientOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .split(',')
@@ -38,11 +39,12 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 
 const uploadsRoot = path.join(__dirname, '../uploads');
-// Biometric face enrollments — never public
+// Biometric face enrollments — never public (API-only with tighter ACL)
 app.use('/uploads/ai-faces', (req, res) => {
   res.status(403).json({ success: false, message: 'Face images are not publicly accessible' });
 });
-app.use('/uploads', express.static(uploadsRoot));
+// All other uploads require a valid access JWT (Bearer or httpOnly cookie)
+app.use('/uploads', protectUpload, express.static(uploadsRoot));
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'academy-backend' });

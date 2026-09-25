@@ -30,6 +30,19 @@ export type AiPerson = {
   aiEmployeeId: string;
   hasPhoto: boolean;
   isTrained?: boolean;
+  totalImages?: number;
+};
+
+export type AiEnrollmentStatus = {
+  person_key?: string;
+  kind?: string;
+  display_name?: string;
+  total_images?: number;
+  image_count?: number;
+  min_required?: number;
+  is_enrolled?: boolean;
+  is_trained?: boolean;
+  last_train_error?: string | null;
 };
 
 export type StaffAttendanceRecord = {
@@ -62,12 +75,31 @@ export const fetchAiPeople = () =>
   api<{ students: AiPerson[]; staff: AiPerson[] }>("/people");
 
 export const fetchEnrollmentStatus = (employeeId: string) =>
-  api<Record<string, unknown>>(`/enroll/${encodeURIComponent(employeeId)}`);
+  api<AiEnrollmentStatus>(`/enroll/${encodeURIComponent(employeeId)}`);
+
+export async function fetchAiFaceImageBlob(employeeId: string, index: number): Promise<string> {
+  const res = await authedFetch(
+    `/ai-attendance/enroll/${encodeURIComponent(employeeId)}/image/${index}`,
+  );
+  if (!res.ok) throw new Error("Could not load captured face image");
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
 
 export const captureAiFace = (employeeId: string, image: string) =>
   api<Record<string, unknown>>(`/enroll/${encodeURIComponent(employeeId)}/capture`, {
     method: "POST",
     body: JSON.stringify({ image }),
+  });
+
+export const deleteAiFaceImage = (employeeId: string, index: number) =>
+  api<Record<string, unknown>>(`/enroll/${encodeURIComponent(employeeId)}/image/${index}`, {
+    method: "DELETE",
+  });
+
+export const deleteAllAiFaceImages = (employeeId: string) =>
+  api<Record<string, unknown>>(`/enroll/${encodeURIComponent(employeeId)}/images`, {
+    method: "DELETE",
   });
 
 export const trainAiFace = (employeeId: string) =>

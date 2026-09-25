@@ -44,6 +44,7 @@ import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
+import { cn } from "@/lib/utils";
 
 function studentFromRecord(rec: AcademyFeeRecord) {
   const s = rec.studentId;
@@ -385,113 +386,117 @@ export default function AcademyFeesManagement({
       </div>
 
       {showFilters && !studentId && (
-        <Card className="p-3">
-          <div className="flex items-end gap-3">
-            <div className={`grid min-w-0 flex-1 items-end gap-3 ${isParent ? "grid-cols-6" : "grid-cols-5"}`}>
-              {isParent && (
-                <div className="min-w-0">
-                  <Label className="mb-1 block text-xs">Child</Label>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                    value={selectedParentStudentId}
-                    onChange={(e) => setSelectedParentStudentId(e.target.value)}
-                  >
-                    <option value="">Select child…</option>
-                    {parentStudents.map((s) => (
-                      <option key={s._id} value={s._id}>
-                        {s.studentName} ({s.studentId})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="min-w-0">
-                <Label className="mb-1 block text-xs">Month</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={12}
-                  className="h-9 w-full"
-                  value={month}
-                  onChange={(e) => setMonth(e.target.value)}
-                />
-              </div>
-              <div className="min-w-0">
-                <Label className="mb-1 block text-xs">Year</Label>
-                <Input
-                  type="number"
-                  className="h-9 w-full"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                />
-              </div>
-              {!isParent && (
-                <div className="min-w-0">
-                  <Label className="mb-1 block text-xs">Class</Label>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                    value={classFilter}
-                    onChange={(e) => setClassFilter(e.target.value)}
-                  >
-                    <option value="">All classes</option>
-                    {classes.map((c) => (
-                      <option key={c._id} value={c._id}>
-                        {c.className}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="min-w-0">
-                <Label className="mb-1 block text-xs">Status</Label>
+        <Card className="p-3 space-y-3">
+          <div
+            className={cn(
+              "grid gap-3 items-end",
+              "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
+              isParent && "sm:grid-cols-3 lg:grid-cols-6",
+            )}
+          >
+            {isParent && (
+              <div className="min-w-0 col-span-2 sm:col-span-1">
+                <Label className="mb-1 block text-xs">Child</Label>
                 <select
                   className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  value={selectedParentStudentId}
+                  onChange={(e) => setSelectedParentStudentId(e.target.value)}
                 >
-                  <option value="">All</option>
-                  <option value="pending">Pending</option>
-                  <option value="paid">Paid</option>
-                  <option value="overdue">Overdue</option>
-                  <option value="waived">Waived</option>
+                  <option value="">Select child…</option>
+                  {parentStudents.map((s) => (
+                    <option key={s._id} value={s._id}>
+                      {s.studentName} ({s.studentId})
+                    </option>
+                  ))}
                 </select>
-              </div>
-              <div className="min-w-0">
-                <Label className="mb-1 block text-xs">Type</Label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={feeTypeFilter}
-                  onChange={(e) => setFeeTypeFilter(e.target.value)}
-                >
-                  <option value="">All types</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="admission">Admission</option>
-                </select>
-              </div>
-            </div>
-            {!isParent && (canGenerate || caps.canView) && (
-              <div className="flex shrink-0 items-end gap-3">
-                {canGenerate && (
-                  <Button
-                    size="sm"
-                    variant="gold"
-                    className="whitespace-nowrap"
-                    disabled={genMut.isPending}
-                    onClick={() => genMut.mutate()}
-                  >
-                    {genMut.isPending ? "Generating…" : "Generate monthly fees"}
-                  </Button>
-                )}
-                {!studentId && caps.canView && (
-                  <DefaulterListDownload
-                    className="whitespace-nowrap"
-                    exporting={exportingMonthWise}
-                    onDownload={(format) => void downloadMonthWise(format)}
-                  />
-                )}
               </div>
             )}
+            <div className="min-w-0">
+              <Label className="mb-1 block text-xs">Month</Label>
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                className="h-9 w-full"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+              />
+            </div>
+            <div className="min-w-0">
+              <Label className="mb-1 block text-xs">Year</Label>
+              <Input
+                type="number"
+                className="h-9 w-full"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+              />
+            </div>
+            {!isParent && (
+              <div className="min-w-0 col-span-2 sm:col-span-1">
+                <Label className="mb-1 block text-xs">Class</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={classFilter}
+                  onChange={(e) => setClassFilter(e.target.value)}
+                >
+                  <option value="">All classes</option>
+                  {classes.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.className}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="min-w-0">
+              <Label className="mb-1 block text-xs">Status</Label>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">All</option>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="overdue">Overdue</option>
+                <option value="waived">Waived</option>
+              </select>
+            </div>
+            <div className="min-w-0">
+              <Label className="mb-1 block text-xs">Type</Label>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={feeTypeFilter}
+                onChange={(e) => setFeeTypeFilter(e.target.value)}
+              >
+                <option value="">All types</option>
+                <option value="monthly">Monthly</option>
+                <option value="admission">Admission</option>
+              </select>
+            </div>
           </div>
+          {!isParent && (canGenerate || caps.canView) && (
+            <div className="flex flex-col sm:flex-row gap-2 sm:flex-wrap sm:items-center">
+              {canGenerate && (
+                <Button
+                  size="sm"
+                  variant="gold"
+                  className="w-full sm:w-auto"
+                  disabled={genMut.isPending}
+                  onClick={() => genMut.mutate()}
+                >
+                  {genMut.isPending ? "Generating…" : "Generate monthly fees"}
+                </Button>
+              )}
+              {!studentId && caps.canView && (
+                <DefaulterListDownload
+                  className="w-full sm:w-auto justify-center"
+                  exporting={exportingMonthWise}
+                  onDownload={(format) => void downloadMonthWise(format)}
+                />
+              )}
+            </div>
+          )}
         </Card>
       )}
 
@@ -600,73 +605,76 @@ export default function AcademyFeesManagement({
                       )}
                     </td>
                     <td className="p-2.5 text-right">
-                      {payable && canPay && (
-                        <Button
-                          size="sm"
-                          variant="hero"
-                          disabled={payMut.isPending}
-                          onClick={() => {
-                            setPayRecord(r);
-                            setPaymentMethod("cash");
-                            setPaymentNotes("");
-                          }}
-                        >
-                          Record payment
-                        </Button>
-                      )}
-                      {(payable || r.status === "paid") && (
-                        <div className="inline-flex items-center justify-end gap-1.5 ml-2">
-                          {r.status === "paid" && r.paidAt && (
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(r.paidAt).toLocaleDateString()}
-                            </span>
-                          )}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-8 w-8"
-                                disabled={printing}
-                                aria-label={payable ? "Print challan" : "Print receipt"}
-                                title={payable ? "Print challan" : "Print receipt"}
-                              >
-                                {printing ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Printer className="h-4 w-4" />
-                                )}
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                className="gap-2"
-                                onClick={() =>
-                                  printMut.mutate(
-                                    payable && sid
-                                      ? { studentId: sid, size: "thermal" }
-                                      : { id: r._id, size: "thermal" }
-                                  )
-                                }
-                              >
-                                <Receipt className="h-4 w-4" />
-                                Thermal
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="gap-2"
-                                onClick={() =>
-                                  printMut.mutate(
-                                    payable && sid ? { studentId: sid, size: "a4" } : { id: r._id, size: "a4" }
-                                  )
-                                }
-                              >
-                                <FileText className="h-4 w-4" />
-                                A4
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      )}
+                      <div className="inline-flex flex-col items-stretch sm:flex-row sm:items-center sm:justify-end gap-1.5 min-w-[7.5rem] sm:min-w-0">
+                        {payable && canPay && (
+                          <Button
+                            size="sm"
+                            variant="hero"
+                            className="w-full sm:w-auto"
+                            disabled={payMut.isPending}
+                            onClick={() => {
+                              setPayRecord(r);
+                              setPaymentMethod("cash");
+                              setPaymentNotes("");
+                            }}
+                          >
+                            Record payment
+                          </Button>
+                        )}
+                        {(payable || r.status === "paid") && (
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            {r.status === "paid" && r.paidAt && (
+                              <span className="text-xs text-muted-foreground hidden sm:inline">
+                                {new Date(r.paidAt).toLocaleDateString()}
+                              </span>
+                            )}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-8 w-8 shrink-0"
+                                  disabled={printing}
+                                  aria-label={payable ? "Print challan" : "Print receipt"}
+                                  title={payable ? "Print challan" : "Print receipt"}
+                                >
+                                  {printing ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Printer className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={() =>
+                                    printMut.mutate(
+                                      payable && sid
+                                        ? { studentId: sid, size: "thermal" }
+                                        : { id: r._id, size: "thermal" }
+                                    )
+                                  }
+                                >
+                                  <Receipt className="h-4 w-4" />
+                                  Thermal
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={() =>
+                                    printMut.mutate(
+                                      payable && sid ? { studentId: sid, size: "a4" } : { id: r._id, size: "a4" }
+                                    )
+                                  }
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  A4
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { protect } = require('../middleware/auth');
-const { requireAnyPermission } = require('../middleware/permissions');
+const { requireAnyPermission, requireFaceImageAccess } = require('../middleware/permissions');
 const ctrl = require('../controllers/aiAttendanceController');
 
 const router = Router();
@@ -35,6 +35,11 @@ router.get(
   requireAnyPermission('manage_users', 'manage_academy_students', 'mark_attendance'),
   ctrl.enrollmentStatus
 );
+router.get(
+  '/enroll/:employeeId/image/:index',
+  requireFaceImageAccess(),
+  ctrl.enrollmentImage
+);
 router.post(
   '/enroll/:employeeId/capture',
   requireAnyPermission('manage_users', 'manage_academy_students', 'mark_attendance'),
@@ -44,6 +49,16 @@ router.post(
   '/enroll/:employeeId/train',
   requireAnyPermission('manage_users', 'manage_academy_students', 'mark_attendance'),
   ctrl.trainFace
+);
+router.delete(
+  '/enroll/:employeeId/images',
+  requireAnyPermission('manage_users', 'manage_academy_students', 'mark_attendance'),
+  ctrl.deleteAllEnrollmentImages
+);
+router.delete(
+  '/enroll/:employeeId/image/:index',
+  requireAnyPermission('manage_users', 'manage_academy_students', 'mark_attendance'),
+  ctrl.deleteEnrollmentImage
 );
 router.post(
   '/identify',

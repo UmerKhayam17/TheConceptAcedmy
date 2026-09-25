@@ -35,6 +35,16 @@ const enrollmentStatus = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const enrollmentImage = catchAsync(async (req, res) => {
+  const { absPath, filename } = await faceEnrollment.enrollmentImageFile(
+    req.params.employeeId,
+    req.params.index
+  );
+  res.setHeader('Cache-Control', 'private, max-age=120');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.sendFile(absPath);
+});
+
 const captureFace = catchAsync(async (req, res) => {
   const { image } = req.body || {};
   if (!image) throw new ApiError(400, 'image (base64) required');
@@ -44,6 +54,16 @@ const captureFace = catchAsync(async (req, res) => {
 
 const trainFace = catchAsync(async (req, res) => {
   const data = await faceEnrollment.trainFace(req.params.employeeId);
+  res.json({ success: true, data });
+});
+
+const deleteEnrollmentImage = catchAsync(async (req, res) => {
+  const data = await faceEnrollment.deleteEnrollmentImage(req.params.employeeId, req.params.index);
+  res.json({ success: true, data });
+});
+
+const deleteAllEnrollmentImages = catchAsync(async (req, res) => {
+  const data = await faceEnrollment.deleteAllEnrollmentImages(req.params.employeeId);
   res.json({ success: true, data });
 });
 
@@ -130,8 +150,11 @@ module.exports = {
   syncAttendance,
   people,
   enrollmentStatus,
+  enrollmentImage,
   captureFace,
   trainFace,
+  deleteEnrollmentImage,
+  deleteAllEnrollmentImages,
   identify,
   cameras,
   cameraSnapshot,

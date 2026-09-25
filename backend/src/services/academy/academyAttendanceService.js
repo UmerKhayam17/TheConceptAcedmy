@@ -25,20 +25,25 @@ async function listByDate({ date, classId, sectionId, sessionId, studentIds, stu
   } else if (sessionId) {
     const classes = await AcademyClass.find({ sessionId }).select('_id');
     studentQ.classId = { $in: classes.map((c) => c._id) };
+  } else {
+    throw new ApiError(400, 'classId, sessionId, or student filter required');
   }
   if (sectionId) studentQ.sectionId = sectionId;
 
-  const [students, records] = await Promise.all([
-    AcademyStudent.find(studentQ)
-      .populate('classId', 'className classCode sessionId')
-      .populate('sectionId', 'sectionName')
-      .sort({ studentName: 1 })
-      .lean(),
-    AcademyAttendance.find({
-      date: { $gte: start, $lte: end },
-      $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
-    }).lean(),
-  ]);
+  const students = await AcademyStudent.find(studentQ)
+    .populate('classId', 'className classCode sessionId')
+    .populate('sectionId', 'sectionName')
+    .sort({ studentName: 1 })
+    .lean();
+
+  const studentIdList = students.map((s) => s._id);
+  const records = studentIdList.length
+    ? await AcademyAttendance.find({
+        date: { $gte: start, $lte: end },
+        studentId: { $in: studentIdList },
+        $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+      }).lean()
+    : [];
 
   // Prefer day-level record; if duplicates exist, keep earliest checkIn
   const recordByStudent = new Map();
@@ -117,13 +122,21 @@ async function getSummary({ month, year }) {
   if (!month || !year) throw new ApiError(400, 'month and year required');
   const start = new Date(Number(year), Number(month) - 1, 1);
   const end = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
-  const rows = await AcademyAttendance.find({
-    date: { $gte: start, $lte: end },
-    $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
-  });
-  const summary = { total: rows.length, present: 0, absent: 0, late: 0, leave: 0 };
-  rows.forEach((r) => {
-    if (summary[r.status] !== undefined) summary[r.status] += 1;
+  const grouped = await AcademyAttendance.aggregate([
+    {
+      $match: {
+        date: { $gte: start, $lte: end },
+        $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+      },
+    },
+    { $group: { _id: '$status', count: { $sum: 1 } } },
+  ]);
+  const summary = { total: 0, present: 0, absent: 0, late: 0, leave: 0 };
+  grouped.forEach((row) => {
+    const key = row._id;
+    const n = row.count || 0;
+    summary.total += n;
+    if (summary[key] !== undefined) summary[key] = n;
   });
   return summary;
 }

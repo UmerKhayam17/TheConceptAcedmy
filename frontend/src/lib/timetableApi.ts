@@ -11,16 +11,15 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     details?: unknown;
   }>(res);
   if (!res.ok) {
-    const detailMsg =
-      Array.isArray(body.details)
-        ? (body.details as { message?: string; code?: string }[])
-          .map((d) => d.message || d.code)
-          .filter(Boolean)
-          .join("; ")
-        : typeof body.details === "object" && body.details !== null
-          ? JSON.stringify(body.details)
-          : "";
-    throw new Error(detailMsg || body.message || `Request failed (${res.status})`);
+    const details = Array.isArray(body.details)
+      ? (body.details as { message?: string; code?: string; day?: string; className?: string; sectionName?: string }[])
+      : null;
+    // Prefer the server summary message (already includes class · section); fall back to detail lines
+    const detailMsg = details
+      ?.map((d) => d.message || d.code)
+      .filter(Boolean)
+      .join(" · ");
+    throw new Error(body.message || detailMsg || `Request failed (${res.status})`);
   }
   return body.data as T;
 }
@@ -273,14 +272,21 @@ export const upsertScheduleSlot = (
   versionId: string,
   body: {
     day: Weekday;
+    /** Explicit weekdays to create (same period/subject/teachers). */
+    days?: Weekday[];
+    /** Create Mon–Fri at once. */
+    applyToFullWeek?: boolean;
     periodId: string;
     subject?: string;
     teacher?: string;
     entries?: { subject: string; teacher: string }[];
     room?: string | null;
   }
-) => api<ScheduleSlot>(`/versions/${versionId}/slots`, { method: "POST", body: JSON.stringify(body) });
-
+) =>
+  api<ScheduleSlot | { days: Weekday[]; created: number; slots: ScheduleSlot[] }>(
+    `/versions/${versionId}/slots`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
 export const deleteScheduleSlot = (slotId: string) =>
   api<{ deleted: boolean }>(`/slots/${slotId}`, { method: "DELETE" });
 

@@ -32,6 +32,27 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
+  build: {
+    target: "es2020",
+    cssCodeSplit: true,
+    sourcemap: false,
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("recharts") || id.includes("d3-")) return "charts";
+          if (id.includes("socket.io")) return "socket";
+          if (id.includes("@tanstack/react-query")) return "query";
+          if (id.includes("react-router")) return "router";
+          if (id.includes("react-dom") || id.includes("/react/")) return "react-vendor";
+          if (id.includes("@radix-ui") || id.includes("cmdk") || id.includes("vaul")) return "ui";
+          if (id.includes("lucide-react")) return "icons";
+          if (id.includes("date-fns") || id.includes("zod") || id.includes("axios")) return "utils";
+        },
+      },
+    },
+  },
   plugins: [
     basicSsl(),
     react(),
@@ -66,6 +87,8 @@ export default defineConfig(({ mode }) => ({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
+        // Ensure browsers revalidate the service worker script after deploy
+        navigationPreload: false,
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>
@@ -74,10 +97,28 @@ export default defineConfig(({ mode }) => ({
               url.pathname.startsWith("/socket.io"),
             handler: "NetworkOnly",
           },
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "google-fonts-stylesheets",
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "google-fonts-webfonts",
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
         ],
       },
+      // Keep PWA off in `vite`/`vite build --mode development` for faster local loads.
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: "module",
         navigateFallback: "index.html",
       },

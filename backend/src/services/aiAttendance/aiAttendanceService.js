@@ -240,18 +240,16 @@ async function listPeopleForEnrollment() {
     .lean();
 
   const enrollments = await faceEnrollment.galleryStats();
-  const trainedKeys = new Set(
-    (
-      await require('../../models/AiFaceEnrollment')
-        .find({ isTrained: true })
-        .select('personKey')
-        .lean()
-    ).map((e) => e.personKey)
-  );
+  const enrollDocs = await require('../../models/AiFaceEnrollment')
+    .find({})
+    .select('personKey isTrained totalImages')
+    .lean();
+  const enrollByKey = new Map(enrollDocs.map((e) => [e.personKey, e]));
 
   return {
     students: students.map((s) => {
       const aiEmployeeId = s.aiEmployeeId || studentAiEmployeeId(s);
+      const en = enrollByKey.get(aiEmployeeId);
       return {
         kind: 'student',
         id: String(s._id),
@@ -259,11 +257,13 @@ async function listPeopleForEnrollment() {
         label: s.studentId || s.classId?.className || '',
         aiEmployeeId,
         hasPhoto: Boolean(s.photoImage),
-        isTrained: trainedKeys.has(aiEmployeeId),
+        isTrained: Boolean(en?.isTrained),
+        totalImages: en?.totalImages || 0,
       };
     }),
     staff: staff.map((u) => {
       const aiEmployeeId = u.aiEmployeeId || staffAiEmployeeId(u);
+      const en = enrollByKey.get(aiEmployeeId);
       return {
         kind: 'staff',
         id: String(u._id),
@@ -271,7 +271,8 @@ async function listPeopleForEnrollment() {
         label: u.role?.name || '',
         aiEmployeeId,
         hasPhoto: Boolean(u.profileImage),
-        isTrained: trainedKeys.has(aiEmployeeId),
+        isTrained: Boolean(en?.isTrained),
+        totalImages: en?.totalImages || 0,
       };
     }),
     stats: enrollments,

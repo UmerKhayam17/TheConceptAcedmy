@@ -1,4 +1,5 @@
 import { Navigate, useParams, Link } from "react-router-dom";
+import { Suspense, lazy, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Role } from "@/lib/auth";
@@ -14,28 +15,6 @@ import {
 import { Card } from "@/components/ui/card";
 import SEO from "@/components/SEO";
 import ModuleHeader from "@/components/modules/ModuleHeader";
-import StudentsRecordsModule from "@/components/modules/StudentsRecordsModule";
-import UsersModule from "@/components/modules/UsersModule";
-import AttendanceModule from "@/components/modules/AttendanceModule";
-import TimetableModule from "@/components/modules/TimetableModule";
-import SystemConfigModule from "@/components/modules/SystemConfigModule";
-import ExamsModule from "@/components/modules/ExamsModule";
-import FeesModule from "@/components/modules/FeesModule";
-import SalaryModule from "@/components/modules/SalaryModule";
-import ExpensesModule from "@/components/modules/ExpensesModule";
-import ChatModule from "@/components/modules/ChatModule";
-import AnnouncementsModule from "@/components/modules/AnnouncementsModule";
-import ReportsModule from "@/components/modules/ReportsModule";
-import SettingsModule from "@/components/modules/SettingsModule";
-import DatasheetsModule from "@/components/modules/DatasheetsModule";
-import PermissionsModule from "@/components/modules/PermissionsModule";
-import StudentManagementModule from "@/components/modules/StudentManagementModule";
-import PermissionCatalogModule from "@/components/modules/PermissionCatalogModule";
-import AiAttendanceModule from "@/components/modules/AiAttendanceModule";
-import StaffAttendanceModule from "@/components/modules/StaffAttendanceModule";
-import StaffDetailPage from "@/components/modules/staff/StaffDetailPage";
-import TeacherFeatureModule from "@/components/modules/TeacherFeatureModule";
-import AdminDashboard from "@/components/modules/AdminDashboard";
 import { fetchExams } from "@/lib/examApi";
 import { fetchAnnouncements } from "@/lib/announcementApi";
 import {
@@ -46,6 +25,41 @@ import {
   fetchAcademyStudents,
 } from "@/lib/studentManagementApi";
 import { localTodayYmd } from "@/lib/localDate";
+
+const StudentsRecordsModule = lazy(() => import("@/components/modules/StudentsRecordsModule"));
+const UsersModule = lazy(() => import("@/components/modules/UsersModule"));
+const AttendanceModule = lazy(() => import("@/components/modules/AttendanceModule"));
+const TimetableModule = lazy(() => import("@/components/modules/TimetableModule"));
+const SystemConfigModule = lazy(() => import("@/components/modules/SystemConfigModule"));
+const ExamsModule = lazy(() => import("@/components/modules/ExamsModule"));
+const FeesModule = lazy(() => import("@/components/modules/FeesModule"));
+const SalaryModule = lazy(() => import("@/components/modules/SalaryModule"));
+const ExpensesModule = lazy(() => import("@/components/modules/ExpensesModule"));
+const ChatModule = lazy(() => import("@/components/modules/ChatModule"));
+const AnnouncementsModule = lazy(() => import("@/components/modules/AnnouncementsModule"));
+const ReportsModule = lazy(() => import("@/components/modules/ReportsModule"));
+const SettingsModule = lazy(() => import("@/components/modules/SettingsModule"));
+const DatasheetsModule = lazy(() => import("@/components/modules/DatasheetsModule"));
+const PermissionsModule = lazy(() => import("@/components/modules/PermissionsModule"));
+const StudentManagementModule = lazy(() => import("@/components/modules/StudentManagementModule"));
+const PermissionCatalogModule = lazy(() => import("@/components/modules/PermissionCatalogModule"));
+const AiAttendanceModule = lazy(() => import("@/components/modules/AiAttendanceModule"));
+const StaffAttendanceModule = lazy(() => import("@/components/modules/StaffAttendanceModule"));
+const StaffDetailPage = lazy(() => import("@/components/modules/staff/StaffDetailPage"));
+const TeacherFeatureModule = lazy(() => import("@/components/modules/TeacherFeatureModule"));
+const AdminDashboard = lazy(() => import("@/components/modules/AdminDashboard"));
+
+function ModuleFallback() {
+  return (
+    <div className="flex min-h-[30vh] items-center justify-center px-4 text-sm text-muted-foreground">
+      Loading module…
+    </div>
+  );
+}
+
+function LazyModule({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<ModuleFallback />}>{children}</Suspense>;
+}
 
 const TEACHER_FEATURE_KEYS = new Set<ModuleKey>([
   "my-classes",
@@ -83,6 +97,7 @@ const Dashboard = ({
     queryKey: ["dashboard-term-exams"],
     queryFn: () => fetchExams(),
     retry: false,
+    staleTime: 60_000,
   });
 
   const useAcademyData = role === "admin" || role === "accountant";
@@ -92,6 +107,7 @@ const Dashboard = ({
     queryFn: () => fetchAcademyFeeSummary(),
     enabled: useAcademyData,
     retry: false,
+    staleTime: 60_000,
   });
 
   const { data: academyStudentTotal } = useQuery({
@@ -102,6 +118,7 @@ const Dashboard = ({
     },
     enabled: useAcademyData,
     retry: false,
+    staleTime: 60_000,
   });
 
   const now = new Date();
@@ -112,6 +129,7 @@ const Dashboard = ({
     queryFn: () => fetchAcademySalarySummary(dashPeriod),
     enabled: useAcademyData,
     retry: false,
+    staleTime: 60_000,
   });
 
   const { data: expenseSummary } = useQuery({
@@ -119,6 +137,7 @@ const Dashboard = ({
     queryFn: () => fetchAcademyExpenseSummary(dashPeriod),
     enabled: useAcademyData,
     retry: false,
+    staleTime: 60_000,
   });
 
   const { data: todayAttendance } = useQuery({
@@ -126,12 +145,14 @@ const Dashboard = ({
     queryFn: () => fetchAcademyAttendanceDay({ date: today }),
     enabled: role === "admin" || role === "accountant" || role === "teacher",
     retry: false,
+    staleTime: 30_000,
   });
 
   const { data: announcements = [] } = useQuery({
     queryKey: ["announcements-dashboard-count"],
     queryFn: () => fetchAnnouncements(),
     retry: false,
+    staleTime: 60_000,
   });
 
   const present = todayAttendance?.summary?.present ?? 0;
@@ -254,7 +275,9 @@ const Panel = () => {
       <>
         <SEO title={`${roleMeta[r].title} | The Concept`} description={`${roleMeta[r].title} dashboard.`} />
         {r === "admin" || r === "accountant" ? (
-          <AdminDashboard role={r} name={session.name} />
+          <LazyModule>
+            <AdminDashboard role={r} name={session.name} />
+          </LazyModule>
         ) : (
           <Dashboard role={r} name={session.name} modulePermissions={session.modulePermissions} />
         )}
@@ -336,7 +359,7 @@ const Panel = () => {
     <>
       <SEO title={`${mod.label} | ${roleMeta[r].title}`} description={mod.desc} />
       <ModuleHeader module={mod} role={r} />
-      {renderModule()}
+      <LazyModule>{renderModule()}</LazyModule>
     </>
   );
 };

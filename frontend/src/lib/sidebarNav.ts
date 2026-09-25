@@ -780,3 +780,36 @@ export function navItemIsActive(item: SidebarNavItem, pathname: string, role: Ro
 export function groupIsOpen(group: SidebarNavGroup, pathname: string, role: Role): boolean {
   return group.items.some((item) => navItemIsActive(item, pathname, role));
 }
+
+/** Primary destinations for the mobile bottom tab bar (order matters).
+ * Admin uses sidebar *group* ids (main menu). Other roles use item ids. */
+export const MOBILE_PRIMARY_NAV_IDS: Record<Role, string[]> = {
+  admin: ["dashboard", "academic-setup", "student-management", "finance", "administration"],
+  accountant: ["dashboard", "students", "fee-management", "academy-expenses", "chat"],
+  teacher: ["dashboard", "my-classes", "attendance", "chat", "homework"],
+  parent: ["dashboard", "students", "student-attendance", "chat", "announcements"],
+  student: ["dashboard", "student-timetable", "exams", "chat", "announcements"],
+};
+
+/** Admin mobile main-menu group ids (must match SIDEBAR_NAV groups). */
+export const ADMIN_MOBILE_GROUP_IDS = [
+  "dashboard",
+  "academic-setup",
+  "student-management",
+  "finance",
+  "administration",
+] as const;
+
+/** Flatten sidebar items in nav order for lookup by id. */
+export function flattenSidebarNav(role: Role): SidebarNavItem[] {
+  const seen = new Set<string>();
+  const out: SidebarNavItem[] = [];
+  for (const group of sidebarNavForRole(role)) {
+    for (const item of group.items) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      out.push(item);
+    }
+  }
+  return out;
+}

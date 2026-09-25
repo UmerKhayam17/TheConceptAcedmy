@@ -10,6 +10,16 @@ export const DAY_LABELS: Record<Weekday, string> = {
   sunday: "Sun",
 };
 
+export const DAY_FULL_LABELS: Record<Weekday, string> = {
+  monday: "Monday",
+  tuesday: "Tuesday",
+  wednesday: "Wednesday",
+  thursday: "Thursday",
+  friday: "Friday",
+  saturday: "Saturday",
+  sunday: "Sunday",
+};
+
 export const DAY_ORDER: Weekday[] = [
   "monday",
   "tuesday",
@@ -19,6 +29,9 @@ export const DAY_ORDER: Weekday[] = [
   "saturday",
   "sunday",
 ];
+
+/** Mon–Fri — used by “Apply to Full Week”. */
+export const FULL_WEEK_DAYS: Weekday[] = DAY_ORDER.slice(0, 5);
 
 export const DEFAULT_WORKING_DAYS: Weekday[] = DAY_ORDER.slice(0, 6);
 

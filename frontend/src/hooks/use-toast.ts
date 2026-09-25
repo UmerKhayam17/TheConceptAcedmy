@@ -3,7 +3,10 @@ import * as React from "react";
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
 const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+/** How long toasts stay visible before auto-dismiss (app-wide). */
+const TOAST_DURATION = 2000;
+/** Delay after dismiss before removing from DOM (exit animation). */
+const TOAST_REMOVE_DELAY = 400;
 
 type ToasterToast = ToastProps & {
   id: string;
@@ -134,7 +137,7 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">;
 
-function toast({ ...props }: Toast) {
+function toast({ duration = TOAST_DURATION, ...props }: Toast) {
   const id = genId();
 
   const update = (props: ToasterToast) =>
@@ -148,6 +151,7 @@ function toast({ ...props }: Toast) {
     type: "ADD_TOAST",
     toast: {
       ...props,
+      duration,
       id,
       open: true,
       onOpenChange: (open) => {
@@ -183,4 +187,4 @@ function useToast() {
   };
 }
 
-export { useToast, toast };
+export { useToast, toast, TOAST_DURATION };

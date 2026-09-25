@@ -4,7 +4,7 @@ import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 
 /** Panel chat module — WhatsApp-style UI wired to backend + sockets. */
 const ChatModule = ({ caps }: { user: SessionUser; perm: PermLevel; caps: ModuleActionCaps }) => (
-  <div className="h-[calc(100vh-140px)] min-h-[520px]">
+  <div className="h-full min-h-[420px]">
     <ChatPage canParticipate={caps.canParticipate} />
   </div>
 );

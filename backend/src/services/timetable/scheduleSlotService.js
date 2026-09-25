@@ -1,8 +1,12 @@
 const ScheduleSlot = require('../../models/timetable/ScheduleSlot');
 const TimetableVersion = require('../../models/timetable/TimetableVersion');
 const ApiError = require('../../utils/ApiError');
+const { WEEKDAYS } = require('../../models/timetable/constants');
 const { validateSlot } = require('./timetableConflictService');
 const { assertSessionWritable } = require('../session/sessionGuard');
+
+/** School week used by “Apply to Full Week”. */
+const FULL_WEEK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 
 const subjectPopulate = {
   path: 'subject',
@@ -30,6 +34,44 @@ const slotPopulate = [
   { path: 'room', select: 'name code type' },
 ];
 
+function dayLabel(day) {
+  return String(day || '').charAt(0).toUpperCase() + String(day || '').slice(1);
+}
+
+/** Compact conflict toast: class · section + grouped days. */
+function formatConflictSummary(details, placeLabel) {
+  if (!details?.length) return 'Schedule conflicts prevent saving these days';
+
+  const occupied = details.filter((d) => d.code === 'SECTION_PERIOD_OCCUPIED');
+  const other = details.filter((d) => d.code !== 'SECTION_PERIOD_OCCUPIED');
+  const parts = [];
+
+  if (occupied.length) {
+    const days = [...new Set(occupied.map((d) => dayLabel(d.day)).filter(Boolean))];
+    const subjects = [
+      ...new Set(
+        occupied
+          .map((d) => {
+            const m = String(d.message || '').match(/already has (.+) in this period/);
+            return m?.[1];
+          })
+          .filter(Boolean)
+      ),
+    ];
+    const subjectBit =
+      subjects.length === 1 ? ` (${subjects[0]})` : subjects.length > 1 ? ` (${subjects.join(', ')})` : '';
+    parts.push(
+      `${placeLabel} already has a lesson in this period${subjectBit} on ${days.join(', ')}`
+    );
+  }
+
+  other.forEach((d) => {
+    if (d.message) parts.push(d.message);
+  });
+
+  return parts.join('. ') || 'Schedule conflicts prevent saving these days';
+}
+
 function normalizeEntries(body) {
   if (Array.isArray(body.entries) && body.entries.length) {
     return body.entries.map((e) => ({
@@ -54,14 +96,32 @@ function assertUniqueEntries(entries) {
   }
 }
 
+function resolveTargetDays(body) {
+  if (body.applyToFullWeek) return [...FULL_WEEK_DAYS];
+  if (Array.isArray(body.days) && body.days.length) {
+    const unique = [...new Set(body.days.map(String))];
+    const invalid = unique.filter((d) => !WEEKDAYS.includes(d));
+    if (invalid.length) throw new ApiError(400, `Invalid day(s): ${invalid.join(', ')}`);
+    return WEEKDAYS.filter((d) => unique.includes(d));
+  }
+  if (!body.day) throw new ApiError(400, 'day is required');
+  return [String(body.day)];
+}
+
 async function listSlots(timetableVersionId) {
   return ScheduleSlot.find({ timetableVersion: timetableVersionId, cancelled: { $ne: true } })
     .populate(slotPopulate)
     .sort({ day: 1 });
 }
 
+/**
+ * Create or update a slot. Pass applyToFullWeek or days[] to write the same
+ * subject/teacher/period across multiple weekdays (all-or-nothing with conflicts).
+ */
 async function upsertSlot(timetableVersionId, body, { excludeSlotId, userId } = {}) {
-  const version = await TimetableVersion.findById(timetableVersionId);
+  const version = await TimetableVersion.findById(timetableVersionId)
+    .populate('class', 'className')
+    .populate('section', 'sectionName');
   if (!version) throw new ApiError(404, 'Timetable version not found');
   if (version.status !== 'draft' && version.status !== 'published') {
     throw new ApiError(400, 'Can only edit slots on draft or published timetables');
@@ -72,13 +132,22 @@ async function upsertSlot(timetableVersionId, body, { excludeSlotId, userId } = 
   assertUniqueEntries(entries);
   const primary = entries[0];
   const parallelEntries = entries.slice(1);
+  const targetDays = resolveTargetDays(body);
+  const multiDay = targetDays.length > 1;
 
-  const payload = {
+  const className =
+    (version.class && (version.class.className || version.class.name)) || 'Class';
+  const sectionName =
+    (version.section && (version.section.sectionName || version.section.name)) || 'Section';
+  const placeLabel = `${className} · ${sectionName}`;
+  const classId = version.class?._id || version.class;
+  const sectionId = version.section?._id || version.section;
+
+  const basePayload = {
     timetableVersion: timetableVersionId,
     session: version.session,
-    class: version.class,
-    section: version.section,
-    day: body.day,
+    class: classId,
+    section: sectionId,
     periodId: body.periodId,
     subject: primary.subject,
     teacher: primary.teacher,
@@ -90,52 +159,119 @@ async function upsertSlot(timetableVersionId, body, { excludeSlotId, userId } = 
     substituteForTeacher: body.substituteForTeacher || null,
   };
 
-  const existing = await ScheduleSlot.findOne({
+  const occupying = await ScheduleSlot.find({
     timetableVersion: timetableVersionId,
-    day: payload.day,
-    periodId: payload.periodId,
-  });
-
-  const excludeId = excludeSlotId || existing?._id;
-
-  for (const entry of entries) {
-    const validation = await validateSlot({
-      sessionId: version.session,
-      timetableVersionId,
-      day: payload.day,
-      periodId: payload.periodId,
-      subjectId: entry.subject,
-      teacherId: entry.teacher,
-      roomId: payload.room,
-      sectionId: version.section,
-      excludeSlotId: excludeId,
+    periodId: body.periodId,
+    day: { $in: targetDays },
+    cancelled: { $ne: true },
+  })
+    .select('_id day subject teacher')
+    .populate({
+      path: 'subject',
+      select: 'subjectName',
+      transform: (doc) => {
+        if (!doc) return doc;
+        const o = typeof doc.toObject === 'function' ? doc.toObject() : doc;
+        return { ...o, name: o.subjectName || o.name };
+      },
     });
+  const occupyingByDay = new Map(occupying.map((s) => [s.day, s]));
 
-    if (!validation.valid) {
-      const summary = validation.errors.map((e) => e.message).filter(Boolean).join('; ');
-      throw new ApiError(400, summary || 'Slot validation failed', validation.errors);
+  const conflictDetails = [];
+
+  for (const day of targetDays) {
+    const existing = occupyingByDay.get(day);
+    let excludeId = null;
+
+    if (multiDay) {
+      if (day === body.day) {
+        // Primary cell: update existing / excludeSlotId (same as single-day upsert)
+        excludeId = excludeSlotId || existing?._id || null;
+      } else if (existing) {
+        const existingSubject =
+          existing.subject?.name || existing.subject?.subjectName || 'another subject';
+        conflictDetails.push({
+          code: 'SECTION_PERIOD_OCCUPIED',
+          day,
+          className,
+          sectionName,
+          message: `${dayLabel(day)}: ${placeLabel} already has ${existingSubject} in this period`,
+          slotId: existing._id,
+        });
+        continue;
+      }
+    } else {
+      excludeId = excludeSlotId || existing?._id || null;
+    }
+
+    for (const entry of entries) {
+      // eslint-disable-next-line no-await-in-loop
+      const validation = await validateSlot({
+        sessionId: version.session,
+        timetableVersionId,
+        day,
+        periodId: body.periodId,
+        subjectId: entry.subject,
+        teacherId: entry.teacher,
+        roomId: basePayload.room,
+        sectionId,
+        excludeSlotId: excludeId,
+      });
+      if (!validation.valid) {
+        validation.errors.forEach((e) => {
+          let msg = e.message || 'schedule conflict';
+          if (e.code === 'TEACHER_CONFLICT') {
+            msg = `teacher is already assigned in another class at this time`;
+          }
+          conflictDetails.push({
+            ...e,
+            day,
+            className,
+            sectionName,
+            message: `${dayLabel(day)}: ${placeLabel} — ${msg}`,
+          });
+        });
+      }
     }
   }
 
-  if (excludeSlotId) {
-    const slot = await ScheduleSlot.findByIdAndUpdate(excludeSlotId, payload, {
-      new: true,
-      runValidators: true,
-    }).populate(slotPopulate);
-    if (!slot) throw new ApiError(404, 'Schedule slot not found');
-    return slot;
+  if (conflictDetails.length) {
+    const summary = formatConflictSummary(conflictDetails, placeLabel);
+    throw new ApiError(409, summary, conflictDetails);
   }
 
-  if (existing) {
-    const slot = await ScheduleSlot.findByIdAndUpdate(existing._id, payload, {
-      new: true,
-      runValidators: true,
-    }).populate(slotPopulate);
-    return slot;
+  const writeDay = async (day) => {
+    const payload = { ...basePayload, day };
+    const existing = occupyingByDay.get(day);
+
+    if (day === body.day && excludeSlotId) {
+      const slot = await ScheduleSlot.findByIdAndUpdate(excludeSlotId, payload, {
+        new: true,
+        runValidators: true,
+      }).populate(slotPopulate);
+      if (!slot) throw new ApiError(404, 'Schedule slot not found');
+      return slot;
+    }
+    if (existing && (!multiDay || day === body.day)) {
+      return ScheduleSlot.findByIdAndUpdate(existing._id, payload, {
+        new: true,
+        runValidators: true,
+      }).populate(slotPopulate);
+    }
+    const created = await ScheduleSlot.create({ ...payload, createdBy: userId || undefined });
+    return ScheduleSlot.findById(created._id).populate(slotPopulate).populate('createdBy', 'name email');
+  };
+
+  if (!multiDay) {
+    return writeDay(targetDays[0]);
   }
 
-  const slot = await ScheduleSlot.create({ ...payload, createdBy: userId || undefined });
-  return ScheduleSlot.findById(slot._id).populate(slotPopulate).populate('createdBy', 'name email');
+  const slots = [];
+  for (const day of targetDays) {
+    // eslint-disable-next-line no-await-in-loop
+    slots.push(await writeDay(day));
+  }
+  return { days: targetDays, created: slots.length, slots };
 }
 
 function slotEntriesPlain(slotDoc) {
@@ -389,4 +525,6 @@ module.exports = {
   getRoomSchedule,
   createSubstitution,
   slotPopulate,
+  FULL_WEEK_DAYS,
+  resolveTargetDays,
 };

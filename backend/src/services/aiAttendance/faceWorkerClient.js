@@ -19,7 +19,13 @@ async function request(method, path, body, { timeoutMs = 12000 } = {}) {
   const url = `${base}${path.startsWith('/') ? path : `/${path}`}`;
   const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
   const secret = (process.env.FACE_WORKER_SECRET || '').trim();
-  if (secret) headers['X-Face-Worker-Secret'] = secret;
+  if (!secret) {
+    throw new ApiError(
+      503,
+      'Face worker secret is required (set FACE_WORKER_SECRET on the API and the face-worker process)'
+    );
+  }
+  headers['X-Face-Worker-Secret'] = secret;
   let res;
   try {
     res = await fetch(url, {

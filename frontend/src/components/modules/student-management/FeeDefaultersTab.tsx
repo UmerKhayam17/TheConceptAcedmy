@@ -187,7 +187,7 @@ export default function FeeDefaultersTab({
   const canExport = caps.canView;
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h2 className="font-display text-xl font-bold text-primary flex items-center gap-2">
@@ -196,11 +196,11 @@ export default function FeeDefaultersTab({
           </h2>
         </div>
         {canExport && (
-          <div className="flex flex-wrap gap-2 shrink-0">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto">
             <Button
               variant="outline"
               size="sm"
-              className="gap-2"
+              className="gap-2 w-full sm:w-auto justify-center"
               disabled={exporting || defaulters.length === 0}
               onClick={() => void handleExport()}
             >
@@ -208,6 +208,7 @@ export default function FeeDefaultersTab({
               {exporting ? "Exporting…" : "Export CSV"}
             </Button>
             <DefaulterListDownload
+              className="w-full sm:w-auto justify-center"
               exporting={exportingMonthWise}
               onDownload={(format) => void handleMonthWiseExport(format)}
             />
@@ -243,33 +244,33 @@ export default function FeeDefaultersTab({
       </div>
 
       <Card className="p-3">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+          <div className="min-w-0">
             <Label className="text-xs">Month (optional)</Label>
             <Input
               type="number"
               min={1}
               max={12}
               placeholder="All"
-              className="w-20 h-9"
+              className="w-full h-9"
               value={month}
               onChange={(e) => setMonth(e.target.value)}
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <Label className="text-xs">Year (optional)</Label>
             <Input
               type="number"
               placeholder="All"
-              className="w-24 h-9"
+              className="w-full h-9"
               value={year}
               onChange={(e) => setYear(e.target.value)}
             />
           </div>
-          <div>
+          <div className="min-w-0 col-span-2 sm:col-span-1">
             <Label className="text-xs">Class</Label>
             <select
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm min-w-[8rem]"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               value={classFilter}
               onChange={(e) => setClassFilter(e.target.value)}
             >
@@ -285,6 +286,7 @@ export default function FeeDefaultersTab({
             <Button
               variant="ghost"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => {
                 setMonth("");
                 setYear("");
