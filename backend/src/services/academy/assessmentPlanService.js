@@ -10,8 +10,6 @@ const AcademyClassTest = require('../../models/academy/AcademyClassTest');
 const Exam = require('../../models/Exam');
 const User = require('../../models/User');
 const {
-  TEST_NAME_TEMPLATES,
-  EXAM_NAME_TEMPLATES,
   assessmentTypeLabel,
   ASSESSMENT_TYPES,
 } = require('../../config/assessmentTaxonomy');
@@ -92,33 +90,63 @@ async function getPlan(sessionId) {
   };
 }
 
-/** System Config: create TEST NO.1–15 + Full Length / Full Book catalog. */
-async function initializePlan(sessionId, userId) {
+function assertCatalogName(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw new ApiError(400, 'Name is required');
+  if (trimmed.length > 120) throw new ApiError(400, 'Name must be 120 characters or fewer');
+  return trimmed;
+}
+
+function assertUniqueName(plan, name, category, excludeId) {
+  const clash = (plan.items || []).some(
+    (item) =>
+      String(item._id) !== String(excludeId || '') &&
+      item.category === category &&
+      item.name.trim().toLowerCase() === name.toLowerCase()
+  );
+  if (clash) throw new ApiError(400, `A ${category} named "${name}" already exists`);
+}
+
+/** System Config: add one test or exam the admin named. */
+async function addCatalogItem(sessionId, body, userId) {
   await assertSessionWritable(sessionId);
-  const { plan, session } = await getOrCreatePlan(sessionId);
+  const { plan } = await getOrCreatePlan(sessionId);
 
-  if (plan.items?.length) {
-    throw new ApiError(400, 'Catalog already initialized. Clear it first to recreate.');
+  const assessmentType = body.assessmentType;
+  if (!ASSESSMENT_TYPES[assessmentType]) {
+    throw new ApiError(400, `Invalid assessment type: ${assessmentType}`);
   }
+  const category = ASSESSMENT_TYPES[assessmentType].category;
+  const name = assertCatalogName(body.name);
+  assertUniqueName(plan, name, category);
 
-  plan.items = [
-    ...TEST_NAME_TEMPLATES.map((t) => ({
-      category: 'test',
-      name: t.name,
-      assessmentType: t.assessmentType,
-    })),
-    ...EXAM_NAME_TEMPLATES.map((t) => ({
-      category: 'exam',
-      name: t.name,
-      assessmentType: t.assessmentType,
-    })),
-  ];
+  plan.items.push({ category, name, assessmentType });
   plan.status = 'ready';
-  plan.createdBy = userId;
+  if (!plan.createdBy) plan.createdBy = userId;
   plan.updatedBy = userId;
   await plan.save();
 
-  emitModuleSync('exam', 'assessment-plan', 'initialized', { sessionId: String(sessionId) });
+  emitModuleSync('exam', 'assessment-plan', 'item-added', { sessionId: String(sessionId) });
+  return getPlan(sessionId);
+}
+
+async function deleteCatalogItem(sessionId, itemId, userId) {
+  await assertSessionWritable(sessionId);
+  const { plan } = await getOrCreatePlan(sessionId);
+  const item = plan.items.id(itemId);
+  if (!item) throw new ApiError(404, 'Catalog item not found');
+
+  const assigned = await AssessmentAssignment.countDocuments({ sessionId, planItemId: itemId });
+  if (assigned) {
+    throw new ApiError(400, 'Remove class assignments for this item before deleting it');
+  }
+
+  item.deleteOne();
+  if (!plan.items.length) plan.status = 'empty';
+  plan.updatedBy = userId;
+  await plan.save();
+
+  emitModuleSync('exam', 'assessment-plan', 'item-removed', { sessionId: String(sessionId) });
   return getPlan(sessionId);
 }
 
@@ -147,7 +175,7 @@ async function updateCatalogItem(sessionId, itemId, body, userId) {
   const item = plan.items.id(itemId);
   if (!item) throw new ApiError(404, 'Catalog item not found');
 
-  if (body.name !== undefined) item.name = String(body.name).trim();
+  if (body.name !== undefined) item.name = assertCatalogName(body.name);
   if (body.assessmentType !== undefined) {
     if (!ASSESSMENT_TYPES[body.assessmentType]) {
       throw new ApiError(400, `Invalid assessment type: ${body.assessmentType}`);
@@ -155,6 +183,8 @@ async function updateCatalogItem(sessionId, itemId, body, userId) {
     item.assessmentType = body.assessmentType;
     item.category = ASSESSMENT_TYPES[body.assessmentType].category;
   }
+  if (!item.name) throw new ApiError(400, 'Name is required');
+  assertUniqueName(plan, item.name, item.category, item._id);
 
   plan.updatedBy = userId;
   await plan.save();
@@ -511,7 +541,8 @@ async function getPublishedDateSheet(sessionId, { classId, sectionId } = {}) {
 
 module.exports = {
   getPlan,
-  initializePlan,
+  addCatalogItem,
+  deleteCatalogItem,
   clearPlan,
   updateCatalogItem,
   listAssignments,

@@ -33,6 +33,10 @@ const SystemConfigModule = ({
   useActiveSessionId(sessionId, setSessionId);
   const { isAll, writable } = useSessionScope(sessionId);
 
+  if (sectionParam === "assessments") {
+    return <Navigate to="../test-catalog" replace />;
+  }
+
   if (!caps.canView) {
     return (
       <p className="p-6 text-muted-foreground text-sm">You do not have access to system configuration.</p>
@@ -74,8 +78,11 @@ const SystemConfigModule = ({
           {section === "academic" && (
             <AcademicSetupTab sessionId={isAll ? "" : sessionId} caps={caps} onSessionCreated={setSessionId} />
           )}
-          {section === "assessments" && (
-            <AssessmentsConfigTab sessionId={sessionId} caps={editCaps} />
+          {section === "test-catalog" && (
+            <AssessmentsConfigTab sessionId={sessionId} caps={editCaps} category="test" />
+          )}
+          {section === "exam-catalog" && (
+            <AssessmentsConfigTab sessionId={sessionId} caps={editCaps} category="exam" />
           )}
           {section === "sections" && <SectionsTab sessionId={sessionId} caps={editCaps} />}
           {section === "periods" && <PeriodsTab sessionId={sessionId} caps={editCaps} />}

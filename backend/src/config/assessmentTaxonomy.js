@@ -68,21 +68,6 @@ function isExamType(type) {
   return assessmentCategoryOf(type) === 'exam';
 }
 
-/** Default test slots created when a session assessment plan is initialized. */
-const TEST_NAME_TEMPLATES = Array.from({ length: 15 }, (_, i) => ({
-  name: `TEST NO.${i + 1}`,
-  assessmentType: i === 0 ? 'weekly' : i === 1 ? 'monthly' : 'weekly',
-  category: 'test',
-}));
-
-/** Default exam slots created when a session assessment plan is initialized. */
-const EXAM_NAME_TEMPLATES = [
-  { name: 'FULL LENGTH PAPER-I', assessmentType: 'full_length', category: 'exam' },
-  { name: 'FULL LENGTH PAPER-II', assessmentType: 'full_length', category: 'exam' },
-  { name: 'FULL LENGTH PAPER-III', assessmentType: 'full_length', category: 'exam' },
-  { name: 'FULL BOOK PAPER', assessmentType: 'full_book', category: 'exam' },
-];
-
 module.exports = {
   ASSESSMENT_CATEGORIES,
   ASSESSMENT_TYPES,
@@ -94,8 +79,6 @@ module.exports = {
   EXAM_TYPE_KEYS,
   EXAM_TYPE_LABELS,
   LEGACY_EXAM_TYPE_LABELS,
-  TEST_NAME_TEMPLATES,
-  EXAM_NAME_TEMPLATES,
   assessmentTypeLabel,
   assessmentCategoryOf,
   isTestType,

@@ -21,6 +21,14 @@ export interface Exam {
   startDate: string;
   endDate: string;
   status: ExamStatus;
+  /** Set when this exam was published from the assessment catalog. */
+  assignmentId?: string;
+  dateSheet?: {
+    subject?: string | AcademySubject;
+    date?: string;
+    totalMarks?: number;
+    syllabus?: string;
+  }[];
   createdAt?: string;
   createdBy?: CreatedByUser | string;
 }

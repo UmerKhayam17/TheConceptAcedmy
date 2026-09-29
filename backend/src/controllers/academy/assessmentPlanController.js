@@ -6,9 +6,18 @@ const getPlan = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
-const initialize = catchAsync(async (req, res) => {
-  const data = await planService.initializePlan(req.params.sessionId, req.user._id);
+const addItem = catchAsync(async (req, res) => {
+  const data = await planService.addCatalogItem(req.params.sessionId, req.body, req.user._id);
   res.status(201).json({ success: true, data });
+});
+
+const deleteItem = catchAsync(async (req, res) => {
+  const data = await planService.deleteCatalogItem(
+    req.params.sessionId,
+    req.params.itemId,
+    req.user._id
+  );
+  res.json({ success: true, data });
 });
 
 const clear = catchAsync(async (req, res) => {
@@ -84,7 +93,8 @@ const dateSheet = catchAsync(async (req, res) => {
 
 module.exports = {
   getPlan,
-  initialize,
+  addItem,
+  deleteItem,
   clear,
   updateItem,
   listAssignments,

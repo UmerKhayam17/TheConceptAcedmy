@@ -403,8 +403,19 @@ export type DateSheetPayload = {
 export const fetchAssessmentPlan = (sessionId: string) =>
   api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan`);
 
-export const initializeAssessmentPlan = (sessionId: string) =>
-  api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan/initialize`, { method: "POST" });
+export const addAssessmentPlanItem = (
+  sessionId: string,
+  body: { name: string; assessmentType: string },
+) =>
+  api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan/items`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const deleteAssessmentPlanItem = (sessionId: string, itemId: string) =>
+  api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan/items/${itemId}`, {
+    method: "DELETE",
+  });
 
 export const clearAssessmentPlan = (sessionId: string) =>
   api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan/clear`, { method: "POST" });

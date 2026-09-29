@@ -3,60 +3,60 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Award, FileDown, Save, Send } from "lucide-react";
-import { Link } from "react-router-dom";
+import { ArrowLeft, Award, FileDown, Save, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
-import { fetchAcademyClasses, type AcademySubject } from "@/lib/studentManagementApi";
+import type { AcademySubject } from "@/lib/studentManagementApi";
 import {
+  fetchExam,
   fetchExamResults,
   fetchExamStudents,
-  fetchExams,
   publishAllExamResults,
   publishResult,
   resultPdfUrl,
   saveExamMarks,
   type Exam,
-  type ExamStudentRow,
 } from "@/lib/examApi";
 import { getAccessToken } from "@/lib/auth";
-import { systemConfigHref } from "@/lib/systemConfigMenus";
+import AssignAssessmentsPanel from "@/components/modules/exams/AssignAssessmentsPanel";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import CreatedByLine from "@/components/modules/CreatedByLine";
-import PanelToolbar from "@/components/modules/PanelToolbar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 
-function classNameOf(exam: Exam) {
-  const c = exam.academyClass;
+function classNameOf(exam?: Exam | null) {
+  const c = exam?.academyClass;
   return typeof c === "object" && c ? c.className : "—";
 }
 
-function subjectIdOf(s: string | AcademySubject) {
-  return typeof s === "object" ? s._id : s;
+function subjectIdOf(s: string | AcademySubject | undefined) {
+  if (!s) return "";
+  return typeof s === "object" ? s._id : String(s);
 }
 
-function subjectLabel(s: string | AcademySubject) {
-  return typeof s === "object" ? s.subjectName : "—";
+type MarkColumn = { id: string; name: string; total: number };
+
+function paperColumnsOf(exam: Exam | undefined, classSubjects: AcademySubject[]): MarkColumn[] {
+  const names = new Map(classSubjects.map((s) => [s._id, s.subjectName]));
+  const cols: MarkColumn[] = [];
+  for (const row of exam?.dateSheet || []) {
+    const raw = row.subject;
+    const id = subjectIdOf(raw);
+    if (!id) continue;
+    const total = Number(row.totalMarks);
+    cols.push({
+      id,
+      name: typeof raw === "object" && raw?.subjectName ? raw.subjectName : names.get(id) || "Subject",
+      total: Number.isFinite(total) && total > 0 ? total : 100,
+    });
+  }
+  return cols;
 }
 
 export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
   const { toast } = useToast();
-  const { user } = useAuth();
   const qc = useQueryClient();
-  const role = user?.role ?? "admin";
-  const [classFilter, setClassFilter] = useState("");
-  const [examSearch, setExamSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [marksDraft, setMarksDraft] = useState<
@@ -66,14 +66,10 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
   const canEnter = caps.canEdit || caps.canCreate;
   const canPublish = caps.canCreate;
 
-  const { data: classes = [] } = useQuery({
-    queryKey: ["academy-classes"],
-    queryFn: () => fetchAcademyClasses({ status: "active" }),
-  });
-
-  const { data: exams = [], isLoading: examsLoading } = useQuery({
-    queryKey: ["exams", classFilter],
-    queryFn: () => fetchExams(classFilter || undefined),
+  const { data: selectedExam } = useQuery({
+    queryKey: ["exam", selectedExamId],
+    queryFn: () => fetchExam(selectedExamId!),
+    enabled: !!selectedExamId,
   });
 
   const { data: examData, isLoading: gridLoading } = useQuery({
@@ -111,13 +107,11 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
 
   const subjects = examData?.subjects || [];
   const studentRows = examData?.students || [];
-
-  const examsFiltered = useMemo(() => {
-    if (!examSearch.trim()) return exams;
-    return exams.filter((e) =>
-      matchesPanelSearch(examSearch, e.title, e.type, classNameOf(e), e.sessionLabel, e.status)
-    );
-  }, [exams, examSearch]);
+  const markExam = selectedExam?.dateSheet?.length ? selectedExam : examData?.exam;
+  const markColumns = useMemo(
+    () => paperColumnsOf(markExam, subjects),
+    [markExam, subjects],
+  );
 
   const studentRowsFiltered = useMemo(() => {
     if (!studentSearch.trim()) return studentRows;
@@ -131,42 +125,42 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
     );
   }, [studentRows, studentSearch]);
 
-  const initMarksFromRows = (rows: ExamStudentRow[]) => {
-    const draft: Record<string, Record<string, { obtained: string; total: string }>> = {};
-    rows.forEach((row) => {
-      const sid = row.student._id;
-      draft[sid] = {};
-      row.subjects.forEach((sub) => {
-        const subId = sub._id;
-        const existing = row.result?.subjectMarks?.find(
-          (m) => subjectIdOf(m.subject) === subId
-        );
-        draft[sid][subId] = {
-          obtained: existing != null ? String(existing.obtained) : "",
-          total: existing != null ? String(existing.total) : "100",
-        };
-      });
-    });
-    setMarksDraft(draft);
-  };
-
   useEffect(() => {
-    if (studentRows.length) initMarksFromRows(studentRows);
-  }, [studentRows]);
+    if (!studentRows.length || !markColumns.length) return;
+    setMarksDraft((prev) => {
+      const next: Record<string, Record<string, { obtained: string; total: string }>> = { ...prev };
+      studentRows.forEach((row) => {
+        const sid = row.student._id;
+        const rowDraft = { ...(next[sid] || {}) };
+        markColumns.forEach((col) => {
+          const existing = row.result?.subjectMarks?.find((m) => subjectIdOf(m.subject) === col.id);
+          const prevCell = rowDraft[col.id];
+          rowDraft[col.id] = {
+            obtained: prevCell?.obtained ?? (existing != null ? String(existing.obtained) : ""),
+            total: String(col.total),
+          };
+        });
+        next[sid] = rowDraft;
+      });
+      return next;
+    });
+  }, [studentRows, markColumns]);
 
   const handleSaveMarks = () => {
     if (!selectedExamId) return;
     const marks = studentRows
       .map((row) => {
         const sid = row.student._id;
-        const subjectMarks = row.subjects
-          .map((sub) => {
-            const cell = marksDraft[sid]?.[sub._id];
+        const enrolled = new Set((row.subjects || []).map((sub) => sub._id));
+        const subjectMarks = markColumns
+          .filter((col) => enrolled.has(col.id))
+          .map((col) => {
+            const cell = marksDraft[sid]?.[col.id];
             if (!cell || cell.obtained === "") return null;
             return {
-              subject: sub._id,
+              subject: col.id,
               obtained: Number(cell.obtained),
-              total: Number(cell.total) || 100,
+              total: col.total,
             };
           })
           .filter(Boolean) as { subject: string; obtained: number; total: number }[];
@@ -196,81 +190,38 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
     URL.revokeObjectURL(url);
   };
 
-  const selectedExam = exams.find((e) => e._id === selectedExamId);
-
   return (
-    <div className="space-y-4">
-      <PanelToolbar search={examSearch} onSearchChange={setExamSearch} searchPlaceholder="Search term exams…">
-        <div className="space-y-1">
-          <Label className="text-xs sr-only">Class</Label>
-          <Select value={classFilter || "_all"} onValueChange={(v) => setClassFilter(v === "_all" ? "" : v)}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="All classes" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_all">All classes</SelectItem>
-              {classes.map((c) => (
-                <SelectItem key={c._id} value={c._id}>
-                  {c.className}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {caps.canCreate && (
-          <Button variant="outline" asChild>
-            <Link to={systemConfigHref(role, "assessments")}>Open catalog</Link>
+    <div className="space-y-6">
+      <div className={selectedExamId ? "hidden" : undefined}>
+        <AssignAssessmentsPanel
+          caps={caps}
+          category="exam"
+          onEnterExam={(examId) => {
+            setStudentSearch("");
+            setSelectedExamId(examId);
+          }}
+        />
+      </div>
+
+      {selectedExamId && (
+        <div className="space-y-3">
+          <Button variant="ghost" size="sm" className="-ml-2" onClick={() => setSelectedExamId(null)}>
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back to exams
           </Button>
-        )}
-      </PanelToolbar>
-
-      <div className="grid lg:grid-cols-[280px_1fr] gap-4">
-        <Card className="p-0 overflow-hidden max-h-[70vh] overflow-y-auto">
-          <div className="px-3 py-2 border-b font-semibold text-sm text-primary bg-secondary/30">
-            Term exams
-          </div>
-          {examsLoading && <p className="p-4 text-sm text-muted-foreground">Loading…</p>}
-          {!examsLoading && exams.length === 0 && (
-            <p className="p-4 text-sm text-muted-foreground">
-              No exams yet. Publish from System Config → Assessment Plan.
-            </p>
-          )}
-          {examsFiltered.map((exam) => (
-            <button
-              key={exam._id}
-              type="button"
-              onClick={() => setSelectedExamId(exam._id)}
-              className={`w-full text-left px-3 py-3 border-b transition-colors ${selectedExamId === exam._id ? "bg-accent/10" : "hover:bg-muted/50"
-                }`}
-            >
-              <div className="font-medium text-sm">{exam.title}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {classNameOf(exam)} · {exam.type}
-              </div>
-              <Badge variant="outline" className="mt-1 text-[10px]">
-                {exam.status}
-              </Badge>
-            </button>
-          ))}
-        </Card>
-
-        <div className="min-w-0">
-          {!selectedExamId && (
-            <Card className="p-8 text-center text-muted-foreground text-sm" />
-          )}
-          {selectedExam && (
-            <Card className="overflow-hidden">
+          <Card className="overflow-hidden">
               <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-2 bg-secondary/20">
                 <div>
                   <h3 className="font-semibold text-primary flex items-center gap-2">
                     <Award className="h-4 w-4 text-accent" />
-                    {selectedExam.title}
+                    {selectedExam?.title || "Exam"}
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    {classNameOf(selectedExam)} · {selectedExam.type}
-                    {selectedExam.sessionLabel ? ` · ${selectedExam.sessionLabel}` : ""}
+                    {classNameOf(selectedExam)}
+                    {selectedExam?.type ? ` · ${selectedExam.type}` : ""}
+                    {selectedExam?.sessionLabel ? ` · ${selectedExam.sessionLabel}` : ""}
                   </p>
-                  <CreatedByLine createdBy={selectedExam.createdBy} className="mt-1" />
+                  <CreatedByLine createdBy={selectedExam?.createdBy} className="mt-1" />
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {canEnter && (
@@ -319,9 +270,10 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                           <thead className="bg-muted/50">
                             <tr>
                               <th className="text-left p-2 sticky left-0 bg-muted/50 min-w-[140px]">Student</th>
-                              {subjects.map((sub) => (
-                                <th key={sub._id} className="text-center p-2 min-w-[100px]">
-                                  {sub.subjectName}
+                              {markColumns.map((col) => (
+                                <th key={col.id} className="text-center p-2 min-w-[100px]">
+                                  {col.name}
+                                  <div className="text-[10px] font-normal text-muted-foreground">/ {col.total}</div>
                                 </th>
                               ))}
                             </tr>
@@ -330,7 +282,7 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                             {studentRowsFiltered.length === 0 && (
                               <tr>
                                 <td
-                                  colSpan={subjects.length + 1}
+                                  colSpan={markColumns.length + 1}
                                   className="p-6 text-center text-muted-foreground"
                                 >
                                   No students match your search.
@@ -343,14 +295,17 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                                   {row.student.studentName}
                                   <div className="text-[10px] text-muted-foreground">{row.student.studentId}</div>
                                 </td>
-                                {row.subjects.map((sub) => {
-                                  const cell = marksDraft[row.student._id]?.[sub._id];
+                                {markColumns.map((col) => {
+                                  const enrolled = (row.subjects || []).some((sub) => sub._id === col.id);
+                                  const cell = marksDraft[row.student._id]?.[col.id];
                                   return (
-                                    <td key={sub._id} className="p-1 text-center">
-                                      {canEnter ? (
-                                        <div className="flex gap-0.5 justify-center">
+                                    <td key={col.id} className="p-1 text-center">
+                                      {!enrolled ? (
+                                        <span className="text-xs text-muted-foreground">—</span>
+                                      ) : canEnter ? (
+                                        <div className="flex items-center justify-center gap-1">
                                           <Input
-                                            className="h-7 w-12 text-center text-xs px-1"
+                                            className="h-7 w-14 text-center text-xs px-1"
                                             placeholder="0"
                                             value={cell?.obtained ?? ""}
                                             onChange={(e) =>
@@ -358,35 +313,19 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                                                 ...prev,
                                                 [row.student._id]: {
                                                   ...prev[row.student._id],
-                                                  [sub._id]: {
+                                                  [col.id]: {
                                                     obtained: e.target.value,
-                                                    total: prev[row.student._id]?.[sub._id]?.total ?? "100",
+                                                    total: String(col.total),
                                                   },
                                                 },
                                               }))
                                             }
                                           />
-                                          <span className="text-muted-foreground text-xs self-center">/</span>
-                                          <Input
-                                            className="h-7 w-12 text-center text-xs px-1"
-                                            value={cell?.total ?? "100"}
-                                            onChange={(e) =>
-                                              setMarksDraft((prev) => ({
-                                                ...prev,
-                                                [row.student._id]: {
-                                                  ...prev[row.student._id],
-                                                  [sub._id]: {
-                                                    obtained: prev[row.student._id]?.[sub._id]?.obtained ?? "",
-                                                    total: e.target.value,
-                                                  },
-                                                },
-                                              }))
-                                            }
-                                          />
+                                          <span className="text-xs text-muted-foreground">/ {col.total}</span>
                                         </div>
                                       ) : (
                                         <span className="text-xs">
-                                          {cell?.obtained || "—"}/{cell?.total || "—"}
+                                          {cell?.obtained || "—"}/{col.total}
                                         </span>
                                       )}
                                     </td>
@@ -461,10 +400,9 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                   </div>
                 </TabsContent>
               </Tabs>
-            </Card>
-          )}
+          </Card>
         </div>
-      </div>
+      )}
     </div>
   );
 }

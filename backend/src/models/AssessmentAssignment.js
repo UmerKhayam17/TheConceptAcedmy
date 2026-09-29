@@ -13,7 +13,7 @@ const paperSchema = new mongoose.Schema(
 
 /**
  * One assignment of a catalog test/exam to a class (+ optional section).
- * The same plan item (e.g. TEST NO.1) can have many assignments across classes.
+ * The same plan item can have many assignments across classes.
  */
 const assessmentAssignmentSchema = new mongoose.Schema(
   {

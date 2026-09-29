@@ -113,17 +113,3 @@ export function typesForCategory(category: AssessmentCategory): CanonicalAssessm
   return ASSESSMENT_TYPE_KEYS.filter((k) => ASSESSMENT_TYPES[k].category === category);
 }
 
-/** Default test slots when a session assessment plan is initialized. */
-export const TEST_NAME_TEMPLATES = Array.from({ length: 15 }, (_, i) => ({
-  name: `TEST NO.${i + 1}`,
-  assessmentType: (i === 0 ? "weekly" : i === 1 ? "monthly" : "weekly") as CanonicalAssessmentType,
-  category: "test" as const,
-}));
-
-/** Default exam slots when a session assessment plan is initialized. */
-export const EXAM_NAME_TEMPLATES = [
-  { name: "FULL LENGTH PAPER-I", assessmentType: "full_length" as const, category: "exam" as const },
-  { name: "FULL LENGTH PAPER-II", assessmentType: "full_length" as const, category: "exam" as const },
-  { name: "FULL LENGTH PAPER-III", assessmentType: "full_length" as const, category: "exam" as const },
-  { name: "FULL BOOK PAPER", assessmentType: "full_book" as const, category: "exam" as const },
-];

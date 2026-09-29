@@ -48,6 +48,8 @@ export type SidebarNavItem = {
   requireManage?: boolean;
   /** Extra active-path matching beyond exact/prefix href */
   isActive?: (pathname: string, role: Role) => boolean;
+  /** Nested links, rendered under this item */
+  children?: SidebarNavItem[];
 };
 
 export type SidebarNavGroup = {
@@ -100,13 +102,6 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => systemConfigHref(role, "history"),
       },
       {
-        id: "assessments-config",
-        label: "Assessment Catalog",
-        icon: ClipboardList,
-        moduleKey: "system-config",
-        href: (role) => systemConfigHref(role, "assessments"),
-      },
-      {
         id: "classes",
         label: "Classes",
         icon: School,
@@ -128,6 +123,33 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: BookOpen,
         moduleKey: "student-management",
         href: (role) => studentManagementHref(role, "subjects"),
+      },
+      {
+        id: "assessments-config",
+        label: "Assessment Catalog",
+        icon: ClipboardList,
+        moduleKey: "system-config",
+        href: (role) => systemConfigHref(role, "test-catalog"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/system-config/test-catalog`) ||
+          pathname.startsWith(`${p(role)}/system-config/exam-catalog`) ||
+          pathname.startsWith(`${p(role)}/system-config/assessments`),
+        children: [
+          {
+            id: "test-catalog",
+            label: "Tests",
+            icon: ClipboardList,
+            moduleKey: "system-config",
+            href: (role) => systemConfigHref(role, "test-catalog"),
+          },
+          {
+            id: "exam-catalog",
+            label: "Exams",
+            icon: Award,
+            moduleKey: "system-config",
+            href: (role) => systemConfigHref(role, "exam-catalog"),
+          },
+        ],
       },
       {
         id: "rooms",
@@ -262,15 +284,6 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
     icon: Award,
     collapsible: true,
     items: [
-      {
-        id: "assign-assessments",
-        label: "Assign",
-        icon: ClipboardList,
-        moduleKey: "exams",
-        href: (role) => testExamsHref(role, "assign"),
-        isActive: (pathname, role) =>
-          pathname.startsWith(`${p(role)}/exams/assign`),
-      },
       {
         id: "class-tests",
         label: "Tests",

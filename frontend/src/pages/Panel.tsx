@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Role } from "@/lib/auth";
 import { roleMeta, findModule, buildMenu, moduleHref } from "@/lib/panelMenus";
-import { systemConfigHref } from "@/lib/systemConfigMenus";
+import { SYSTEM_CONFIG_SECTIONS, systemConfigHref } from "@/lib/systemConfigMenus";
 import { studentManagementHref } from "@/lib/studentManagementMenus";
 import { defaultTimetableSection, timetableHref } from "@/lib/timetableMenus";
 import { testExamsHref } from "@/lib/testExamsMenus";
@@ -332,10 +332,16 @@ const Panel = () => {
     }
   };
 
+  const configSection =
+    mod.key === "system-config"
+      ? SYSTEM_CONFIG_SECTIONS.find((s) => s.key === section)
+      : undefined;
+  const headerTitle = configSection?.label || mod.label;
+
   return (
     <>
-      <SEO title={`${mod.label} | ${roleMeta[r].title}`} description={mod.desc} />
-      <ModuleHeader module={mod} role={r} />
+      <SEO title={`${headerTitle} | ${roleMeta[r].title}`} description={mod.desc} />
+      <ModuleHeader module={mod} role={r} title={headerTitle} icon={configSection?.icon} />
       {renderModule()}
     </>
   );

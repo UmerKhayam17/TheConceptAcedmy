@@ -1,21 +1,20 @@
 import type { ComponentType } from "react";
-import { CalendarDays, ClipboardList, GraduationCap, Link2 } from "lucide-react";
+import { CalendarDays, ClipboardList, GraduationCap } from "lucide-react";
 import type { Role } from "./auth";
 
-export type TestExamsSection = "assign" | "enter-tests" | "term-exams" | "date-sheet";
+export type TestExamsSection = "enter-tests" | "term-exams" | "date-sheet";
 
 export const TEST_EXAMS_SECTIONS: {
   key: TestExamsSection;
   label: string;
   icon: ComponentType<{ className?: string }>;
 }[] = [
-  { key: "assign", label: "Assign", icon: Link2 },
   { key: "enter-tests", label: "Tests", icon: ClipboardList },
   { key: "term-exams", label: "Exams", icon: GraduationCap },
   { key: "date-sheet", label: "Date sheet", icon: CalendarDays },
 ];
 
-export const DEFAULT_TEST_EXAMS_SECTION: TestExamsSection = "assign";
+export const DEFAULT_TEST_EXAMS_SECTION: TestExamsSection = "enter-tests";
 
 export function isTestExamsSection(value: string | undefined): value is TestExamsSection {
   return TEST_EXAMS_SECTIONS.some((s) => s.key === value);

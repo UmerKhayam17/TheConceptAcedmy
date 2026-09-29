@@ -1,41 +1,61 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, GraduationCap, Loader2, RotateCcw, Sparkles } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
-import type { ModuleActionCaps } from "@/lib/permissions";
-import { ASSESSMENT_TYPE_LABELS, type AssessmentType } from "@/lib/assessmentTaxonomy";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  clearAssessmentPlan,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import type { ModuleActionCaps } from "@/lib/permissions";
+import {
+  ASSESSMENT_TYPE_LABELS,
+  ASSESSMENT_TYPES,
+  typesForCategory,
+  type AssessmentCategory,
+  type AssessmentType,
+  type CanonicalAssessmentType,
+} from "@/lib/assessmentTaxonomy";
+import {
+  addAssessmentPlanItem,
+  deleteAssessmentPlanItem,
   fetchAssessmentPlan,
-  initializeAssessmentPlan,
+  updateAssessmentPlanItem,
   type AssessmentPlanItem,
 } from "@/lib/configApi";
-import { testExamsHref } from "@/lib/testExamsMenus";
+import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import { matchesPanelSearch } from "@/lib/panelSearch";
 
 /**
- * System Config → Assessment Plan
- * Creates the session catalog only (TEST NO.1–15, Full Length, Full Book).
- * Class/section/syllabus assignment happens in Assessments → Assign.
+ * System Config → Assessment Catalog.
+ * Tests and exams are separate panels. Class assignment happens on the Tests and Exams pages.
  */
 export default function AssessmentsConfigTab({
   sessionId,
   caps,
+  category,
 }: {
   sessionId: string;
   caps: ModuleActionCaps;
+  category: AssessmentCategory;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { user } = useAuth();
-  const role = user?.role ?? "admin";
   const canManage = caps.canCreate || caps.canEdit;
-  const [branch, setBranch] = useState<"test" | "exam">("test");
+  const noun = category === "test" ? "test" : "exam";
+  const nounTitle = category === "test" ? "Tests" : "Exams";
+
+  const [typeFilter, setTypeFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<AssessmentPlanItem | null>(null);
+  const [form, setForm] = useState({ name: "", assessmentType: typesForCategory(category)[0] });
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["assessment-plan", sessionId],
@@ -44,31 +64,85 @@ export default function AssessmentsConfigTab({
   });
 
   const plan = data?.plan;
-  const summary = data?.summary;
-  const session = data?.session;
+  const items = (plan?.items ?? []).filter((item) => item.category === category);
+  const assignedCount = items.reduce((sum, item) => sum + (item.assignmentCount ?? 0), 0);
+  const publishedCount = items.reduce((sum, item) => sum + (item.publishedCount ?? 0), 0);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["assessment-plan", sessionId] });
 
-  const initMut = useMutation({
-    mutationFn: () => initializeAssessmentPlan(sessionId),
+  const typeOptions = typesForCategory(category);
+
+  const filtered = useMemo(() => {
+    return items.filter((item) => {
+      if (typeFilter && item.assessmentType !== typeFilter) return false;
+      return matchesPanelSearch(
+        search,
+        item.name,
+        ASSESSMENT_TYPE_LABELS[item.assessmentType as AssessmentType],
+      );
+    });
+  }, [items, typeFilter, search]);
+
+  const addMut = useMutation({
+    mutationFn: (body: { name: string; assessmentType: string }) => addAssessmentPlanItem(sessionId, body),
     onSuccess: () => {
       invalidate();
-      toast({
-        title: "Catalog created",
-        description: "TEST NO.1–15 and exam papers are ready. Assign them to classes in Assessments.",
-      });
+      setDialogOpen(false);
+      toast({ title: "Added to catalog" });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const clearMut = useMutation({
-    mutationFn: () => clearAssessmentPlan(sessionId),
+  const updateMut = useMutation({
+    mutationFn: ({ itemId, body }: { itemId: string; body: { name: string; assessmentType: string } }) =>
+      updateAssessmentPlanItem(sessionId, itemId, body),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Catalog cleared" });
+      setDialogOpen(false);
+      setEditing(null);
+      toast({ title: "Catalog item updated" });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
+
+  const deleteMut = useMutation({
+    mutationFn: (itemId: string) => deleteAssessmentPlanItem(sessionId, itemId),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Removed from catalog" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({
+      name: "",
+      assessmentType:
+        typeFilter && typeOptions.includes(typeFilter as CanonicalAssessmentType) ? (typeFilter as CanonicalAssessmentType) : typeOptions[0],
+    });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (item: AssessmentPlanItem) => {
+    setEditing(item);
+    setForm({
+      name: item.name,
+      assessmentType: item.assessmentType as CanonicalAssessmentType,
+    });
+    setDialogOpen(true);
+  };
+
+  const save = () => {
+    const name = form.name.trim();
+    if (!name) return;
+    const body = { name, assessmentType: form.assessmentType };
+    if (editing) updateMut.mutate({ itemId: editing._id, body });
+    else addMut.mutate(body);
+  };
+
+  const saving = addMut.isPending || updateMut.isPending;
+  const formTypes = typeOptions;
 
   if (!sessionId) {
     return (
@@ -78,15 +152,7 @@ export default function AssessmentsConfigTab({
     );
   }
 
-  if (isLoading) {
-    return (
-      <div className="px-4 sm:px-6 lg:px-8 py-12 flex justify-center text-muted-foreground text-sm gap-2">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading catalog…
-      </div>
-    );
-  }
-
-  if (isError || !plan) {
+  if (isError) {
     return (
       <p className="px-4 sm:px-6 lg:px-8 py-8 text-sm text-destructive">
         {error instanceof Error ? error.message : "Failed to load assessment catalog."}
@@ -94,110 +160,181 @@ export default function AssessmentsConfigTab({
     );
   }
 
-  const tests = plan.items.filter((i) => i.category === "test");
-  const exams = plan.items.filter((i) => i.category === "exam");
-
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6 max-w-3xl">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-primary">Assessment catalog</h2>
-          <p className="text-sm text-muted-foreground">
-            {session?.name || "Session"} — create tests &amp; exams here. Assign to classes in the
-            Assessments module.
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <Card className="p-3">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{nounTitle}</p>
+          <p className="text-lg font-semibold text-primary">{isLoading ? "…" : items.length}</p>
+        </Card>
+        <Card className="p-3">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Class assignments</p>
+          <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">
+            {isLoading ? "…" : assignedCount}
           </p>
-        </div>
-        <Badge variant={plan.status === "ready" ? "default" : "outline"}>
-          {plan.status === "ready" ? "Ready" : "Not started"}
-        </Badge>
+        </Card>
+        <Card className="p-3">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Published</p>
+          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+            {isLoading ? "…" : publishedCount}
+          </p>
+        </Card>
       </div>
 
-      {plan.status === "empty" && (
-        <Card className="p-6 space-y-4 border-dashed">
-          <div className="flex items-start gap-3">
-            <Sparkles className="h-5 w-5 text-primary mt-0.5" />
-            <div className="space-y-1">
-              <h3 className="font-semibold">Initialize tests &amp; exams</h3>
-              <p className="text-sm text-muted-foreground">
-                Creates <strong>TEST NO.1–15</strong> and{" "}
-                <strong>FULL LENGTH PAPER-I–III</strong> + <strong>FULL BOOK PAPER</strong> for this
-                session. No classes yet — assign those later under Assessments → Assign.
-              </p>
+      <Card className="p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0 flex-1">
+            <div className="min-w-0">
+              <Label className="mb-1 block text-xs">Search</Label>
+              <PanelSearchBar
+                value={search}
+                onChange={setSearch}
+                placeholder={`Search ${noun} name or type…`}
+                className="max-w-none w-full min-w-0"
+                inputClassName="h-9"
+              />
+            </div>
+            <div className="min-w-0">
+              <Label className="mb-1 block text-xs">Type</Label>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+              >
+                <option value="">All types</option>
+                {typeOptions.map((key) => (
+                  <option key={key} value={key}>
+                    {ASSESSMENT_TYPES[key].label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-          {canManage && (
-            <Button onClick={() => initMut.mutate()} disabled={initMut.isPending}>
-              {initMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create catalog
-            </Button>
-          )}
-        </Card>
-      )}
-
-      {plan.status === "ready" && (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            {summary?.testCount ?? tests.length} tests · {summary?.examCount ?? exams.length} exams
-            · {summary?.assignmentCount ?? 0} class assignment(s)
-          </p>
-
-          <Tabs value={branch} onValueChange={(v) => setBranch(v as "test" | "exam")}>
-            <TabsList>
-              <TabsTrigger value="test" className="gap-1.5">
-                <ClipboardList className="h-3.5 w-3.5" /> Tests
-              </TabsTrigger>
-              <TabsTrigger value="exam" className="gap-1.5">
-                <GraduationCap className="h-3.5 w-3.5" /> Exams
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="test" className="mt-4">
-              <CatalogList items={tests} />
-            </TabsContent>
-            <TabsContent value="exam" className="mt-4">
-              <CatalogList items={exams} />
-            </TabsContent>
-          </Tabs>
-
-          <div className="flex flex-wrap gap-2">
-            <Button variant="default" asChild>
-              <Link to={testExamsHref(role, "assign")}>Assign to classes →</Link>
-            </Button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {canManage && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => clearMut.mutate()}
-                disabled={clearMut.isPending}
-              >
-                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Clear catalog
+              <Button size="sm" variant="gold" className="whitespace-nowrap" onClick={openCreate}>
+                <Plus className="h-4 w-4" />
+                Add {noun}
               </Button>
             )}
           </div>
         </div>
-      )}
-    </div>
-  );
-}
+      </Card>
 
-function CatalogList({ items }: { items: AssessmentPlanItem[] }) {
-  if (!items.length) {
-    return <p className="text-sm text-muted-foreground py-6 text-center">No items.</p>;
-  }
-  return (
-    <Card className="divide-y overflow-hidden">
-      {items.map((item) => (
-        <div key={item._id} className="px-4 py-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="font-medium text-sm">{item.name}</div>
-            <div className="text-xs text-muted-foreground">
-              {ASSESSMENT_TYPE_LABELS[item.assessmentType as AssessmentType] || item.assessmentType}
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 border-b">
+              <tr>
+                <th className="text-left p-2.5 font-medium">Name</th>
+                <th className="text-left p-2.5 font-medium">Type</th>
+                <th className="text-left p-2.5 font-medium">Classes</th>
+                {canManage && <th className="text-right p-2.5 font-medium">Action</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr>
+                  <td colSpan={canManage ? 4 : 3} className="p-6 text-center text-muted-foreground">
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading catalog…
+                    </span>
+                  </td>
+                </tr>
+              )}
+              {!isLoading && items.length === 0 && (
+                <tr>
+                  <td colSpan={canManage ? 4 : 3} className="p-8 text-center text-muted-foreground">
+                    No {noun}s for this session yet. Add the ones you need.
+                  </td>
+                </tr>
+              )}
+              {!isLoading && items.length > 0 && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={canManage ? 4 : 3} className="p-8 text-center text-muted-foreground">
+                    Nothing matches these filters.
+                  </td>
+                </tr>
+              )}
+              {filtered.map((item) => (
+                <tr key={item._id} className="border-b last:border-0 hover:bg-muted/30">
+                  <td className="p-2.5 font-medium">{item.name}</td>
+                  <td className="p-2.5 text-muted-foreground">
+                    {ASSESSMENT_TYPE_LABELS[item.assessmentType as AssessmentType] || item.assessmentType}
+                  </td>
+                  <td className="p-2.5">{item.assignmentCount ?? 0}</td>
+                  {canManage && (
+                    <td className="p-2.5 text-right space-x-1">
+                      <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        disabled={deleteMut.isPending && deleteMut.variables === item._id}
+                        onClick={() => {
+                          if (window.confirm(`Remove "${item.name}" from the catalog?`)) {
+                            deleteMut.mutate(item._id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </Button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={(open) => !saving && setDialogOpen(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editing ? `Edit ${noun}` : `Add ${noun}`}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="space-y-1.5">
+              <Label>Name</Label>
+              <Input
+                value={form.name}
+                maxLength={120}
+                placeholder={category === "test" ? "e.g. September weekly test" : "e.g. Mid year paper"}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.assessmentType}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, assessmentType: e.target.value as CanonicalAssessmentType }))
+                  }
+                >
+                  {formTypes.map((key) => (
+                    <option key={key} value={key}>
+                      {ASSESSMENT_TYPES[key].label}
+                    </option>
+                  ))}
+                </select>
             </div>
           </div>
-          <Badge variant="secondary" className="text-[10px] shrink-0">
-            {item.assignmentCount ?? 0} class(es)
-          </Badge>
-        </div>
-      ))}
-    </Card>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDialogOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button variant="gold" onClick={save} disabled={saving || !form.name.trim()}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {editing ? "Save" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

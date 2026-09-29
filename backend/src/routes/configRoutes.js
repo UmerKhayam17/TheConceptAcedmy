@@ -55,9 +55,14 @@ const planSessionPerm = requireAnyPermission(
 
 router.get('/sessions/:sessionId/assessment-plan', planSessionPerm, assessmentPlanCtrl.getPlan);
 router.post(
-  '/sessions/:sessionId/assessment-plan/initialize',
+  '/sessions/:sessionId/assessment-plan/items',
   requireAnyPermission('manage_sessions', 'manage_exams'),
-  assessmentPlanCtrl.initialize
+  assessmentPlanCtrl.addItem
+);
+router.delete(
+  '/sessions/:sessionId/assessment-plan/items/:itemId',
+  requireAnyPermission('manage_sessions', 'manage_exams'),
+  assessmentPlanCtrl.deleteItem
 );
 router.post(
   '/sessions/:sessionId/assessment-plan/clear',
