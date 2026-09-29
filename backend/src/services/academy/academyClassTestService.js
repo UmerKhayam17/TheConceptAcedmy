@@ -72,7 +72,7 @@ async function createClassTest(body, userId) {
       subjectId: body.subjectId,
       title: occ.title,
       seriesLabel: occ.seriesLabel,
-      assessmentType: body.assessmentType || 'quiz',
+      assessmentType: body.assessmentType || 'weekly',
       examDate: occ.examDate,
       testTime: occ.testTime,
       totalMarks: body.totalMarks,

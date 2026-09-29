@@ -322,12 +322,14 @@ const discountReportQuery = Joi.object({
   to: Joi.date(),
 });
 
-const assessmentTypes = ['quiz', 'weekly', 'monthly', 'midterm', 'final', 'assignment', 'practice', 'other'];
+const {
+  ALL_ASSESSMENT_TYPE_KEYS: assessmentTypes,
+} = require('../config/assessmentTaxonomy');
 
 const academyAssessmentBody = Joi.object({
   subjectId: objectId.allow(null, ''),
   title: Joi.string().trim().required(),
-  assessmentType: Joi.string().valid(...assessmentTypes).default('monthly'),
+  assessmentType: Joi.string().valid(...assessmentTypes).default('weekly'),
   examDate: Joi.date().required(),
   totalMarks: Joi.number().min(1).required(),
   obtainedMarks: Joi.number().min(0).required(),

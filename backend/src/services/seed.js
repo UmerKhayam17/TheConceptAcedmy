@@ -431,23 +431,12 @@ async function dropLegacyDuplicateCollections() {
 
 async function seedPermissionsAndRoles() {
   const { ensureAcademyClassIndexes } = require('./academy/academySessionImportService');
-  const { ensureDefaultAcademyStructure } = require('./academy/academyDefaultStructureService');
-  const Session = require('../models/Session');
   await ensureAcademyClassIndexes();
   await dropLegacyDuplicateCollections();
   await upsertAllPermissions();
   const rolesCreated = await ensureDefaultRoles();
   await syncBuiltInRolePermissions();
   await ensureDefaultAdmin();
-
-  const sessions = await Session.find().select('_id');
-  const adminUser = await User.findOne({ email: seedAdminEmail() });
-  const userId = adminUser?._id;
-  if (userId) {
-    for (const s of sessions) {
-      await ensureDefaultAcademyStructure(s._id, userId);
-    }
-  }
 
   if (rolesCreated && !isProd()) {
     // eslint-disable-next-line no-console

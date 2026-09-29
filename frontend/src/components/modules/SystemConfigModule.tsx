@@ -17,6 +17,7 @@ import AssignmentsTab from "@/components/modules/timetable/AssignmentsTab";
 import TimetableSettingsTab from "@/components/modules/timetable/TimetableSettingsTab";
 import SessionHistoryTab from "@/components/modules/timetable/SessionHistoryTab";
 import SessionDetailPage from "@/components/modules/timetable/SessionDetailPage";
+import AssessmentsConfigTab from "@/components/modules/timetable/AssessmentsConfigTab";
 
 const SystemConfigModule = ({
   caps,
@@ -72,6 +73,9 @@ const SystemConfigModule = ({
         <>
           {section === "academic" && (
             <AcademicSetupTab sessionId={isAll ? "" : sessionId} caps={caps} onSessionCreated={setSessionId} />
+          )}
+          {section === "assessments" && (
+            <AssessmentsConfigTab sessionId={sessionId} caps={editCaps} />
           )}
           {section === "sections" && <SectionsTab sessionId={sessionId} caps={editCaps} />}
           {section === "periods" && <PeriodsTab sessionId={sessionId} caps={editCaps} />}

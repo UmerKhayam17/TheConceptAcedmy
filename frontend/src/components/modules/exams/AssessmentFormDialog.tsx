@@ -21,10 +21,11 @@ import {
   type AcademyAssessmentRecord,
   type AssessmentType,
   ASSESSMENT_TYPE_LABELS,
+  TEST_TYPE_KEYS,
   fetchSubjectsByClass,
 } from "@/lib/studentManagementApi";
 
-const TYPES = Object.keys(ASSESSMENT_TYPE_LABELS) as AssessmentType[];
+const TYPES = TEST_TYPE_KEYS;
 
 export default function AssessmentFormDialog({
   open,
@@ -51,7 +52,7 @@ export default function AssessmentFormDialog({
 }) {
   const [subjectId, setSubjectId] = useState("");
   const [title, setTitle] = useState("");
-  const [assessmentType, setAssessmentType] = useState<AssessmentType>("quiz");
+  const [assessmentType, setAssessmentType] = useState<AssessmentType>("weekly");
   const [examDate, setExamDate] = useState(new Date().toISOString().slice(0, 10));
   const [obtained, setObtained] = useState("");
   const [total, setTotal] = useState("20");
@@ -72,7 +73,7 @@ export default function AssessmentFormDialog({
           : initial.subjectId || "";
       setSubjectId(sid || "");
       setTitle(initial.title || "");
-      setAssessmentType((initial.assessmentType as AssessmentType) || "quiz");
+      setAssessmentType((initial.assessmentType as AssessmentType) || "weekly");
       setExamDate(initial.examDate ? initial.examDate.slice(0, 10) : "");
       setObtained(String(initial.obtainedMarks ?? ""));
       setTotal(String(initial.totalMarks ?? ""));
@@ -80,7 +81,7 @@ export default function AssessmentFormDialog({
     } else {
       setSubjectId("");
       setTitle("");
-      setAssessmentType("quiz");
+      setAssessmentType("weekly");
       setExamDate(new Date().toISOString().slice(0, 10));
       setObtained("");
       setTotal("20");

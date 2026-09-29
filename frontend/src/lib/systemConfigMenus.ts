@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import {
+  ClipboardList,
   Clock,
   DoorOpen,
   GraduationCap,
@@ -14,6 +15,7 @@ import { buildSidebarSubmenuGroups } from "./sidebarSubmenu";
 
 export type SystemConfigSection =
   | "academic"
+  | "assessments"
   | "sections"
   | "periods"
   | "rooms"
@@ -29,6 +31,7 @@ export const SYSTEM_CONFIG_SECTIONS: {
 }[] = [
     { key: "academic", label: "Sessions", icon: GraduationCap },
     { key: "history", label: "Session History", icon: History },
+    { key: "assessments", label: "Assessment Catalog", icon: ClipboardList },
     { key: "sections", label: "Timetable Sections", icon: Layers },
     { key: "periods", label: "Academy Time Configuration", icon: Clock },
     { key: "rooms", label: "Rooms", icon: DoorOpen },
@@ -38,7 +41,7 @@ export const SYSTEM_CONFIG_SECTIONS: {
   ];
 
 export const SYSTEM_CONFIG_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(SYSTEM_CONFIG_SECTIONS, [
-  { label: "Academic year", keys: ["academic", "history"] },
+  { label: "Academic year", keys: ["academic", "history", "assessments"] },
   {
     label: "Timetable setup",
     keys: ["rooms", "teachers", "teacher-assignments", "periods", "sections", "timetable-rules"],

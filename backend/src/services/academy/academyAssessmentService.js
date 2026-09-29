@@ -38,7 +38,7 @@ async function createAssessment(studentId, body, userId) {
     classTestId: body.classTestId || undefined,
     subjectId: body.subjectId || undefined,
     title: body.title,
-    assessmentType: body.assessmentType || 'monthly',
+    assessmentType: body.assessmentType || 'weekly',
     examDate: body.examDate,
     totalMarks: body.totalMarks,
     obtainedMarks: body.obtainedMarks,

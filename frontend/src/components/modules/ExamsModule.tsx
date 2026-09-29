@@ -14,6 +14,8 @@ import ClassTestMarksPage from "./exams/ClassTestMarksPage";
 import ClassTestSeriesPage from "./exams/ClassTestSeriesPage";
 import ClassTestsPanel from "./exams/ClassTestsPanel";
 import TermExamsPanel from "./exams/TermExamsPanel";
+import DateSheetPanel from "./exams/DateSheetPanel";
+import AssignAssessmentsPanel from "./exams/AssignAssessmentsPanel";
 
 const ExamsModule = ({
   perm: _perm,
@@ -65,8 +67,10 @@ const ExamsModule = ({
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6">
+      {section === "assign" && <AssignAssessmentsPanel caps={caps} />}
       {section === "enter-tests" && <ClassTestsPanel caps={caps} />}
       {section === "term-exams" && <TermExamsPanel caps={caps} />}
+      {section === "date-sheet" && <DateSheetPanel />}
     </div>
   );
 };

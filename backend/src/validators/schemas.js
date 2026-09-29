@@ -161,9 +161,18 @@ const feePay = Joi.object({
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online').required(),
 });
 
+const {
+  EXAM_TYPE_LABELS,
+  LEGACY_EXAM_TYPE_LABELS,
+} = require('../config/assessmentTaxonomy');
+
+const examTypeValues = [...EXAM_TYPE_LABELS, ...LEGACY_EXAM_TYPE_LABELS];
+
 const examBody = Joi.object({
   title: Joi.string().required(),
-  type: Joi.string().required(),
+  type: Joi.string()
+    .valid(...examTypeValues)
+    .required(),
   academyClass: Joi.string().hex().length(24).required(),
   sessionLabel: Joi.string().trim().allow('').optional(),
   startDate: Joi.date().required(),
@@ -174,7 +183,7 @@ const examBody = Joi.object({
 
 const examPatch = Joi.object({
   title: Joi.string().trim(),
-  type: Joi.string().trim(),
+  type: Joi.string().valid(...examTypeValues),
   sessionLabel: Joi.string().trim().allow(''),
   startDate: Joi.date(),
   endDate: Joi.date(),
