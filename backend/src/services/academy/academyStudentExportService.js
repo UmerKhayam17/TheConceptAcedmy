@@ -15,6 +15,11 @@ const EXPORT_COLUMNS = [
   { key: 'status', header: 'Status', excelWidth: 14, pdfWidth: 68 },
 ];
 
+function columnsForExport({ omitSensitive = false } = {}) {
+  if (!omitSensitive) return EXPORT_COLUMNS;
+  return EXPORT_COLUMNS.filter((c) => c.key !== 'phone' && c.key !== 'monthlyFee');
+}
+
 function statusLabel(status) {
   if (status === 'pending_fee') return 'Pending fee';
   if (!status) return '';
@@ -95,8 +100,9 @@ function filterSummary(meta) {
   return parts.join('   |   ');
 }
 
-async function renderStudentsExcel(students, meta = {}) {
+async function renderStudentsExcel(students, meta = {}, options = {}) {
   const brand = ACADEMY_BRAND;
+  const columns = columnsForExport(options);
   const rows = mapStudentsToRows(students);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = brand.name;
@@ -116,9 +122,9 @@ async function renderStudentsExcel(students, meta = {}) {
     views: [{ state: 'frozen', ySplit: 6 }],
   });
 
-  sheet.columns = EXPORT_COLUMNS.map((c) => ({ key: c.key, width: c.excelWidth }));
+  sheet.columns = columns.map((c) => ({ key: c.key, width: c.excelWidth }));
 
-  const lastCol = EXPORT_COLUMNS.length;
+  const lastCol = columns.length;
   const merge = (r1, r2 = r1) => sheet.mergeCells(r1, 1, r2, lastCol);
 
   sheet.getRow(1).height = 22;
@@ -163,7 +169,7 @@ async function renderStudentsExcel(students, meta = {}) {
 
   const headerRow = sheet.getRow(6);
   headerRow.height = 20;
-  EXPORT_COLUMNS.forEach((col, i) => {
+  columns.forEach((col, i) => {
     const cell = headerRow.getCell(i + 1);
     cell.value = col.header;
     cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -176,21 +182,14 @@ async function renderStudentsExcel(students, meta = {}) {
   });
 
   rows.forEach((row, idx) => {
-    const excelRow = sheet.addRow({
-      serial: row.serial,
-      studentId: row.studentId,
-      name: row.name,
-      father: row.father,
-      phone: row.phone,
-      className: row.className,
-      session: row.session,
-      created: row.created,
-      monthlyFee: row.monthlyFee,
-      status: row.status,
+    const payload = {};
+    columns.forEach((col) => {
+      payload[col.key] = row[col.key];
     });
+    const excelRow = sheet.addRow(payload);
     excelRow.height = 18;
     excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      const key = EXPORT_COLUMNS[colNumber - 1]?.key;
+      const key = columns[colNumber - 1]?.key;
       cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF1A2A3A' } };
       cell.alignment = {
         vertical: 'middle',
@@ -357,7 +356,7 @@ function drawPdfRow(doc, columns, row, startX, y, zebra, brand) {
   return y + rowH;
 }
 
-async function renderStudentsPdf(students, meta = {}) {
+async function renderStudentsPdf(students, meta = {}, options = {}) {
   const brand = ACADEMY_BRAND;
   const rows = mapStudentsToRows(students);
   const logoPath = resolveLogoPath();
@@ -382,7 +381,7 @@ async function renderStudentsPdf(students, meta = {}) {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const columns = EXPORT_COLUMNS;
+      const columns = columnsForExport(options);
       const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
       const startX = (doc.page.width - tableWidth) / 2;
       const bottomLimit = () => doc.page.height - 44;

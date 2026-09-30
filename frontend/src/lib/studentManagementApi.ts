@@ -258,14 +258,14 @@ export interface AcademyAssessmentRecord {
   _id: string;
   studentId: string;
   classTestId?:
-    | string
-    | {
-        _id: string;
-        title?: string;
-        seriesLabel?: string;
-        createdBy?: CreatedByUser | string;
-        teacherId?: CreatedByUser | string;
-      };
+  | string
+  | {
+    _id: string;
+    title?: string;
+    seriesLabel?: string;
+    createdBy?: CreatedByUser | string;
+    teacherId?: CreatedByUser | string;
+  };
   subjectId?: AcademySubject | string;
   title: string;
   assessmentType: string;
@@ -671,6 +671,24 @@ export interface AcademyFeeSummary {
   totalAmount: number;
   byStatus: { pending: number; paid: number; overdue: number; waived: number };
   activeStudents: number;
+  previous?: {
+    month: number;
+    year: number;
+    totalPaid: number;
+    totalPending: number;
+    recordsCount: number;
+  } | null;
+  trends?: {
+    paid: number[];
+    pending: number[];
+    records: number[];
+  };
+  oldestPending?: {
+    month: number | null;
+    year: number | null;
+    feeType: string;
+    ageMonths: number | null;
+  } | null;
 }
 
 // Fees

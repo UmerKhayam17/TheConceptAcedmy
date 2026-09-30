@@ -11,6 +11,16 @@ const {
   renderStudentsPdf,
 } = require('../../services/academy/academyStudentExportService');
 const rt = require('../../services/realtime/academyRealtime');
+const {
+  isTeacherRole,
+  getTeacherScopeCombos,
+  mongoStudentFilterForCombos,
+  classIdsFromCombos,
+  assertTeacherCanAccessStudent,
+  sanitizeStudentForTeacher,
+  sanitizeStudentRecordForTeacher,
+  idStr,
+} = require('../../services/academy/teacherTestScope');
 
 async function assertParentOwnsStudent(req, studentId) {
   const roleName = req.user?.roleDoc?.name || req.user?.role?.name || req.user?.role;
@@ -24,6 +34,23 @@ async function assertParentOwnsStudent(req, studentId) {
 
   if (!guardianEmail || guardianEmail !== userEmail) {
     throw new ApiError(403, 'Access denied');
+  }
+}
+
+async function resolveTeacherStudentScope(req) {
+  if (!isTeacherRole(req)) return null;
+  const combos = await getTeacherScopeCombos(req.user._id, req.query.sessionId);
+  return {
+    combos,
+    scopeFilter: mongoStudentFilterForCombos(combos),
+    classIds: classIdsFromCombos(combos).map(idStr),
+  };
+}
+
+function ensureTeacherClassAllowed(teacherScope, classId) {
+  if (!teacherScope || !classId) return;
+  if (!teacherScope.classIds.includes(idStr(classId))) {
+    throw new ApiError(403, 'You are not assigned to this class');
   }
 }
 
@@ -60,18 +87,30 @@ const update = catchAsync(async (req, res) => {
 const getById = catchAsync(async (req, res) => {
   await assertParentOwnsStudent(req, req.params.id);
   const data = await studentService.getStudent(req.params.id);
+  if (isTeacherRole(req)) {
+    await assertTeacherCanAccessStudent(req.user._id, data, req.query.sessionId);
+    return res.json({ success: true, data: sanitizeStudentForTeacher(data) });
+  }
   res.json({ success: true, data });
 });
 
 const getRecord = catchAsync(async (req, res) => {
   await assertParentOwnsStudent(req, req.params.id);
   const data = await recordService.getStudentRecord(req.params.id);
+  if (isTeacherRole(req)) {
+    await assertTeacherCanAccessStudent(req.user._id, data.student, req.query.sessionId);
+    return res.json({ success: true, data: sanitizeStudentRecordForTeacher(data) });
+  }
   res.json({ success: true, data });
 });
 
 const list = catchAsync(async (req, res) => {
   const roleName = req.user?.roleDoc?.name || req.user?.role?.name || req.user?.role;
   const guardianEmail = String(roleName) === 'parent' ? String(req.user?.email || '').trim().toLowerCase() : undefined;
+  const teacherScope = await resolveTeacherStudentScope(req);
+  if (teacherScope) {
+    ensureTeacherClassAllowed(teacherScope, req.query.classId);
+  }
   const result = await studentService.listStudents({
     page: Number(req.query.page) || 1,
     limit: Number(req.query.limit) || 20,
@@ -82,8 +121,13 @@ const list = catchAsync(async (req, res) => {
     sessionId: req.query.sessionId,
     sort: req.query.sort,
     guardianEmail,
+    scopeFilter: teacherScope?.scopeFilter || null,
+    hidePhoneSearch: Boolean(teacherScope),
   });
-  res.json({ success: true, data: result.items, pagination: result.pagination });
+  const items = teacherScope
+    ? result.items.map((s) => sanitizeStudentForTeacher(s))
+    : result.items;
+  res.json({ success: true, data: items, pagination: result.pagination });
 });
 
 async function resolveExportMeta(req) {
@@ -116,6 +160,11 @@ const exportStudents = catchAsync(async (req, res) => {
     throw new ApiError(400, 'Export format must be xlsx, pdf, or csv');
   }
 
+  const teacherScope = await resolveTeacherStudentScope(req);
+  if (teacherScope) {
+    ensureTeacherClassAllowed(teacherScope, req.query.classId);
+  }
+
   const result = await studentService.listStudents({
     page: 1,
     limit: 10000,
@@ -124,18 +173,21 @@ const exportStudents = catchAsync(async (req, res) => {
     status: req.query.status,
     sessionId: req.query.sessionId,
     forExport: true,
+    scopeFilter: teacherScope?.scopeFilter || null,
+    hidePhoneSearch: Boolean(teacherScope),
   });
   const meta = await resolveExportMeta(req);
+  const omitSensitive = Boolean(teacherScope);
 
   if (format === 'pdf') {
-    const buffer = await renderStudentsPdf(result.items, meta);
+    const buffer = await renderStudentsPdf(result.items, meta, { omitSensitive });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="academy-students.pdf"');
     return res.send(buffer);
   }
 
   if (format === 'xlsx') {
-    const buffer = await renderStudentsExcel(result.items, meta);
+    const buffer = await renderStudentsExcel(result.items, meta, { omitSensitive });
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -144,7 +196,7 @@ const exportStudents = catchAsync(async (req, res) => {
     return res.send(Buffer.from(buffer));
   }
 
-  const csv = studentService.studentsToCsv(result.items);
+  const csv = studentService.studentsToCsv(result.items, { omitSensitive });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="academy-students.csv"');
   res.send(csv);

@@ -171,8 +171,8 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function ProfileTab({ student }: { student: AcademyStudent }) {
-  const subtotal = student.monthlyFee + student.admissionFee;
+function ProfileTab({ student, hideSensitive = false }: { student: AcademyStudent; hideSensitive?: boolean }) {
+  const subtotal = (student.monthlyFee || 0) + (student.admissionFee || 0);
   const photoSrc = student.photoImage ? resolveUploadUrl(student.photoImage) : null;
 
   return (
@@ -215,15 +215,17 @@ function ProfileTab({ student }: { student: AcademyStudent }) {
           <DetailRow label="CNIC" value={student.fatherGuardianCnic} />
           <DetailRow label="Occupation" value={student.guardianOccupation} />
           <DetailRow label="Work address" value={student.guardianWorkAddress} />
-          <DetailRow label="Parent portal email" value={student.guardianEmail} />
+          {!hideSensitive && (
+            <DetailRow label="Parent portal email" value={student.guardianEmail} />
+          )}
         </div>
       </section>
 
       <section className="rounded-lg border p-4 space-y-3">
         <SectionTitle>Contact & address</SectionTitle>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
-          <DetailRow label="Mobile" value={student.phone} />
-          <DetailRow label="Residence phone" value={student.contactPhoneRes} />
+          {!hideSensitive && <DetailRow label="Mobile" value={student.phone} />}
+          {!hideSensitive && <DetailRow label="Residence phone" value={student.contactPhoneRes} />}
           <DetailRow label="Postal address" value={student.postalAddress || student.address} />
           <DetailRow label="Permanent address" value={student.permanentAddress} />
         </div>
@@ -251,30 +253,39 @@ function ProfileTab({ student }: { student: AcademyStudent }) {
         </section>
       )}
 
-      <section className="rounded-lg border p-4 space-y-3">
-        <SectionTitle>Fee structure at registration</SectionTitle>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
-          <DetailRow label="Class" value={classLabel(student.classId)} />
-          <DetailRow label="Monthly fee" value={formatPkr(student.monthlyFee)} />
-          <DetailRow label="Admission fee" value={formatPkr(student.admissionFee)} />
-          <DetailRow label="Monthly fee discount" value={formatPkr(student.monthlyFeeDiscount)} />
-          <DetailRow label="Admission fee discount" value={formatPkr(student.admissionFeeDiscount)} />
-          {(student.discountAmount ?? 0) > 0 &&
-            !(student.monthlyFeeDiscount || student.admissionFeeDiscount) ? (
-            <DetailRow label="Combined discount (legacy)" value={formatPkr(student.discountAmount)} />
-          ) : (
-            <DetailRow label="Total discount" value={formatPkr(student.discountAmount)} />
-          )}
-          <DetailRow label="Subtotal" value={formatPkr(subtotal)} />
-          <DetailRow label="First month challan (monthly + admission − discounts)" value={formatPkr(student.totalFee)} />
-          <DetailRow
-            label="Later months (monthly − discount)"
-            value={formatPkr(
-              Math.max(0, (student.monthlyFee || 0) - (student.monthlyFeeDiscount || 0)),
+      {!hideSensitive && (
+        <section className="rounded-lg border p-4 space-y-3">
+          <SectionTitle>Fee structure at registration</SectionTitle>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+            <DetailRow label="Class" value={classLabel(student.classId)} />
+            <DetailRow label="Monthly fee" value={formatPkr(student.monthlyFee)} />
+            <DetailRow label="Admission fee" value={formatPkr(student.admissionFee)} />
+            <DetailRow label="Monthly fee discount" value={formatPkr(student.monthlyFeeDiscount)} />
+            <DetailRow label="Admission fee discount" value={formatPkr(student.admissionFeeDiscount)} />
+            {(student.discountAmount ?? 0) > 0 &&
+              !(student.monthlyFeeDiscount || student.admissionFeeDiscount) ? (
+              <DetailRow label="Combined discount (legacy)" value={formatPkr(student.discountAmount)} />
+            ) : (
+              <DetailRow label="Total discount" value={formatPkr(student.discountAmount)} />
             )}
-          />
-        </div>
-      </section>
+            <DetailRow label="Subtotal" value={formatPkr(subtotal)} />
+            <DetailRow label="First month challan (monthly + admission − discounts)" value={formatPkr(student.totalFee)} />
+            <DetailRow
+              label="Later months (monthly − discount)"
+              value={formatPkr(
+                Math.max(0, (student.monthlyFee || 0) - (student.monthlyFeeDiscount || 0)),
+              )}
+            />
+          </div>
+        </section>
+      )}
+
+      {hideSensitive && (
+        <section className="rounded-lg border p-4 space-y-3">
+          <SectionTitle>Class</SectionTitle>
+          <DetailRow label="Class" value={classLabel(student.classId)} />
+        </section>
+      )}
     </div>
   );
 }
@@ -683,6 +694,8 @@ export default function StudentDetailPage({
   const { student, enrollment, attendance, fees, assessments } = record;
   const isPending = student.status === "pending_fee";
   const isParent = user?.role === "parent";
+  const isTeacher = user?.role === "teacher";
+  const hideSensitive = isTeacher;
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-4 space-y-4">
@@ -704,7 +717,7 @@ export default function StudentDetailPage({
               ? [student.rollNumber, student.registrationNumber].filter(Boolean).join(" · ") || "Pending admission"
               : [student.rollNumber, student.studentId].filter(Boolean).join(" · ")}
           </p>
-          {student.phone && (
+          {!hideSensitive && student.phone && (
             <p className="text-xs text-muted-foreground">{student.phone}</p>
           )}
           <p className="text-xs text-muted-foreground">
@@ -747,11 +760,15 @@ export default function StudentDetailPage({
                 : "—"
             }
           />
-          <QuickStat
-            label={isParent ? "Paid fees" : "Fees"}
-            value={isParent ? formatPkr(fees.summary.totalPaid) : fees.summary.recordsCount}
-          />
-          {!isParent && <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />}
+          {!hideSensitive && (
+            <>
+              <QuickStat
+                label={isParent ? "Paid fees" : "Fees"}
+                value={isParent ? formatPkr(fees.summary.totalPaid) : fees.summary.recordsCount}
+              />
+              {!isParent && <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />}
+            </>
+          )}
           <QuickStat label="Tests" value={assessments.summary.count} />
           <QuickStat
             label="Avg %"
@@ -780,9 +797,11 @@ export default function StudentDetailPage({
               <TabsTrigger value="attendance" className="gap-1.5">
                 <ClipboardList className="h-3.5 w-3.5" /> Attendance
               </TabsTrigger>
-              <TabsTrigger value="fees" className="gap-1.5">
-                <Receipt className="h-3.5 w-3.5" /> Fees
-              </TabsTrigger>
+              {!hideSensitive && (
+                <TabsTrigger value="fees" className="gap-1.5">
+                  <Receipt className="h-3.5 w-3.5" /> Fees
+                </TabsTrigger>
+              )}
               <TabsTrigger value="tests" className="gap-1.5">
                 <GraduationCap className="h-3.5 w-3.5" /> Test reports
               </TabsTrigger>
@@ -791,7 +810,7 @@ export default function StudentDetailPage({
         </TabsList>
 
         <TabsContent value="profile" className="mt-3 focus-visible:outline-none">
-          <ProfileTab student={student} />
+          <ProfileTab student={student} hideSensitive={hideSensitive} />
         </TabsContent>
         {!isPending && (
           <>
@@ -804,15 +823,17 @@ export default function StudentDetailPage({
             <TabsContent value="attendance" className="mt-3 focus-visible:outline-none">
               <AttendanceTab record={record} />
             </TabsContent>
-            <TabsContent value="fees" className="mt-3 focus-visible:outline-none">
-              <AcademyFeesManagement
-                caps={caps}
-                studentId={studentId}
-                routes={routes ?? undefined}
-                showGenerate={false}
-                showFilters={false}
-              />
-            </TabsContent>
+            {!hideSensitive && (
+              <TabsContent value="fees" className="mt-3 focus-visible:outline-none">
+                <AcademyFeesManagement
+                  caps={caps}
+                  studentId={studentId}
+                  routes={routes ?? undefined}
+                  showGenerate={false}
+                  showFilters={false}
+                />
+              </TabsContent>
+            )}
             <TabsContent value="tests" className="mt-3 focus-visible:outline-none">
               <TestsTab
                 record={record}

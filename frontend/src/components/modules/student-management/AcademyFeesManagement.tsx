@@ -1,7 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Loader2, Printer, Receipt } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  CalendarDays,
+  ChevronDown,
+  Clock3,
+  Download,
+  FileText,
+  Loader2,
+  Printer,
+  Receipt,
+  Search,
+  Wallet,
+  X,
+} from "lucide-react";
+import { Area, AreaChart, Bar, BarChart, ResponsiveContainer } from "recharts";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +46,7 @@ import {
   fetchAcademyStudents,
   fetchStudentFeeHistory,
   exportFeeDefaultersMonthWise,
+  type AcademyFeeSummary,
   type DefaulterReportFormat,
   generateMonthlyFees,
   payAcademyFees,
@@ -40,11 +57,66 @@ import {
   type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
-import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
 import { cn } from "@/lib/utils";
+
+const feeFilterLabelClass = "mb-1.5 block text-xs font-semibold text-[#10264D]";
+const feeFilterSelectClass =
+  "h-10 w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white py-2 text-sm font-medium text-[#10264D] shadow-none outline-none transition-colors hover:border-slate-300 focus:border-blue-300 focus:ring-2 focus:ring-blue-100";
+
+function FeeFilterField({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("min-w-0", className)}>
+      <label className={feeFilterLabelClass}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function FeeFilterSelect({
+  value,
+  onChange,
+  children,
+  leadingIcon,
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  children: ReactNode;
+  leadingIcon?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("relative", className)}>
+      {leadingIcon ? (
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+          {leadingIcon}
+        </span>
+      ) : null}
+      <select
+        className={cn(
+          feeFilterSelectClass,
+          leadingIcon ? "pl-9 pr-9" : "pl-3 pr-9",
+        )}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+    </div>
+  );
+}
 
 function studentFromRecord(rec: AcademyFeeRecord) {
   const s = rec.studentId;
@@ -79,6 +151,223 @@ function periodLabel(r: AcademyFeeRecord) {
 
 function isUnpaid(status: string) {
   return status === "pending" || status === "overdue";
+}
+
+function pctChange(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function formatRs(n?: number) {
+  if (n == null || Number.isNaN(n)) return "Rs —";
+  return `Rs ${n.toLocaleString()}`;
+}
+
+function AreaSpark({ data, color }: { data: number[]; color: string }) {
+  const chartData = (data.length ? data : [0, 0, 0, 0]).map((v, i) => ({ i, v }));
+  return (
+    <div className="h-11 w-[88px] shrink-0 self-end">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id={`fee-spark-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <Area
+            type="monotone"
+            dataKey="v"
+            stroke={color}
+            strokeWidth={2}
+            fill={`url(#fee-spark-${color.replace("#", "")})`}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function BarSpark({ data, color }: { data: number[]; color: string }) {
+  const chartData = (data.length ? data : [0, 0, 0, 0, 0]).map((v, i) => ({ i, v: Math.max(v, 0.15) }));
+  return (
+    <div className="h-11 w-[72px] shrink-0 self-end">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+          <Bar dataKey="v" fill={color} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function FeeKpiCard({
+  label,
+  value,
+  changeLabel,
+  changePositive,
+  positiveIsGood = true,
+  icon: Icon,
+  iconBg,
+  iconColor,
+  valueClassName,
+  footer,
+  decoration,
+}: {
+  label: string;
+  value: string;
+  changeLabel?: string;
+  changePositive?: boolean;
+  /** When true, an increase is green; when false (e.g. outstanding), increase is red. */
+  positiveIsGood?: boolean;
+  icon: typeof Wallet;
+  iconBg: string;
+  iconColor: string;
+  valueClassName?: string;
+  footer?: ReactNode;
+  decoration?: ReactNode;
+}) {
+  const isGood =
+    changePositive == null ? true : positiveIsGood ? changePositive : !changePositive;
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_3px_rgba(16,38,77,0.06)] transition-shadow hover:shadow-md sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl"
+            style={{ backgroundColor: iconBg }}
+          >
+            <Icon className="h-5 w-5" style={{ color: iconColor }} />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium text-slate-500">{label}</p>
+            <p
+              className={cn(
+                "truncate text-lg font-bold tracking-tight text-[#10264D] sm:text-xl",
+                valueClassName,
+              )}
+            >
+              {value}
+            </p>
+          </div>
+        </div>
+        {decoration}
+      </div>
+      {footer ?? (
+        changeLabel != null && (
+          <div
+            className={cn(
+              "mt-3 inline-flex items-center gap-1 text-xs font-semibold",
+              isGood ? "text-[#16A36A]" : "text-[#EF4444]",
+            )}
+          >
+            {changePositive ? (
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            ) : (
+              <ArrowDownRight className="h-3.5 w-3.5" />
+            )}
+            {changeLabel}
+            <span className="font-normal text-slate-500">vs. last month</span>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function FeeSummaryCards({
+  summary,
+  loading,
+  compact,
+}: {
+  summary?: AcademyFeeSummary;
+  loading: boolean;
+  compact?: boolean;
+}) {
+  const paid = summary?.totalPaid ?? 0;
+  const pendingAmt = summary?.totalPending ?? 0;
+  const records = summary?.recordsCount ?? 0;
+  const pendingCount = summary?.byStatus?.pending ?? 0;
+  const overdueCount = summary?.byStatus?.overdue ?? 0;
+  const prev = summary?.previous;
+  const paidDelta = prev ? pctChange(paid, prev.totalPaid) : 0;
+  const pendingDelta = prev ? pctChange(pendingAmt, prev.totalPending) : 0;
+  const recordsDelta = prev ? records - prev.recordsCount : 0;
+  const age = summary?.oldestPending?.ageMonths;
+  const ageLabel =
+    age == null
+      ? "—"
+      : age === 0
+        ? "This month"
+        : age === 1
+          ? "1 month"
+          : `${age} months`;
+
+  const dash = loading ? "…" : null;
+
+  return (
+    <div
+      className={cn(
+        "grid gap-3",
+        compact ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4",
+      )}
+    >
+      <FeeKpiCard
+        label="Total Collected"
+        value={dash ?? formatRs(paid)}
+        changeLabel={prev ? `${paidDelta >= 0 ? "+" : ""}${paidDelta}%` : undefined}
+        changePositive={paidDelta >= 0}
+        icon={Wallet}
+        iconBg="rgba(22,163,106,0.12)"
+        iconColor="#16A36A"
+        decoration={<AreaSpark data={summary?.trends?.paid || []} color="#16A36A" />}
+      />
+      <FeeKpiCard
+        label="Outstanding"
+        value={dash ?? formatRs(pendingAmt)}
+        changeLabel={prev ? `${pendingDelta >= 0 ? "+" : ""}${pendingDelta}%` : undefined}
+        changePositive={pendingDelta >= 0}
+        positiveIsGood={false}
+        icon={AlertTriangle}
+        iconBg="rgba(239,68,68,0.12)"
+        iconColor="#EF4444"
+        decoration={<AreaSpark data={summary?.trends?.pending || []} color="#EF4444" />}
+      />
+      <FeeKpiCard
+        label="Total Records"
+        value={dash ?? String(records)}
+        changeLabel={prev ? `${recordsDelta >= 0 ? "+" : ""}${recordsDelta}` : undefined}
+        changePositive={recordsDelta >= 0}
+        icon={FileText}
+        iconBg="rgba(36,120,232,0.12)"
+        iconColor="#2478E8"
+        decoration={<BarSpark data={summary?.trends?.records || []} color="#2478E8" />}
+      />
+      {!compact && (
+        <FeeKpiCard
+          label="Pending / Overdue"
+          value={dash ?? `${pendingCount} / ${overdueCount}`}
+          valueClassName="text-[#EF4444]"
+          icon={CalendarDays}
+          iconBg="rgba(139,92,246,0.12)"
+          iconColor="#8B5CF6"
+          decoration={
+            <CalendarDays className="pointer-events-none absolute -bottom-1 -right-1 h-16 w-16 text-[#8B5CF6]/15" />
+          }
+          footer={
+            <div className="mt-3 flex items-start gap-1.5 text-xs text-[#2478E8]">
+              <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div>
+                <p className="font-semibold leading-none">{ageLabel}</p>
+                <p className="mt-1 text-[11px] font-normal text-slate-500">oldest pending</p>
+              </div>
+            </div>
+          }
+        />
+      )}
+    </div>
+  );
 }
 
 function StatusPill({ status }: { status: string }) {
@@ -373,73 +662,19 @@ export default function AcademyFeesManagement({
         </Card>
       )}
       {isParent ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <Card className="p-3">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Paid</p>
-            <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
-              {summaryLoading ? "…" : formatPkr(summary?.totalPaid)}
-            </p>
-          </Card>
-          <Card className="p-3">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Outstanding</p>
-            <p className="text-lg font-semibold text-destructive">
-              {summaryLoading ? "…" : formatPkr(summary?.totalPending)}
-            </p>
-          </Card>
-          <Card className="p-3 col-span-2 sm:col-span-1">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Records</p>
-            <p className="text-lg font-semibold text-primary">
-              {summaryLoading ? "…" : summary?.recordsCount ?? 0}
-            </p>
-          </Card>
-        </div>
+        <FeeSummaryCards summary={summary} loading={summaryLoading} compact />
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Card className="p-3">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Collected</p>
-            <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
-              {summaryLoading ? "…" : formatPkr(summary?.totalPaid)}
-            </p>
-          </Card>
-          <Card className="p-3">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Outstanding</p>
-            <p className="text-lg font-semibold text-destructive">
-              {summaryLoading ? "…" : formatPkr(summary?.totalPending)}
-            </p>
-          </Card>
-          <Card className="p-3">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Records</p>
-            <p className="text-lg font-semibold text-primary">
-              {summaryLoading ? "…" : summary?.recordsCount ?? 0}
-            </p>
-          </Card>
-          <Card className="p-3">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Pending / overdue</p>
-            <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">
-              {summaryLoading
-                ? "…"
-                : `${summary?.byStatus.pending ?? 0} / ${summary?.byStatus.overdue ?? 0}`}
-            </p>
-          </Card>
-        </div>
+        <FeeSummaryCards summary={summary} loading={summaryLoading} />
       )}
 
       {showFilters && !studentId && (
-        <Card className="p-3 space-y-3">
-          <div
-            className={cn(
-              "grid gap-3 items-end",
-              "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
-              isParent && "sm:grid-cols-3 lg:grid-cols-6",
-            )}
-          >
+        <div className="rounded-2xl border border-slate-200/80 bg-[#F7FAFC] p-3 sm:p-4">
+          <div className="flex flex-wrap items-end gap-3">
             {isParent && (
-              <div className="min-w-0 col-span-2 sm:col-span-1">
-                <Label className="mb-1 block text-xs">Child</Label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              <FeeFilterField label="Child" className="w-full min-w-[180px] sm:w-[220px]">
+                <FeeFilterSelect
                   value={selectedParentStudentId}
-                  onChange={(e) => setSelectedParentStudentId(e.target.value)}
+                  onChange={setSelectedParentStudentId}
                 >
                   <option value="">Select child…</option>
                   {parentStudents.map((s) => (
@@ -447,114 +682,140 @@ export default function AcademyFeesManagement({
                       {s.studentName} ({s.studentId})
                     </option>
                   ))}
-                </select>
-              </div>
+                </FeeFilterSelect>
+              </FeeFilterField>
             )}
             {!isParent && (
-              <div className="min-w-0">
-                <Label className="mb-1 block text-xs">Month</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={12}
-                  className="h-9 w-full"
-                  value={month}
-                  onChange={(e) => setMonth(e.target.value)}
-                />
-              </div>
+              <>
+                <FeeFilterField label="Month" className="min-w-[150px] flex-1 basis-[150px] sm:max-w-[180px]">
+                  <FeeFilterSelect
+                    value={month}
+                    onChange={setMonth}
+                    leadingIcon={<CalendarDays className="h-4 w-4" />}
+                  >
+                    {MONTH_NAMES.map((name, idx) => (
+                      <option key={name} value={String(idx + 1)}>
+                        {name} {year}
+                      </option>
+                    ))}
+                  </FeeFilterSelect>
+                </FeeFilterField>
+                <FeeFilterField label="Year" className="w-[100px] shrink-0">
+                  <FeeFilterSelect value={year} onChange={setYear}>
+                    {Array.from({ length: 6 }, (_, i) => {
+                      const y = String(Number(now.getFullYear()) - 2 + i);
+                      return (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      );
+                    })}
+                  </FeeFilterSelect>
+                </FeeFilterField>
+                <FeeFilterField label="Class" className="min-w-[130px] flex-1 basis-[130px] sm:max-w-[160px]">
+                  <FeeFilterSelect value={classFilter} onChange={setClassFilter}>
+                    <option value="">All classes</option>
+                    {classes.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {c.className}
+                      </option>
+                    ))}
+                  </FeeFilterSelect>
+                </FeeFilterField>
+                <FeeFilterField label="Status" className="min-w-[110px] flex-1 basis-[110px] sm:max-w-[130px]">
+                  <FeeFilterSelect value={statusFilter} onChange={setStatusFilter}>
+                    <option value="">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="waived">Waived</option>
+                  </FeeFilterSelect>
+                </FeeFilterField>
+                <FeeFilterField label="Type" className="min-w-[120px] flex-1 basis-[120px] sm:max-w-[140px]">
+                  <FeeFilterSelect value={feeTypeFilter} onChange={setFeeTypeFilter}>
+                    <option value="">All types</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="admission">Admission</option>
+                  </FeeFilterSelect>
+                </FeeFilterField>
+              </>
             )}
-            {!isParent && (
-              <div className="min-w-0">
-                <Label className="mb-1 block text-xs">Year</Label>
-                <Input
-                  type="number"
-                  className="h-9 w-full"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                />
-              </div>
-            )}
-            {!isParent && (
-              <div className="min-w-0 col-span-2 sm:col-span-1">
-                <Label className="mb-1 block text-xs">Class</Label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={classFilter}
-                  onChange={(e) => setClassFilter(e.target.value)}
+
+            <div className="relative min-w-[200px] flex-[1.4] basis-[220px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                className="h-10 rounded-xl border-slate-200 bg-white pl-9 pr-9 text-sm text-[#10264D] shadow-none placeholder:text-slate-400 focus-visible:ring-blue-100"
+                placeholder={
+                  isParent ? "Search receipt or period…" : "Search student, class, receipt..."
+                }
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search fees"
+              />
+              {search ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0.5 top-0.5 h-9 w-9 text-slate-400"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
                 >
-                  <option value="">All classes</option>
-                  {classes.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.className}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {!isParent && (
-              <div className="min-w-0">
-                <Label className="mb-1 block text-xs">Status</Label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                  <option value="">All</option>
-                  <option value="pending">Pending</option>
-                  <option value="paid">Paid</option>
-                  <option value="overdue">Overdue</option>
-                  <option value="waived">Waived</option>
-                </select>
-              </div>
-            )}
-            {!isParent && (
-              <div className="min-w-0">
-                <Label className="mb-1 block text-xs">Type</Label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={feeTypeFilter}
-                  onChange={(e) => setFeeTypeFilter(e.target.value)}
-                >
-                  <option value="">All types</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="admission">Admission</option>
-                </select>
+                  <X className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+
+            {!isParent && (canGenerate || caps.canView) && (
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
+                {canGenerate && (
+                  <Button
+                    className="h-10 gap-2 rounded-xl bg-[#2F80ED] px-4 text-sm font-semibold text-white hover:bg-[#2563EB]"
+                    disabled={genMut.isPending}
+                    onClick={() => genMut.mutate()}
+                  >
+                    <Download className="h-4 w-4" />
+                    {genMut.isPending ? "Generating…" : "Generate Report"}
+                  </Button>
+                )}
+                {!studentId && caps.canView && (
+                  <DefaulterListDownload
+                    className="h-10 max-w-[11.5rem] justify-center rounded-xl border-[#BFDBFE] bg-[#EFF6FF] px-3 text-[12px] font-semibold text-[#1D4ED8] hover:bg-[#DBEAFE] hover:text-[#1E40AF]"
+                    label="Download Defaulter List"
+                    exporting={exportingMonthWise}
+                    onDownload={(format) => void downloadMonthWise(format)}
+                  />
+                )}
               </div>
             )}
           </div>
-          {!isParent && (canGenerate || caps.canView) && (
-            <div className="flex flex-col sm:flex-row gap-2 sm:flex-wrap sm:items-center">
-              {canGenerate && (
-                <Button
-                  size="sm"
-                  variant="gold"
-                  className="w-full sm:w-auto"
-                  disabled={genMut.isPending}
-                  onClick={() => genMut.mutate()}
-                >
-                  {genMut.isPending ? "Generating…" : "Generate monthly fees"}
-                </Button>
-              )}
-              {!studentId && caps.canView && (
-                <DefaulterListDownload
-                  className="w-full sm:w-auto justify-center"
-                  exporting={exportingMonthWise}
-                  onDownload={(format) => void downloadMonthWise(format)}
-                />
-              )}
-            </div>
-          )}
-        </Card>
+        </div>
       )}
 
-      <PanelSearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder={
-          isParent || studentId ? "Search receipt or period…" : "Search student, class, receipt…"
-        }
-        className="max-w-md"
-      />
+      {(!showFilters || studentId) && (
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            className="h-10 rounded-xl border-slate-200 bg-white pl-9 pr-9 text-sm shadow-none"
+            placeholder={
+              isParent || studentId ? "Search receipt or period…" : "Search student, class, receipt..."
+            }
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-0.5 top-0.5 h-9 w-9 text-slate-400"
+              onClick={() => setSearch("")}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
+      )}
       {isParent ? (
         <p className="text-xs text-muted-foreground">
           Showing fee records for your child only. School-wide collections are not available here.

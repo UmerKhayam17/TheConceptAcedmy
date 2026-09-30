@@ -79,8 +79,15 @@ export default function RegistrationTab({
     routesProp ?? (user?.role ? academyStudentRoutes(user.role, "registration") : null);
   const { apiSessionId, writable, isAll, hasScope } = useSessionScope(sessionId);
   const showSessionCol = isAll || !writable;
+  const isTeacher = user?.role === "teacher";
+  const showPhoneCol = !isTeacher;
+  const showMonthlyCol = !isTeacher;
   const hasActions = caps.canView || (writable && (caps.canEdit || caps.canDelete));
-  const colSpan = (hasActions ? 9 : 8) + (showSessionCol ? 1 : 0);
+  const colSpan =
+    (hasActions ? 7 : 6) +
+    (showSessionCol ? 1 : 0) +
+    (showPhoneCol ? 1 : 0) +
+    (showMonthlyCol ? 1 : 0);
 
   const showIntake = enrollmentFlow === "intake" || enrollmentFlow === "both";
   const showDirectRegister = enrollmentFlow === "direct" || enrollmentFlow === "both";
@@ -229,7 +236,7 @@ export default function RegistrationTab({
           <PanelSearchBar
             value={search}
             onChange={(v) => { setSearch(v); setPage(1); }}
-            placeholder="Search name, roll, phone…"
+            placeholder={isTeacher ? "Search name, roll…" : "Search name, roll, phone…"}
             className="w-48 max-w-none flex-none"
           />
           <select
@@ -283,11 +290,11 @@ export default function RegistrationTab({
                 <th className="text-left p-3 font-medium">Roll / ID</th>
                 <th className="text-left p-3 font-medium">Name</th>
                 <th className="text-left p-3 font-medium">Father</th>
-                <th className="text-left p-3 font-medium">Phone</th>
+                {showPhoneCol && <th className="text-left p-3 font-medium">Phone</th>}
                 <th className="text-left p-3 font-medium">Class</th>
                 {showSessionCol && <th className="text-left p-3 font-medium">Session</th>}
                 <th className="text-left p-3 font-medium">Created</th>
-                <th className="text-left p-3 font-medium">Monthly</th>
+                {showMonthlyCol && <th className="text-left p-3 font-medium">Monthly</th>}
                 <th className="text-left p-3 font-medium">Status</th>
                 {hasActions && <th className="text-right p-3 font-medium">Actions</th>}
               </tr>
@@ -325,7 +332,7 @@ export default function RegistrationTab({
                     <td className="p-3 font-mono text-xs">{studentRef(s)}</td>
                     <td className="p-3 font-medium">{s.studentName}</td>
                     <td className="p-3">{s.fatherName}</td>
-                    <td className="p-3">{s.phone || "—"}</td>
+                    {showPhoneCol && <td className="p-3">{s.phone || "—"}</td>}
                     <td className="p-3">{classLabel(s.classId)}</td>
                     {showSessionCol && (
                       <td className="p-3 text-muted-foreground text-xs">
@@ -333,7 +340,9 @@ export default function RegistrationTab({
                       </td>
                     )}
                     <td className="p-3 text-muted-foreground">{formatDate(s.createdAt)}</td>
-                    <td className="p-3">{isPending ? "—" : formatPkr(s.monthlyFee)}</td>
+                    {showMonthlyCol && (
+                      <td className="p-3">{isPending ? "—" : formatPkr(s.monthlyFee)}</td>
+                    )}
                     <td className="p-3">
                       <span
                         className={

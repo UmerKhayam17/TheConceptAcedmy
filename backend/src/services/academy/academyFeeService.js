@@ -715,11 +715,24 @@ async function getFeeSummary({ month, year, classId, studentId, studentIds, sess
   const byStatus = { pending: 0, paid: 0, overdue: 0, waived: 0 };
   let totalPaid = 0;
   let totalPending = 0;
+  let oldestPending = null;
 
   records.forEach((r) => {
     if (byStatus[r.status] != null) byStatus[r.status] += 1;
     if (r.status === 'paid') totalPaid += r.amount;
-    if (r.status === 'pending' || r.status === 'overdue') totalPending += r.amount;
+    if (r.status === 'pending' || r.status === 'overdue') {
+      totalPending += r.amount;
+      const key = (Number(r.year) || 0) * 12 + (Number(r.month) || 0);
+      if (!oldestPending || key < oldestPending.key) {
+        oldestPending = {
+          key,
+          month: Number(r.month) || null,
+          year: Number(r.year) || null,
+          feeType: r.feeType || 'monthly',
+          dueDate: r.dueDate || null,
+        };
+      }
+    }
   });
 
   let activeStudents = 0;
@@ -740,6 +753,87 @@ async function getFeeSummary({ month, year, classId, studentId, studentIds, sess
     activeStudents = await AcademyStudent.countDocuments(studentQ);
   }
 
+  // Previous calendar month comparison (same class/student/session filters).
+  let previous = null;
+  let trends = { paid: [], pending: [], records: [] };
+  const hasPeriod = month && year;
+  if (hasPeriod) {
+    const m = Number(month);
+    const y = Number(year);
+    const prevMonth = m === 1 ? 12 : m - 1;
+    const prevYear = m === 1 ? y - 1 : y;
+    const prevQ = await buildFeeQuery({
+      month: prevMonth,
+      year: prevYear,
+      classId,
+      studentId,
+      studentIds,
+      sessionId,
+    });
+    const prevRecords = await AcademyFeeRecord.find(prevQ).lean();
+    let prevPaid = 0;
+    let prevPending = 0;
+    prevRecords.forEach((r) => {
+      if (r.status === 'paid') prevPaid += r.amount;
+      if (r.status === 'pending' || r.status === 'overdue') prevPending += r.amount;
+    });
+    previous = {
+      month: prevMonth,
+      year: prevYear,
+      totalPaid: prevPaid,
+      totalPending: prevPending,
+      recordsCount: prevRecords.length,
+    };
+
+    // Last 6 months sparkline points ending at selected month.
+    const paidSeries = [];
+    const pendingSeries = [];
+    const recordsSeries = [];
+    const windows = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      let mm = m - i;
+      let yy = y;
+      while (mm <= 0) {
+        mm += 12;
+        yy -= 1;
+      }
+      windows.push({ month: mm, year: yy });
+    }
+    const windowRows = await Promise.all(
+      windows.map(async (w) => {
+        const tq = await buildFeeQuery({
+          month: w.month,
+          year: w.year,
+          classId,
+          studentId,
+          studentIds,
+          sessionId,
+        });
+        return AcademyFeeRecord.find(tq).select('amount status').lean();
+      })
+    );
+    windowRows.forEach((rows) => {
+      let p = 0;
+      let u = 0;
+      rows.forEach((r) => {
+        if (r.status === 'paid') p += r.amount;
+        if (r.status === 'pending' || r.status === 'overdue') u += r.amount;
+      });
+      paidSeries.push(p);
+      pendingSeries.push(u);
+      recordsSeries.push(rows.length);
+    });
+    trends = { paid: paidSeries, pending: pendingSeries, records: recordsSeries };
+  }
+
+  let oldestPendingAgeMonths = null;
+  if (oldestPending?.year && oldestPending?.month) {
+    const now = new Date();
+    const cur = now.getFullYear() * 12 + (now.getMonth() + 1);
+    const then = oldestPending.year * 12 + oldestPending.month;
+    oldestPendingAgeMonths = Math.max(0, cur - then);
+  }
+
   return {
     recordsCount: records.length,
     totalPaid,
@@ -747,6 +841,16 @@ async function getFeeSummary({ month, year, classId, studentId, studentIds, sess
     totalAmount: records.reduce((s, r) => s + r.amount, 0),
     byStatus,
     activeStudents,
+    previous,
+    trends,
+    oldestPending: oldestPending
+      ? {
+          month: oldestPending.month,
+          year: oldestPending.year,
+          feeType: oldestPending.feeType,
+          ageMonths: oldestPendingAgeMonths,
+        }
+      : null,
   };
 }
 

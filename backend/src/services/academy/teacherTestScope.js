@@ -147,6 +147,107 @@ async function resolveTeacherForCombo({ sessionId, classId, sectionId, subjectId
   return row?.teacher || null;
 }
 
+/** Unique class ObjectIds from assignment combos. */
+function classIdsFromCombos(combos) {
+  const ids = [];
+  const seen = new Set();
+  for (const c of combos) {
+    const id = idStr(c.classId);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(c.classId);
+  }
+  return ids;
+}
+
+/**
+ * Mongo filter: students in the teacher's assigned class/section combos.
+ * Students without a section are included when the teacher has any assignment for that class.
+ */
+function mongoStudentFilterForCombos(combos) {
+  if (!combos.length) {
+    return { _id: { $in: [] } };
+  }
+  const seen = new Set();
+  const or = [];
+  for (const c of combos) {
+    const classKey = idStr(c.classId);
+    const sectionKey = idStr(c.sectionId);
+    if (!classKey) continue;
+    const pairKey = `${classKey}:${sectionKey}`;
+    if (!seen.has(pairKey) && sectionKey) {
+      seen.add(pairKey);
+      or.push({ classId: c.classId, sectionId: c.sectionId });
+    }
+    const noSectionKey = `${classKey}:__none__`;
+    if (!seen.has(noSectionKey)) {
+      seen.add(noSectionKey);
+      or.push({
+        classId: c.classId,
+        $or: [{ sectionId: null }, { sectionId: { $exists: false } }],
+      });
+    }
+  }
+  return or.length ? { $or: or } : { _id: { $in: [] } };
+}
+
+async function assertTeacherCanAccessStudent(teacherId, student, sessionId) {
+  const combos = await getTeacherScopeCombos(teacherId, sessionId);
+  const classId = student?.classId?._id || student?.classId;
+  const sectionId = student?.sectionId?._id || student?.sectionId;
+  if (!combos.some((c) => comboMatchesClassSection(c, classId, sectionId || undefined))) {
+    throw new ApiError(403, 'You are not assigned to this student\'s class');
+  }
+  return combos;
+}
+
+async function assertTeacherCanAccessClass(teacherId, classId, sessionId) {
+  const combos = await getTeacherScopeCombos(teacherId, sessionId);
+  if (!combos.some((c) => idStr(c.classId) === idStr(classId))) {
+    throw new ApiError(403, 'You are not assigned to this class');
+  }
+  return combos;
+}
+
+const TEACHER_HIDDEN_STUDENT_FIELDS = [
+  'phone',
+  'contactPhoneRes',
+  'monthlyFee',
+  'admissionFee',
+  'monthlyFeeDiscount',
+  'admissionFeeDiscount',
+  'discountAmount',
+  'totalFee',
+  'feeStructureId',
+];
+
+/** Strip contact/fee fields teachers must not see. */
+function sanitizeStudentForTeacher(doc) {
+  if (!doc) return doc;
+  const obj = typeof doc.toObject === 'function' ? doc.toObject({ virtuals: true }) : { ...doc };
+  for (const field of TEACHER_HIDDEN_STUDENT_FIELDS) {
+    delete obj[field];
+  }
+  return obj;
+}
+
+function sanitizeStudentRecordForTeacher(record) {
+  if (!record) return record;
+  return {
+    ...record,
+    student: sanitizeStudentForTeacher(record.student),
+    fees: {
+      summary: {
+        recordsCount: 0,
+        totalPaid: 0,
+        totalPending: 0,
+        byStatus: { pending: 0, paid: 0, overdue: 0, waived: 0 },
+      },
+      records: [],
+    },
+  };
+}
+
 module.exports = {
   isTeacherRole,
   idStr,
@@ -156,9 +257,16 @@ module.exports = {
   assignmentMatchesCombos,
   subjectIdsForClassSection,
   mongoFilterForCombos,
+  mongoStudentFilterForCombos,
+  classIdsFromCombos,
   assertTeacherOwnsCombo,
   assertTeacherHasClassSection,
   assertTeacherCanAccessTest,
   assertTeacherCanAccessAssignment,
+  assertTeacherCanAccessStudent,
+  assertTeacherCanAccessClass,
+  sanitizeStudentForTeacher,
+  sanitizeStudentRecordForTeacher,
+  TEACHER_HIDDEN_STUDENT_FIELDS,
   resolveTeacherForCombo,
 };
