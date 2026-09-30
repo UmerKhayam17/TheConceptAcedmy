@@ -131,7 +131,10 @@ function mapDefaulterRow(row) {
 
 function receiptNumber(studentDoc, month, year, feeType) {
   const sid = studentDoc.studentId || studentDoc._id.toString().slice(-6);
-  return `RCP-${sid}-${feeType === 'admission' ? 'ADM' : `${year}${String(month).padStart(2, '0')}`}`;
+  const period = `${year}${String(month).padStart(2, '0')}`;
+  if (feeType === 'admission') return `RCP-${sid}-ADM`;
+  if (feeType === 'stationery') return `RCP-${sid}-STN-${period}`;
+  return `RCP-${sid}-${period}`;
 }
 
 /** Monthly challan amount after the student's recurring monthly discount. */
@@ -184,7 +187,7 @@ function splitEnrollmentAmounts(fees) {
  * monthly fee + admission fee − discounts.
  * Later months are created by generateMonthlyFees as monthly − monthly discount.
  */
-async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new Date() } = {}) {
+async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new Date(), replacePending = false } = {}) {
   const month = asOf.getMonth() + 1;
   const year = asOf.getFullYear();
   const dueDate = resolveMonthlyDueDate(month, year);
@@ -198,7 +201,20 @@ async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new D
     year,
     feeType: 'admission',
   });
-  if (existingAdm) return [];
+  if (existingAdm) {
+    if (existingAdm.status === 'paid' || existingAdm.status === 'waived') {
+      return [existingAdm];
+    }
+    if (replacePending && ['pending', 'overdue'].includes(existingAdm.status)) {
+      existingAdm.amount = totalDue;
+      existingAdm.dueDate = dueDate;
+      existingAdm.notes = 'First month: monthly fee + admission fee (after discounts)';
+      existingAdm.recordedBy = userId;
+      await existingAdm.save();
+      return [existingAdm];
+    }
+    return [existingAdm];
+  }
 
   // Avoid a leftover monthly-only voucher for the enrollment month.
   await AcademyFeeRecord.deleteMany({
@@ -265,7 +281,9 @@ async function buildFeeQuery({ studentId, studentIds, status, month, year, class
 function periodText(month, year, feeType) {
   if (feeType === 'admission') return 'Admission';
   const name = MONTH_NAMES[(Number(month) || 1) - 1] || '';
-  return `${name} ${year || ''}`.trim();
+  const period = `${name} ${year || ''}`.trim();
+  if (feeType === 'stationery') return period ? `Stationery · ${period}` : 'Stationery';
+  return period;
 }
 
 function studentLabel(record) {
@@ -619,6 +637,79 @@ async function listUnpaidForChallan(studentId, months) {
   return query;
 }
 
+/**
+ * Add (or update pending) stationery charge for a student so it appears on their fee challan.
+ */
+async function addStationeryCharge(studentId, { amount, month, year, notes } = {}, userId) {
+  const student = await AcademyStudent.findById(studentId);
+  if (!student) throw new ApiError(404, 'Student not found');
+  if (student.status !== 'active') {
+    throw new ApiError(400, 'Stationery can only be charged for active students');
+  }
+
+  const amt = Math.round(Number(amount) * 100) / 100;
+  if (!Number.isFinite(amt) || amt <= 0) {
+    throw new ApiError(400, 'Stationery amount must be greater than 0');
+  }
+
+  const now = new Date();
+  const m = month != null ? Number(month) : now.getMonth() + 1;
+  const y = year != null ? Number(year) : now.getFullYear();
+  if (!Number.isInteger(m) || m < 1 || m > 12) throw new ApiError(400, 'Invalid month');
+  if (!Number.isInteger(y) || y < 2000 || y > 2100) throw new ApiError(400, 'Invalid year');
+
+  const dueDate = resolveMonthlyDueDate(m, y);
+  const noteText = String(notes || '').trim() || 'Stationery charge';
+
+  const existing = await AcademyFeeRecord.findOne({
+    studentId: student._id,
+    month: m,
+    year: y,
+    feeType: 'stationery',
+  });
+
+  let record;
+  if (existing) {
+    if (existing.status === 'paid' || existing.status === 'waived') {
+      throw new ApiError(
+        400,
+        'Stationery for this month is already settled. Choose another month or record a new period.'
+      );
+    }
+    existing.amount = amt;
+    existing.dueDate = dueDate;
+    existing.notes = noteText;
+    existing.recordedBy = userId;
+    if (!existing.receiptNumber) {
+      existing.receiptNumber = receiptNumber(student, m, y, 'stationery');
+    }
+    await existing.save();
+    record = existing;
+  } else {
+    record = await AcademyFeeRecord.create({
+      studentId: student._id,
+      month: m,
+      year: y,
+      amount: amt,
+      feeType: 'stationery',
+      status: 'pending',
+      dueDate,
+      receiptNumber: receiptNumber(student, m, y, 'stationery'),
+      notes: noteText,
+      createdBy: userId,
+      recordedBy: userId,
+      pendingNoticeAt: new Date(),
+    });
+  }
+
+  await record.populate({
+    path: 'studentId',
+    select: 'studentId studentName fatherName phone classId',
+    populate: { path: 'classId', select: 'className' },
+  });
+  return record;
+}
+
 async function recordPayment(feeRecordId, { paymentMethod, notes }, userId) {
   const existing = await AcademyFeeRecord.findById(feeRecordId).populate('studentId');
   if (!existing) throw new ApiError(404, 'Fee record not found');
@@ -647,14 +738,25 @@ async function recordPayment(feeRecordId, { paymentMethod, notes }, userId) {
       },
     },
     { new: true }
-  ).populate('studentId');
+  ).populate({
+    path: 'studentId',
+    select: 'studentId studentName fatherName phone classId sectionId status',
+  });
 
   if (!record) {
     const again = await AcademyFeeRecord.findById(feeRecordId).select('status').lean();
     if (again?.status === 'paid') throw new ApiError(400, 'Fee already paid');
     throw new ApiError(409, 'Could not record payment — please retry');
   }
-  return record;
+
+  const student = record.studentId;
+  const needsSectionAssignment =
+    record.feeType === 'admission' &&
+    student &&
+    student.status === 'pending_fee' &&
+    !student.sectionId;
+
+  return { record, needsSectionAssignment: Boolean(needsSectionAssignment) };
 }
 
 async function recordPayments(feeRecordIds, payload, userId) {
@@ -692,10 +794,19 @@ async function recordPayments(feeRecordIds, payload, userId) {
     }
     paid.push(updated);
   }
+
+  const studentId = records[0].studentId;
+  const student = await AcademyStudent.findById(studentId).select('status sectionId');
+  const paidAdmission = paid.some((r) => r.feeType === 'admission');
+  const needsSectionAssignment =
+    paidAdmission && student && student.status === 'pending_fee' && !student.sectionId;
+
   return {
     paid: paid.length,
     total: paid.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
     records: paid,
+    needsSectionAssignment: Boolean(needsSectionAssignment),
+    studentId: studentId ? String(studentId) : undefined,
   };
 }
 
@@ -1163,6 +1274,7 @@ module.exports = {
   listFeeRecords,
   getFeeRecordById,
   listUnpaidForChallan,
+  addStationeryCharge,
   generateMonthlyFees,
   createEnrollmentFeeVouchers,
   monthlyBillAmount,

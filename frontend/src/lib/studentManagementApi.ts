@@ -216,7 +216,7 @@ export interface AcademyFeeRecord {
   month: number;
   year: number;
   amount: number;
-  feeType: "admission" | "monthly";
+  feeType: "admission" | "monthly" | "stationery";
   status: "pending" | "paid" | "overdue" | "waived";
   dueDate?: string;
   receiptNumber?: string;
@@ -577,6 +577,73 @@ export async function activateAcademyStudent(id: string, body: AcademyStudentAct
   return { student: parsed.data!, credentials: parsed.credentials! };
 }
 
+export type EnrollmentVoucherBody = {
+  classId?: string;
+  selectedSubjects: string[];
+  isFullPackage: boolean;
+  discountAmount?: number;
+  monthlyFeeDiscount?: number;
+  admissionFeeDiscount?: number;
+  studentName?: string;
+  fatherName?: string;
+  phone?: string;
+  gender?: string;
+  paymentDate?: string;
+};
+
+export type EnrollmentVoucherResult = {
+  student: AcademyStudent;
+  voucher: AcademyFeeRecord | null;
+  fees: FeePreview;
+};
+
+export async function prepareEnrollmentVoucher(id: string, body: EnrollmentVoucherBody) {
+  const res = await authedFetch(`/student-management/students/${id}/enrollment-voucher`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: AcademyStudent;
+    voucher?: AcademyFeeRecord | null;
+    fees?: FeePreview;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Could not generate voucher (${res.status})`);
+  return {
+    student: parsed.data!,
+    voucher: parsed.voucher ?? null,
+    fees: parsed.fees!,
+  } satisfies EnrollmentVoucherResult;
+}
+
+export type AssignSectionBody = {
+  sectionId: string;
+  classId?: string;
+  studentName?: string;
+  fatherName?: string;
+  phone?: string;
+  gender?: string;
+  guardianName?: string;
+};
+
+export async function assignSectionAfterPayment(id: string, body: AssignSectionBody) {
+  const res = await authedFetch(`/student-management/students/${id}/assign-section`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: AcademyStudent;
+    credentials?: AcademyStudentActivateResult["credentials"];
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Section assignment failed (${res.status})`);
+  return { student: parsed.data!, credentials: parsed.credentials! };
+}
+
 export type ParentPortalProvisionRow = {
   studentMongoId: string;
   studentId: string;
@@ -926,11 +993,47 @@ export const generateMonthlyFees = (body: { month: number; year: number; classId
     body: JSON.stringify(body),
   });
 
+export const addStationeryCharge = (body: {
+  studentId: string;
+  amount: number;
+  month?: number;
+  year?: number;
+  notes?: string;
+}) =>
+  api<AcademyFeeRecord>("/fees/stationery", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
 export const payAcademyFee = (id: string, body?: { paymentMethod?: string; notes?: string }) =>
   api<AcademyFeeRecord>(`/fees/${id}/pay`, { method: "PATCH", body: JSON.stringify(body || {}) });
 
-export const payAcademyFees = (body: { feeRecordIds: string[]; paymentMethod?: string; notes?: string }) =>
-  api<{ paid: number; total: number }>(`/fees/pay`, { method: "POST", body: JSON.stringify(body) });
+export async function payAcademyFees(body: {
+  feeRecordIds: string[];
+  paymentMethod?: string;
+  notes?: string;
+}) {
+  const res = await authedFetch(`/student-management/fees/pay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: { paid: number; total: number; records?: AcademyFeeRecord[] };
+    needsSectionAssignment?: boolean;
+    studentId?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Payment failed (${res.status})`);
+  return {
+    paid: parsed.data?.paid ?? 0,
+    total: parsed.data?.total ?? 0,
+    records: parsed.data?.records,
+    needsSectionAssignment: Boolean(parsed.needsSectionAssignment),
+    studentId: parsed.studentId ? String(parsed.studentId) : undefined,
+  };
+}
 
 export type FeeReceiptSize = "a4" | "thermal";
 

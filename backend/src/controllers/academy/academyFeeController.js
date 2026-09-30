@@ -46,6 +46,12 @@ const generate = catchAsync(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+const addStationery = catchAsync(async (req, res) => {
+  const data = await feeService.addStationeryCharge(req.body.studentId, req.body, req.user._id);
+  rt.feeCrud('created', data._id);
+  res.status(201).json({ success: true, data });
+});
+
 const receipt = catchAsync(async (req, res) => {
   const record = await feeService.getFeeRecordById(req.params.id);
   const studentId = record.studentId?._id || record.studentId;
@@ -109,15 +115,25 @@ const challan = catchAsync(async (req, res) => {
 });
 
 const pay = catchAsync(async (req, res) => {
-  const data = await feeService.recordPayment(req.params.id, req.body, req.user._id);
+  const result = await feeService.recordPayment(req.params.id, req.body, req.user._id);
   rt.feeCrud('updated', req.params.id);
-  res.json({ success: true, data });
+  res.json({
+    success: true,
+    data: result.record,
+    needsSectionAssignment: result.needsSectionAssignment,
+    studentId: result.record?.studentId?._id || result.record?.studentId,
+  });
 });
 
 const payMany = catchAsync(async (req, res) => {
   const data = await feeService.recordPayments(req.body.feeRecordIds, req.body, req.user._id);
   rt.feeCrud('updated', 'batch');
-  res.json({ success: true, data });
+  res.json({
+    success: true,
+    data,
+    needsSectionAssignment: data.needsSectionAssignment,
+    studentId: data.studentId,
+  });
 });
 
 const studentHistory = catchAsync(async (req, res) => {
@@ -212,6 +228,7 @@ const exportDefaultersMonthWise = catchAsync(async (req, res) => {
 module.exports = {
   list,
   generate,
+  addStationery,
   pay,
   payMany,
   receipt,

@@ -167,6 +167,61 @@ const academyStudentActivate = Joi.object({
   address: Joi.string().allow('').trim(),
 }).or('phone', 'mobileNo');
 
+/** Subjects + discounts → unpaid enrollment voucher (no section yet). */
+const academyEnrollmentVoucher = Joi.object({
+  studentName: Joi.string().trim(),
+  fatherName: Joi.string().trim(),
+  phone: Joi.string().trim(),
+  mobileNo: Joi.string().trim(),
+  gender: Joi.string().valid('male', 'female', 'other'),
+  classId: objectId,
+  selectedSubjects: Joi.array().items(objectId).default([]),
+  isFullPackage: Joi.boolean().default(false),
+  discountAmount: Joi.number().min(0).default(0),
+  monthlyFeeDiscount: Joi.number().min(0).default(0),
+  admissionFeeDiscount: Joi.number().min(0).default(0),
+  paymentDate: Joi.date().optional(),
+  guardianName: Joi.string().allow('').trim(),
+  dateOfBirth: Joi.date(),
+  nationality: Joi.string().trim(),
+  guardianRelation: Joi.string().allow('').trim(),
+  fatherGuardianCnic: Joi.string().allow('').trim(),
+  guardianOccupation: Joi.string().allow('').trim(),
+  guardianWorkAddress: Joi.string().allow('').trim(),
+  studentEmail: Joi.string().trim().allow('').empty('').email({ tlds: { allow: false } }),
+  postalAddress: Joi.string().allow('').trim(),
+  contactPhoneRes: Joi.string().allow('').trim(),
+  permanentAddress: Joi.string().allow('').trim(),
+  currentSchoolCollege: Joi.string().allow('').trim(),
+  academicHistory: Joi.array().items(academicRecord).default([]),
+  address: Joi.string().allow('').trim(),
+});
+
+/** After paid enrollment voucher — assign section and activate. */
+const academyAssignSection = Joi.object({
+  sectionId: objectId.required(),
+  classId: objectId,
+  studentName: Joi.string().trim(),
+  fatherName: Joi.string().trim(),
+  phone: Joi.string().trim(),
+  mobileNo: Joi.string().trim(),
+  gender: Joi.string().valid('male', 'female', 'other'),
+  guardianName: Joi.string().allow('').trim(),
+  dateOfBirth: Joi.date(),
+  nationality: Joi.string().trim(),
+  guardianRelation: Joi.string().allow('').trim(),
+  fatherGuardianCnic: Joi.string().allow('').trim(),
+  guardianOccupation: Joi.string().allow('').trim(),
+  guardianWorkAddress: Joi.string().allow('').trim(),
+  studentEmail: Joi.string().trim().allow('').empty('').email({ tlds: { allow: false } }),
+  postalAddress: Joi.string().allow('').trim(),
+  contactPhoneRes: Joi.string().allow('').trim(),
+  permanentAddress: Joi.string().allow('').trim(),
+  currentSchoolCollege: Joi.string().allow('').trim(),
+  academicHistory: Joi.array().items(academicRecord).default([]),
+  address: Joi.string().allow('').trim(),
+});
+
 const academyStudentDirectRegister = Joi.object({
   studentName: Joi.string().trim().required(),
   fatherName: Joi.string().trim().required(),
@@ -247,6 +302,14 @@ const academyFeeGenerate = Joi.object({
   month: Joi.number().integer().min(1).max(12).required(),
   year: Joi.number().integer().min(2000).max(2100).required(),
   classId: objectId.optional(),
+});
+
+const academyFeeStationery = Joi.object({
+  studentId: objectId.required(),
+  amount: Joi.number().positive().max(1_000_000).required(),
+  month: Joi.number().integer().min(1).max(12).optional(),
+  year: Joi.number().integer().min(2000).max(2100).optional(),
+  notes: Joi.string().allow('').trim().max(500).optional(),
 });
 
 const feeDefaultersQuery = Joi.object({
@@ -463,11 +526,14 @@ module.exports = {
   academyStudentRegister,
   academyStudentProvisional,
   academyStudentActivate,
+  academyEnrollmentVoucher,
+  academyAssignSection,
   academyStudentDirectRegister,
   academyStudentPatch,
   academyFeePay,
   academyFeePayMany,
   academyFeeGenerate,
+  academyFeeStationery,
   feeDefaultersQuery,
   academySalaryPay,
   academySalaryGenerate,

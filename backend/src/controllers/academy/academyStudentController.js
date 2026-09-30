@@ -53,6 +53,24 @@ const activate = catchAsync(async (req, res) => {
   res.json({ success: true, data: result.student, credentials: result.credentials });
 });
 
+const prepareEnrollmentVoucher = catchAsync(async (req, res) => {
+  const result = await studentService.prepareEnrollmentVoucher(req.params.id, req.body, req.user._id);
+  rt.studentUpdated(result.student);
+  if (result.voucher?._id) rt.feeCrud('created', result.voucher._id);
+  res.status(201).json({
+    success: true,
+    data: result.student,
+    voucher: result.voucher,
+    fees: result.fees,
+  });
+});
+
+const assignSection = catchAsync(async (req, res) => {
+  const result = await studentService.assignSectionAfterPayment(req.params.id, req.body, req.user._id);
+  rt.studentActivated(result.student);
+  res.json({ success: true, data: result.student, credentials: result.credentials });
+});
+
 const registerDirect = catchAsync(async (req, res) => {
   const result = await studentService.registerDirectStudent(req.body, req.user._id);
   rt.studentActivated(result.student);
@@ -223,6 +241,8 @@ module.exports = {
   registerProvisional,
   registerDirect,
   activate,
+  prepareEnrollmentVoucher,
+  assignSection,
   update,
   getById,
   getRecord,

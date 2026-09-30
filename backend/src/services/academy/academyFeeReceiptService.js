@@ -93,6 +93,12 @@ function periodLabel(record) {
   return `${monthName} ${record.year || ''}`.trim();
 }
 
+function feeTypeLabel(feeType, { short = false } = {}) {
+  if (feeType === 'admission') return short ? 'Admission' : 'Admission fee';
+  if (feeType === 'stationery') return short ? 'Stationery' : 'Stationery charge';
+  return short ? 'Monthly' : 'Monthly fee';
+}
+
 function studentOf(record) {
   const s = record.studentId;
   return s && typeof s === 'object' ? s : null;
@@ -238,7 +244,7 @@ function drawThermalReceipt(doc, record, brand, logoPath) {
   dashLine(doc, x, y, w);
   y += 10;
 
-  y = thermalKv(doc, 'Fee', record.feeType === 'admission' ? 'Admission fee' : 'Monthly fee', x, y, w);
+  y = thermalKv(doc, 'Fee', feeTypeLabel(record.feeType), x, y, w);
   y = thermalKv(doc, 'Period', periodLabel(record), x, y, w);
   y += 6;
   doc.fillColor('#000000').font('Helvetica-Bold').fontSize(12);
@@ -402,7 +408,7 @@ function renderA4FeeReceiptPdf(record, meta = {}) {
       doc.restore();
       y += 14;
 
-      drawRow(doc, 'Fee type', record.feeType === 'admission' ? 'Admission fee' : 'Monthly fee', innerX, y, labelW, valueW, brand);
+      drawRow(doc, 'Fee type', feeTypeLabel(record.feeType), innerX, y, labelW, valueW, brand);
       drawRow(doc, 'Period', periodLabel(record), innerX + colW, y, labelW, valueW, brand);
       y += 18;
       drawRow(doc, 'Payment', paymentMethodLabel(record.paymentMethod), innerX, y, labelW, valueW, brand);
@@ -480,8 +486,8 @@ function renderA4FeeReceiptPdf(record, meta = {}) {
 }
 
 function challanHeading(records) {
-  const monthly = records.filter((r) => r.feeType !== 'admission').length;
-  if (monthly === records.length) {
+  const monthly = records.filter((r) => r.feeType === 'monthly').length;
+  if (monthly === records.length && monthly > 0) {
     return records.length === 1 ? '1 MONTH FEE CHALLAN' : `${records.length} MONTH FEE CHALLAN`;
   }
   return records.length === 1 ? 'FEE CHALLAN' : `${records.length} FEE CHALLAN`;
@@ -553,7 +559,7 @@ function drawThermalChallan(doc, records, brand, logoPath) {
     doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8);
     pdfLine(doc, `${index + 1}. ${periodLabel(record)}`, x, y, { width: w });
     y += 12;
-    y = thermalKv(doc, 'Type', record.feeType === 'admission' ? 'Admission' : 'Monthly', x, y, w);
+    y = thermalKv(doc, 'Type', feeTypeLabel(record.feeType, { short: true }), x, y, w);
     y = thermalKv(doc, 'Status', statusLabel(record.status), x, y, w);
     y = thermalKv(doc, 'Due', formatDate(record.dueDate), x, y, w);
     y = thermalKv(doc, 'Amount', formatPkr(record.amount), x, y, w);
@@ -718,7 +724,7 @@ function renderA4FeeChallanPdf(records, meta = {}) {
         const cells = [
           String(index + 1),
           periodLabel(record),
-          record.feeType === 'admission' ? 'Admission' : 'Monthly',
+          feeTypeLabel(record.feeType, { short: true }),
           statusLabel(record.status),
           formatPkr(record.amount),
         ];

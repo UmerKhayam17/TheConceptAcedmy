@@ -6,7 +6,11 @@ const academyFeeRecordSchema = new mongoose.Schema(
     month: { type: Number, required: true, min: 1, max: 12 },
     year: { type: Number, required: true },
     amount: { type: Number, required: true, min: 0 },
-    feeType: { type: String, enum: ['admission', 'monthly'], default: 'monthly' },
+    feeType: {
+      type: String,
+      enum: ['admission', 'monthly', 'stationery'],
+      default: 'monthly',
+    },
     status: { type: String, enum: ['pending', 'paid', 'overdue', 'waived'], default: 'pending', index: true },
     dueDate: { type: Date },
     paidAt: { type: Date },

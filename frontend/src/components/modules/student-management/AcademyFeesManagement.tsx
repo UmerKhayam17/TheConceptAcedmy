@@ -42,6 +42,7 @@ import {
   fetchStudentFeeHistory,
   exportFeeDefaultersMonthWise,
   type DefaulterReportFormat,
+  addStationeryCharge,
   generateMonthlyFees,
   payAcademyFees,
   printFeeChallan,
@@ -54,6 +55,10 @@ import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
 import { cn } from "@/lib/utils";
+import {
+  AssignSectionDialog,
+  EnrollmentVoucherWizard,
+} from "./EnrollmentVoucherWizard";
 
 const feeFilterLabelClass = "mb-1.5 block text-xs font-semibold text-[#10264D]";
 const feeFilterSelectClass =
@@ -142,6 +147,12 @@ function periodLabel(r: AcademyFeeRecord) {
   return `${MONTH_NAMES[(r.month || 1) - 1]} ${r.year}`;
 }
 
+function feeTypeLabel(feeType: AcademyFeeRecord["feeType"]) {
+  if (feeType === "admission") return "Admission";
+  if (feeType === "stationery") return "Stationery";
+  return "Monthly";
+}
+
 function isUnpaid(status: string) {
   return status === "pending" || status === "overdue";
 }
@@ -209,6 +220,18 @@ export default function AcademyFeesManagement({
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
+  const [challanTarget, setChallanTarget] = useState<{
+    studentId: string;
+    studentName: string;
+    month: number;
+    year: number;
+  } | null>(null);
+  const [stationeryAmount, setStationeryAmount] = useState("");
+  const [stationeryNotes, setStationeryNotes] = useState("");
+  const [stationeryMonth, setStationeryMonth] = useState(String(now.getMonth() + 1));
+  const [stationeryYear, setStationeryYear] = useState(String(now.getFullYear()));
+  const [enrollmentWizardOpen, setEnrollmentWizardOpen] = useState(false);
+  const [assignSectionStudentId, setAssignSectionStudentId] = useState<string | null>(null);
 
   const childScoped = Boolean(studentId) || isParent;
   const effectiveStudentId = studentId || (isParent ? selectedParentStudentId || undefined : undefined);
@@ -357,6 +380,9 @@ export default function AcademyFeesManagement({
         title: "Payment recorded",
         description: `${result.paid} month${result.paid === 1 ? "" : "s"} · ${formatPkr(result.total)}`,
       });
+      if (result.needsSectionAssignment && result.studentId) {
+        setAssignSectionStudentId(result.studentId);
+      }
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -376,6 +402,89 @@ export default function AcademyFeesManagement({
     onError: (e: Error) =>
       toast({ title: "Could not print", description: e.message, variant: "destructive" }),
   });
+
+  const resetChallanDialog = () => {
+    setChallanTarget(null);
+    setStationeryAmount("");
+    setStationeryNotes("");
+    setStationeryMonth(String(now.getMonth() + 1));
+    setStationeryYear(String(now.getFullYear()));
+  };
+
+  const openChallanDialog = (rec: AcademyFeeRecord) => {
+    const sid = studentMongoId(rec);
+    if (!sid) return;
+    setChallanTarget({
+      studentId: sid,
+      studentName: studentName(rec),
+      month: rec.month || now.getMonth() + 1,
+      year: rec.year || now.getFullYear(),
+    });
+    setStationeryAmount("");
+    setStationeryNotes("");
+    setStationeryMonth(String(rec.month || now.getMonth() + 1));
+    setStationeryYear(String(rec.year || now.getFullYear()));
+  };
+
+  const stationeryMut = useMutation({
+    mutationFn: async () => {
+      if (!challanTarget) throw new Error("Select a student first.");
+      if (!writable) throw new Error("Switch to the active session to add stationery.");
+      const amount = Number(stationeryAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Enter a stationery amount greater than 0.");
+      }
+      return addStationeryCharge({
+        studentId: challanTarget.studentId,
+        amount,
+        month: Number(stationeryMonth),
+        year: Number(stationeryYear),
+        notes: stationeryNotes.trim() || undefined,
+      });
+    },
+    onSuccess: (record) => {
+      qc.invalidateQueries({ queryKey: ["academy-fees"] });
+      qc.invalidateQueries({ queryKey: ["academy-fees-summary"] });
+      qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
+      qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
+      toast({
+        title: "Stationery charge added",
+        description: `${formatPkr(record.amount)} will appear on this student's challan.`,
+      });
+      setStationeryAmount("");
+      setStationeryNotes("");
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const printChallanWithOptionalStationery = async (size: FeeReceiptSize) => {
+    if (!challanTarget) return;
+    try {
+      const amount = Number(stationeryAmount);
+      if (stationeryAmount.trim() && Number.isFinite(amount) && amount > 0) {
+        if (!writable) throw new Error("Switch to the active session to add stationery.");
+        await addStationeryCharge({
+          studentId: challanTarget.studentId,
+          amount,
+          month: Number(stationeryMonth),
+          year: Number(stationeryYear),
+          notes: stationeryNotes.trim() || undefined,
+        });
+        qc.invalidateQueries({ queryKey: ["academy-fees"] });
+        qc.invalidateQueries({ queryKey: ["academy-fees-summary"] });
+        qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
+        qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
+      }
+      await printMut.mutateAsync({ studentId: challanTarget.studentId, size });
+      resetChallanDialog();
+    } catch (e) {
+      toast({
+        title: "Could not print challan",
+        description: e instanceof Error ? e.message : "Something went wrong",
+        variant: "destructive",
+      });
+    }
+  };
 
   const records = data?.records ?? [];
   const pagination = data?.pagination;
@@ -512,6 +621,7 @@ export default function AcademyFeesManagement({
                     <option value="">All types</option>
                     <option value="monthly">Monthly</option>
                     <option value="admission">Admission</option>
+                    <option value="stationery">Stationery</option>
                   </FeeFilterSelect>
                 </FeeFilterField>
               </>
@@ -542,8 +652,19 @@ export default function AcademyFeesManagement({
               ) : null}
             </div>
 
-            {!isParent && (canGenerate || caps.canView) && (
+            {!isParent && (canGenerate || caps.canView || caps.canEdit || caps.canCreate) && (
               <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
+                {!studentId && (caps.canEdit || caps.canCreate) && writable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 gap-2 rounded-xl border-[#BFDBFE] bg-white px-4 text-sm font-semibold text-[#1D4ED8] hover:bg-[#EFF6FF]"
+                    onClick={() => setEnrollmentWizardOpen(true)}
+                  >
+                    <Receipt className="h-4 w-4" />
+                    Enrollment voucher
+                  </Button>
+                )}
                 {canGenerate && (
                   <Button
                     className="h-10 gap-2 rounded-xl bg-[#2F80ED] px-4 text-sm font-semibold text-white hover:bg-[#2563EB]"
@@ -689,7 +810,7 @@ export default function AcademyFeesManagement({
                       <td className="p-2.5 hidden md:table-cell">{classNameFromRecord(r)}</td>
                     )}
                     <td className="p-2.5">{periodLabel(r)}</td>
-                    <td className="p-2.5 capitalize">{r.feeType}</td>
+                    <td className="p-2.5">{feeTypeLabel(r.feeType)}</td>
                     <td className="p-2.5">{formatPkr(r.amount)}</td>
                     <td className="p-2.5">
                       <StatusPill status={r.status} />
@@ -734,50 +855,58 @@ export default function AcademyFeesManagement({
                                 {new Date(r.paidAt).toLocaleDateString()}
                               </span>
                             )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-8 w-8 shrink-0"
-                                  disabled={printing}
-                                  aria-label={payable ? "Print challan" : "Print receipt"}
-                                  title={payable ? "Print challan" : "Print receipt"}
-                                >
-                                  {printing ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Printer className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  className="gap-2"
-                                  onClick={() =>
-                                    printMut.mutate(
-                                      payable && sid
-                                        ? { studentId: sid, size: "thermal" }
-                                        : { id: r._id, size: "thermal" }
-                                    )
-                                  }
-                                >
-                                  <Receipt className="h-4 w-4" />
-                                  Thermal
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="gap-2"
-                                  onClick={() =>
-                                    printMut.mutate(
-                                      payable && sid ? { studentId: sid, size: "a4" } : { id: r._id, size: "a4" }
-                                    )
-                                  }
-                                >
-                                  <FileText className="h-4 w-4" />
-                                  A4
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            {payable && sid ? (
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 shrink-0"
+                                disabled={printing}
+                                aria-label="Print challan"
+                                title="Print challan (optional stationery)"
+                                onClick={() => openChallanDialog(r)}
+                              >
+                                {printing ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Printer className="h-4 w-4" />
+                                )}
+                              </Button>
+                            ) : (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 shrink-0"
+                                    disabled={printing}
+                                    aria-label="Print receipt"
+                                    title="Print receipt"
+                                  >
+                                    {printing ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Printer className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    className="gap-2"
+                                    onClick={() => printMut.mutate({ id: r._id, size: "thermal" })}
+                                  >
+                                    <Receipt className="h-4 w-4" />
+                                    Thermal
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="gap-2"
+                                    onClick={() => printMut.mutate({ id: r._id, size: "a4" })}
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                    A4
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                         )}
                       </div>
@@ -856,7 +985,9 @@ export default function AcademyFeesManagement({
                             />
                             <span className="flex-1">
                               <span className="font-medium">{periodLabel(fee)}</span>
-                              <span className="ml-2 text-xs capitalize text-muted-foreground">{fee.status}</span>
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {feeTypeLabel(fee.feeType)} · {fee.status}
+                              </span>
                             </span>
                             <span className="font-semibold">{formatPkr(fee.amount)}</span>
                           </label>
@@ -867,7 +998,7 @@ export default function AcademyFeesManagement({
                 )}
                 <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/30">
                   <span className="text-muted-foreground">
-                    {selectedUnpaid.length} month{selectedUnpaid.length === 1 ? "" : "s"} selected
+                    {selectedUnpaid.length} item{selectedUnpaid.length === 1 ? "" : "s"} selected
                   </span>
                   <span className="font-semibold">{formatPkr(selectedTotal)}</span>
                 </div>
@@ -909,6 +1040,156 @@ export default function AcademyFeesManagement({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={Boolean(challanTarget)}
+        onOpenChange={(o) => {
+          if (!o) resetChallanDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Print fee challan</DialogTitle>
+          </DialogHeader>
+          {challanTarget && (
+            <div className="space-y-3 text-sm">
+              <p>
+                <span className="text-muted-foreground">Student:</span>{" "}
+                <span className="font-medium">{challanTarget.studentName}</span>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Optionally add a stationery charge for this student before printing. Leave blank to
+                print unpaid fees only.
+              </p>
+              {canPay && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="stationery-amount">Stationery charge (PKR)</Label>
+                    <Input
+                      id="stationery-amount"
+                      type="number"
+                      min={0}
+                      step="1"
+                      inputMode="decimal"
+                      placeholder="e.g. 500"
+                      value={stationeryAmount}
+                      onChange={(e) => setStationeryAmount(e.target.value)}
+                      disabled={!writable}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="stationery-month">Month</Label>
+                      <select
+                        id="stationery-month"
+                        className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        value={stationeryMonth}
+                        onChange={(e) => setStationeryMonth(e.target.value)}
+                        disabled={!writable}
+                      >
+                        {MONTH_NAMES.map((name, idx) => (
+                          <option key={name} value={String(idx + 1)}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="stationery-year">Year</Label>
+                      <select
+                        id="stationery-year"
+                        className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        value={stationeryYear}
+                        onChange={(e) => setStationeryYear(e.target.value)}
+                        disabled={!writable}
+                      >
+                        {Array.from({ length: 6 }, (_, i) => {
+                          const y = String(Number(now.getFullYear()) - 2 + i);
+                          return (
+                            <option key={y} value={y}>
+                              {y}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="stationery-notes">Notes (optional)</Label>
+                    <Input
+                      id="stationery-notes"
+                      value={stationeryNotes}
+                      onChange={(e) => setStationeryNotes(e.target.value)}
+                      placeholder="Books, notebooks, etc."
+                      disabled={!writable}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+            {canPay && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                disabled={
+                  !writable ||
+                  stationeryMut.isPending ||
+                  printMut.isPending ||
+                  !stationeryAmount.trim()
+                }
+                onClick={() => stationeryMut.mutate()}
+              >
+                {stationeryMut.isPending ? "Saving…" : "Add stationery only"}
+              </Button>
+            )}
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                disabled={printMut.isPending || stationeryMut.isPending}
+                onClick={() => void printChallanWithOptionalStationery("thermal")}
+              >
+                {printMut.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Receipt className="h-4 w-4" />
+                )}
+                Thermal
+              </Button>
+              <Button
+                type="button"
+                variant="hero"
+                className="gap-2"
+                disabled={printMut.isPending || stationeryMut.isPending}
+                onClick={() => void printChallanWithOptionalStationery("a4")}
+              >
+                {printMut.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+                A4
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <EnrollmentVoucherWizard
+        open={enrollmentWizardOpen}
+        onOpenChange={setEnrollmentWizardOpen}
+      />
+      <AssignSectionDialog
+        open={Boolean(assignSectionStudentId)}
+        onOpenChange={(open) => {
+          if (!open) setAssignSectionStudentId(null);
+        }}
+        studentId={assignSectionStudentId}
+      />
     </div>
   );
 }

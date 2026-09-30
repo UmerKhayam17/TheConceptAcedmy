@@ -293,6 +293,18 @@ router.post(
   studentCtrl.activate
 );
 router.post(
+  '/students/:id/enrollment-voucher',
+  requireAnyPermission('activate_student', 'manage_academy_fees', 'manage_academy_students'),
+  validate(schemas.academyEnrollmentVoucher),
+  studentCtrl.prepareEnrollmentVoucher
+);
+router.post(
+  '/students/:id/assign-section',
+  requireAnyPermission('activate_student', 'manage_academy_fees', 'manage_academy_students'),
+  validate(schemas.academyAssignSection),
+  studentCtrl.assignSection
+);
+router.post(
   '/students/:id/photo',
   requirePermission('manage_academy_students'),
   uploadImage.single('photo'),
@@ -342,6 +354,12 @@ router.post(
   requirePermission('manage_academy_fees'),
   validate(schemas.academyFeeGenerate),
   feeCtrl.generate
+);
+router.post(
+  '/fees/stationery',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeeStationery),
+  feeCtrl.addStationery
 );
 router.get(
   '/fees/challan/:studentId',

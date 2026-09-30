@@ -831,7 +831,6 @@ async function activateStudent(id, payload, userId) {
   if (!phone) throw new ApiError(400, 'Phone number is required');
   if (!payload.gender) throw new ApiError(400, 'Gender is required');
 
-  const profile = pickStudentProfile(payload);
   const officialStudentId = await generateStudentId();
   const rollNumber = await generateAcademyRollNumber(classId);
   const studentName = (payload.studentName || student.studentName).trim();
@@ -874,6 +873,203 @@ async function activateStudent(id, payload, userId) {
 
   const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
   await createEnrollmentFeeVouchers(student, fees, userId, { asOf });
+
+  const populated = await student.populate([
+    { path: 'classId', select: 'className' },
+    { path: 'sectionId', select: 'sectionName' },
+    { path: 'selectedSubjects', select: 'subjectName subjectCode' },
+    { path: 'createdBy', select: 'name email' },
+  ]);
+
+  return {
+    student: populated,
+    credentials: {
+      studentId: officialStudentId,
+      rollNumber,
+      parentEmail,
+      parentPassword,
+    },
+  };
+}
+
+/**
+ * Pay-first enrollment — step 1: lock subjects + create unpaid admission voucher.
+ * Student stays pending_fee with no section until payment + assignSectionAfterPayment.
+ */
+async function prepareEnrollmentVoucher(id, payload, userId) {
+  const student = await AcademyStudent.findById(id);
+  if (!student) throw new ApiError(404, 'Student not found');
+  if (student.status !== 'pending_fee') {
+    throw new ApiError(400, 'Student is not awaiting fee confirmation');
+  }
+
+  const classId = payload.classId || student.classId;
+  const cls = await AcademyClass.findById(classId);
+  if (!cls) throw new ApiError(404, 'Class not found');
+  if (cls.status !== 'active') throw new ApiError(400, 'Class is not active');
+
+  const feeStructure = await getByClass(classId);
+  if (!feeStructure) throw new ApiError(400, 'Configure fee structure for this class first');
+
+  const isFullPackage = Boolean(payload.isFullPackage);
+  // Validate against class subjects (no section yet).
+  const subjectIds = await validateSubjects(
+    classId,
+    null,
+    payload.selectedSubjects || [],
+    isFullPackage
+  );
+  if (!isFullPackage && (!subjectIds || !subjectIds.length)) {
+    throw new ApiError(400, 'Select at least one subject or choose full package');
+  }
+
+  const fees = calculateFeesWithDiscount(feeStructure, {
+    selectedSubjectIds: subjectIds,
+    isFullPackage,
+    monthlyFeeDiscount: payload.monthlyFeeDiscount,
+    admissionFeeDiscount: payload.admissionFeeDiscount,
+    discountAmount: payload.discountAmount,
+  });
+
+  const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
+  const month = asOf.getMonth() + 1;
+  const year = asOf.getFullYear();
+  const existingAdm = await AcademyFeeRecord.findOne({
+    studentId: student._id,
+    month,
+    year,
+    feeType: 'admission',
+  });
+  if (existingAdm && (existingAdm.status === 'paid' || existingAdm.status === 'waived')) {
+    throw new ApiError(
+      400,
+      'Enrollment fee is already paid. Assign a section to activate the student.'
+    );
+  }
+
+  if (payload.studentName?.trim()) student.studentName = payload.studentName.trim();
+  if (payload.fatherName?.trim()) student.fatherName = payload.fatherName.trim();
+  const phone = (payload.phone || payload.mobileNo || student.phone || '').trim();
+  if (phone) student.phone = phone;
+  if (payload.gender) student.gender = payload.gender;
+  if (payload.guardianName !== undefined) {
+    student.guardianName = String(payload.guardianName || '').trim();
+  }
+  applyProfileToStudent(student, payload);
+
+  student.classId = classId;
+  student.sectionId = undefined;
+  student.selectedSubjects = subjectIds;
+  student.isFullPackage = isFullPackage;
+  Object.assign(student, fees);
+  student.feeStructureId = feeStructure._id;
+  student.status = 'pending_fee';
+  await student.save();
+
+  const vouchers = await createEnrollmentFeeVouchers(student, fees, userId, {
+    asOf,
+    replacePending: true,
+  });
+  const voucher = vouchers[0] || null;
+
+  const populated = await student.populate([
+    { path: 'classId', select: 'className' },
+    { path: 'selectedSubjects', select: 'subjectName subjectCode' },
+    { path: 'createdBy', select: 'name email' },
+  ]);
+
+  return {
+    student: populated,
+    voucher,
+    fees,
+  };
+}
+
+/**
+ * Pay-first enrollment — step 2: after admission voucher is paid, assign section and activate.
+ */
+async function assignSectionAfterPayment(id, payload, userId) {
+  const student = await AcademyStudent.findById(id);
+  if (!student) throw new ApiError(404, 'Student not found');
+  if (student.status !== 'pending_fee') {
+    throw new ApiError(400, 'Student is not awaiting fee confirmation');
+  }
+  if (!student.selectedSubjects?.length && !student.isFullPackage) {
+    throw new ApiError(400, 'Generate an enrollment voucher with subjects first');
+  }
+
+  const paidAdmission = await AcademyFeeRecord.findOne({
+    studentId: student._id,
+    feeType: 'admission',
+    status: { $in: ['paid', 'waived'] },
+  }).sort({ year: -1, month: -1 });
+  if (!paidAdmission) {
+    throw new ApiError(400, 'Enrollment fee must be paid before assigning a section');
+  }
+
+  const classId = payload.classId || student.classId;
+  const cls = await AcademyClass.findById(classId);
+  if (!cls) throw new ApiError(404, 'Class not found');
+  if (cls.status !== 'active') throw new ApiError(400, 'Class is not active');
+
+  const section = await AcademySection.findById(payload.sectionId);
+  if (!section) throw new ApiError(404, 'Section not found');
+  if (section.status !== 'active') throw new ApiError(400, 'Section is not active');
+  if (String(section.classId) !== String(classId)) {
+    throw new ApiError(400, 'Section does not belong to this class');
+  }
+
+  // Re-validate stored subjects against the chosen section layout.
+  const subjectIds = await validateSubjects(
+    classId,
+    payload.sectionId,
+    (student.selectedSubjects || []).map(String),
+    Boolean(student.isFullPackage)
+  );
+
+  const phone = (payload.phone || payload.mobileNo || student.phone || '').trim();
+  if (!phone) throw new ApiError(400, 'Phone number is required');
+  const gender = payload.gender || student.gender;
+  if (!gender) throw new ApiError(400, 'Gender is required');
+
+  const officialStudentId = student.studentId || (await generateStudentId());
+  const rollNumber =
+    student.studentId && student.rollNumber && !String(student.rollNumber).startsWith('TMP')
+      ? student.rollNumber
+      : await generateAcademyRollNumber(classId);
+  const studentName = (payload.studentName || student.studentName).trim();
+  const fatherName = (payload.fatherName || student.fatherName).trim();
+
+  const { parentEmail, parentPassword } = await ensureParentPortalUser({
+    studentName,
+    fatherName,
+    guardianName: payload.guardianName || student.guardianName,
+    phone,
+    studentId: officialStudentId,
+  });
+
+  student.studentId = officialStudentId;
+  student.rollNumber = rollNumber;
+  student.userId = undefined;
+  student.studentName = studentName;
+  student.fatherName = fatherName;
+  student.phone = phone;
+  student.gender = gender;
+  if (payload.guardianName !== undefined) {
+    student.guardianName = String(payload.guardianName || '').trim();
+  } else if (!student.guardianName) {
+    student.guardianName = fatherName;
+  }
+  applyProfileToStudent(student, payload);
+  student.guardianEmail = parentEmail;
+  student.classId = classId;
+  student.sectionId = payload.sectionId;
+  student.selectedSubjects = subjectIds;
+  student.status = 'active';
+  student.activatedAt = new Date();
+  student.activatedBy = userId;
+  student.enrolledAt = student.enrolledAt || new Date();
+  await student.save();
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
@@ -1054,6 +1250,8 @@ module.exports = {
   registerProvisionalStudent,
   registerDirectStudent,
   activateStudent,
+  prepareEnrollmentVoucher,
+  assignSectionAfterPayment,
   updateStudent,
   getStudent,
   listStudents,

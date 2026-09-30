@@ -17,6 +17,7 @@ import SubjectsTab from "@/components/modules/student-management/SubjectsTab";
 import FeeStructureTab from "@/components/modules/student-management/FeeStructureTab";
 import RegistrationTab from "@/components/modules/student-management/RegistrationTab";
 import RegisterStudentPage from "@/components/modules/student-management/RegisterStudentPage";
+import EnrollmentActivatePage from "@/components/modules/student-management/EnrollmentActivatePage";
 import StudentDetailPage from "@/components/modules/student-management/StudentDetailPage";
 import ClassDetailPage from "@/components/modules/student-management/ClassDetailPage";
 
@@ -52,12 +53,9 @@ const StudentManagementModule = ({
         if (subAction === "activate") {
           if (!caps.canEdit) return <Navigate to={registrationRoutes?.detail(action) ?? registrationList} replace />;
           return (
-            <RegisterStudentPage
-              caps={caps}
+            <EnrollmentActivatePage
               studentId={action}
-              mode="activate"
               routes={registrationRoutes ?? undefined}
-              sessionId={sessionId}
             />
           );
         }
