@@ -9,7 +9,6 @@ const {
   healSessionFlags,
 } = require('../services/session/sessionGuard');
 const Session = require('../models/Session');
-const { ensureDefaultAcademyStructure } = require('../services/academy/academyDefaultStructureService');
 const AcademyClass = require('../models/academy/AcademyClass');
 const AcademySection = require('../models/academy/AcademySection');
 const AcademySubject = require('../models/academy/AcademySubject');
@@ -118,15 +117,13 @@ const createSession = catchAsync(async (req, res) => {
   }
   await session.save();
 
-  const defaultStructure = await ensureDefaultAcademyStructure(session._id, req.user._id);
-
   await logAudit({
     sessionId: session._id,
     action: 'SESSION_CREATED',
     userId: req.user._id,
-    details: { name: session.name, defaultStructure },
+    details: { name: session.name },
   });
-  res.status(201).json({ success: true, data: session, defaultStructure });
+  res.status(201).json({ success: true, data: session });
 });
 
 const patchSession = catchAsync(async (req, res) => {

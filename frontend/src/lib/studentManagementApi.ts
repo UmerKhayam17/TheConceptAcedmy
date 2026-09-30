@@ -1318,27 +1318,26 @@ export const exportAcademyAttendance = async (
   return res.blob();
 };
 
-// Assessments (ongoing tests — single subject per row)
-export type AssessmentType =
-  | "quiz"
-  | "weekly"
-  | "monthly"
-  | "midterm"
-  | "final"
-  | "assignment"
-  | "practice"
-  | "other";
-
-export const ASSESSMENT_TYPE_LABELS: Record<AssessmentType, string> = {
-  quiz: "Quiz",
-  weekly: "Weekly test",
-  monthly: "Monthly test",
-  midterm: "Midterm",
-  final: "Final",
-  assignment: "Assignment",
-  practice: "Practice test",
-  other: "Other",
-};
+// Assessments (umbrella: Tests + Exams — see assessmentTaxonomy.ts)
+export type {
+  AssessmentType,
+  AssessmentCategory,
+  CanonicalAssessmentType,
+} from "./assessmentTaxonomy";
+export {
+  ASSESSMENT_CATEGORIES,
+  ASSESSMENT_TYPES,
+  ASSESSMENT_TYPE_KEYS,
+  ASSESSMENT_TYPE_LABELS,
+  TEST_TYPE_KEYS,
+  EXAM_TYPE_KEYS,
+  EXAM_TYPE_LABELS,
+  assessmentTypeLabel,
+  assessmentCategoryOf,
+  isTestType,
+  isExamType,
+  typesForCategory,
+} from "./assessmentTaxonomy";
 
 export const fetchStudentAssessments = (studentId: string) =>
   api<AcademyAssessmentRecord[]>(`/students/${studentId}/assessments`);

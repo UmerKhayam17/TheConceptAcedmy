@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ALL_ASSESSMENT_TYPE_KEYS } = require('../../config/assessmentTaxonomy');
 
 const academyClassTestSchema = new mongoose.Schema(
   {
@@ -19,13 +20,19 @@ const academyClassTestSchema = new mongoose.Schema(
     seriesLabel: { type: String, trim: true },
     assessmentType: {
       type: String,
-      enum: ['quiz', 'weekly', 'monthly', 'midterm', 'final', 'assignment', 'practice', 'other'],
-      default: 'quiz',
+      enum: ALL_ASSESSMENT_TYPE_KEYS,
+      default: 'weekly',
     },
     examDate: { type: Date, required: true, index: true },
     /** Time the test was held or scheduled, 24h "HH:mm". */
     testTime: { type: String, trim: true, default: '09:00' },
     totalMarks: { type: Number, required: true, min: 1 },
+    syllabus: { type: String, trim: true, default: '' },
+    sectionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'AcademySection',
+      index: true,
+    },
     status: {
       type: String,
       enum: ['open', 'closed'],
@@ -43,6 +50,9 @@ const academyClassTestSchema = new mongoose.Schema(
     },
     occurrenceIndex: { type: Number, min: 1, default: 1 },
     occurrenceCount: { type: Number, min: 1, default: 1 },
+    planId: { type: mongoose.Schema.Types.ObjectId, ref: 'SessionAssessmentPlan', index: true },
+    planItemId: { type: mongoose.Schema.Types.ObjectId },
+    assignmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'AssessmentAssignment', index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true, collection: 'classtests' }

@@ -122,7 +122,7 @@ export default function AcademicSetupTab({
           description: `${e.sections} sections, ${e.feeStructures} fee structures, timetable setup copied.${skipped ? ` ${skipped} class(es) skipped.` : ""}`,
         });
       } else {
-        toast({ title: "Session created", description: "Default classes and subjects are ready." });
+        toast({ title: "Session created", description: "Add classes and subjects from Student Management." });
       }
     },
     onError: (e: Error & { sessionId?: string }) => {

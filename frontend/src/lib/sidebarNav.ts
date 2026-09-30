@@ -48,6 +48,8 @@ export type SidebarNavItem = {
   requireManage?: boolean;
   /** Extra active-path matching beyond exact/prefix href */
   isActive?: (pathname: string, role: Role) => boolean;
+  /** Nested links, rendered under this item */
+  children?: SidebarNavItem[];
 };
 
 export type SidebarNavGroup = {
@@ -121,6 +123,33 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: BookOpen,
         moduleKey: "student-management",
         href: (role) => studentManagementHref(role, "subjects"),
+      },
+      {
+        id: "assessments-config",
+        label: "Assessment Catalog",
+        icon: ClipboardList,
+        moduleKey: "system-config",
+        href: (role) => systemConfigHref(role, "test-catalog"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/system-config/test-catalog`) ||
+          pathname.startsWith(`${p(role)}/system-config/exam-catalog`) ||
+          pathname.startsWith(`${p(role)}/system-config/assessments`),
+        children: [
+          {
+            id: "test-catalog",
+            label: "Tests",
+            icon: ClipboardList,
+            moduleKey: "system-config",
+            href: (role) => systemConfigHref(role, "test-catalog"),
+          },
+          {
+            id: "exam-catalog",
+            label: "Exams",
+            icon: Award,
+            moduleKey: "system-config",
+            href: (role) => systemConfigHref(role, "exam-catalog"),
+          },
+        ],
       },
       {
         id: "rooms",
@@ -251,13 +280,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
   },
   {
     id: "examinations",
-    label: "Examinations",
+    label: "Assessments",
     icon: Award,
     collapsible: true,
     items: [
       {
         id: "class-tests",
-        label: "Class Tests",
+        label: "Tests",
         icon: ClipboardList,
         moduleKey: "exams",
         href: (role) => testExamsHref(role, "enter-tests"),
@@ -266,10 +295,17 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
       },
       {
         id: "term-results",
-        label: "Term Results",
+        label: "Exams",
         icon: Award,
         moduleKey: "exams",
         href: (role) => testExamsHref(role, "term-exams"),
+      },
+      {
+        id: "date-sheet",
+        label: "Date sheet",
+        icon: CalendarDays,
+        moduleKey: "exams",
+        href: (role) => testExamsHref(role, "date-sheet"),
       },
     ],
   },
@@ -466,7 +502,7 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
       },
       {
         id: "exams",
-        label: "Exams & Marks",
+        label: "Assessments",
         icon: Award,
         moduleKey: "exams",
         href: (role) => testExamsHref(role),

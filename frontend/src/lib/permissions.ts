@@ -129,10 +129,10 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: "exams",
-    label: "Exams & Marks",
-    shortLabel: "Exams",
+    label: "Assessments",
+    shortLabel: "Assessments",
     icon: "Award",
-    desc: "Enter and update marks for assigned subjects",
+    desc: "Tests and exams — enter marks for assigned subjects",
   },
   {
     key: "student-progress",

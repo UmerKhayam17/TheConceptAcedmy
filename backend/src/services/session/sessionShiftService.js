@@ -1,7 +1,6 @@
 const ApiError = require('../../utils/ApiError');
 const { assertSessionWritable, getSessionOrThrow } = require('./sessionGuard');
 const { logAudit } = require('./auditService');
-const { ensureDefaultAcademyStructure } = require('../academy/academyDefaultStructureService');
 const { importEnrollmentFromSession } = require('../academy/academySessionImportService');
 const { copyTimetableSetupBetweenSessions } = require('./sessionTimetableCopyService');
 
@@ -22,8 +21,6 @@ async function shiftFullSessionConfiguration(targetSessionId, opts, userId) {
   const source = await getSessionOrThrow(sourceSessionId);
   const target = await getSessionOrThrow(targetSessionId);
 
-  const defaults = await ensureDefaultAcademyStructure(targetSessionId, userId);
-
   const enrollment = await importEnrollmentFromSession(
     targetSessionId,
     { sourceSessionId, classIds, includeFeeStructure },
@@ -42,12 +39,10 @@ async function shiftFullSessionConfiguration(targetSessionId, opts, userId) {
       targetName: target.name,
       enrollment,
       timetable,
-      defaults,
     },
   });
 
   return {
-    defaults,
     enrollment,
     timetable,
     sourceSession: { _id: source._id, name: source.name },

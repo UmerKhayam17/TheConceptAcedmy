@@ -6,6 +6,8 @@ const dateSheetEntrySchema = new mongoose.Schema(
     date: { type: Date },
     startTime: { type: String },
     endTime: { type: String },
+    totalMarks: { type: Number, min: 1 },
+    syllabus: { type: String, trim: true, default: '' },
   },
   { _id: false }
 );
@@ -20,6 +22,12 @@ const examSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    sectionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'AcademySection',
+      index: true,
+    },
+    sessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Session', index: true },
     sessionLabel: { type: String, trim: true, default: '' },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
@@ -30,6 +38,9 @@ const examSchema = new mongoose.Schema(
       default: 'scheduled',
       index: true,
     },
+    planId: { type: mongoose.Schema.Types.ObjectId, ref: 'SessionAssessmentPlan', index: true },
+    planItemId: { type: mongoose.Schema.Types.ObjectId },
+    assignmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'AssessmentAssignment', index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

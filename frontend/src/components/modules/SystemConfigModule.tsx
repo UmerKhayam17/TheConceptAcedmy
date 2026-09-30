@@ -17,6 +17,7 @@ import AssignmentsTab from "@/components/modules/timetable/AssignmentsTab";
 import TimetableSettingsTab from "@/components/modules/timetable/TimetableSettingsTab";
 import SessionHistoryTab from "@/components/modules/timetable/SessionHistoryTab";
 import SessionDetailPage from "@/components/modules/timetable/SessionDetailPage";
+import AssessmentsConfigTab from "@/components/modules/timetable/AssessmentsConfigTab";
 
 const SystemConfigModule = ({
   caps,
@@ -31,6 +32,10 @@ const SystemConfigModule = ({
   const [sessionId, setSessionId] = useState(isDetailView ? action : "");
   useActiveSessionId(sessionId, setSessionId);
   const { isAll, writable } = useSessionScope(sessionId);
+
+  if (sectionParam === "assessments") {
+    return <Navigate to="../test-catalog" replace />;
+  }
 
   if (!caps.canView) {
     return (
@@ -72,6 +77,12 @@ const SystemConfigModule = ({
         <>
           {section === "academic" && (
             <AcademicSetupTab sessionId={isAll ? "" : sessionId} caps={caps} onSessionCreated={setSessionId} />
+          )}
+          {section === "test-catalog" && (
+            <AssessmentsConfigTab sessionId={sessionId} caps={editCaps} category="test" />
+          )}
+          {section === "exam-catalog" && (
+            <AssessmentsConfigTab sessionId={sessionId} caps={editCaps} category="exam" />
           )}
           {section === "sections" && <SectionsTab sessionId={sessionId} caps={editCaps} />}
           {section === "periods" && <PeriodsTab sessionId={sessionId} caps={editCaps} />}
