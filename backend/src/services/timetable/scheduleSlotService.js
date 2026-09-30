@@ -386,9 +386,21 @@ function teacherInSlotQuery(teacherId) {
 }
 
 async function getTeacherSchedule(sessionId, teacherId, { status = 'published' } = {}) {
+  const PeriodTemplate = require('../../models/timetable/PeriodTemplate');
   const versionQuery = { session: sessionId, status };
-  const versions = await TimetableVersion.find(versionQuery).select('_id section class');
+  const versions = await TimetableVersion.find(versionQuery).select('_id section class periodTemplate');
   const versionIds = versions.map((v) => v._id);
+
+  const templateIds = [
+    ...new Set(versions.map((v) => String(v.periodTemplate)).filter((id) => id && id !== 'undefined')),
+  ];
+  const templates = templateIds.length
+    ? await PeriodTemplate.find({ _id: { $in: templateIds } }).select('slots').lean()
+    : [];
+  const templateById = new Map(templates.map((t) => [String(t._id), t]));
+  const versionTemplateId = new Map(
+    versions.map((v) => [String(v._id), String(v.periodTemplate)])
+  );
 
   const slots = await ScheduleSlot.find({
     session: sessionId,
@@ -417,7 +429,30 @@ async function getTeacherSchedule(sessionId, teacherId, { status = 'published' }
     })
     .sort({ day: 1 });
 
-  return { slots, versions };
+  const enriched = slots.map((slot) => {
+    const plain = typeof slot.toObject === 'function' ? slot.toObject() : { ...slot };
+    const versionId = String(plain.timetableVersion?._id || plain.timetableVersion || '');
+    const template = templateById.get(versionTemplateId.get(versionId) || '');
+    const period =
+      template?.slots?.find((p) => String(p._id) === String(plain.periodId)) || null;
+    return {
+      ...plain,
+      startTime: period?.startTime || '',
+      endTime: period?.endTime || '',
+      periodLabel: period?.label || '',
+      periodOrder: period?.order ?? null,
+    };
+  });
+
+  enriched.sort((a, b) => {
+    if (a.day !== b.day) return String(a.day).localeCompare(String(b.day));
+    const ao = a.periodOrder ?? 999;
+    const bo = b.periodOrder ?? 999;
+    if (ao !== bo) return ao - bo;
+    return String(a.startTime || '').localeCompare(String(b.startTime || ''));
+  });
+
+  return { slots: enriched, versions };
 }
 
 async function getRoomSchedule(sessionId, roomId, { status = 'published' } = {}) {

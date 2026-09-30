@@ -416,6 +416,10 @@ async function listStudents({
   sessionId,
   sort = '-createdAt',
   forExport = false,
+  /** Extra Mongo filter (e.g. teacher class/section scope). */
+  scopeFilter = null,
+  /** When true, do not match search against phone. */
+  hidePhoneSearch = false,
 }) {
   const q = {};
   if (status) q.status = status;
@@ -426,14 +430,17 @@ async function listStudents({
   }
   if (search?.trim()) {
     const s = search.trim();
-    q.$or = [
+    const searchOr = [
       { studentName: { $regex: s, $options: 'i' } },
       { fatherName: { $regex: s, $options: 'i' } },
-      { phone: { $regex: s, $options: 'i' } },
       { studentId: { $regex: s, $options: 'i' } },
       { registrationNumber: { $regex: s, $options: 'i' } },
       { rollNumber: { $regex: s, $options: 'i' } },
     ];
+    if (!hidePhoneSearch) {
+      searchOr.splice(2, 0, { phone: { $regex: s, $options: 'i' } });
+    }
+    q.$or = searchOr;
   }
 
   if (classId) {
@@ -443,12 +450,17 @@ async function listStudents({
     q.classId = { $in: classes.map((c) => c._id) };
   }
 
+  const filter =
+    scopeFilter && Object.keys(scopeFilter).length
+      ? { $and: [q, scopeFilter] }
+      : q;
+
   const cap = forExport ? 10000 : 100;
   const perPage = Math.min(cap, Math.max(1, limit));
   const skip = (Math.max(1, page) - 1) * perPage;
 
   const [items, total] = await Promise.all([
-    AcademyStudent.find(q)
+    AcademyStudent.find(filter)
       .populate({
         path: 'classId',
         select: 'className sessionId',
@@ -460,7 +472,7 @@ async function listStudents({
       .sort(sort)
       .skip(skip)
       .limit(perPage),
-    AcademyStudent.countDocuments(q),
+    AcademyStudent.countDocuments(filter),
   ]);
 
   return {
@@ -474,24 +486,39 @@ async function listStudents({
   };
 }
 
-function studentsToCsv(rows) {
-  const header = [
-    'Student ID',
-    'Name',
-    'Father',
-    'Phone',
-    'Class',
-    'Created',
-    'Monthly Fee',
-    'Admission Fee',
-    'Total Fee',
-    'Status',
-  ];
+function studentsToCsv(rows, { omitSensitive = false } = {}) {
+  const header = omitSensitive
+    ? ['Student ID', 'Name', 'Father', 'Class', 'Created', 'Status']
+    : [
+        'Student ID',
+        'Name',
+        'Father',
+        'Phone',
+        'Class',
+        'Created',
+        'Monthly Fee',
+        'Admission Fee',
+        'Total Fee',
+        'Status',
+      ];
   const lines = [header.join(',')];
   rows.forEach((s) => {
     const className = s.classId?.className || '';
     const idCol = s.studentId || s.rollNumber || s.registrationNumber || '';
     const created = s.createdAt ? new Date(s.createdAt).toISOString().slice(0, 10) : '';
+    if (omitSensitive) {
+      lines.push(
+        [
+          idCol,
+          `"${(s.studentName || '').replace(/"/g, '""')}"`,
+          `"${(s.fatherName || '').replace(/"/g, '""')}"`,
+          `"${className.replace(/"/g, '""')}"`,
+          created,
+          s.status,
+        ].join(',')
+      );
+      return;
+    }
     lines.push(
       [
         idCol,

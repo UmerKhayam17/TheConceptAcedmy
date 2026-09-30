@@ -209,6 +209,65 @@ async function assertTeacherCanAccessClass(teacherId, classId, sessionId) {
   return combos;
 }
 
+/** Section ObjectIds the teacher is assigned to for a class (empty = none). */
+function sectionIdsForClassFromCombos(combos, classId) {
+  const ids = [];
+  const seen = new Set();
+  for (const c of combos) {
+    if (idStr(c.classId) !== idStr(classId)) continue;
+    const sid = idStr(c.sectionId);
+    if (!sid || seen.has(sid)) continue;
+    seen.add(sid);
+    ids.push(c.sectionId);
+  }
+  return ids;
+}
+
+/** Subject ObjectIds the teacher is assigned to for a class (optionally section). */
+function subjectIdsForClassFromCombos(combos, classId, sectionId) {
+  const ids = [];
+  const seen = new Set();
+  for (const c of combos) {
+    if (idStr(c.classId) !== idStr(classId)) continue;
+    if (sectionId && idStr(c.sectionId) !== idStr(sectionId)) continue;
+    const sid = idStr(c.subjectId);
+    if (!sid || seen.has(sid)) continue;
+    seen.add(sid);
+    ids.push(c.subjectId);
+  }
+  return ids;
+}
+
+/**
+ * Resolve teacher teaching scope for a request.
+ * @returns {null | { combos, scopeFilter, classIds }}
+ */
+async function resolveTeacherScope(req, sessionId) {
+  if (!isTeacherRole(req)) return null;
+  const sid = sessionId || req.query?.sessionId || req.body?.sessionId;
+  const combos = await getTeacherScopeCombos(req.user._id, sid);
+  return {
+    combos,
+    scopeFilter: mongoStudentFilterForCombos(combos),
+    classIds: classIdsFromCombos(combos).map(idStr),
+  };
+}
+
+function ensureClassInTeacherScope(teacherScope, classId) {
+  if (!teacherScope || !classId) return;
+  if (!teacherScope.classIds.includes(idStr(classId))) {
+    throw new ApiError(403, 'You are not assigned to this class');
+  }
+}
+
+function ensureSectionInTeacherScope(teacherScope, classId, sectionId) {
+  if (!teacherScope || !classId || !sectionId) return;
+  const allowed = sectionIdsForClassFromCombos(teacherScope.combos, classId).map(idStr);
+  if (!allowed.includes(idStr(sectionId))) {
+    throw new ApiError(403, 'You are not assigned to this section');
+  }
+}
+
 const TEACHER_HIDDEN_STUDENT_FIELDS = [
   'phone',
   'contactPhoneRes',
@@ -259,6 +318,11 @@ module.exports = {
   mongoFilterForCombos,
   mongoStudentFilterForCombos,
   classIdsFromCombos,
+  sectionIdsForClassFromCombos,
+  subjectIdsForClassFromCombos,
+  resolveTeacherScope,
+  ensureClassInTeacherScope,
+  ensureSectionInTeacherScope,
   assertTeacherOwnsCombo,
   assertTeacherHasClassSection,
   assertTeacherCanAccessTest,

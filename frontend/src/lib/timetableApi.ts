@@ -124,6 +124,11 @@ export interface ScheduleSlot {
   section?: { _id: string; name: string };
   locked?: boolean;
   source?: string;
+  /** Present on teacher "My schedule" responses. */
+  startTime?: string;
+  endTime?: string;
+  periodLabel?: string;
+  periodOrder?: number | null;
 }
 
 export function scheduleSlotEntries(slot: ScheduleSlot): ScheduleSlotEntry[] {

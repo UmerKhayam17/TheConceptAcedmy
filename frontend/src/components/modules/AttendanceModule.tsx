@@ -182,7 +182,15 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
     }
     if (!search.trim()) return base;
     return base.filter((s) =>
-      matchesPanelSearch(search, s.studentName, s.studentId, studentRef(s), classLabel(s), sectionLabel(s), s.phone)
+      matchesPanelSearch(
+        search,
+        s.studentName,
+        s.studentId,
+        studentRef(s),
+        classLabel(s),
+        sectionLabel(s),
+        isParent || user?.role === "teacher" ? undefined : s.phone,
+      )
     );
   }, [students, search, isParent, selectedStudentId, studentFilter]);
 

@@ -158,7 +158,7 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
 
   const students = await AcademyStudent.find(studentQ)
     .select(
-      'studentId studentName fatherName rollNumber phone guardianName sectionId isFullPackage selectedSubjects'
+      'studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects'
     )
     .populate('sectionId', 'sectionName')
     .sort({ studentName: 1 })
@@ -195,8 +195,6 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
         studentName: student.studentName,
         fatherName: student.fatherName,
         rollNumber: student.rollNumber,
-        phone: student.phone,
-        guardianName: student.guardianName,
         sectionName:
           typeof student.sectionId === 'object' && student.sectionId
             ? student.sectionId.sectionName

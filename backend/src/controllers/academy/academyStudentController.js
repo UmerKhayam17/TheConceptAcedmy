@@ -13,13 +13,11 @@ const {
 const rt = require('../../services/realtime/academyRealtime');
 const {
   isTeacherRole,
-  getTeacherScopeCombos,
-  mongoStudentFilterForCombos,
-  classIdsFromCombos,
+  resolveTeacherScope,
+  ensureClassInTeacherScope,
   assertTeacherCanAccessStudent,
   sanitizeStudentForTeacher,
   sanitizeStudentRecordForTeacher,
-  idStr,
 } = require('../../services/academy/teacherTestScope');
 
 async function assertParentOwnsStudent(req, studentId) {
@@ -34,23 +32,6 @@ async function assertParentOwnsStudent(req, studentId) {
 
   if (!guardianEmail || guardianEmail !== userEmail) {
     throw new ApiError(403, 'Access denied');
-  }
-}
-
-async function resolveTeacherStudentScope(req) {
-  if (!isTeacherRole(req)) return null;
-  const combos = await getTeacherScopeCombos(req.user._id, req.query.sessionId);
-  return {
-    combos,
-    scopeFilter: mongoStudentFilterForCombos(combos),
-    classIds: classIdsFromCombos(combos).map(idStr),
-  };
-}
-
-function ensureTeacherClassAllowed(teacherScope, classId) {
-  if (!teacherScope || !classId) return;
-  if (!teacherScope.classIds.includes(idStr(classId))) {
-    throw new ApiError(403, 'You are not assigned to this class');
   }
 }
 
@@ -107,9 +88,9 @@ const getRecord = catchAsync(async (req, res) => {
 const list = catchAsync(async (req, res) => {
   const roleName = req.user?.roleDoc?.name || req.user?.role?.name || req.user?.role;
   const guardianEmail = String(roleName) === 'parent' ? String(req.user?.email || '').trim().toLowerCase() : undefined;
-  const teacherScope = await resolveTeacherStudentScope(req);
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
   if (teacherScope) {
-    ensureTeacherClassAllowed(teacherScope, req.query.classId);
+    ensureClassInTeacherScope(teacherScope, req.query.classId);
   }
   const result = await studentService.listStudents({
     page: Number(req.query.page) || 1,
@@ -160,9 +141,9 @@ const exportStudents = catchAsync(async (req, res) => {
     throw new ApiError(400, 'Export format must be xlsx, pdf, or csv');
   }
 
-  const teacherScope = await resolveTeacherStudentScope(req);
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
   if (teacherScope) {
-    ensureTeacherClassAllowed(teacherScope, req.query.classId);
+    ensureClassInTeacherScope(teacherScope, req.query.classId);
   }
 
   const result = await studentService.listStudents({

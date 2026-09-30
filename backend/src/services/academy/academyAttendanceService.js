@@ -12,7 +12,15 @@ function resolveDay(dateStr) {
   }
 }
 
-async function listByDate({ date, classId, sectionId, sessionId, studentIds, studentId }) {
+async function listByDate({
+  date,
+  classId,
+  sectionId,
+  sessionId,
+  studentIds,
+  studentId,
+  scopeFilter = null,
+}) {
   const { start, end, ymd } = resolveDay(date);
   const studentQ = { status: 'active' };
 
@@ -25,12 +33,17 @@ async function listByDate({ date, classId, sectionId, sessionId, studentIds, stu
   } else if (sessionId) {
     const classes = await AcademyClass.find({ sessionId }).select('_id');
     studentQ.classId = { $in: classes.map((c) => c._id) };
-  } else {
+  } else if (!scopeFilter) {
     throw new ApiError(400, 'classId, sessionId, or student filter required');
   }
   if (sectionId) studentQ.sectionId = sectionId;
 
-  const students = await AcademyStudent.find(studentQ)
+  const filter =
+    scopeFilter && Object.keys(scopeFilter).length
+      ? { $and: [studentQ, scopeFilter] }
+      : studentQ;
+
+  const students = await AcademyStudent.find(filter)
     .populate('classId', 'className classCode sessionId')
     .populate('sectionId', 'sectionName')
     .sort({ studentName: 1 })
@@ -74,11 +87,16 @@ async function listByDate({ date, classId, sectionId, sessionId, studentIds, stu
   };
 }
 
-async function markAttendance({ date, entries }, userId) {
+async function markAttendance({ date, entries }, userId, { assertStudentAccess } = {}) {
   const { start, end } = resolveDay(date);
   const results = [];
 
   for (const e of entries) {
+    if (typeof assertStudentAccess === 'function') {
+      // eslint-disable-next-line no-await-in-loop
+      await assertStudentAccess(e.studentId);
+    }
+
     const filter = {
       studentId: e.studentId,
       date: { $gte: start, $lte: end },
@@ -118,17 +136,29 @@ async function markAttendance({ date, entries }, userId) {
   return results;
 }
 
-async function getSummary({ month, year }) {
+async function getSummary({ month, year, scopeFilter = null }) {
   if (!month || !year) throw new ApiError(400, 'month and year required');
   const start = new Date(Number(year), Number(month) - 1, 1);
   const end = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
+
+  let studentIdFilter = null;
+  if (scopeFilter && Object.keys(scopeFilter).length) {
+    const ids = await AcademyStudent.find({
+      $and: [{ status: 'active' }, scopeFilter],
+    }).distinct('_id');
+    studentIdFilter = ids;
+  }
+
+  const match = {
+    date: { $gte: start, $lte: end },
+    $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+  };
+  if (studentIdFilter) {
+    match.studentId = { $in: studentIdFilter };
+  }
+
   const grouped = await AcademyAttendance.aggregate([
-    {
-      $match: {
-        date: { $gte: start, $lte: end },
-        $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
-      },
-    },
+    { $match: match },
     { $group: { _id: '$status', count: { $sum: 1 } } },
   ]);
   const summary = { total: 0, present: 0, absent: 0, late: 0, leave: 0 };

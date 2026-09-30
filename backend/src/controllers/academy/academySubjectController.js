@@ -2,21 +2,49 @@ const catchAsync = require('../../utils/catchAsync');
 const subjectService = require('../../services/academy/academySubjectService');
 const { getEnrollmentLayout } = require('../../services/academy/academyEnrollmentSubjectService');
 const rt = require('../../services/realtime/academyRealtime');
+const {
+  resolveTeacherScope,
+  ensureClassInTeacherScope,
+  subjectIdsForClassFromCombos,
+  idStr,
+} = require('../../services/academy/teacherTestScope');
 
 const listByClass = catchAsync(async (req, res) => {
-  const data = await subjectService.listByClass(req.params.classId, {
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
+  if (teacherScope) {
+    ensureClassInTeacherScope(teacherScope, req.params.classId);
+  }
+  let data = await subjectService.listByClass(req.params.classId, {
     status: req.query.status,
     sectionId: req.query.sectionId,
   });
+  if (teacherScope) {
+    const allowed = new Set(
+      subjectIdsForClassFromCombos(
+        teacherScope.combos,
+        req.params.classId,
+        req.query.sectionId
+      ).map(idStr)
+    );
+    data = data.filter((s) => allowed.has(idStr(s._id)));
+  }
   res.json({ success: true, data });
 });
 
 const listChoiceGroups = catchAsync(async (req, res) => {
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
+  if (teacherScope) {
+    ensureClassInTeacherScope(teacherScope, req.params.classId);
+  }
   const data = await subjectService.listChoiceGroups(req.params.classId);
   res.json({ success: true, data });
 });
 
 const enrollmentLayout = catchAsync(async (req, res) => {
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
+  if (teacherScope) {
+    ensureClassInTeacherScope(teacherScope, req.params.classId);
+  }
   const data = await getEnrollmentLayout(req.params.classId, req.query.sectionId);
   res.json({ success: true, data });
 });

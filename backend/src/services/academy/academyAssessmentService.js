@@ -124,12 +124,15 @@ function dayRange(examDate) {
 }
 
 /** Class grid: students enrolled in subject + optional existing rows for same test session. */
-async function getClassTestEntry({ classId, subjectId, title, assessmentType, examDate }) {
+async function getClassTestEntry({ classId, subjectId, title, assessmentType, examDate, sectionId }) {
   const subject = await AcademySubject.findOne({ _id: subjectId, classId, status: 'active' }).lean();
   if (!subject) throw new ApiError(404, 'Subject not found for this class');
 
-  const students = await AcademyStudent.find({ classId, status: 'active' })
-    .select('studentId studentName fatherName isFullPackage selectedSubjects classId')
+  const studentQ = { classId, status: 'active' };
+  if (sectionId) studentQ.sectionId = sectionId;
+
+  const students = await AcademyStudent.find(studentQ)
+    .select('studentId studentName fatherName isFullPackage selectedSubjects classId sectionId')
     .sort({ studentName: 1 })
     .lean();
 
