@@ -46,6 +46,7 @@ export type ModuleKey =
   | "school-calendar"
   | "notifications"
   | "leave"
+  | "finance-dashboard"
   | "fees"
   | "salary"
   | "expenses"
@@ -179,6 +180,13 @@ export const MODULES: ModuleDef[] = [
     icon: "Palmtree",
     desc: "Apply for leave and track status",
   },
+  {
+    key: "finance-dashboard",
+    label: "Finance Dashboard",
+    shortLabel: "Finance",
+    icon: "Wallet",
+    desc: "Fees, expenses, and financial analytics overview",
+  },
   { key: "fees", label: "Fee management", icon: "Wallet", desc: "Collect and track fees" },
   { key: "salary", label: "Staff salary", icon: "DollarSign", desc: "Monthly teacher & staff payroll" },
   { key: "expenses", label: "Academy expenses", icon: "Receipt", desc: "Operating costs & expenses" },
@@ -257,7 +265,7 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
       "online-classes",
     ],
   },
-  { id: "finance", label: "Finance", modules: ["fees", "salary", "expenses"] },
+  { id: "finance", label: "Finance", modules: ["finance-dashboard", "fees", "salary", "expenses"] },
   {
     id: "communication",
     label: "Communication",
@@ -284,6 +292,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     "school-calendar": "view",
     notifications: "view",
     leave: "mark",
+    "finance-dashboard": "view",
     fees: "crud",
     salary: "process",
     expenses: "crud",
@@ -610,6 +619,11 @@ export function applyBackendModulePermissions(
   if (backendPerms.academyExpense) {
     const expenseLevel = permLevelFromActionCaps(capsForExpensesModule(backendPerms));
     if (expenseLevel !== "none") next.expenses = expenseLevel;
+  }
+
+  // Finance dashboard is a client analytics view for anyone with fee access.
+  if (next.fees && next.fees !== "none") {
+    next["finance-dashboard"] = "view";
   }
 
   return next;

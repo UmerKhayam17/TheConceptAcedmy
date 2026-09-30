@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import AcademyFeesManagement from "@/components/modules/student-management/AcademyFeesManagement";
 import FeeDefaultersTab from "@/components/modules/student-management/FeeDefaultersTab";
-import SessionBar, { useActiveSessionId } from "@/components/modules/timetable/SessionBar";
+import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -13,12 +13,10 @@ const FeesModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleAction
   const { user } = useAuth();
   const isParent = user?.role === "parent";
   const [view, setView] = useState<FeesView>("records");
-  const [sessionId, setSessionId] = useState("");
-  useActiveSessionId(sessionId, setSessionId);
+  const { sessionId } = usePanelSession();
 
   return (
     <div>
-      {!isParent && <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />}
       <div className="px-3 sm:px-6 lg:px-8 py-4 space-y-4">
         <div className="flex w-full sm:w-fit gap-1 p-1 rounded-lg bg-muted/50">
           <button

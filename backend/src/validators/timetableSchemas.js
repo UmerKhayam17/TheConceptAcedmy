@@ -99,6 +99,45 @@ const teacherAssignmentPatch = teacherAssignmentBody
   .fork(['session', 'class', 'section', 'subject', 'teacher'], (s) => s.optional())
   .min(1);
 
+/** Teacher-first: sync all class/section/subject rows for one teacher in a session. */
+const teacherAssignmentBulkBody = Joi.object({
+  session: objectId.required(),
+  teacher: objectId.required(),
+  assignments: Joi.array()
+    .items(
+      Joi.object({
+        class: objectId.required(),
+        section: objectId.required(),
+        subject: objectId.required(),
+      })
+    )
+    .required(),
+});
+
+/** Subject-first: assign one teacher (or clear) for a subject in a section. */
+const subjectTeacherUpsertBody = Joi.object({
+  session: objectId.required(),
+  class: objectId.required(),
+  section: objectId.required(),
+  subject: objectId.required(),
+  teacher: objectId.allow(null, ''),
+});
+
+/** Subject-first: save all subject→teacher picks for one section. */
+const sectionSubjectTeachersBody = Joi.object({
+  session: objectId.required(),
+  class: objectId.required(),
+  section: objectId.required(),
+  items: Joi.array()
+    .items(
+      Joi.object({
+        subject: objectId.required(),
+        teacher: objectId.allow(null, ''),
+      })
+    )
+    .required(),
+});
+
 const timetableSettingsBody = Joi.object({
   defaultPeriodTemplate: objectId.allow(null),
   defaultMaxTeacherPerDay: Joi.number().integer().min(1),
@@ -190,6 +229,9 @@ module.exports = {
   teacherProfilePatch,
   teacherAssignmentBody,
   teacherAssignmentPatch,
+  teacherAssignmentBulkBody,
+  subjectTeacherUpsertBody,
+  sectionSubjectTeachersBody,
   timetableSettingsBody,
   timetableVersionBody,
   scheduleSlotBody,

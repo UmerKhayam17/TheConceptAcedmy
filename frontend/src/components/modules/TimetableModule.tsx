@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import type { Role } from "@/lib/auth";
@@ -9,7 +8,8 @@ import {
   getTimetableSections,
   type TimetableSection,
 } from "@/lib/timetableMenus";
-import SessionBar, { useActiveSessionId, useSessionScope } from "@/components/modules/timetable/SessionBar";
+import { useSessionScope } from "@/components/modules/timetable/SessionBar";
+import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import GridTab from "@/components/modules/timetable/GridTab";
 import MyScheduleTab from "@/components/modules/timetable/MyScheduleTab";
 import ViewScheduleTab from "@/components/modules/timetable/ViewScheduleTab";
@@ -24,8 +24,7 @@ const TimetableModule = ({
   role: Role;
 }) => {
   const { user } = useAuth();
-  const [sessionId, setSessionId] = useState("");
-  useActiveSessionId(sessionId, setSessionId);
+  const { sessionId } = usePanelSession();
   const { isAll, writable } = useSessionScope(sessionId);
 
   const canManage = (caps.canEdit || caps.canCreate) && writable;
@@ -41,7 +40,6 @@ const TimetableModule = ({
 
   return (
     <>
-      <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />
       {isAll ? (
         <p className="px-4 sm:px-6 lg:px-8 py-8 text-sm text-muted-foreground">
           Pick a specific academic session to view or edit timetables. “All sessions” is for searchable lists in Student Management and Fees.

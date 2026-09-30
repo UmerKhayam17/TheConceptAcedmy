@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import type { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import {
@@ -11,7 +10,7 @@ import {
   type StudentManagementSection,
 } from "@/lib/studentManagementMenus";
 import { useAuth } from "@/hooks/useAuth";
-import SessionBar, { useActiveSessionId } from "@/components/modules/timetable/SessionBar";
+import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import ClassesTab from "@/components/modules/student-management/ClassesTab";
 import SectionsTab from "@/components/modules/student-management/SectionsTab";
 import SubjectsTab from "@/components/modules/student-management/SubjectsTab";
@@ -35,8 +34,7 @@ const StudentManagementModule = ({
 }) => {
   const { user } = useAuth();
   const role = user?.role ?? "admin";
-  const [sessionId, setSessionId] = useState("");
-  useActiveSessionId(sessionId, setSessionId);
+  const { sessionId } = usePanelSession();
 
   const registrationRoutes = user?.role ? academyStudentRoutes(user.role, "registration") : null;
   const registrationList = registrationRoutes?.list ?? "../registration";
@@ -115,12 +113,7 @@ const StudentManagementModule = ({
     return null;
   };
 
-  return (
-    <div>
-      <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />
-      {renderBody()}
-    </div>
-  );
+  return <div>{renderBody()}</div>;
 };
 
 export default StudentManagementModule;

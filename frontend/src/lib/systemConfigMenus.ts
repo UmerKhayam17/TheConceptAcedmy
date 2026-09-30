@@ -23,6 +23,7 @@ export type SystemConfigSection =
   | "rooms"
   | "teachers"
   | "teacher-assignments"
+  | "subject-teachers"
   | "timetable-rules"
   | "history";
 
@@ -39,7 +40,7 @@ export const SYSTEM_CONFIG_SECTIONS: {
     { key: "periods", label: "Academy Time Configuration", icon: Clock },
     { key: "rooms", label: "Rooms", icon: DoorOpen },
     { key: "teachers", label: "Teachers", icon: UserCircle },
-    { key: "teacher-assignments", label: "Teacher Assignments", icon: Link2 },
+    { key: "subject-teachers", label: "Subject Teachers", icon: Link2 },
     { key: "timetable-rules", label: "Timetable Rules", icon: SlidersHorizontal },
   ];
 
@@ -47,7 +48,7 @@ export const SYSTEM_CONFIG_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(SYSTEM_CON
   { label: "Academic year", keys: ["academic", "history", "test-catalog", "exam-catalog"] },
   {
     label: "Timetable setup",
-    keys: ["rooms", "teachers", "teacher-assignments", "periods", "sections", "timetable-rules"],
+    keys: ["rooms", "teachers", "subject-teachers", "periods", "sections", "timetable-rules"],
   },
 ]);
 

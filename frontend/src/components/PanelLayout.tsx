@@ -1,12 +1,62 @@
-import { useEffect } from "react";
-import { Navigate, Outlet } from "react-router-dom";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { useEffect, useMemo } from "react";
+import { Navigate, Outlet, useLocation, useParams } from "react-router-dom";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import PanelSidebar from "./PanelSidebar";
 import PanelMobileNav from "./PanelMobileNav";
-import PanelUserMenu from "./PanelUserMenu";
 import { useAuth } from "@/hooks/useAuth";
-import NotificationBell from "@/components/NotificationBell";
 import { usePanelRealtime } from "@/hooks/usePanelRealtime";
+import type { Role } from "@/lib/auth";
+import { resolvePanelPageMeta } from "@/lib/panelPageMeta";
+import PanelPageHeader from "@/components/panel-header/PanelPageHeader";
+import {
+  PanelSessionProvider,
+  usePanelSession,
+} from "@/components/panel-header/PanelSessionContext";
+import SessionScopeBanner from "@/components/panel-header/SessionScopeBanner";
+
+function PanelChrome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["user"]> }) {
+  const { pathname } = useLocation();
+  const { role, slug, section, action } = useParams<{
+    role: Role;
+    slug?: string;
+    section?: string;
+    action?: string;
+  }>();
+  const { setAllowAllSessions, setHeaderSearch } = usePanelSession();
+
+  const meta = useMemo(
+    () => resolvePanelPageMeta((role as Role) || user.role, pathname, { slug, section, action }),
+    [role, user.role, pathname, slug, section, action],
+  );
+
+  useEffect(() => {
+    setAllowAllSessions(meta.allowAllSessions);
+  }, [meta.allowAllSessions, setAllowAllSessions]);
+
+  // Clear header search when navigating between pages
+  useEffect(() => {
+    setHeaderSearch("");
+  }, [pathname, setHeaderSearch]);
+
+  return (
+    <>
+      <PanelPageHeader
+        user={user}
+        title={meta.title}
+        icon={meta.icon}
+        breadcrumbParent={meta.breadcrumbParent}
+        breadcrumbCurrent={meta.breadcrumbCurrent}
+        showSession={meta.showSession}
+        allowAllSessions={meta.allowAllSessions}
+      />
+      {meta.showSession && <SessionScopeBanner />}
+      <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+        <Outlet />
+      </main>
+      <PanelMobileNav user={user} />
+    </>
+  );
+}
 
 const PanelLayout = () => {
   const { user, loading } = useAuth();
@@ -33,29 +83,9 @@ const PanelLayout = () => {
       <div className="cms-root flex h-full max-h-full w-full overflow-hidden bg-secondary/30">
         <PanelSidebar user={user} />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="z-30 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/95 px-2.5 backdrop-blur sm:px-4">
-            <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-              <SidebarTrigger className="shrink-0" />
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold capitalize text-primary leading-tight">
-                  {user.role} Portal
-                </div>
-                <div className="hidden truncate text-[11px] text-muted-foreground sm:block">
-                  {user.name}
-                </div>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
-              <NotificationBell />
-              <PanelUserMenu user={user} />
-            </div>
-          </header>
-
-          <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-            <Outlet />
-          </main>
-
-          <PanelMobileNav user={user} />
+          <PanelSessionProvider>
+            <PanelChrome user={user} />
+          </PanelSessionProvider>
         </div>
       </div>
     </SidebarProvider>

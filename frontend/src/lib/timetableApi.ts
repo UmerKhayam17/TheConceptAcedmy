@@ -225,6 +225,39 @@ export const createTeacherAssignment = (body: {
   teacher: string;
 }) => api<TeacherAssignment>("/setup/teacher-assignments", { method: "POST", body: JSON.stringify(body) });
 
+export const bulkSyncTeacherAssignments = (body: {
+  session: string;
+  teacher: string;
+  assignments: Array<{ class: string; section: string; subject: string }>;
+}) =>
+  api<TeacherAssignment[]>("/setup/teacher-assignments/bulk", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const upsertSubjectTeacher = (body: {
+  session: string;
+  class: string;
+  section: string;
+  subject: string;
+  teacher: string | null;
+}) =>
+  api<{ cleared: boolean; data: TeacherAssignment | null }>("/setup/teacher-assignments/subject-teacher", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+
+export const syncSectionSubjectTeachers = (body: {
+  session: string;
+  class: string;
+  section: string;
+  items: Array<{ subject: string; teacher: string | null }>;
+}) =>
+  api<TeacherAssignment[]>("/setup/teacher-assignments/section-subjects", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+
 export const deleteTeacherAssignment = (id: string) =>
   api<{ deleted: boolean }>(`/setup/teacher-assignments/${id}`, { method: "DELETE" });
 

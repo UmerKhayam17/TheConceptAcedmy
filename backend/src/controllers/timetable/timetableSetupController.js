@@ -100,6 +100,21 @@ const createTeacherAssignment = catchAsync(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+const bulkSyncTeacherAssignments = catchAsync(async (req, res) => {
+  const data = await teacherAssignmentService.bulkSyncTeacherAssignments(req.body, req.user._id);
+  res.json({ success: true, data });
+});
+
+const upsertSubjectTeacher = catchAsync(async (req, res) => {
+  const data = await teacherAssignmentService.upsertSubjectTeacher(req.body, req.user._id);
+  res.json({ success: true, data });
+});
+
+const syncSectionSubjectTeachers = catchAsync(async (req, res) => {
+  const data = await teacherAssignmentService.syncSectionSubjectTeachers(req.body, req.user._id);
+  res.json({ success: true, data });
+});
+
 const updateTeacherAssignment = catchAsync(async (req, res) => {
   const data = await teacherAssignmentService.updateTeacherAssignment(req.params.id, req.body);
   res.json({ success: true, data });
@@ -139,6 +154,9 @@ module.exports = {
   deleteTeacherProfile,
   listTeacherAssignments,
   createTeacherAssignment,
+  bulkSyncTeacherAssignments,
+  upsertSubjectTeacher,
+  syncSectionSubjectTeachers,
   updateTeacherAssignment,
   deleteTeacherAssignment,
   getSettings,

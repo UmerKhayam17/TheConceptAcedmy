@@ -166,11 +166,11 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => systemConfigHref(role, "teachers"),
       },
       {
-        id: "teacher-assignments",
-        label: "Teacher Assignments",
+        id: "subject-teachers",
+        label: "Subject Teachers",
         icon: Link2,
         moduleKey: "system-config",
-        href: (role) => systemConfigHref(role, "teacher-assignments"),
+        href: (role) => systemConfigHref(role, "subject-teachers"),
       },
       {
         id: "periods",
@@ -315,6 +315,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
     icon: Wallet,
     collapsible: true,
     items: [
+      {
+        id: "finance-dashboard",
+        label: "Finance Dashboard",
+        icon: LayoutDashboard,
+        moduleKey: "finance-dashboard",
+        href: (role) => moduleHref(role, "finance-dashboard"),
+      },
       {
         id: "fee-structure",
         label: "Fee Structure",
@@ -774,6 +781,13 @@ export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
     icon: Wallet,
     collapsible: true,
     items: [
+      {
+        id: "finance-dashboard",
+        label: "Finance Dashboard",
+        icon: LayoutDashboard,
+        moduleKey: "finance-dashboard",
+        href: (role) => moduleHref(role, "finance-dashboard"),
+      },
       {
         id: "fee-structure",
         label: "Fee Structure",
