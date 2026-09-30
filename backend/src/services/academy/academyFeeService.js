@@ -134,6 +134,99 @@ function receiptNumber(studentDoc, month, year, feeType) {
   return `RCP-${sid}-${feeType === 'admission' ? 'ADM' : `${year}${String(month).padStart(2, '0')}`}`;
 }
 
+/** Monthly challan amount after the student's recurring monthly discount. */
+function monthlyBillAmount(student) {
+  const fee = Math.max(0, Number(student.monthlyFee) || 0);
+  const discount = Math.min(Math.max(0, Number(student.monthlyFeeDiscount) || 0), fee);
+  return Math.max(0, fee - discount);
+}
+
+/**
+ * Nominal due day is the 10th. For the current calendar month, never set a past
+ * due date so newly issued challans do not flip to overdue on the same day.
+ * Past months keep the historical due date so they correctly show as overdue.
+ */
+function resolveMonthlyDueDate(month, year, day = 10) {
+  const due = new Date(year, month - 1, day);
+  const now = new Date();
+  const isCurrentPeriod = month === now.getMonth() + 1 && year === now.getFullYear();
+  if (!isCurrentPeriod) return due;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return due < today ? today : due;
+}
+
+function splitEnrollmentAmounts(fees) {
+  const monthlyFee = Math.max(0, Number(fees.monthlyFee) || 0);
+  const admissionFee = Math.max(0, Number(fees.admissionFee) || 0);
+  const monthlyDisc = Math.max(0, Number(fees.monthlyFeeDiscount) || 0);
+  const admissionDisc = Math.max(0, Number(fees.admissionFeeDiscount) || 0);
+  const legacyDisc = Math.max(0, Number(fees.discountAmount) || 0);
+
+  if (monthlyDisc > 0 || admissionDisc > 0) {
+    return {
+      admissionAmount: Math.max(0, admissionFee - Math.min(admissionDisc, admissionFee)),
+      monthlyAmount: Math.max(0, monthlyFee - Math.min(monthlyDisc, monthlyFee)),
+    };
+  }
+
+  // Legacy combined discount: apply to admission first, remainder to monthly.
+  let remaining = legacyDisc;
+  const admCut = Math.min(remaining, admissionFee);
+  remaining -= admCut;
+  return {
+    admissionAmount: Math.max(0, admissionFee - admCut),
+    monthlyAmount: Math.max(0, monthlyFee - Math.min(remaining, monthlyFee)),
+  };
+}
+
+/**
+ * First month (unpaid): one combined voucher =
+ * monthly fee + admission fee − discounts.
+ * Later months are created by generateMonthlyFees as monthly − monthly discount.
+ */
+async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new Date() } = {}) {
+  const month = asOf.getMonth() + 1;
+  const year = asOf.getFullYear();
+  const dueDate = resolveMonthlyDueDate(month, year);
+  const { admissionAmount, monthlyAmount } = splitEnrollmentAmounts(fees);
+  const totalDue = Math.max(0, admissionAmount + monthlyAmount);
+  if (totalDue <= 0) return [];
+
+  const existingAdm = await AcademyFeeRecord.findOne({
+    studentId: student._id,
+    month,
+    year,
+    feeType: 'admission',
+  });
+  if (existingAdm) return [];
+
+  // Avoid a leftover monthly-only voucher for the enrollment month.
+  await AcademyFeeRecord.deleteMany({
+    studentId: student._id,
+    month,
+    year,
+    feeType: 'monthly',
+    status: { $in: ['pending', 'overdue'] },
+  });
+
+  const record = await AcademyFeeRecord.create({
+    studentId: student._id,
+    month,
+    year,
+    amount: totalDue,
+    feeType: 'admission',
+    status: 'pending',
+    dueDate,
+    receiptNumber: receiptNumber(student, month, year, 'admission'),
+    notes: 'First month: monthly fee + admission fee (after discounts)',
+    createdBy: userId,
+    recordedBy: userId,
+    pendingNoticeAt: new Date(),
+  });
+
+  return [record];
+}
+
 async function buildFeeQuery({ studentId, studentIds, status, month, year, classId, feeType, sessionId }) {
   const q = {};
   if (status) q.status = status;
@@ -333,16 +426,16 @@ async function listFeeRecords({
   const [docs, total] = await Promise.all([
     ids.length
       ? populateCreatedBy(
-          AcademyFeeRecord.find({ _id: { $in: ids } }).populate({
-            path: 'studentId',
-            select: 'studentId studentName fatherName phone classId monthlyFee',
-            populate: {
-              path: 'classId',
-              select: 'className sessionId',
-              populate: { path: 'sessionId', select: 'name status' },
-            },
-          })
-        )
+        AcademyFeeRecord.find({ _id: { $in: ids } }).populate({
+          path: 'studentId',
+          select: 'studentId studentName fatherName phone classId monthlyFee',
+          populate: {
+            path: 'classId',
+            select: 'className sessionId',
+            populate: { path: 'sessionId', select: 'name status' },
+          },
+        })
+      )
       : [],
     AcademyFeeRecord.countDocuments(q),
   ]);
@@ -411,11 +504,46 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
   const studentQ = { status: 'active' };
   if (classId) studentQ.classId = classId;
   const students = await AcademyStudent.find(studentQ);
-  const dueDate = new Date(year, month - 1, 10);
+  const dueDate = resolveMonthlyDueDate(month, year);
   const created = [];
   const skipped = [];
+  let repaired = 0;
 
   for (const student of students) {
+    const listAdmission = Math.max(0, Number(student.admissionFee) || 0);
+
+    // Legacy enrollments billed admission+first-month tuition as one large admission
+    // voucher. Waive any unpaid monthly duplicate for that same period.
+    const legacyAdmission = await AcademyFeeRecord.findOne({
+      studentId: student._id,
+      month,
+      year,
+      feeType: 'admission',
+      amount: { $gt: listAdmission + 0.5 },
+    });
+    if (legacyAdmission) {
+      const dup = await AcademyFeeRecord.findOneAndUpdate(
+        {
+          studentId: student._id,
+          month,
+          year,
+          feeType: 'monthly',
+          status: { $in: ['pending', 'overdue'] },
+        },
+        {
+          $set: {
+            status: 'waived',
+            notes: 'Waived: enrollment month already covered by combined admission voucher',
+            recordedBy: userId,
+          },
+        },
+        { new: true }
+      );
+      if (dup) repaired += 1;
+      skipped.push(student._id);
+      continue;
+    }
+
     const exists = await AcademyFeeRecord.findOne({
       studentId: student._id,
       month,
@@ -426,11 +554,18 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       skipped.push(student._id);
       continue;
     }
+
+    const amount = monthlyBillAmount(student);
+    if (amount <= 0) {
+      skipped.push(student._id);
+      continue;
+    }
+
     const record = await AcademyFeeRecord.create({
       studentId: student._id,
       month,
       year,
-      amount: student.monthlyFee,
+      amount,
       feeType: 'monthly',
       status: 'pending',
       dueDate,
@@ -457,7 +592,7 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
     }));
   }
 
-  return { created: created.length, skipped: skipped.length };
+  return { created: created.length, skipped: skipped.length, repaired };
 }
 
 async function listUnpaidForChallan(studentId, months) {
@@ -925,6 +1060,8 @@ module.exports = {
   getFeeRecordById,
   listUnpaidForChallan,
   generateMonthlyFees,
+  createEnrollmentFeeVouchers,
+  monthlyBillAmount,
   recordPayment,
   recordPayments,
   getStudentFeeHistory,

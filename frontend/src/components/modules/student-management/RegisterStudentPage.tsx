@@ -663,34 +663,34 @@ export default function RegisterStudentPage({
   const formBody = (
     <div className={cn(asDialog ? "space-y-6" : "space-y-10")}>
       {!asDialog && (
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-6">
-        <div className="space-y-1">
-          <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 mb-2" asChild>
-            <Link to={isEdit ? detailHref : listHref}>
-              <ArrowLeft className="h-4 w-4" /> {isEdit ? "Back to student" : listBackLabel}
-            </Link>
-          </Button>
-          <h2 className="font-display text-xl sm:text-2xl font-semibold text-primary">
-            {isActivate
-              ? "Complete admission & activate"
-              : isDirect
-                ? "Register student"
-              : isEdit
-                ? "Edit student"
-                : "Register new student"}
-          </h2>
-          {isActivate && !existingStudent && (
-            <p className="text-sm text-muted-foreground">
-              Confirm student details, assign section and subjects, then activate.
-            </p>
-          )}
-          {isDirect && (
-            <p className="text-sm text-muted-foreground">
-              Complete the student profile, assign section and subjects, then register.
-            </p>
-          )}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-6">
+          <div className="space-y-1">
+            <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 mb-2" asChild>
+              <Link to={isEdit ? detailHref : listHref}>
+                <ArrowLeft className="h-4 w-4" /> {isEdit ? "Back to student" : listBackLabel}
+              </Link>
+            </Button>
+            <h2 className="font-display text-xl sm:text-2xl font-semibold text-primary">
+              {isActivate
+                ? "Complete admission & activate"
+                : isDirect
+                  ? "Register student"
+                  : isEdit
+                    ? "Edit student"
+                    : "Register new student"}
+            </h2>
+            {isActivate && !existingStudent && (
+              <p className="text-sm text-muted-foreground">
+                Confirm student details, assign section and subjects, then activate.
+              </p>
+            )}
+            {isDirect && (
+              <p className="text-sm text-muted-foreground">
+                Complete the student profile, assign section and subjects, then register.
+              </p>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {isActivate && existingStudent ? (
@@ -874,22 +874,22 @@ export default function RegisterStudentPage({
               />
             </FormField>
             {!isEdit && !isAccountsEnrollment && (
-            <FormField label="Parent login password" required>
-              <div className="relative">
-                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="text"
-                  className="pl-9 font-mono"
-                  placeholder="Concept@1234"
-                  value={form.parentPassword}
-                  onChange={(e) => setForm((f) => ({ ...f, parentPassword: e.target.value }))}
-                />
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Password is shown in plain text:{" "}
-                <span className="font-medium text-foreground font-mono">Concept@1234</span>
-              </p>
-            </FormField>
+              <FormField label="Parent login password" required>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    className="pl-9 font-mono"
+                    placeholder="Concept@1234"
+                    value={form.parentPassword}
+                    onChange={(e) => setForm((f) => ({ ...f, parentPassword: e.target.value }))}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Password is shown in plain text:{" "}
+                  <span className="font-medium text-foreground font-mono">Concept@1234</span>
+                </p>
+              </FormField>
             )}
           </div>
         </section>
@@ -1132,9 +1132,8 @@ export default function RegisterStudentPage({
                           return (
                             <label
                               key={s._id}
-                              className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
-                                selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
-                              }`}
+                              className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
+                                }`}
                             >
                               <Checkbox
                                 checked={selected}
@@ -1176,9 +1175,8 @@ export default function RegisterStudentPage({
                               return (
                                 <label
                                   key={s._id}
-                                  className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
-                                    selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
-                                  }`}
+                                  className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
+                                    }`}
                                 >
                                   <Checkbox
                                     checked={selected}
@@ -1213,9 +1211,8 @@ export default function RegisterStudentPage({
                             return (
                               <label
                                 key={s._id}
-                                className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
-                                  selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"
-                                }`}
+                                className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"
+                                  }`}
                               >
                                 <Checkbox
                                   checked={selected}
@@ -1256,6 +1253,9 @@ export default function RegisterStudentPage({
                 value={form.monthlyFeeDiscount}
                 onChange={(e) => setForm((f) => ({ ...f, monthlyFeeDiscount: e.target.value }))}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Applied on the first-month challan and every later monthly challan
+              </p>
             </FormField>
             <FormField label="Admission fee discount (PKR)">
               <IconInput
@@ -1267,6 +1267,9 @@ export default function RegisterStudentPage({
                 value={form.admissionFeeDiscount}
                 onChange={(e) => setForm((f) => ({ ...f, admissionFeeDiscount: e.target.value }))}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                One-time; included in the first-month challan only
+              </p>
             </FormField>
           </div>
 
@@ -1299,14 +1302,18 @@ export default function RegisterStudentPage({
                 </p>
               </div>
               <div>
-                <span className="text-muted-foreground">Total discount</span>
-                <p className="font-bold text-lg text-destructive">
-                  − ₨ {(feePreview.discountAmount ?? 0).toLocaleString()}
-                </p>
+                <span className="text-muted-foreground">First month due</span>
+                <p className="font-bold text-lg text-accent">₨ {feePreview.totalFee.toLocaleString()}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Total payable</span>
-                <p className="font-bold text-lg text-accent">₨ {feePreview.totalFee.toLocaleString()}</p>
+                <span className="text-muted-foreground">Next months</span>
+                <p className="font-bold text-lg">
+                  ₨{" "}
+                  {Math.max(
+                    0,
+                    (feePreview.monthlyFee || 0) - (feePreview.monthlyFeeDiscount || 0),
+                  ).toLocaleString()}
+                </p>
               </div>
             </div>
           )}
@@ -1348,9 +1355,9 @@ export default function RegisterStudentPage({
                       Register student
                     </>
                   )
-                : isEdit
-                  ? "Save changes"
-                  : "Register & enroll"}
+                  : isEdit
+                    ? "Save changes"
+                    : "Register & enroll"}
           </Button>
         </div>
       </div>

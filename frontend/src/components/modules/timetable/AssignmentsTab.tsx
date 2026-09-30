@@ -3,13 +3,15 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   AlertTriangle,
   BookOpen,
   CheckCircle2,
+  FileBarChart2,
+  MoreVertical,
   Pencil,
   Save,
+  Search,
   Settings,
   UserPlus,
   Users,
@@ -34,7 +36,7 @@ import {
 } from "@/lib/timetableApi";
 import { systemConfigHref } from "@/lib/systemConfigMenus";
 import { studentManagementHref } from "@/lib/studentManagementMenus";
-import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import { moduleHref } from "@/lib/panelMenus";
 import { cn } from "@/lib/utils";
 
 type SectionDraft = Record<string, string>;
@@ -68,90 +70,77 @@ function buildDraftFromRows(
   return next;
 }
 
-function StatCard({
-  label,
+const selectClass =
+  "h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30";
+
+function MetricCard({
+  title,
   value,
-  hint,
-  accent,
-  progress,
+  subtitle,
   icon,
+  iconBg,
+  iconColor,
+  progress,
+  progressColor = "bg-blue-600",
 }: {
-  label: string;
+  title: string;
   value: string | number;
-  hint?: string;
-  accent?: "default" | "warning" | "success";
+  subtitle: string;
+  icon: ReactNode;
+  iconBg: string;
+  iconColor: string;
   progress?: number;
-  icon?: ReactNode;
+  progressColor?: string;
 }) {
   return (
-    <Card
-      className={cn(
-        "p-4 shadow-sm border-slate-200/80",
-        accent === "warning" && "border-amber-200 bg-amber-50/60",
-        accent === "success" && "border-emerald-200 bg-emerald-50/50",
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-          <p className="text-2xl font-semibold tabular-nums tracking-tight text-slate-900">{value}</p>
-          {hint ? <p className="text-xs text-slate-500">{hint}</p> : null}
+    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", iconBg, iconColor)}>
+          {icon}
         </div>
-        {icon ? (
-          <div
-            className={cn(
-              "rounded-lg p-2 shrink-0",
-              accent === "warning"
-                ? "bg-amber-100 text-amber-600"
-                : accent === "success"
-                  ? "bg-emerald-100 text-emerald-600"
-                  : "bg-blue-50 text-blue-600",
-            )}
-          >
-            {icon}
-          </div>
-        ) : null}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-slate-500">{title}</p>
+          <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-slate-900">{value}</p>
+          <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+          {progress != null ? (
+            <div className="mt-2.5 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className={cn("h-full rounded-full transition-all", progressColor)}
+                style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
-      {progress != null ? (
-        <div className="mt-3 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-          <div
-            className={cn(
-              "h-full rounded-full transition-all",
-              accent === "warning" ? "bg-amber-500" : "bg-blue-600",
-            )}
-            style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-          />
-        </div>
-      ) : null}
-    </Card>
+    </div>
   );
 }
 
-function Donut({ assigned, total }: { assigned: number; total: number }) {
-  const pct = total > 0 ? Math.round((assigned / total) * 100) : 0;
-  const r = 36;
-  const c = 2 * Math.PI * r;
-  const dash = (pct / 100) * c;
+function Chip({
+  active,
+  onClick,
+  children,
+  dirty,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  dirty?: boolean;
+}) {
   return (
-    <div className="relative mx-auto h-28 w-28">
-      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-        <circle cx="50" cy="50" r={r} fill="none" stroke="#E2E8F0" strokeWidth="10" />
-        <circle
-          cx="50"
-          cy="50"
-          r={r}
-          fill="none"
-          stroke="#2563EB"
-          strokeWidth="10"
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${c - dash}`}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-xl font-semibold tabular-nums text-slate-900">{pct}%</span>
-        <span className="text-[10px] text-slate-500">Assigned</span>
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "border-blue-600 bg-blue-600 text-white shadow-sm"
+          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+      )}
+    >
+      {children}
+      {dirty ? <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-500" /> : null}
+    </button>
   );
 }
 
@@ -164,10 +153,8 @@ export default function AssignmentsTab({
 }: {
   sessionId: string;
   caps: ModuleActionCaps;
-  /** When provided with onSearchChange, search is controlled by the portal header. */
   search?: string;
   onSearchChange?: (value: string) => void;
-  /** Hide the in-page title when the portal header already shows it. */
   hidePageTitle?: boolean;
 }) {
   const { toast } = useToast();
@@ -321,8 +308,8 @@ export default function AssignmentsTab({
   );
 
   const maxTeacherLoad = useMemo(
-    () => Math.max(1, ...teacherLoad.map((t) => t.count), totalSubjects || 1),
-    [teacherLoad, totalSubjects],
+    () => Math.max(1, ...teacherLoad.map((t) => t.count), 1),
+    [teacherLoad],
   );
 
   const teachersWithLoad = teacherLoad.filter((t) => t.count > 0);
@@ -416,246 +403,265 @@ export default function AssignmentsTab({
   const selectedClass = classes.find((c) => c._id === classId);
   const selectedSection = classSections.find((s) => s._id === sectionId);
   const dirtyCount = dirtySections.size;
+  const donutR = 38;
+  const donutC = 2 * Math.PI * donutR;
+  const donutDash = (assignedPct / 100) * donutC;
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5">
-      {!hidePageTitle ? (
-        <div className="space-y-1">
-          <h2 className="text-xl font-semibold tracking-tight">Assign Subject Teachers</h2>
-          <p className="text-sm text-muted-foreground max-w-3xl">
-            Assign a teacher to each subject, switch class or section freely — changes stay until you save.
-            Teacher load updates as you assign.
-          </p>
+    <div className="bg-slate-50/80 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-blue-100 bg-[#F0F7FF] px-5 py-4 shadow-sm">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+            <Users className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold tracking-tight text-slate-900">Assign Subject Teachers</h2>
+            <p className="mt-1 text-sm leading-snug text-slate-600 whitespace-pre-line">
+              {`Assign a teacher to each subject, switch class or section freely — changes stay until you save.
+Teacher load updates as you assign.`}
+            </p>
+          </div>
         </div>
-      ) : (
-        <p className="text-sm text-muted-foreground max-w-3xl">
-          Assign a teacher to each subject, switch class or section freely — changes stay until you save.
-          Teacher load updates as you assign.
+        <p className="shrink-0 text-sm italic text-blue-600 sm:max-w-[14rem] sm:text-right">
+          “Great teachers build great futures.”
         </p>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Total Subjects"
-          value={totalSubjects}
-          hint={totalSubjects ? `${assignedPct}% assigned in this section` : "No subjects yet"}
-          progress={assignedPct}
-          icon={<BookOpen className="h-4 w-4" />}
-        />
-        <StatCard
-          label="Total Teachers"
-          value={teachers.length}
-          hint="Active teachers available"
-          icon={<Users className="h-4 w-4" />}
-        />
-        <StatCard
-          label="Assigned Subjects"
-          value={`${assignedCount} / ${totalSubjects || 0}`}
-          hint="In the selected section"
-          accent="success"
-          icon={<CheckCircle2 className="h-4 w-4" />}
-        />
-        <StatCard
-          label="Unassigned Subjects"
-          value={unassignedCount}
-          hint={unassignedCount ? "Needs a teacher" : "All covered"}
-          accent={unassignedCount ? "warning" : "default"}
-          icon={<AlertTriangle className="h-4 w-4" />}
-        />
       </div>
 
-      <Card className="p-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="space-y-3 min-w-0 flex-1">
-            <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Class</p>
-              <div className="flex flex-wrap gap-1.5">
-                {classes.map((c) => {
-                  const active = c._id === classId;
-                  const classSecIds = allSections.filter((s) => classIdOf(s) === c._id).map((s) => s._id);
-                  const hasDirty = classSecIds.some((id) => dirtySections.has(id));
-                  return (
-                    <button
-                      key={c._id}
-                      type="button"
-                      onClick={() => setClassId(c._id)}
-                      className={cn(
-                        "relative rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
-                        active
-                          ? "border-blue-600 bg-blue-600 text-white shadow-sm"
-                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-                      )}
-                    >
-                      {classDisplayName(c)}
-                      {hasDirty ? (
-                        <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-500" />
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+      {/* Left half: KPI cards + filters + table | Right: workload & panels aligned to top */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,26%)] xl:items-start">
+        <div className="min-w-0 space-y-4">
+          <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              title="Total Subjects"
+              value={totalSubjects}
+              subtitle={`Assigned: ${assignedCount} | Unassigned: ${unassignedCount}`}
+              icon={<BookOpen className="h-5 w-5" />}
+              iconBg="bg-blue-50"
+              iconColor="text-blue-600"
+              progress={assignedPct}
+              progressColor="bg-blue-600"
+            />
+            <MetricCard
+              title="Total Teachers"
+              value={teachers.length}
+              subtitle="Active Teachers"
+              icon={<Users className="h-5 w-5" />}
+              iconBg="bg-emerald-50"
+              iconColor="text-emerald-600"
+            />
+            <MetricCard
+              title="Assigned Subjects"
+              value={assignedCount}
+              subtitle={`Out of ${totalSubjects || 0}`}
+              icon={<CheckCircle2 className="h-5 w-5" />}
+              iconBg="bg-violet-50"
+              iconColor="text-violet-600"
+            />
+            <MetricCard
+              title="Unassigned Subjects"
+              value={unassignedCount}
+              subtitle="Need Teacher Assignment"
+              icon={<AlertTriangle className="h-5 w-5" />}
+              iconBg="bg-amber-50"
+              iconColor="text-amber-600"
+            />
+          </div>
 
-            {classId ? (
-              <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Section</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {classSections.map((s) => {
-                    const active = s._id === sectionId;
-                    const prog = sectionProgress.get(s._id);
-                    const hasDirty = dirtySections.has(s._id);
-                    return (
-                      <button
-                        key={s._id}
-                        type="button"
-                        onClick={() => setSectionId(s._id)}
-                        className={cn(
-                          "relative inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
-                          active
-                            ? "border-blue-600 bg-blue-600 text-white shadow-sm"
-                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-                        )}
-                      >
-                        <span>{sectionDisplayName(s)}</span>
-                        {prog && prog.total > 0 ? (
-                          <span
-                            className={cn(
-                              "rounded-full px-1.5 py-0.5 text-[10px] tabular-nums font-semibold",
-                              active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500",
-                            )}
+          {/* Class / section bar */}
+          <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-3 min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-slate-600 w-16 shrink-0">Class</span>
+                  <div className="flex flex-wrap gap-2">
+                    {classes.length === 0 ? (
+                      <span className="text-sm text-slate-400">No classes</span>
+                    ) : (
+                      classes.map((c) => {
+                        const classSecIds = allSections
+                          .filter((s) => classIdOf(s) === c._id)
+                          .map((s) => s._id);
+                        return (
+                          <Chip
+                            key={c._id}
+                            active={c._id === classId}
+                            dirty={classSecIds.some((id) => dirtySections.has(id))}
+                            onClick={() => setClassId(c._id)}
                           >
-                            {prog.assigned}/{prog.total}
-                          </span>
-                        ) : null}
-                        {hasDirty ? (
-                          <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-500" />
-                        ) : null}
-                      </button>
-                    );
-                  })}
+                            {classDisplayName(c)}
+                          </Chip>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : null}
-          </div>
-
-          {canEdit && (
-            <div className="flex flex-wrap gap-2 shrink-0">
-              <Button
-                variant="outline"
-                className="gap-2 border-blue-600 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
-                disabled={!sectionId || !currentDirty || saveMut.isPending || totalSubjects === 0}
-                onClick={() => saveMut.mutate([sectionId])}
-              >
-                <Save className="h-4 w-4" />
-                Save Section
-              </Button>
-              <Button
-                className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
-                disabled={!dirty || saveMut.isPending}
-                onClick={() => saveMut.mutate([...dirtySections])}
-              >
-                <Save className="h-4 w-4" />
-                {saveMut.isPending ? "Saving…" : dirtyCount > 1 ? `Save All (${dirtyCount})` : "Save All"}
-              </Button>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
-        <Card className="overflow-hidden min-w-0">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 bg-muted/20">
-            <div className="min-w-0 space-y-1">
-              <p className="text-sm font-semibold truncate">
-                {selectedClass ? classDisplayName(selectedClass) : "—"}
-                {selectedSection ? (
-                  <span className="text-muted-foreground font-normal">
-                    {" "}
-                    · Section {sectionDisplayName(selectedSection)}
-                  </span>
+                {classId ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-slate-600 w-16 shrink-0">Section</span>
+                    <div className="flex flex-wrap gap-2">
+                      {classSections.map((s) => {
+                        const prog = sectionProgress.get(s._id);
+                        return (
+                          <Chip
+                            key={s._id}
+                            active={s._id === sectionId}
+                            dirty={dirtySections.has(s._id)}
+                            onClick={() => setSectionId(s._id)}
+                          >
+                            <span>{sectionDisplayName(s)}</span>
+                            {prog && prog.total > 0 ? (
+                              <span
+                                className={cn(
+                                  "rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                                  s._id === sectionId
+                                    ? "bg-white/20 text-white"
+                                    : "bg-slate-100 text-slate-500",
+                                )}
+                              >
+                                {prog.assigned}/{prog.total}
+                              </span>
+                            ) : null}
+                          </Chip>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ) : null}
-              </p>
-              <div className="flex items-center gap-2 max-w-xs">
-                <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-emerald-500 transition-all"
-                    style={{ width: `${assignedPct}%` }}
-                  />
+              </div>
+
+              {canEdit ? (
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    className="h-9 gap-2 border-blue-600 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                    disabled={!sectionId || !currentDirty || saveMut.isPending || totalSubjects === 0}
+                    onClick={() => saveMut.mutate([sectionId])}
+                  >
+                    <Save className="h-4 w-4" />
+                    Save Section
+                  </Button>
+                  <Button
+                    className="h-9 gap-2 bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+                    disabled={!dirty || saveMut.isPending}
+                    onClick={() => saveMut.mutate([...dirtySections])}
+                  >
+                    <Save className="h-4 w-4" />
+                    {saveMut.isPending
+                      ? "Saving…"
+                      : dirtyCount > 1
+                        ? `Save All (${dirtyCount})`
+                        : "Save All"}
+                  </Button>
                 </div>
-                <span className="text-xs tabular-nums text-slate-500 shrink-0">
-                  {assignedCount}/{totalSubjects || 0} · {assignedPct}%
-                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm bg-white min-w-0">
+            <div className="border-b border-slate-100 px-5 py-3.5">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between xl:gap-4">
+                {/* Left: title + badge + progress */}
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-slate-900 truncate leading-tight">
+                      {selectedClass ? classDisplayName(selectedClass) : "—"}
+                      {selectedSection ? (
+                        <span className="font-normal text-slate-500">
+                          {" "}
+                          · Section {sectionDisplayName(selectedSection)}
+                        </span>
+                      ) : null}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {assignedCount} of {totalSubjects || 0} subjects assigned
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-100 shrink-0">
+                    <CheckCircle2 className="h-3 w-3" />
+                    {assignedCount} subjects assigned
+                  </span>
+                  {currentDirty ? (
+                    <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-100 shrink-0">
+                      Unsaved
+                    </span>
+                  ) : null}
+                  <div className="flex items-center gap-2 shrink-0 min-w-[7rem] max-w-[10rem]">
+                    <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all"
+                        style={{ width: `${assignedPct}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-semibold tabular-nums text-slate-700 w-8">
+                      {assignedPct}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Right: search + filters — same line */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0 xl:justify-end">
+                  <div className="relative w-full sm:w-[14rem] xl:w-[15rem]">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      placeholder="Search subject or teacher…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  <select
+                    className={cn(selectClass, "rounded-full")}
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="assigned">Assigned</option>
+                    <option value="unassigned">Unassigned</option>
+                  </select>
+                  <select
+                    className={cn(selectClass, "rounded-full max-w-[9.5rem]")}
+                    value={teacherFilter}
+                    onChange={(e) => setTeacherFilter(e.target.value)}
+                  >
+                    <option value="all">All Teachers</option>
+                    {teachers.map((t) => (
+                      <option key={t._id} value={t._id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className={cn(selectClass, "rounded-full")}
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as SortMode)}
+                  >
+                    <option value="subject">Sort by</option>
+                    <option value="status">Sort by status</option>
+                    <option value="teacher">Sort by teacher</option>
+                  </select>
+                </div>
               </div>
             </div>
-            {currentDirty ? (
-              <Badge variant="outline" className="border-amber-300 text-amber-700">
-                Unsaved changes
-              </Badge>
-            ) : null}
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-            {onSearchChange == null && (
-              <PanelSearchBar
-                value={search}
-                onChange={setSearch}
-                placeholder="Search subject or teacher…"
-                className="max-w-xs flex-1 min-w-[12rem]"
-              />
-            )}
-            <select
-              className="h-9 rounded-md border bg-background px-2.5 text-sm"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            >
-              <option value="all">All status</option>
-              <option value="assigned">Assigned</option>
-              <option value="unassigned">Unassigned</option>
-            </select>
-            <select
-              className="h-9 rounded-md border bg-background px-2.5 text-sm max-w-[10rem]"
-              value={teacherFilter}
-              onChange={(e) => setTeacherFilter(e.target.value)}
-            >
-              <option value="all">All teachers</option>
-              {teachers.map((t) => (
-                <option key={t._id} value={t._id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-9 rounded-md border bg-background px-2.5 text-sm"
-              value={sortMode}
-              onChange={(e) => setSortMode(e.target.value as SortMode)}
-            >
-              <option value="subject">Sort by subject</option>
-              <option value="status">Sort by status</option>
-              <option value="teacher">Sort by teacher</option>
-            </select>
-          </div>
-
-          {!classId || !sectionId ? (
-            <p className="p-10 text-sm text-center text-muted-foreground">
-              Select a class and section to assign teachers.
-            </p>
-          ) : isLoading ? (
-            <p className="p-10 text-sm text-center text-muted-foreground">Loading…</p>
-          ) : filteredSubjects.length === 0 ? (
-            <p className="p-10 text-sm text-center text-muted-foreground">
-              {subjects.length === 0 ? "No subjects for this class yet." : "No subjects match your filters."}
-            </p>
-          ) : (
+            {!classId || !sectionId ? (
+              <p className="p-10 text-center text-sm text-slate-400">Select a class and section to assign teachers.</p>
+            ) : isLoading ? (
+              <p className="p-10 text-center text-sm text-slate-400">Loading…</p>
+            ) : filteredSubjects.length === 0 ? (
+              <p className="p-10 text-center text-sm text-slate-400">
+                {subjects.length === 0 ? "No subjects for this class yet." : "No subjects match your filters."}
+              </p>
+            ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 border-b">
-                  <tr>
-                    <th className="text-left p-3 font-medium w-10">#</th>
-                    <th className="text-left p-3 font-medium">Subject</th>
-                    <th className="text-left p-3 font-medium w-24">Code</th>
-                    <th className="text-left p-3 font-medium min-w-[15rem]">Teacher</th>
-                    <th className="text-left p-3 font-medium w-32">Status</th>
-                    <th className="text-right p-3 font-medium w-16">Actions</th>
+              <table className="w-full table-fixed text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/80 text-slate-500">
+                    <th className="w-8 px-2 py-2 text-left font-medium">#</th>
+                    <th className="w-[22%] px-2 py-2 text-left font-medium">Subject</th>
+                    <th className="w-[14%] px-2 py-2 text-left font-medium">Code</th>
+                    <th className="w-[34%] px-2 py-2 text-left font-medium">Teacher</th>
+                    <th className="w-[18%] px-2 py-2 text-left font-medium">Status</th>
+                    <th className="w-10 px-2 py-2 text-right font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -667,33 +673,37 @@ export default function AssignmentsTab({
                       <tr
                         key={sub._id}
                         className={cn(
-                          "border-b last:border-0",
-                          unassigned && "bg-amber-50/50 dark:bg-amber-950/15",
+                          "border-b border-slate-100 last:border-0",
+                          unassigned ? "bg-amber-50/70" : "bg-white hover:bg-slate-50/60",
                         )}
                       >
-                        <td className="p-3 text-muted-foreground tabular-nums">{idx + 1}</td>
-                        <td className="p-3 font-medium">{subjectDisplayName(sub)}</td>
-                        <td className="p-3">
-                          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                        <td className="px-2 py-2 tabular-nums text-slate-400">{idx + 1}</td>
+                        <td className="px-2 py-2 font-medium text-slate-800 truncate">
+                          {subjectDisplayName(sub)}
+                        </td>
+                        <td className="px-2 py-2">
+                          <span className="inline-block max-w-full truncate rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
                             {subjectDisplayCode(sub) || "—"}
                           </span>
                         </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2 max-w-sm">
+                        <td className="px-2 py-2">
+                          <div className="flex min-w-0 items-center gap-1.5">
                             {teacher ? (
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[11px] font-semibold text-blue-700">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[9px] font-semibold text-white">
                                 {initials(teacher.name)}
                               </span>
                             ) : (
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-amber-300 text-amber-600">
-                                <Users className="h-3.5 w-3.5" />
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-400">
+                                <Users className="h-3 w-3" />
                               </span>
                             )}
                             <select
                               id={`teacher-select-${sub._id}`}
                               className={cn(
-                                "h-9 flex-1 min-w-0 rounded-md border bg-white px-2.5 text-sm",
-                                unassigned && "border-amber-300 text-slate-400",
+                                "h-8 min-w-0 flex-1 rounded-md border bg-white px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500/30",
+                                unassigned
+                                  ? "border-amber-200 text-slate-400"
+                                  : "border-slate-200 text-slate-800",
                               )}
                               value={teacherId}
                               disabled={!canEdit}
@@ -708,33 +718,31 @@ export default function AssignmentsTab({
                             </select>
                           </div>
                         </td>
-                        <td className="p-3">
+                        <td className="px-2 py-2">
                           {unassigned ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
-                              <AlertTriangle className="h-3 w-3" />
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                              <AlertTriangle className="h-2.5 w-2.5" />
                               Unassigned
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                              <CheckCircle2 className="h-3 w-3" />
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                              <CheckCircle2 className="h-2.5 w-2.5" />
                               Assigned
                             </span>
                           )}
                         </td>
-                        <td className="p-3 text-right">
-                          <Button
+                        <td className="px-2 py-2 text-right">
+                          <button
                             type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50 disabled:opacity-40"
                             disabled={!canEdit}
                             title="Change teacher"
-                            onClick={() => {
-                              document.getElementById(`teacher-select-${sub._id}`)?.focus();
-                            }}
+                            onClick={() =>
+                              document.getElementById(`teacher-select-${sub._id}`)?.focus()
+                            }
                           >
                             <Pencil className="h-3.5 w-3.5" />
-                          </Button>
+                          </button>
                         </td>
                       </tr>
                     );
@@ -742,47 +750,50 @@ export default function AssignmentsTab({
                 </tbody>
               </table>
             </div>
-          )}
-        </Card>
+            )}
+          </Card>
+        </div>
 
-        <aside className="space-y-3 xl:sticky xl:top-4 self-start">
-          <Card className="p-4 space-y-3 border-slate-200/80">
-            <div className="flex items-center justify-between gap-2">
+        <aside className="space-y-4 xl:sticky xl:top-4 self-start">
+          {/* Teacher Workload */}
+          <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900">Teacher Workload</h3>
-              <Badge variant="secondary" className="tabular-nums bg-blue-50 text-blue-700 hover:bg-blue-50">
-                {teachersWithLoad.length}/{teachers.length}
-              </Badge>
             </div>
-            <p className="text-xs text-slate-500">Updates live as you assign (includes unsaved).</p>
             {teachers.length === 0 ? (
-              <p className="text-sm text-slate-500 py-2">No teachers found.</p>
+              <p className="text-sm text-slate-400 py-2">No teachers found.</p>
             ) : (
-              <ul className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                {(teachersWithLoad.length ? teachersWithLoad : teacherLoad.slice(0, 6)).map(
+              <ul className="space-y-3.5">
+                {(teachersWithLoad.length ? teachersWithLoad : teacherLoad.slice(0, 8)).map(
                   ({ teacher, count }) => {
                     const pct = Math.round((count / maxTeacherLoad) * 100);
                     return (
-                      <li key={teacher._id} className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[11px] font-semibold text-blue-700">
-                            {initials(teacher.name)}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="truncate text-sm font-medium text-slate-800">{teacher.name}</p>
-                              <span className="tabular-nums text-xs font-semibold text-emerald-600 shrink-0">
-                                {pct}%
-                              </span>
+                      <li key={teacher._id} className="flex items-start gap-2.5">
+                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold text-white">
+                          {initials(teacher.name)}
+                        </span>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-800">{teacher.name}</p>
+                              <p className="text-xs text-emerald-600 font-medium">
+                                {count} subject{count === 1 ? "" : "s"} assigned
+                              </p>
                             </div>
-                            <p className="text-[11px] text-slate-500">
-                              {count} subject{count === 1 ? "" : "s"} assigned
-                            </p>
-                            <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                            <button type="button" className="text-slate-300 hover:text-slate-500 p-0.5">
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
                               <div
                                 className="h-full rounded-full bg-emerald-500 transition-all"
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
+                            <span className="text-[11px] font-semibold tabular-nums text-emerald-600 w-8 text-right">
+                              {pct}%
+                            </span>
                           </div>
                         </div>
                       </li>
@@ -791,66 +802,120 @@ export default function AssignmentsTab({
                 )}
               </ul>
             )}
-            <div className="border-t border-slate-100 pt-2 text-xs text-slate-500 flex justify-between gap-2">
-              <span>{teachersWithLoad.length} teachers assigned</span>
-              <span>{unassignedCount} subjects unassigned</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs">
+              <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600">
+                <Users className="h-3.5 w-3.5" />
+                {teachersWithLoad.length} Teachers assigned
+              </span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-amber-600">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {unassignedCount} Subjects unassigned
+              </span>
             </div>
-            {dirtyCount > 0 ? (
-              <p className="text-xs text-amber-600">
-                {dirtyCount} section{dirtyCount === 1 ? "" : "s"} with unsaved changes
-              </p>
-            ) : null}
-          </Card>
+          </div>
 
-          <Card className="p-4 space-y-2 border-slate-200/80">
+          {/* Quick Actions */}
+          <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm space-y-2.5">
             <h3 className="text-sm font-semibold text-slate-900">Quick Actions</h3>
-            <div className="grid gap-2">
+            <div className="space-y-2">
               <Link
                 to={systemConfigHref(role, "teachers")}
-                className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 transition-colors"
+                className="flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2.5 transition-colors hover:bg-emerald-50"
               >
-                <UserPlus className="h-4 w-4" />
-                Add Teacher
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                  <UserPlus className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-800">Add Teacher</span>
+                  <span className="block text-xs text-slate-500">Register a new teacher</span>
+                </span>
               </Link>
               <Link
                 to={studentManagementHref(role, "subjects")}
-                className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800 hover:bg-blue-100 transition-colors"
+                className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2.5 transition-colors hover:bg-blue-50"
               >
-                <BookOpen className="h-4 w-4" />
-                Manage Subjects
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                  <BookOpen className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-800">Manage Subjects</span>
+                  <span className="block text-xs text-slate-500">Add or edit subjects</span>
+                </span>
+              </Link>
+              <Link
+                to={moduleHref(role, "reports")}
+                className="flex items-start gap-3 rounded-xl border border-violet-100 bg-violet-50/80 px-3 py-2.5 transition-colors hover:bg-violet-50"
+              >
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-600">
+                  <FileBarChart2 className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-800">View Reports</span>
+                  <span className="block text-xs text-slate-500">Teacher & subject reports</span>
+                </span>
               </Link>
               <Link
                 to={systemConfigHref(role, "timetable-rules")}
-                className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+                className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2.5 transition-colors hover:bg-amber-50"
               >
-                <Settings className="h-4 w-4" />
-                Settings
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                  <Settings className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-800">Settings</span>
+                  <span className="block text-xs text-slate-500">Configure academic settings</span>
+                </span>
               </Link>
             </div>
-          </Card>
+          </div>
 
-          <Card className="p-4 space-y-3 border-slate-200/80">
+          {/* Assignment Summary */}
+          <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm space-y-3">
             <h3 className="text-sm font-semibold text-slate-900">Assignment Summary</h3>
-            <Donut assigned={assignedCount} total={totalSubjects} />
-            <ul className="space-y-1.5 text-xs">
-              <li className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-slate-500">
-                  <span className="h-2 w-2 rounded-full bg-blue-600" /> Assigned
-                </span>
-                <span className="font-medium tabular-nums text-slate-800">{assignedCount}</span>
-              </li>
-              <li className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-slate-500">
-                  <span className="h-2 w-2 rounded-full bg-amber-500" /> Unassigned
-                </span>
-                <span className="font-medium tabular-nums text-slate-800">{unassignedCount}</span>
-              </li>
-              <li className="flex items-center justify-between gap-2 border-t border-slate-100 pt-1.5">
-                <span className="text-slate-500">Total subjects</span>
-                <span className="font-semibold tabular-nums text-slate-900">{totalSubjects}</span>
-              </li>
-            </ul>
-          </Card>
+            <div className="flex items-center gap-4">
+              <div className="relative h-[5.5rem] w-[5.5rem] shrink-0">
+                <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+                  <circle cx="50" cy="50" r={donutR} fill="none" stroke="#FEF3C7" strokeWidth="10" />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={donutR}
+                    fill="none"
+                    stroke="#10B981"
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    strokeDasharray={`${donutDash} ${donutC - donutDash}`}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-lg font-bold tabular-nums text-slate-900">{assignedPct}%</span>
+                </div>
+              </div>
+              <ul className="space-y-2 text-xs flex-1 min-w-0">
+                <li className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-slate-600">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" /> Assigned
+                  </span>
+                  <span className="font-semibold tabular-nums text-slate-800">{assignedCount}</span>
+                </li>
+                <li className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-slate-600">
+                    <span className="h-2 w-2 rounded-full bg-amber-400" /> Unassigned
+                  </span>
+                  <span className="font-semibold tabular-nums text-slate-800">{unassignedCount}</span>
+                </li>
+                <li className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-slate-600">
+                    <span className="h-2 w-2 rounded-full bg-slate-300" /> Total Subjects
+                  </span>
+                  <span className="font-semibold tabular-nums text-slate-800">{totalSubjects}</span>
+                </li>
+              </ul>
+            </div>
+            <p className="text-center text-xs text-slate-500">
+              {assignedCount} of {totalSubjects || 0} subjects assigned
+            </p>
+          </div>
         </aside>
       </div>
     </div>

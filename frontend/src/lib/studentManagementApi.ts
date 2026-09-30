@@ -903,7 +903,7 @@ export const fetchDiscountReport = async (params?: {
 };
 
 export const generateMonthlyFees = (body: { month: number; year: number; classId?: string }) =>
-  api<{ created: number; skipped: number }>("/fees/generate", {
+  api<{ created: number; skipped: number; repaired?: number }>("/fees/generate", {
     method: "POST",
     body: JSON.stringify(body),
   });

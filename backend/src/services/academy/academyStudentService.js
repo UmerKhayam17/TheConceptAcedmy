@@ -13,6 +13,7 @@ const {
   getByClass,
   calculateFeesWithDiscount,
 } = require('./academyFeeStructureService');
+const { createEnrollmentFeeVouchers } = require('./academyFeeService');
 const { validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
 const { generateAcademyRollNumber, generateTemporaryRollNumber } = require('../../utils/academyRollNumber');
 const { generateRegistrationNumber } = require('../../utils/academyRegistrationNumber');
@@ -290,19 +291,7 @@ async function registerStudent(payload, userId) {
   });
 
   const now = new Date();
-  const receiptNumber = `RCP-${studentId}-ADM`;
-  await AcademyFeeRecord.create({
-    studentId: student._id,
-    month: now.getMonth() + 1,
-    year: now.getFullYear(),
-    amount: fees.totalFee,
-    feeType: 'admission',
-    status: 'pending',
-    dueDate: now,
-    receiptNumber,
-    createdBy: userId,
-    recordedBy: userId,
-  });
+  await createEnrollmentFeeVouchers(student, fees, userId, { asOf: now });
 
   return student.populate([
     { path: 'classId', select: 'className' },
@@ -376,19 +365,19 @@ async function updateStudent(id, payload) {
       (student.monthlyFeeDiscount > 0 || student.admissionFeeDiscount > 0);
     const discountOptions = hasSeparateDiscounts
       ? {
-          monthlyFeeDiscount:
-            payload.monthlyFeeDiscount !== undefined
-              ? payload.monthlyFeeDiscount
-              : student.monthlyFeeDiscount,
-          admissionFeeDiscount:
-            payload.admissionFeeDiscount !== undefined
-              ? payload.admissionFeeDiscount
-              : student.admissionFeeDiscount,
-        }
+        monthlyFeeDiscount:
+          payload.monthlyFeeDiscount !== undefined
+            ? payload.monthlyFeeDiscount
+            : student.monthlyFeeDiscount,
+        admissionFeeDiscount:
+          payload.admissionFeeDiscount !== undefined
+            ? payload.admissionFeeDiscount
+            : student.admissionFeeDiscount,
+      }
       : {
-          discountAmount:
-            payload.discountAmount !== undefined ? payload.discountAmount : student.discountAmount,
-        };
+        discountAmount:
+          payload.discountAmount !== undefined ? payload.discountAmount : student.discountAmount,
+      };
     const fees = calculateFeesWithDiscount(feeStructure, {
       selectedSubjectIds: subjectIds,
       isFullPackage,
@@ -665,8 +654,8 @@ async function getDiscountReport({ page = 1, limit = 20, classId, search, from, 
   const staffIds = [...byStaffMap.keys()].filter((id) => id !== 'unknown');
   const staffUsers = staffIds.length
     ? await User.find({ _id: { $in: staffIds } })
-        .select('name email')
-        .lean()
+      .select('name email')
+      .lean()
     : [];
   const staffNameById = new Map(staffUsers.map((u) => [String(u._id), u]));
 
@@ -856,24 +845,8 @@ async function activateStudent(id, payload, userId) {
 
   await student.save();
 
-  const paidAt = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
-  const receiptNumber =
-    payload.receiptNumber?.trim() || `RCP-${officialStudentId}-ADM`;
-
-  await AcademyFeeRecord.create({
-    studentId: student._id,
-    month: paidAt.getMonth() + 1,
-    year: paidAt.getFullYear(),
-    amount: fees.totalFee,
-    feeType: 'admission',
-    status: 'paid',
-    dueDate: paidAt,
-    paidAt,
-    receiptNumber,
-    paymentMethod: payload.paymentMethod || 'cash',
-    createdBy: userId,
-    recordedBy: userId,
-  });
+  const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
+  await createEnrollmentFeeVouchers(student, fees, userId, { asOf });
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
@@ -973,24 +946,8 @@ async function registerDirectStudent(payload, userId) {
     createdBy: userId,
   });
 
-  const paidAt = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
-  const receiptNumber =
-    payload.receiptNumber?.trim() || `RCP-${officialStudentId}-ADM`;
-
-  await AcademyFeeRecord.create({
-    studentId: student._id,
-    month: paidAt.getMonth() + 1,
-    year: paidAt.getFullYear(),
-    amount: fees.totalFee,
-    feeType: 'admission',
-    status: 'paid',
-    dueDate: paidAt,
-    paidAt,
-    receiptNumber,
-    paymentMethod: payload.paymentMethod || 'cash',
-    createdBy: userId,
-    recordedBy: userId,
-  });
+  const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
+  await createEnrollmentFeeVouchers(student, fees, userId, { asOf });
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },

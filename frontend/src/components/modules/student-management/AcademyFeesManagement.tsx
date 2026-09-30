@@ -90,9 +90,8 @@ function StatusPill({ status }: { status: string }) {
   };
   return (
     <span
-      className={`text-xs font-semibold rounded-full px-2 py-0.5 capitalize ${
-        colors[status] || "bg-muted text-muted-foreground"
-      }`}
+      className={`text-xs font-semibold rounded-full px-2 py-0.5 capitalize ${colors[status] || "bg-muted text-muted-foreground"
+        }`}
     >
       {status}
     </span>
@@ -239,7 +238,13 @@ export default function AcademyFeesManagement({
       qc.invalidateQueries({ queryKey: ["academy-student-record"] });
       toast({
         title: "Monthly fees generated",
-        description: `${r.created} created, ${r.skipped} already existed`,
+        description: [
+          `${r.created} created`,
+          `${r.skipped} skipped (already billed / admission month)`,
+          r.repaired ? `${r.repaired} enrollment-month duplicates waived` : null,
+        ]
+          .filter(Boolean)
+          .join(", "),
       });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),

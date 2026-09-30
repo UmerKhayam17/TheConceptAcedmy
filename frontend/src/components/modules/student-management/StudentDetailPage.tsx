@@ -163,9 +163,8 @@ function StatusBadge({ status }: { status: string }) {
   };
   return (
     <span
-      className={`inline-flex text-xs font-semibold rounded-full px-2 py-0.5 capitalize ${
-        colors[status] || "bg-muted text-muted-foreground"
-      }`}
+      className={`inline-flex text-xs font-semibold rounded-full px-2 py-0.5 capitalize ${colors[status] || "bg-muted text-muted-foreground"
+        }`}
     >
       {label}
     </span>
@@ -261,13 +260,19 @@ function ProfileTab({ student }: { student: AcademyStudent }) {
           <DetailRow label="Monthly fee discount" value={formatPkr(student.monthlyFeeDiscount)} />
           <DetailRow label="Admission fee discount" value={formatPkr(student.admissionFeeDiscount)} />
           {(student.discountAmount ?? 0) > 0 &&
-          !(student.monthlyFeeDiscount || student.admissionFeeDiscount) ? (
+            !(student.monthlyFeeDiscount || student.admissionFeeDiscount) ? (
             <DetailRow label="Combined discount (legacy)" value={formatPkr(student.discountAmount)} />
           ) : (
             <DetailRow label="Total discount" value={formatPkr(student.discountAmount)} />
           )}
           <DetailRow label="Subtotal" value={formatPkr(subtotal)} />
-          <DetailRow label="First payment (total)" value={formatPkr(student.totalFee)} />
+          <DetailRow label="First month challan (monthly + admission − discounts)" value={formatPkr(student.totalFee)} />
+          <DetailRow
+            label="Later months (monthly − discount)"
+            value={formatPkr(
+              Math.max(0, (student.monthlyFee || 0) - (student.monthlyFeeDiscount || 0)),
+            )}
+          />
         </div>
       </section>
     </div>
@@ -519,7 +524,7 @@ function TestsTab({
                 formatDate(r.examDate),
                 r.title,
                 ASSESSMENT_TYPE_LABELS[r.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
-                  r.assessmentType,
+                r.assessmentType,
                 r.subjectId ? subjectName(r.subjectId as AcademySubject) : "—",
                 r.obtainedMarks,
                 r.totalMarks,
@@ -732,31 +737,31 @@ export default function StudentDetailPage({
           (section, subjects, roll number, and portal logins).
         </div>
       ) : (
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-muted/25 px-4 py-2.5">
-        <QuickStat label="Subjects" value={enrollment.subjectCount} />
-        <QuickStat
-          label="Attendance"
-          value={
-            attendance.summary.attendanceRate != null
-              ? `${attendance.summary.attendanceRate}%`
-              : "—"
-          }
-        />
-        <QuickStat
-          label={isParent ? "Paid fees" : "Fees"}
-          value={isParent ? formatPkr(fees.summary.totalPaid) : fees.summary.recordsCount}
-        />
-        {!isParent && <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />}
-        <QuickStat label="Tests" value={assessments.summary.count} />
-        <QuickStat
-          label="Avg %"
-          value={
-            assessments.summary.averagePercentage != null
-              ? `${assessments.summary.averagePercentage}%`
-              : "—"
-          }
-        />
-      </div>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-muted/25 px-4 py-2.5">
+          <QuickStat label="Subjects" value={enrollment.subjectCount} />
+          <QuickStat
+            label="Attendance"
+            value={
+              attendance.summary.attendanceRate != null
+                ? `${attendance.summary.attendanceRate}%`
+                : "—"
+            }
+          />
+          <QuickStat
+            label={isParent ? "Paid fees" : "Fees"}
+            value={isParent ? formatPkr(fees.summary.totalPaid) : fees.summary.recordsCount}
+          />
+          {!isParent && <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />}
+          <QuickStat label="Tests" value={assessments.summary.count} />
+          <QuickStat
+            label="Avg %"
+            value={
+              assessments.summary.averagePercentage != null
+                ? `${assessments.summary.averagePercentage}%`
+                : "—"
+            }
+          />
+        </div>
       )}
 
       <Tabs defaultValue="profile" className="w-full">
@@ -765,23 +770,23 @@ export default function StudentDetailPage({
             <User className="h-3.5 w-3.5" /> Profile
           </TabsTrigger>
           {!isPending && (
-          <>
-          <TabsTrigger value="enrollment" className="gap-1.5">
-            <BookOpen className="h-3.5 w-3.5" /> Enrollment ({enrollment.subjectCount})
-          </TabsTrigger>
-          <TabsTrigger value="timetable" className="gap-1.5">
-            <Calendar className="h-3.5 w-3.5" /> Timetable
-          </TabsTrigger>
-          <TabsTrigger value="attendance" className="gap-1.5">
-            <ClipboardList className="h-3.5 w-3.5" /> Attendance
-          </TabsTrigger>
-          <TabsTrigger value="fees" className="gap-1.5">
-            <Receipt className="h-3.5 w-3.5" /> Fees
-          </TabsTrigger>
-          <TabsTrigger value="tests" className="gap-1.5">
-            <GraduationCap className="h-3.5 w-3.5" /> Test reports
-          </TabsTrigger>
-          </>
+            <>
+              <TabsTrigger value="enrollment" className="gap-1.5">
+                <BookOpen className="h-3.5 w-3.5" /> Enrollment ({enrollment.subjectCount})
+              </TabsTrigger>
+              <TabsTrigger value="timetable" className="gap-1.5">
+                <Calendar className="h-3.5 w-3.5" /> Timetable
+              </TabsTrigger>
+              <TabsTrigger value="attendance" className="gap-1.5">
+                <ClipboardList className="h-3.5 w-3.5" /> Attendance
+              </TabsTrigger>
+              <TabsTrigger value="fees" className="gap-1.5">
+                <Receipt className="h-3.5 w-3.5" /> Fees
+              </TabsTrigger>
+              <TabsTrigger value="tests" className="gap-1.5">
+                <GraduationCap className="h-3.5 w-3.5" /> Test reports
+              </TabsTrigger>
+            </>
           )}
         </TabsList>
 
@@ -789,38 +794,38 @@ export default function StudentDetailPage({
           <ProfileTab student={student} />
         </TabsContent>
         {!isPending && (
-        <>
-        <TabsContent value="enrollment" className="mt-3 focus-visible:outline-none">
-          <EnrollmentTab record={record} />
-        </TabsContent>
-        <TabsContent value="timetable" className="mt-3 focus-visible:outline-none">
-          <TimetableTab slots={record.timetable} />
-        </TabsContent>
-        <TabsContent value="attendance" className="mt-3 focus-visible:outline-none">
-          <AttendanceTab record={record} />
-        </TabsContent>
-        <TabsContent value="fees" className="mt-3 focus-visible:outline-none">
-          <AcademyFeesManagement
-            caps={caps}
-            studentId={studentId}
-            routes={routes ?? undefined}
-            showGenerate={false}
-            showFilters={false}
-          />
-        </TabsContent>
-        <TabsContent value="tests" className="mt-3 focus-visible:outline-none">
-          <TestsTab
-            record={record}
-            studentId={studentId}
-            classId={
-              typeof student.classId === "object" && student.classId
-                ? student.classId._id
-                : String(student.classId)
-            }
-            caps={caps}
-          />
-        </TabsContent>
-        </>
+          <>
+            <TabsContent value="enrollment" className="mt-3 focus-visible:outline-none">
+              <EnrollmentTab record={record} />
+            </TabsContent>
+            <TabsContent value="timetable" className="mt-3 focus-visible:outline-none">
+              <TimetableTab slots={record.timetable} />
+            </TabsContent>
+            <TabsContent value="attendance" className="mt-3 focus-visible:outline-none">
+              <AttendanceTab record={record} />
+            </TabsContent>
+            <TabsContent value="fees" className="mt-3 focus-visible:outline-none">
+              <AcademyFeesManagement
+                caps={caps}
+                studentId={studentId}
+                routes={routes ?? undefined}
+                showGenerate={false}
+                showFilters={false}
+              />
+            </TabsContent>
+            <TabsContent value="tests" className="mt-3 focus-visible:outline-none">
+              <TestsTab
+                record={record}
+                studentId={studentId}
+                classId={
+                  typeof student.classId === "object" && student.classId
+                    ? student.classId._id
+                    : String(student.classId)
+                }
+                caps={caps}
+              />
+            </TabsContent>
+          </>
         )}
       </Tabs>
     </div>

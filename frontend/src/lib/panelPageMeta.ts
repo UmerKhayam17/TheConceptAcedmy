@@ -19,15 +19,6 @@ export type PanelPageMeta = {
   allowAllSessions: boolean;
 };
 
-const SESSION_MODULES = new Set([
-  "system-config",
-  "student-management",
-  "students",
-  "timetable",
-  "attendance",
-  "fees",
-]);
-
 function flattenNav(
   items: SidebarNavItem[],
 ): SidebarNavItem[] {
@@ -37,16 +28,6 @@ function flattenNav(
     if (item.children?.length) out.push(...flattenNav(item.children));
   }
   return out;
-}
-
-function pathShowsSession(pathname: string, role: Role, slug?: string): boolean {
-  if (role === "parent") {
-    // Parents browse their own data — no session switcher in chrome.
-    return false;
-  }
-  if (pathname.includes("/system-config/history")) return false;
-  if (slug && SESSION_MODULES.has(slug)) return true;
-  return SESSION_MODULES.has(pathname.split("/")[3] ?? "");
 }
 
 /**
@@ -60,6 +41,12 @@ export function resolvePanelPageMeta(
 ): PanelPageMeta {
   const { slug, section, action } = params;
   const groups = sidebarNavForRole(role);
+
+  const allowAllSessions = !(
+    slug === "system-config" &&
+    section === "academic" &&
+    Boolean(action)
+  );
 
   let best: { groupLabel: string; item: SidebarNavItem; score: number } | null = null;
 
@@ -80,12 +67,8 @@ export function resolvePanelPageMeta(
       icon: best.item.icon,
       breadcrumbParent: best.groupLabel,
       breadcrumbCurrent: best.item.label,
-      showSession: pathShowsSession(pathname, role, slug),
-      allowAllSessions: !(
-        slug === "system-config" &&
-        section === "academic" &&
-        Boolean(action)
-      ),
+      showSession: true,
+      allowAllSessions,
     };
   }
 
@@ -97,7 +80,7 @@ export function resolvePanelPageMeta(
       icon: LayoutDashboard,
       breadcrumbParent: cfg?.title ?? "Portal",
       breadcrumbCurrent: "Dashboard",
-      showSession: false,
+      showSession: true,
       allowAllSessions: true,
     };
   }
@@ -109,7 +92,7 @@ export function resolvePanelPageMeta(
     icon: Icon,
     breadcrumbParent: "Portal",
     breadcrumbCurrent: mod?.label ?? slug,
-    showSession: pathShowsSession(pathname, role, slug),
-    allowAllSessions: true,
+    showSession: true,
+    allowAllSessions,
   };
 }
