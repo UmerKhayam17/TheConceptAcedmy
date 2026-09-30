@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ViewLink } from "./WelcomeBanner";
 import type { ScheduleRow, ScheduleStatus } from "@/lib/teacherDashboard";
 import { formatDashboardDate } from "@/lib/teacherDashboard";
+import { subjectIcon } from "@/lib/subjectTheme";
 import { cn } from "@/lib/utils";
 
 const STATUS_STYLE: Record<
@@ -133,6 +134,7 @@ export function TodaysScheduleCard({
               rows.map((row) => {
                 const st = STATUS_STYLE[row.status];
                 const StatusIcon = st.Icon;
+                const SubjectIcon = subjectIcon(row.subject);
                 return (
                   <tr key={row.id}>
                     <td className="px-3.5 py-3.5 text-[13px] font-medium text-[#334155] whitespace-nowrap border-t border-[#F1F5F9]">
@@ -142,7 +144,10 @@ export function TodaysScheduleCard({
                       {row.classLabel}
                     </td>
                     <td className="px-3.5 py-3.5 text-[13px] text-[#475569] border-t border-[#F1F5F9]">
-                      {row.subject}
+                      <span className="inline-flex items-center gap-1.5 min-w-0">
+                        <SubjectIcon className="h-3.5 w-3.5 shrink-0 text-[#64748B]" aria-hidden />
+                        <span className="truncate">{row.subject}</span>
+                      </span>
                     </td>
                     <td className="px-3.5 py-3.5 text-[13px] text-[#64748B] whitespace-nowrap border-t border-[#F1F5F9]">
                       {row.room}

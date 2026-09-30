@@ -160,15 +160,19 @@ export function resolveScheduleStatus(
   return "upcoming";
 }
 
+function calendarDayKey(date: Date) {
+  return date.getFullYear() * 10_000 + (date.getMonth() + 1) * 100 + date.getDate();
+}
+
 export function scheduleStatusForDate(
   slot: ScheduleSlot,
   viewingDate: Date,
   now = new Date(),
 ): ScheduleStatus {
-  const viewingYmd = viewingDate.toDateString();
-  const todayYmd = now.toDateString();
-  if (viewingYmd < todayYmd) return "completed";
-  if (viewingYmd > todayYmd) return "upcoming";
+  const viewingKey = calendarDayKey(viewingDate);
+  const todayKey = calendarDayKey(now);
+  if (viewingKey < todayKey) return "completed";
+  if (viewingKey > todayKey) return "upcoming";
   return resolveScheduleStatus(slot, now, true);
 }
 
@@ -297,6 +301,27 @@ export function activitiesFromAnnouncements(items: Announcement[]): ActivityItem
   }));
 }
 
+export function activitiesFromNotifications(
+  items: { _id: string; title: string; body?: string; type?: string; createdAt: string }[],
+): ActivityItem[] {
+  const toneFor = (type?: string): ActivityItem["tone"] => {
+    const t = String(type || "").toLowerCase();
+    if (t.includes("message") || t.includes("chat")) return "orange";
+    if (t.includes("attend")) return "green";
+    if (t.includes("grade") || t.includes("mark") || t.includes("exam") || t.includes("test"))
+      return "purple";
+    if (t.includes("assign")) return "blue";
+    return "rose";
+  };
+  return items.slice(0, 8).map((n) => ({
+    id: n._id,
+    title: n.title || "Notification",
+    detail: n.body || n.type || "Recent update",
+    timeAgo: relativeTime(n.createdAt),
+    tone: toneFor(n.type),
+  }));
+}
+
 export function relativeTime(iso?: string) {
   if (!iso) return "Recently";
   const then = new Date(iso).getTime();
@@ -310,93 +335,47 @@ export function relativeTime(iso?: string) {
   return days === 1 ? "1 day ago" : `${days} days ago`;
 }
 
-/** Fallback chart series used when live performance APIs are unavailable. */
-export const FALLBACK_PERFORMANCE: PerformancePoint[] = [
-  { month: "Jan", averageScore: 31, passRate: 47, attendanceRate: 25 },
-  { month: "Feb", averageScore: 44, passRate: 56, attendanceRate: 35 },
-  { month: "Mar", averageScore: 44, passRate: 54, attendanceRate: 35 },
-  { month: "Apr", averageScore: 52, passRate: 62, attendanceRate: 42 },
-  { month: "May", averageScore: 61, passRate: 72, attendanceRate: 50 },
-  { month: "Jun", averageScore: 70, passRate: 81, attendanceRate: 57 },
-];
+export function lastNMonthKeys(count = 6, from = new Date()) {
+  const out: { key: string; month: string; monthIndex: number; year: number }[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(from.getFullYear(), from.getMonth() - i, 1);
+    out.push({
+      key: `${d.getFullYear()}-${d.getMonth() + 1}`,
+      month: d.toLocaleString("en", { month: "short" }),
+      monthIndex: d.getMonth() + 1,
+      year: d.getFullYear(),
+    });
+  }
+  return out;
+}
 
-export const FALLBACK_DEADLINES: DeadlineItem[] = [
-  {
-    id: "fb-1",
-    dateLabel: "26 Jun",
-    day: "26",
-    month: "Jun",
-    title: "Assignment — Mathematics",
-    subtitle: "9th A",
-    dueLabel: "Due in 1 day",
-    urgent: true,
-  },
-  {
-    id: "fb-2",
-    dateLabel: "28 Jun",
-    day: "28",
-    month: "Jun",
-    title: "Test — Chemistry",
-    subtitle: "9th B",
-    dueLabel: "Due in 3 days",
-    urgent: false,
-  },
-  {
-    id: "fb-3",
-    dateLabel: "30 Jun",
-    day: "30",
-    month: "Jun",
-    title: "Lesson Plan — Physics",
-    subtitle: "10th A",
-    dueLabel: "Due in 5 days",
-    urgent: false,
-  },
-  {
-    id: "fb-4",
-    dateLabel: "02 Jul",
-    day: "02",
-    month: "Jul",
-    title: "Assignment — English",
-    subtitle: "10th B",
-    dueLabel: "Due in 7 days",
-    urgent: false,
-  },
-];
+export function attendanceRateFromSummary(summary?: {
+  total?: number;
+  present?: number;
+  late?: number;
+  absent?: number;
+  leave?: number;
+} | null) {
+  if (!summary) return 0;
+  const marked =
+    (summary.present || 0) +
+    (summary.absent || 0) +
+    (summary.late || 0) +
+    (summary.leave || 0);
+  if (marked <= 0) return 0;
+  return Math.round((((summary.present || 0) + (summary.late || 0)) / marked) * 100);
+}
 
-export const FALLBACK_ACTIVITIES: ActivityItem[] = [
-  {
-    id: "a1",
-    title: "Assignment submitted",
-    detail: "by Ayesha Khan (9th A)",
-    timeAgo: "2 hours ago",
-    tone: "blue",
-  },
-  {
-    id: "a2",
-    title: "Attendance marked",
-    detail: "for 9th B",
-    timeAgo: "3 hours ago",
-    tone: "green",
-  },
-  {
-    id: "a3",
-    title: "New message",
-    detail: "from Fatima Noor (Parent)",
-    timeAgo: "4 hours ago",
-    tone: "orange",
-  },
-  {
-    id: "a4",
-    title: "Grade updated",
-    detail: "for Ali Raza (10th A)",
-    timeAgo: "5 hours ago",
-    tone: "purple",
-  },
-  {
-    id: "a5",
-    title: "Lesson plan created",
-    detail: "for Physics",
-    timeAgo: "6 hours ago",
-    tone: "rose",
-  },
-];
+/** Build chart series from live attendance + optional per-month score stats. */
+export function buildPerformanceSeries(
+  months: { key: string; month: string; monthIndex: number; year: number }[],
+  attendanceByKey: Record<string, number>,
+  scoreByKey: Record<string, { averageScore: number; passRate: number }>,
+): PerformancePoint[] {
+  return months.map((m) => ({
+    month: m.month,
+    attendanceRate: attendanceByKey[m.key] ?? 0,
+    averageScore: scoreByKey[m.key]?.averageScore ?? 0,
+    passRate: scoreByKey[m.key]?.passRate ?? 0,
+  }));
+}

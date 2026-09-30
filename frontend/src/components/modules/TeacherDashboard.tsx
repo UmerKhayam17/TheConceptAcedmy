@@ -13,21 +13,26 @@ import { timetableHref } from "@/lib/timetableMenus";
 import { testExamsHref, classTestMarksHref } from "@/lib/testExamsMenus";
 import { fetchMyTeacherSchedule, fetchTeacherAssignments } from "@/lib/timetableApi";
 import {
+  fetchAcademyAttendanceSummary,
   fetchAcademyStudents,
+  fetchClassTestEntry,
   fetchClassTests,
 } from "@/lib/studentManagementApi";
 import { fetchAnnouncements } from "@/lib/announcementApi";
+import { fetchNotifications } from "@/lib/notificationsApi";
 import type { Role } from "@/lib/auth";
 import {
   activitiesFromAnnouncements,
+  activitiesFromNotifications,
   addDays,
+  attendanceRateFromSummary,
+  buildPerformanceSeries,
   deadlinesFromClassTests,
-  FALLBACK_ACTIVITIES,
-  FALLBACK_DEADLINES,
-  FALLBACK_PERFORMANCE,
   groupAssignmentsIntoClasses,
+  lastNMonthKeys,
   toScheduleRows,
   weekdayFromDate,
+  type PerformancePoint,
 } from "@/lib/teacherDashboard";
 import { WelcomeBanner } from "./teacher-dashboard/WelcomeBanner";
 import { TeacherMetricCards, type TeacherMetric } from "./teacher-dashboard/TeacherMetricCards";
@@ -92,6 +97,65 @@ function buildTeacherMetrics(input: {
   ];
 }
 
+async function loadPerformanceSeries(classTestIds: string[]): Promise<PerformancePoint[]> {
+  const months = lastNMonthKeys(6);
+  const attendancePairs = await Promise.all(
+    months.map(async (m) => {
+      try {
+        const summary = await fetchAcademyAttendanceSummary({
+          month: m.monthIndex,
+          year: m.year,
+        });
+        return [m.key, attendanceRateFromSummary(summary)] as const;
+      } catch {
+        return [m.key, 0] as const;
+      }
+    }),
+  );
+  const attendanceByKey = Object.fromEntries(attendancePairs);
+
+  const scoreBuckets: Record<string, { sumPct: number; count: number; pass: number }> = {};
+  const ids = classTestIds.slice(0, 8);
+  const entries = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        return await fetchClassTestEntry(id);
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  for (const entry of entries) {
+    if (!entry?.test?.examDate) continue;
+    const d = new Date(entry.test.examDate);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+    const total = Number(entry.test.totalMarks) || 0;
+    if (total <= 0) continue;
+    if (!scoreBuckets[key]) scoreBuckets[key] = { sumPct: 0, count: 0, pass: 0 };
+    for (const row of entry.students || []) {
+      const obtained = row.assessment?.obtainedMarks;
+      if (obtained == null || Number.isNaN(Number(obtained))) continue;
+      const pct = Math.max(0, Math.min(100, (Number(obtained) / total) * 100));
+      scoreBuckets[key].sumPct += pct;
+      scoreBuckets[key].count += 1;
+      if (pct >= 40) scoreBuckets[key].pass += 1;
+    }
+  }
+
+  const scoreByKey: Record<string, { averageScore: number; passRate: number }> = {};
+  for (const [key, b] of Object.entries(scoreBuckets)) {
+    if (!b.count) continue;
+    scoreByKey[key] = {
+      averageScore: Math.round(b.sumPct / b.count),
+      passRate: Math.round((b.pass / b.count) * 100),
+    };
+  }
+
+  return buildPerformanceSeries(months, attendanceByKey, scoreByKey);
+}
+
 export default function TeacherDashboard({
   name,
   role = "teacher",
@@ -132,7 +196,7 @@ export default function TeacherDashboard({
     queryFn: () =>
       fetchAcademyStudents({
         page: 1,
-        limit: 200,
+        limit: 500,
         status: "active",
         sessionId: apiSessionId,
       }),
@@ -149,11 +213,35 @@ export default function TeacherDashboard({
     staleTime: 60_000,
   });
 
+  const closedTestIds = useMemo(
+    () =>
+      [...classTests]
+        .filter((t) => t.status === "closed")
+        .sort((a, b) => new Date(b.examDate).getTime() - new Date(a.examDate).getTime())
+        .map((t) => t._id),
+    [classTests],
+  );
+
+  const { data: performanceData = [] } = useQuery({
+    queryKey: ["teacher-dashboard-performance", apiSessionId, closedTestIds.slice(0, 8).join(",")],
+    queryFn: () => loadPerformanceSeries(closedTestIds),
+    enabled: hasConcreteSession,
+    retry: false,
+    staleTime: 120_000,
+  });
+
   const { data: announcements = [] } = useQuery({
     queryKey: ["teacher-dashboard-announcements"],
     queryFn: () => fetchAnnouncements(),
     retry: false,
     staleTime: 60_000,
+  });
+
+  const { data: notifications } = useQuery({
+    queryKey: ["teacher-dashboard-notifications"],
+    queryFn: () => fetchNotifications({ limit: 12 }),
+    retry: false,
+    staleTime: 30_000,
   });
 
   const studentCounts = useMemo(() => {
@@ -202,15 +290,16 @@ export default function TeacherDashboard({
   const totalStudents =
     studentsPage?.pagination?.total ?? studentsPage?.students?.length ?? 0;
 
-  const deadlines = useMemo(() => {
-    const live = deadlinesFromClassTests(classTests, (id) => classTestMarksHref(role, id));
-    return live.length ? live : FALLBACK_DEADLINES;
-  }, [classTests, role]);
+  const deadlines = useMemo(
+    () => deadlinesFromClassTests(classTests, (id) => classTestMarksHref(role, id)),
+    [classTests, role],
+  );
 
   const activities = useMemo(() => {
-    const live = activitiesFromAnnouncements(announcements);
-    return live.length ? live : FALLBACK_ACTIVITIES;
-  }, [announcements]);
+    const fromNotes = activitiesFromNotifications(notifications?.items || []);
+    if (fromNotes.length) return fromNotes;
+    return activitiesFromAnnouncements(announcements);
+  }, [notifications?.items, announcements]);
 
   const hrefs = {
     classes: moduleHref(role, "my-classes"),
@@ -236,11 +325,17 @@ export default function TeacherDashboard({
   return (
     <section className="min-h-full w-full">
       <div className="w-full px-4 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-5 space-y-4">
+        {!hasConcreteSession ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Select a specific academic session in the header to load your live classes, schedule, and
+            students.
+          </div>
+        ) : null}
+
         <WelcomeBanner name={name} avatarUrl={avatarUrl} />
 
         <TeacherMetricCards metrics={metrics} />
 
-        {/* Row 1 — Schedule (~50%) | Performance (~30%) | Quick Actions (~20%) */}
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.95fr)_minmax(0,0.95fr)] gap-4 items-stretch">
           <div className="min-w-0">
             <TodaysScheduleCard
@@ -253,7 +348,7 @@ export default function TeacherDashboard({
             />
           </div>
           <div className="min-w-0">
-            <StudentPerformanceChart data={FALLBACK_PERFORMANCE} />
+            <StudentPerformanceChart data={performanceData} />
           </div>
           <div className="min-w-0">
             <QuickActionsCard
@@ -265,7 +360,6 @@ export default function TeacherDashboard({
           </div>
         </div>
 
-        {/* Row 2 — My Classes (~45%) | Deadlines (~25%) | Recent Activity (~30%) */}
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.85fr)_minmax(0,1fr)] gap-4 items-stretch">
           <div className="min-w-0">
             <MyClassesSection

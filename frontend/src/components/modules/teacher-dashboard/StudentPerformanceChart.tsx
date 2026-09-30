@@ -46,6 +46,9 @@ export function StudentPerformanceChart({ data }: { data: PerformancePoint[] }) 
   const [period, setPeriod] = useState("6");
   const gradId = useId().replace(/:/g, "");
   const points = data.slice(-Number(period || 6));
+  const hasData = points.some(
+    (p) => p.averageScore > 0 || p.passRate > 0 || p.attendanceRate > 0,
+  );
 
   return (
     <Card className="rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_2px_8px_rgba(15,42,86,0.05)] p-5 h-full flex flex-col min-h-[340px]">
@@ -70,82 +73,90 @@ export function StudentPerformanceChart({ data }: { data: PerformancePoint[] }) 
         </Select>
       </div>
 
-      <ChartContainer config={chartConfig} className="h-[230px] w-full aspect-auto flex-1">
-        <ComposedChart data={points} margin={{ top: 10, right: 8, left: -8, bottom: 0 }}>
-          <defs>
-            <linearGradient id={`perf-fill-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={COLORS.attendanceRate} stopOpacity={0.18} />
-              <stop offset="55%" stopColor={COLORS.averageScore} stopOpacity={0.08} />
-              <stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid stroke="#E8EDF5" strokeDasharray="0" />
-          <XAxis
-            dataKey="month"
-            tickLine={false}
-            axisLine={false}
-            tick={{ fill: "#94A3B8", fontSize: 11 }}
-            dy={6}
-          />
-          <YAxis
-            domain={[0, 100]}
-            ticks={[0, 20, 40, 60, 80, 100]}
-            tickLine={false}
-            axisLine={false}
-            tick={{ fill: "#94A3B8", fontSize: 11 }}
-            width={32}
-          />
-          <ChartTooltip content={<ChartTooltipContent />} />
-          <Area
-            type="monotone"
-            dataKey="attendanceRate"
-            stroke="none"
-            fill={`url(#perf-fill-${gradId})`}
-            isAnimationActive={false}
-            legendType="none"
-          />
-          <Line
-            type="monotone"
-            dataKey="passRate"
-            name="Pass Rate"
-            stroke={COLORS.passRate}
-            strokeWidth={2.5}
-            dot={{ r: 4, fill: COLORS.passRate, strokeWidth: 0 }}
-            activeDot={{ r: 5.5 }}
-          />
-          <Line
-            type="monotone"
-            dataKey="averageScore"
-            name="Average Score"
-            stroke={COLORS.averageScore}
-            strokeWidth={2.5}
-            dot={{ r: 4, fill: COLORS.averageScore, strokeWidth: 0 }}
-            activeDot={{ r: 5.5 }}
-          />
-          <Line
-            type="monotone"
-            dataKey="attendanceRate"
-            name="Attendance Rate"
-            stroke={COLORS.attendanceRate}
-            strokeWidth={2.5}
-            dot={{ r: 4, fill: COLORS.attendanceRate, strokeWidth: 0 }}
-            activeDot={{ r: 5.5 }}
-          />
-        </ComposedChart>
-      </ChartContainer>
+      {!hasData ? (
+        <div className="flex-1 grid place-items-center text-sm text-[#94A3B8] py-16 text-center px-4">
+          No performance data yet. Mark attendance and enter test marks to see trends.
+        </div>
+      ) : (
+        <>
+          <ChartContainer config={chartConfig} className="h-[230px] w-full aspect-auto flex-1">
+            <ComposedChart data={points} margin={{ top: 10, right: 8, left: -8, bottom: 0 }}>
+              <defs>
+                <linearGradient id={`perf-fill-${gradId}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={COLORS.attendanceRate} stopOpacity={0.18} />
+                  <stop offset="55%" stopColor={COLORS.averageScore} stopOpacity={0.08} />
+                  <stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#E8EDF5" strokeDasharray="0" />
+              <XAxis
+                dataKey="month"
+                tickLine={false}
+                axisLine={false}
+                tick={{ fill: "#94A3B8", fontSize: 11 }}
+                dy={6}
+              />
+              <YAxis
+                domain={[0, 100]}
+                ticks={[0, 20, 40, 60, 80, 100]}
+                tickLine={false}
+                axisLine={false}
+                tick={{ fill: "#94A3B8", fontSize: 11 }}
+                width={32}
+              />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Area
+                type="monotone"
+                dataKey="attendanceRate"
+                stroke="none"
+                fill={`url(#perf-fill-${gradId})`}
+                isAnimationActive={false}
+                legendType="none"
+              />
+              <Line
+                type="monotone"
+                dataKey="passRate"
+                name="Pass Rate"
+                stroke={COLORS.passRate}
+                strokeWidth={2.5}
+                dot={{ r: 4, fill: COLORS.passRate, strokeWidth: 0 }}
+                activeDot={{ r: 5.5 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="averageScore"
+                name="Average Score"
+                stroke={COLORS.averageScore}
+                strokeWidth={2.5}
+                dot={{ r: 4, fill: COLORS.averageScore, strokeWidth: 0 }}
+                activeDot={{ r: 5.5 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="attendanceRate"
+                name="Attendance Rate"
+                stroke={COLORS.attendanceRate}
+                strokeWidth={2.5}
+                dot={{ r: 4, fill: COLORS.attendanceRate, strokeWidth: 0 }}
+                activeDot={{ r: 5.5 }}
+              />
+            </ComposedChart>
+          </ChartContainer>
 
-      <ul className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-        {LEGEND.map((item) => (
-          <li key={item.key} className="inline-flex items-center gap-1.5 text-xs text-[#8E95A9]">
-            <span
-              className="h-2 w-2 rounded-full shrink-0"
-              style={{ backgroundColor: item.color }}
-              aria-hidden
-            />
-            {item.label}
-          </li>
-        ))}
-      </ul>
+          <ul className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+            {LEGEND.map((item) => (
+              <li key={item.key} className="inline-flex items-center gap-1.5 text-xs text-[#8E95A9]">
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: item.color }}
+                  aria-hidden
+                />
+                {item.label}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       <p className="sr-only">
         Line chart comparing average score, pass rate, and attendance rate over recent months.
