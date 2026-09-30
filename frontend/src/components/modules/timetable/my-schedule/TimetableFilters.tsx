@@ -56,7 +56,7 @@ export function TimetableFilters({
   onNextWeek: () => void;
 }) {
   return (
-    <section className="rounded-xl border border-[#E8EEF6] bg-[#F7FAFD] px-4 py-3.5 shadow-[0_2px_8px_rgba(15,42,86,0.04)]">
+    <section className="rounded-xl border border-[#E8EEF6] bg-white px-4 py-3.5 shadow-[0_2px_8px_rgba(15,42,86,0.04)]">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div className="flex flex-wrap items-end gap-3">
           <FilterField>
