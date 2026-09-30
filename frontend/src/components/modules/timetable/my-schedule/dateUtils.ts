@@ -163,7 +163,9 @@ export type GridRow =
 function formatMinutes(mins: number) {
   const h24 = Math.floor(mins / 60) % 24;
   const m = mins % 60;
-  return `${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  const mer = h24 >= 12 ? "PM" : "AM";
+  const h12 = h24 % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${mer}`;
 }
 
 function formatClock(raw?: string | null) {

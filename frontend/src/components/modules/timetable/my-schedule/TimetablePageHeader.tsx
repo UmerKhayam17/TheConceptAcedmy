@@ -1,50 +1,33 @@
 import { CalendarDays } from "lucide-react";
+import timetableBooks from "@/assets/timetable/timetable-books.png";
 
-export function TimetablePageHeader({
-  weeklyClasses,
-  teachingHours,
-}: {
-  weeklyClasses?: number;
-  teachingHours?: number;
-}) {
-  const hoursLabel =
-    teachingHours == null
-      ? null
-      : teachingHours % 1 === 0
-        ? `${teachingHours} Teaching Hours`
-        : `${teachingHours.toFixed(1)} Teaching Hours`;
-
+export function TimetablePageHeader() {
   return (
-    <section
-      className="flex flex-col justify-between gap-4 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-white p-5 md:flex-row md:items-center"
-      aria-label="Your Timetable"
-    >
-      <div className="flex items-start gap-4 min-w-0">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm">
-          <CalendarDays className="h-6 w-6" strokeWidth={2} aria-hidden />
+    <header className="relative flex h-[100px] items-center overflow-hidden rounded-lg bg-[#EAF3FF] px-5 sm:px-8 shadow-sm">
+      <div className="flex items-center gap-4 sm:gap-5 min-w-0">
+        <div className="grid size-12 place-items-center rounded-lg bg-white shadow-md shrink-0">
+          <CalendarDays className="size-8 text-[#2563EB]" strokeWidth={2} aria-hidden />
         </div>
         <div className="min-w-0">
-          <h2 className="text-xl font-bold text-[#0B2347]">Your Timetable</h2>
-          <p className="mt-1 max-w-xl text-sm text-slate-500">
-            Here is your weekly teaching schedule. Stay organized and make the most of your day.
+          <h1 className="text-lg font-extrabold text-[#0B2347]">Your Timetable</h1>
+          <p className="mt-1 text-[10px] font-semibold text-[#2563EB]">
+            Here is your weekly teaching schedule. Stay organized and make the most of your day!
           </p>
         </div>
       </div>
 
-      {weeklyClasses != null || hoursLabel ? (
-        <div className="hidden items-center gap-2 md:flex shrink-0">
-          {weeklyClasses != null ? (
-            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-              {weeklyClasses} Classes This Week
-            </span>
-          ) : null}
-          {hoursLabel ? (
-            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-              {hoursLabel}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-    </section>
+      <div
+        className="absolute -right-2 top-0 hidden h-full w-72 bg-[#2563EB]/5 [clip-path:ellipse(75%_110%_at_100%_70%)] md:block"
+        aria-hidden
+      />
+      <img
+        src={timetableBooks}
+        alt=""
+        width={992}
+        height={672}
+        className="absolute -right-1 -bottom-5 hidden h-[118px] w-auto object-contain md:block pointer-events-none select-none"
+        draggable={false}
+      />
+    </header>
   );
 }

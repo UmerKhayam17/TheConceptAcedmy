@@ -13,7 +13,6 @@ import {
   formatWeekRange,
   monthOptions,
   periodKey,
-  slotDurationHours,
   sortSlots,
   startOfWeekMonday,
   weekDates,
@@ -104,13 +103,6 @@ export default function MyScheduleTab({ sessionId }: { sessionId: string }) {
       .filter((s) => s.day === day && periodKey(s) === pKey)
       .sort(sortSlots)[0];
 
-  const summary = useMemo(() => {
-    const totalClasses = filteredSlots.length;
-    const teachingHours =
-      Math.round(filteredSlots.reduce((sum, s) => sum + slotDurationHours(s), 0) * 10) / 10;
-    return { totalClasses, teachingHours };
-  }, [filteredSlots]);
-
   const emptyMessage = !isLoading
     ? !slots.length
       ? "No classes scheduled for you in this session."
@@ -126,11 +118,8 @@ export default function MyScheduleTab({ sessionId }: { sessionId: string }) {
   const weekLabel = formatWeekRange(weekStart, days.length);
 
   return (
-    <div className="space-y-5 px-4 py-4 sm:px-5 sm:py-5 lg:px-6 xl:px-8 text-slate-800">
-      <TimetablePageHeader
-        weeklyClasses={summary.totalClasses}
-        teachingHours={summary.teachingHours}
-      />
+    <div className="space-y-5 px-4 py-4 sm:px-5 lg:px-[18px] lg:py-4 text-slate-800">
+      <TimetablePageHeader />
 
       <TimetableFilters
         monthValue={safeMonthValue}

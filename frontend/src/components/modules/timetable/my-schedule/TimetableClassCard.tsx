@@ -2,7 +2,7 @@ import type { ScheduleSlot } from "@/lib/timetableApi";
 import { scheduleStatusForDate } from "@/lib/teacherDashboard";
 import { cn } from "@/lib/utils";
 import { classLabel, roomLabel } from "./dateUtils";
-import { STATUS_STYLE, subjectTheme } from "./subjectTheme";
+import { subjectTheme } from "./subjectTheme";
 
 export function TimetableClassCard({
   slot,
@@ -15,62 +15,32 @@ export function TimetableClassCard({
 }) {
   const theme = subjectTheme(slot.subject._id, slot.subject.name);
   const status = scheduleStatusForDate(slot, columnDate);
-  const statusUi = STATUS_STYLE[status];
+  const statusLabel =
+    status === "completed" ? "Completed" : status === "ongoing" ? "Ongoing" : "Upcoming";
   const SubjectIcon = theme.Icon;
   const room = roomLabel(slot);
   const clazz = classLabel(slot);
-  const meta = [clazz, room].filter(Boolean).join(" • ");
+  const meta = [clazz, room].filter(Boolean).join(" · ");
 
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative w-full min-h-[112px] rounded-xl border text-left overflow-hidden",
-        "pl-3.5 pr-3 pt-3 pb-2.5",
-        "shadow-[0_2px_8px_rgba(15,42,86,0.06)]",
-        "transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(15,42,86,0.1)]",
+        "flex h-[68px] w-full min-w-[150px] gap-2 rounded-md border-l-[3px] p-2.5 text-left",
+        "transition-all duration-150 hover:-translate-y-px hover:shadow-sm",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300",
-        theme.border,
-        theme.bg,
+        theme.card,
+        theme.icon,
       )}
-      aria-label={`${slot.subject.name}, ${meta || "class"}, ${statusUi.label}`}
+      aria-label={`${slot.subject.name}, ${meta || "class"}, ${statusLabel}`}
     >
-      <span
-        className={cn("absolute inset-y-0 left-0 w-[4px] rounded-l-xl", theme.accent)}
-        aria-hidden
-      />
-
-      <div className="flex items-start gap-2.5 min-w-0">
-        <span
-          className={cn(
-            "grid h-9 w-9 place-items-center rounded-lg border border-white/80 bg-white/80 shrink-0",
-            theme.icon,
-          )}
-          style={{
-            boxShadow: `0 0 0 1px ${theme.accentHex}22, 0 4px 14px ${theme.accentHex}40`,
-          }}
-          aria-hidden
-        >
-          <SubjectIcon className="h-4 w-4" strokeWidth={2.25} />
-        </span>
-
-        <div className="min-w-0 flex-1 pt-0.5">
-          <p className="truncate text-[13px] font-bold text-[#0B2347] leading-tight">
-            {slot.subject.name}
-          </p>
-          <p className="mt-1 truncate text-[11px] font-medium text-slate-500">{meta || "—"}</p>
-        </div>
-      </div>
-
-      <div className="mt-3">
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold",
-            statusUi.className,
-          )}
-        >
-          {statusUi.label}
+      <SubjectIcon className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
+      <div className="min-w-0 text-[#334155]">
+        <h3 className="truncate text-[11px] font-extrabold leading-4">{slot.subject.name}</h3>
+        <p className="truncate text-[8px] leading-3 text-[#94A3B8]">{meta || "—"}</p>
+        <span className="mt-1 inline-flex rounded-sm bg-white/80 px-1.5 py-0.5 text-[7px] font-bold text-[#94A3B8]">
+          {statusLabel}
         </span>
       </div>
     </button>

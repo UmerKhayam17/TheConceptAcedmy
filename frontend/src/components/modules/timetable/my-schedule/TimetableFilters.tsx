@@ -1,11 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  CalendarDays,
-  CalendarRange,
-  ChevronLeft,
-  ChevronRight,
-  SlidersHorizontal,
-} from "lucide-react";
+import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -20,6 +14,9 @@ import { DAY_FULL_LABELS } from "../constants";
 export type ViewMode = "week" | "day";
 
 type Option = { value: string; label: string };
+
+const triggerClass =
+  "h-9 w-full rounded-md border-[#E2E8F0] bg-white px-3 text-xs font-medium text-[#475569] shadow-[0_1px_2px_rgba(15,42,86,0.04)] gap-2 hover:bg-white focus:ring-1 focus:ring-[#BFDBFE]";
 
 export function TimetableFilters({
   monthValue,
@@ -59,13 +56,13 @@ export function TimetableFilters({
   onNextWeek: () => void;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <FilterField label="Month">
+    <section className="rounded-xl border border-[#E8EEF6] bg-[#F7FAFD] px-4 py-3.5 shadow-[0_2px_8px_rgba(15,42,86,0.04)]">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex flex-wrap items-end gap-3">
+          <FilterField>
             <Select value={monthValue} onValueChange={onMonthChange}>
-              <SelectTrigger className="h-10 w-full min-w-[145px] rounded-lg border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm gap-2 hover:border-blue-300 hover:bg-slate-50">
-                <CalendarDays className="h-4 w-4 text-slate-400 shrink-0" aria-hidden />
+              <SelectTrigger className={`${triggerClass} min-w-[12.5rem]`}>
+                <CalendarDays className="size-3.5 text-[#64748B] shrink-0" aria-hidden />
                 <SelectValue placeholder="Month" />
               </SelectTrigger>
               <SelectContent>
@@ -78,10 +75,10 @@ export function TimetableFilters({
             </Select>
           </FilterField>
 
-          <FilterField label="View">
+          <FilterField>
             <Select value={viewMode} onValueChange={(v) => onViewModeChange(v as ViewMode)}>
-              <SelectTrigger className="h-10 w-full min-w-[145px] rounded-lg border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm gap-2 hover:border-blue-300 hover:bg-slate-50">
-                <CalendarRange className="h-4 w-4 text-slate-400 shrink-0" aria-hidden />
+              <SelectTrigger className={`${triggerClass} min-w-[11.5rem]`}>
+                <CalendarRange className="size-3.5 text-[#64748B] shrink-0" aria-hidden />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -94,7 +91,7 @@ export function TimetableFilters({
           {viewMode === "day" ? (
             <FilterField label="Day">
               <Select value={dayFocus} onValueChange={(v) => onDayFocusChange(v as Weekday)}>
-                <SelectTrigger className="h-10 w-full min-w-[145px] rounded-lg border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                <SelectTrigger className={`${triggerClass} min-w-[9rem]`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -110,7 +107,7 @@ export function TimetableFilters({
 
           <FilterField label="Class">
             <Select value={classFilter} onValueChange={onClassFilterChange}>
-              <SelectTrigger className="h-10 w-full min-w-[145px] rounded-lg border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+              <SelectTrigger className={`${triggerClass} min-w-[12.5rem]`}>
                 <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
@@ -126,7 +123,7 @@ export function TimetableFilters({
 
           <FilterField label="Subject">
             <Select value={subjectFilter} onValueChange={onSubjectFilterChange}>
-              <SelectTrigger className="h-10 w-full min-w-[145px] rounded-lg border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+              <SelectTrigger className={`${triggerClass} min-w-[13rem]`}>
                 <SelectValue placeholder="Subject" />
               </SelectTrigger>
               <SelectContent>
@@ -141,36 +138,29 @@ export function TimetableFilters({
           </FilterField>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center justify-end gap-2 shrink-0">
           <Button
             type="button"
             variant="outline"
             size="icon"
-            className="h-10 w-10 rounded-lg border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50"
+            className="size-9 rounded-md border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_1px_2px_rgba(15,42,86,0.04)] hover:bg-white hover:text-[#475569]"
             onClick={onPrevWeek}
             aria-label="Previous week"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="size-4" />
           </Button>
-          <div className="flex h-10 min-w-[170px] items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-[#0B2347] tabular-nums whitespace-nowrap">
+          <div className="flex h-9 min-w-[9.5rem] items-center justify-center rounded-md border border-[#E2E8F0] bg-white px-4 text-xs font-medium text-[#475569] shadow-[0_1px_2px_rgba(15,42,86,0.04)] tabular-nums whitespace-nowrap">
             {weekLabel}
           </div>
           <Button
             type="button"
             variant="outline"
             size="icon"
-            className="h-10 w-10 rounded-lg border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50"
+            className="size-9 rounded-md border-[#E2E8F0] bg-white text-[#64748B] shadow-[0_1px_2px_rgba(15,42,86,0.04)] hover:bg-white hover:text-[#475569]"
             onClick={onNextWeek}
             aria-label="Next week"
           >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            className="ml-1 h-10 rounded-lg bg-[#0B2347] px-4 text-sm font-semibold text-white hover:bg-blue-900"
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-            Filters
+            <ChevronRight className="size-4" />
           </Button>
         </div>
       </div>
@@ -178,12 +168,12 @@ export function TimetableFilters({
   );
 }
 
-function FilterField({ label, children }: { label: string; children: ReactNode }) {
+function FilterField({ label, children }: { label?: string; children: ReactNode }) {
   return (
-    <div className="min-w-[145px]">
-      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </label>
+    <div className="min-w-0">
+      {label ? (
+        <span className="mb-1 block text-[10px] font-semibold text-[#94A3B8]">{label}</span>
+      ) : null}
       {children}
     </div>
   );
