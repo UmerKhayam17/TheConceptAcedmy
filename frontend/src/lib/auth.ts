@@ -7,6 +7,7 @@ export interface SessionUser {
   email: string;
   name: string;
   role: Role;
+  profileImage?: string | null;
   modulePermissions?: Record<string, string[]>;
 }
 
@@ -20,34 +21,31 @@ const REFRESH_BUFFER_MS = 60_000;
 const authChannel =
   typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tces-auth") : null;
 
+/** In-memory only — never persist access JWT in localStorage (XSS can steal it). */
+let memoryAccessToken: string | null = null;
+
+function purgeLegacyAccessTokenStorage() {
+  try {
+    localStorage.removeItem(ACCESS_KEY);
+    sessionStorage.removeItem(ACCESS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+purgeLegacyAccessTokenStorage();
+
 function dispatch() {
   window.dispatchEvent(new Event(AUTH_EVT));
 }
 
 export function getAccessToken(): string | null {
-  try {
-    const saved = localStorage.getItem(ACCESS_KEY);
-    if (saved) return saved;
-    const legacy = sessionStorage.getItem(ACCESS_KEY);
-    if (legacy) {
-      localStorage.setItem(ACCESS_KEY, legacy);
-      sessionStorage.removeItem(ACCESS_KEY);
-      return legacy;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return memoryAccessToken;
 }
 
 function setAccessToken(token: string | null) {
-  try {
-    if (token) localStorage.setItem(ACCESS_KEY, token);
-    else localStorage.removeItem(ACCESS_KEY);
-    sessionStorage.removeItem(ACCESS_KEY);
-  } catch {
-    /* ignore */
-  }
+  memoryAccessToken = token || null;
+  purgeLegacyAccessTokenStorage();
 }
 
 function readStoredUser(): SessionUser | null {
@@ -183,6 +181,7 @@ async function fetchMe(accessToken: string): Promise<SessionUser | null> {
       email: d.email,
       name: d.name,
       role,
+      profileImage: (d as SessionUser).profileImage || null,
       modulePermissions: d.modulePermissions,
     };
   } catch {
@@ -326,7 +325,17 @@ export async function loginWithPassword(email: string, password: string): Promis
   const body = await parseJson<{
     success?: boolean;
     message?: string;
-    data?: { accessToken?: string; user?: { id: string; name: string; email: string; role?: string; modulePermissions?: Record<string, string[]> } };
+    data?: {
+      accessToken?: string;
+      user?: {
+        id: string;
+        name: string;
+        email: string;
+        role?: string;
+        profileImage?: string | null;
+        modulePermissions?: Record<string, string[]>;
+      };
+    };
   }>(res);
   if (!res.ok || !body.success || !body.data?.accessToken || !body.data?.user) {
     const msg = body.message || (res.status === 401 ? "Invalid email or password." : "Sign-in failed.");
@@ -340,6 +349,7 @@ export async function loginWithPassword(email: string, password: string): Promis
     email: u.email,
     name: u.name,
     role,
+    profileImage: u.profileImage || null,
     modulePermissions: u.modulePermissions,
   };
   setAccessToken(accessToken);

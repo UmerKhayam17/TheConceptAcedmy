@@ -19,13 +19,13 @@ const FeesModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleAction
   return (
     <div>
       {!isParent && <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />}
-      <div className="px-4 sm:px-6 lg:px-8 py-4 space-y-4">
-        <div className="flex gap-1 p-1 rounded-lg bg-muted/50 w-fit">
+      <div className="px-3 sm:px-6 lg:px-8 py-4 space-y-4">
+        <div className="flex w-full sm:w-fit gap-1 p-1 rounded-lg bg-muted/50">
           <button
             type="button"
             onClick={() => setView("records")}
             className={cn(
-              "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+              "flex-1 sm:flex-none px-3 py-2 sm:py-1.5 text-sm font-medium rounded-md transition-colors",
               view === "records"
                 ? "bg-background text-primary shadow-sm"
                 : "text-muted-foreground hover:text-primary"
@@ -38,7 +38,7 @@ const FeesModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleAction
               type="button"
               onClick={() => setView("defaulters")}
               className={cn(
-                "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                "flex-1 sm:flex-none px-3 py-2 sm:py-1.5 text-sm font-medium rounded-md transition-colors",
                 view === "defaulters"
                   ? "bg-background text-primary shadow-sm"
                   : "text-muted-foreground hover:text-primary"
