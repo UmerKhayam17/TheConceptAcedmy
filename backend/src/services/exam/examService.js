@@ -127,6 +127,20 @@ async function enterMarks(examId, marksRows, userId) {
       if (sid && !allowedIds.has(sid)) {
         throw new ApiError(400, `${student.studentName} is not enrolled in one or more marked subjects`);
       }
+      const obtained = Number(sm.obtained);
+      const total = Number(sm.total);
+      if (!Number.isFinite(obtained) || !Number.isFinite(total) || total < 1) {
+        throw new ApiError(400, `Invalid marks for ${student.studentName}`);
+      }
+      if (obtained < 0) {
+        throw new ApiError(400, `Obtained marks cannot be negative for ${student.studentName}`);
+      }
+      if (obtained > total) {
+        throw new ApiError(
+          400,
+          `Obtained marks cannot exceed total marks (${total}) for ${student.studentName}`
+        );
+      }
     }
 
     const totals = computeResultTotals(row.subjectMarks);

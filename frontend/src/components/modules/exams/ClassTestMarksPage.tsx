@@ -24,6 +24,8 @@ import {
   type AssessmentType,
   type ClassTestEntryRow,
 } from "@/lib/studentManagementApi";
+import { clampMarksInput, validateObtainedVsTotal } from "@/lib/marksValidation";
+import { cn } from "@/lib/utils";
 
 function classNameOf(test: AcademyClassTest) {
   const c = test.classId;
@@ -161,6 +163,19 @@ export default function ClassTestMarksPage({
 
   const handleSave = () => {
     if (!test) return;
+    for (const row of rows) {
+      const cell = marks[row.student._id];
+      if (!cell || cell.obtained === "") continue;
+      const err = validateObtainedVsTotal(Number(cell.obtained), totalMarks);
+      if (err) {
+        toast({
+          title: "Invalid marks",
+          description: `${row.student.studentName}: ${err}`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     const entries = rows
       .map((row) => {
         const cell = marks[row.student._id];
@@ -277,8 +292,8 @@ export default function ClassTestMarksPage({
                   <th className="text-left p-3 font-medium min-w-[130px]">Roll number</th>
                   <th className="text-left p-3 font-medium">Section</th>
                   <th className="text-left p-3 font-medium min-w-[110px]">Phone</th>
-                  <th className="text-center p-3 font-medium w-36">Obtained</th>
-                  <th className="text-center p-3 font-medium w-[100px]">Test paper</th>
+                  <th className="text-center p-3 font-medium w-[9.5rem]">Obtained</th>
+                  <th className="text-center p-3 font-medium w-[7rem]">Test paper</th>
                   <th className="text-left p-3 font-medium min-w-[140px]">Remarks</th>
                 </tr>
               </thead>
@@ -304,37 +319,64 @@ export default function ClassTestMarksPage({
                       <td className="p-3 text-muted-foreground whitespace-nowrap">
                         {row.student.phone || "—"}
                       </td>
-                      <td className="p-3">
-                        <div className="flex items-center justify-center gap-1">
-                          <Input
-                            className="h-9 w-20 text-center"
-                            type="number"
-                            min={0}
-                            max={totalMarks}
-                            value={cell.obtained}
-                            disabled={!canEnter}
-                            onChange={(e) =>
-                              setMarks((m) => ({
-                                ...m,
-                                [sid]: { ...cell, obtained: e.target.value },
-                              }))
-                            }
-                          />
-                          <span className="text-xs text-muted-foreground">/ {totalMarks}</span>
-                          {pct != null && !Number.isNaN(pct) && (
-                            <span className="text-xs font-medium text-primary w-10">{pct}%</span>
-                          )}
+                      <td className="p-3 align-middle">
+                        <div className="mx-auto flex h-9 w-fit items-center gap-2">
+                          <label className="flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 transition-colors focus-within:border-foreground/30">
+                            <input
+                              className="h-8 w-11 border-0 bg-transparent p-0 text-center text-sm tabular-nums outline-none [appearance:textfield] placeholder:text-muted-foreground/50 disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              type="number"
+                              min={0}
+                              max={totalMarks}
+                              step="any"
+                              inputMode="decimal"
+                              placeholder="—"
+                              value={cell.obtained}
+                              disabled={!canEnter}
+                              aria-label={`Obtained marks out of ${totalMarks}`}
+                              onChange={(e) =>
+                                setMarks((m) => ({
+                                  ...m,
+                                  [sid]: {
+                                    ...cell,
+                                    obtained: clampMarksInput(e.target.value, totalMarks),
+                                  },
+                                }))
+                              }
+                            />
+                            <span className="select-none text-xs tabular-nums text-muted-foreground">
+                              / {totalMarks}
+                            </span>
+                          </label>
+                          <span
+                            className={cn(
+                              "w-9 text-right text-xs tabular-nums",
+                              pct != null && !Number.isNaN(pct)
+                                ? "text-muted-foreground"
+                                : "text-transparent",
+                            )}
+                          >
+                            {pct != null && !Number.isNaN(pct) ? `${pct}%` : "0%"}
+                          </span>
                         </div>
                       </td>
-                      <td className="p-3">
+                      <td className="p-3 align-middle">
                         <TestPaperCapture
                           value={cell.testPaperImage}
                           disabled={!canEnter}
                           uploading={cell.uploadingPaper}
                           onPick={(file) => handleTestPaperUpload(sid, file)}
+                          onClear={
+                            canEnter
+                              ? () =>
+                                  setMarks((m) => ({
+                                    ...m,
+                                    [sid]: { ...cell, testPaperImage: undefined },
+                                  }))
+                              : undefined
+                          }
                         />
                       </td>
-                      <td className="p-3">
+                      <td className="p-3 align-middle">
                         <Input
                           className="h-9"
                           placeholder="Optional"

@@ -332,7 +332,9 @@ const academyAssessmentBody = Joi.object({
   assessmentType: Joi.string().valid(...assessmentTypes).default('weekly'),
   examDate: Joi.date().required(),
   totalMarks: Joi.number().min(1).required(),
-  obtainedMarks: Joi.number().min(0).required(),
+  obtainedMarks: Joi.number().min(0).max(Joi.ref('totalMarks')).required().messages({
+    'number.max': 'Obtained marks cannot exceed total marks',
+  }),
   remarks: Joi.string().allow('').trim(),
 });
 
@@ -344,7 +346,20 @@ const academyAssessmentPatch = Joi.object({
   totalMarks: Joi.number().min(1),
   obtainedMarks: Joi.number().min(0),
   remarks: Joi.string().allow('').trim(),
-}).min(1);
+})
+  .min(1)
+  .custom((value, helpers) => {
+    if (
+      value.obtainedMarks != null &&
+      value.totalMarks != null &&
+      Number(value.obtainedMarks) > Number(value.totalMarks)
+    ) {
+      return helpers.error('any.custom', {
+        message: 'Obtained marks cannot exceed total marks',
+      });
+    }
+    return value;
+  });
 
 const academyAssessmentSessionQuery = Joi.object({
   classId: objectId.required(),

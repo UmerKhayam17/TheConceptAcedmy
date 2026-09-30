@@ -671,13 +671,6 @@ export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
         moduleKey: "timetable",
         href: (role) => timetableHref(role, "view"),
       },
-      {
-        id: "test-results",
-        label: "Test results",
-        icon: Award,
-        moduleKey: "exams",
-        href: (role) => moduleHref(role, "students"),
-      },
     ],
   },
   {
