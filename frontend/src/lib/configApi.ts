@@ -444,6 +444,31 @@ export const fetchAssessmentAssignments = (
   );
 };
 
+export type TeacherTestScopeAssignment = {
+  _id: string;
+  classId: string;
+  className: string;
+  sectionId: string;
+  sectionName: string;
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
+};
+
+export type TeacherTestScopePayload = {
+  combos: {
+    assignmentId: string;
+    sessionId: string;
+    classId: string;
+    sectionId: string;
+    subjectId: string;
+  }[];
+  assignments: TeacherTestScopeAssignment[];
+};
+
+export const fetchTeacherTestScope = (sessionId: string) =>
+  api<TeacherTestScopePayload>(`/sessions/${sessionId}/teacher-test-scope`);
+
 export const createAssessmentAssignment = (
   sessionId: string,
   body: { planItemId: string; classId: string; sectionId?: string },

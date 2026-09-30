@@ -154,18 +154,6 @@ function buildDefaultRoleDefs(allPermissionIds) {
       description: 'Academic',
       modulePermissions: teacherModulePermissionsMap(),
     },
-    student: {
-      name: 'student',
-      permissionNames: ['view_attendance', 'view_results', 'use_chat', 'view_timetables'],
-      description: 'Student and Parent portal',
-      modulePermissions: new Map([
-        ['attendance', ['view']],
-        ['exam', ['view']],
-        ['timetable', ['view']],
-        ['chat', ['view', 'create', 'participate']],
-        ['datasheets', ['view']],
-      ]),
-    },
     parent: {
       name: 'parent',
       permissionNames: [
@@ -174,7 +162,6 @@ function buildDefaultRoleDefs(allPermissionIds) {
         'use_chat',
         'view_timetables',
         'view_academy_students',
-        'view_academy_fee_reports',
       ],
       description: 'Parent portal',
       modulePermissions: new Map([
@@ -183,7 +170,7 @@ function buildDefaultRoleDefs(allPermissionIds) {
         ['exam', ['view']],
         ['timetable', ['view']],
         ['chat', ['view', 'create', 'participate']],
-        ['fee', ['view']],
+        ['announcement', ['view']],
       ]),
     },
     accountant: {
@@ -286,7 +273,6 @@ async function syncBuiltInRolePermissions() {
       'use_chat',
       'view_timetables',
       'view_academy_students',
-      'view_academy_fee_reports',
     ]);
     await Role.updateOne(
       { _id: parentRole._id },
@@ -299,11 +285,44 @@ async function syncBuiltInRolePermissions() {
             exam: ['view'],
             timetable: ['view'],
             chat: ['view', 'create', 'participate'],
-            fee: ['view'],
+            announcement: ['view'],
           },
         },
       }
     );
+
+    // Strip fee only; restore exam view for test results on existing parent users.
+    const parentUsers = await User.find({ role: parentRole._id }).select('modulePermissions');
+    for (const pu of parentUsers) {
+      const perms = pu.modulePermissions;
+      const asMap =
+        perms instanceof Map
+          ? new Map(perms)
+          : new Map(Object.entries(perms && typeof perms === 'object' ? perms : {}));
+      let changed = false;
+      if (asMap.has('fee')) {
+        asMap.delete('fee');
+        changed = true;
+      }
+      if (!asMap.has('exam')) {
+        asMap.set('exam', ['view']);
+        changed = true;
+      }
+      if (!changed) continue;
+      pu.modulePermissions =
+        asMap.size > 0
+          ? asMap
+          : new Map([
+              ['student', ['view']],
+              ['attendance', ['view']],
+              ['exam', ['view']],
+              ['timetable', ['view']],
+              ['chat', ['view', 'create', 'participate']],
+              ['announcement', ['view']],
+            ]);
+      // eslint-disable-next-line no-await-in-loop
+      await pu.save();
+    }
   }
 
   const teacherRole = await Role.findOne({ name: 'teacher' }).lean();

@@ -3,6 +3,7 @@ import { getApiRoot, parseJson, resolveUploadUrl } from "@/lib/api";
 export { resolveUploadUrl };
 import { authedFetch } from "@/lib/auth";
 import type { CreatedByUser } from "@/lib/createdBy";
+import type { AssessmentType } from "./assessmentTaxonomy";
 
 export interface Pagination {
   page: number;
@@ -147,9 +148,11 @@ export interface AcademyStudentActivateResult {
   credentials: {
     studentId: string;
     rollNumber: string;
-    studentEmail: string;
-    studentPassword: string;
-    parentEmail?: string;
+    parentEmail: string;
+    parentPassword: string;
+    /** @deprecated student portal removed */
+    studentEmail?: string;
+    studentPassword?: string;
   };
 }
 
@@ -254,6 +257,15 @@ export interface AcademyAttendanceRecord {
 export interface AcademyAssessmentRecord {
   _id: string;
   studentId: string;
+  classTestId?:
+    | string
+    | {
+        _id: string;
+        title?: string;
+        seriesLabel?: string;
+        createdBy?: CreatedByUser | string;
+        teacherId?: CreatedByUser | string;
+      };
   subjectId?: AcademySubject | string;
   title: string;
   assessmentType: string;
@@ -262,6 +274,8 @@ export interface AcademyAssessmentRecord {
   obtainedMarks: number;
   remarks?: string;
   testPaperImage?: string;
+  createdBy?: CreatedByUser | string;
+  recordedBy?: CreatedByUser | string;
 }
 
 export interface AcademyStudentRecord {
@@ -561,6 +575,39 @@ export async function activateAcademyStudent(id: string, body: AcademyStudentAct
   }>(res);
   if (!res.ok) throw new Error(parsed.message || `Activation failed (${res.status})`);
   return { student: parsed.data!, credentials: parsed.credentials! };
+}
+
+export type ParentPortalProvisionRow = {
+  studentMongoId: string;
+  studentId: string;
+  studentName: string;
+  parentEmail: string;
+  parentPassword: string;
+  created: boolean;
+};
+
+export type ParentPortalProvisionResult = {
+  total: number;
+  createdCount: number;
+  updatedCount: number;
+  defaultPassword: string;
+  rows: ParentPortalProvisionRow[];
+};
+
+export async function provisionParentPortals(): Promise<ParentPortalProvisionResult> {
+  const res = await authedFetch(`/student-management/students/provision-parent-portals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: ParentPortalProvisionResult;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Provision failed (${res.status})`);
+  if (!parsed.data) throw new Error("Invalid provision response");
+  return parsed.data;
 }
 
 export const updateAcademyStudent = (id: string, body: Record<string, unknown>) =>
@@ -1382,9 +1429,13 @@ export const deleteAssessment = (id: string) =>
 export interface ClassTestEntryRow {
   student: {
     _id: string;
-    studentId: string;
+    studentId?: string;
     studentName: string;
     fatherName?: string;
+    rollNumber?: string;
+    phone?: string;
+    guardianName?: string;
+    sectionName?: string;
   };
   assessment: AcademyAssessmentRecord | null;
 }
@@ -1394,6 +1445,7 @@ export type ClassTestRecurrence = "once" | "daily" | "weekly" | "monthly";
 export interface AcademyClassTest {
   _id: string;
   classId: string | AcademyClass;
+  sectionId?: string | AcademySection;
   subjectId: string | AcademySubject;
   title: string;
   seriesLabel?: string;
@@ -1401,11 +1453,16 @@ export interface AcademyClassTest {
   examDate: string;
   testTime?: string;
   totalMarks: number;
+  syllabus?: string;
   status: "open" | "closed";
   recurrence?: ClassTestRecurrence;
   seriesId?: string;
   occurrenceIndex?: number;
   occurrenceCount?: number;
+  planId?: string;
+  planItemId?: string;
+  assignmentId?: string;
+  teacherId?: CreatedByUser | string;
   createdAt?: string;
   createdBy?: CreatedByUser | string;
 }
@@ -1433,10 +1490,11 @@ export interface ClassTestMarksEntry {
   students: ClassTestEntryRow[];
 }
 
-export function fetchClassTests(classId?: string, seriesId?: string) {
+export function fetchClassTests(classId?: string, seriesId?: string, sessionId?: string) {
   const params = new URLSearchParams();
   if (classId) params.set("classId", classId);
   if (seriesId) params.set("seriesId", seriesId);
+  if (sessionId) params.set("sessionId", sessionId);
   const q = params.toString() ? `?${params.toString()}` : "";
   return api<AcademyClassTest[]>(`/class-tests${q}`);
 }

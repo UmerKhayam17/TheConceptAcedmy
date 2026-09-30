@@ -40,12 +40,14 @@ import {
   fetchAssessmentAssignments,
   fetchAssessmentPlan,
   fetchSessions,
+  fetchTeacherTestScope,
   publishAssessmentAssignment,
   updateAssessmentAssignment,
   upsertAssessmentAssignmentPapers,
   type AssessmentAssignment,
   type AssessmentPlanItem,
   type AssessmentPlanPaper,
+  type TeacherTestScopeAssignment,
 } from "@/lib/configApi";
 import {
   fetchAcademyClasses,
@@ -101,14 +103,47 @@ function testSubjectName(test: AcademyClassTest) {
   return typeof s === "object" && s ? s.subjectName || "—" : "—";
 }
 
-function isReady(a: AssessmentAssignment) {
-  return (a.papers || []).some((p) => p.totalMarks && p.examDate);
+function isReady(a: AssessmentAssignment, subjectFilter?: Set<string>) {
+  return (a.papers || []).some((p) => {
+    if (subjectFilter && subjectFilter.size && !subjectFilter.has(idOf(p.subjectId))) return false;
+    return Boolean(p.totalMarks && p.examDate);
+  });
+}
+
+function subjectIdsForScope(
+  scopeRows: TeacherTestScopeAssignment[],
+  classId: string,
+  sectionId?: string,
+) {
+  const set = new Set<string>();
+  for (const row of scopeRows) {
+    if (row.classId !== classId) continue;
+    if (sectionId && row.sectionId !== sectionId) continue;
+    set.add(row.subjectId);
+  }
+  return set;
+}
+
+function uniqueClassOptions(scopeRows: TeacherTestScopeAssignment[]) {
+  const map = new Map<string, string>();
+  for (const r of scopeRows) map.set(r.classId, r.className || r.classId);
+  return [...map.entries()].map(([id, name]) => ({ _id: id, className: name }));
+}
+
+function sectionOptionsForClass(scopeRows: TeacherTestScopeAssignment[], classId: string) {
+  const map = new Map<string, string>();
+  for (const r of scopeRows) {
+    if (r.classId !== classId) continue;
+    map.set(r.sectionId, r.sectionName || r.sectionId);
+  }
+  return [...map.entries()].map(([id, name]) => ({ _id: id, sectionName: name }));
 }
 
 /**
  * Assessments → Assign
  * Pick a catalog test/exam and assign it to any number of classes/sections
  * with subject marks, dates, and syllabus.
+ * Teachers are gated by Teacher Subject Assignment (class + section + subject).
  */
 export default function AssignAssessmentsPanel({
   caps,
@@ -124,6 +159,7 @@ export default function AssignAssessmentsPanel({
   const navigate = useNavigate();
   const { user } = useAuth();
   const role = user?.role ?? "admin";
+  const isTeacher = role === "teacher";
   const canManage = caps.canCreate || caps.canEdit;
 
   const { data: sessions = [] } = useQuery({
@@ -154,17 +190,28 @@ export default function AssignAssessmentsPanel({
     enabled: Boolean(effectiveSessionId),
   });
 
+  const { data: teacherScope } = useQuery({
+    queryKey: ["teacher-test-scope", effectiveSessionId],
+    queryFn: () => fetchTeacherTestScope(effectiveSessionId),
+    enabled: Boolean(effectiveSessionId) && isTeacher && branch === "test",
+  });
+  const scopeRows = teacherScope?.assignments || [];
+
   const { data: classes = [] } = useQuery({
     queryKey: ["academy-classes", effectiveSessionId, "assign-filter"],
     queryFn: () => fetchAcademyClasses({ sessionId: effectiveSessionId, status: "active" }),
-    enabled: Boolean(effectiveSessionId),
+    enabled: Boolean(effectiveSessionId) && !isTeacher,
   });
+
+  const filterClasses = isTeacher
+    ? uniqueClassOptions(scopeRows)
+    : (classes as AcademyClass[]).map((c) => ({ _id: c._id, className: c.className }));
 
   const catalogItems = (planData?.plan.items || []).filter((i) => i.category === branch);
   const assignments = assignData?.assignments || [];
   const { data: classTests = [] } = useQuery({
-    queryKey: ["class-tests", classFilter, "marks-list"],
-    queryFn: () => fetchClassTests(classFilter || undefined),
+    queryKey: ["class-tests", classFilter, effectiveSessionId, "marks-list"],
+    queryFn: () => fetchClassTests(classFilter || undefined, undefined, effectiveSessionId),
     enabled: branch === "test",
   });
 
@@ -209,11 +256,18 @@ export default function AssignAssessmentsPanel({
     });
   }, [assignments, search, classFilter, statusFilter]);
 
+  const papersForTeacher = (a: AssessmentAssignment) => {
+    if (!isTeacher) return a.papers || [];
+    const allowed = subjectIdsForScope(scopeRows, idOf(a.classId), idOf(a.sectionId) || undefined);
+    return (a.papers || []).filter((p) => allowed.has(idOf(p.subjectId)));
+  };
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["assessment-assignments", effectiveSessionId] });
     qc.invalidateQueries({ queryKey: ["assessment-plan", effectiveSessionId] });
     qc.invalidateQueries({ queryKey: ["class-tests"] });
     qc.invalidateQueries({ queryKey: ["exams"] });
+    qc.invalidateQueries({ queryKey: ["teacher-test-scope", effectiveSessionId] });
   };
 
   if (!effectiveSessionId) {
@@ -226,6 +280,17 @@ export default function AssignAssessmentsPanel({
 
   const noun = branch === "test" ? "test" : "exam";
 
+  if (isTeacher && branch === "test" && teacherScope && scopeRows.length === 0) {
+    return (
+      <Card className="p-6 space-y-2">
+        <p className="text-sm font-medium">No teaching assignments</p>
+        <p className="text-sm text-muted-foreground">
+          You are not assigned to any subject/class yet. Ask an admin to add your Teacher Subject Assignment
+          in Academic Setup.
+        </p>
+      </Card>
+    );
+  }
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -254,13 +319,18 @@ export default function AssignAssessmentsPanel({
       {!planLoading && !catalogReady && (
         <Card className="p-5 space-y-3 border-dashed">
           <p className="text-sm text-muted-foreground">
-            No {noun}s in the catalog for this session yet. Add them in Assessment Catalog first.
+            No {noun}s in the catalog for this session yet.
+            {isTeacher
+              ? " Ask an admin to add them in Assessment Catalog first."
+              : " Add them in Assessment Catalog first."}
           </p>
-          <Button variant="outline" size="sm" asChild>
-            <Link to={systemConfigHref(role, branch === "exam" ? "exam-catalog" : "test-catalog")}>
-              Open {noun} catalog
-            </Link>
-          </Button>
+          {!isTeacher && (
+            <Button variant="outline" size="sm" asChild>
+              <Link to={systemConfigHref(role, branch === "exam" ? "exam-catalog" : "test-catalog")}>
+                Open {noun} catalog
+              </Link>
+            </Button>
+          )}
         </Card>
       )}
 
@@ -303,7 +373,7 @@ export default function AssignAssessmentsPanel({
                 onChange={(e) => setClassFilter(e.target.value)}
               >
                 <option value="">All classes</option>
-                {(classes as AcademyClass[]).map((c) => (
+                {filterClasses.map((c) => (
                   <option key={c._id} value={c._id}>
                     {c.className}
                   </option>
@@ -323,7 +393,13 @@ export default function AssignAssessmentsPanel({
               </select>
             </div>
           </div>
-          {canManage && (
+          {canManage && branch === "test" && isTeacher && (
+            <Button size="sm" variant="gold" className="whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady || !scopeRows.length}>
+              <Plus className="h-4 w-4" />
+              Create {noun}
+            </Button>
+          )}
+          {canManage && !(branch === "test" && isTeacher) && (
             <Button size="sm" variant="gold" className="whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady}>
               <Plus className="h-4 w-4" />
               Create {noun}
@@ -370,7 +446,12 @@ export default function AssignAssessmentsPanel({
                   </td>
                 </tr>
               )}
-              {filtered.map((a) => (
+              {filtered.map((a) => {
+                const visiblePapers = papersForTeacher(a);
+                const teacherSubjectSet = isTeacher
+                  ? subjectIdsForScope(scopeRows, idOf(a.classId), idOf(a.sectionId) || undefined)
+                  : undefined;
+                return (
                 <tr
                   key={a._id}
                   className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
@@ -383,8 +464,8 @@ export default function AssignAssessmentsPanel({
                   <td className="p-2.5">{classNameOf(a)}</td>
                   <td className="p-2.5 hidden md:table-cell">{sectionNameOf(a) || "All"}</td>
                   <td className="p-2.5 text-muted-foreground">
-                    {(a.papers || []).length
-                      ? (a.papers || []).map((p) => paperLabel(p)).join(", ")
+                    {visiblePapers.length
+                      ? visiblePapers.map((p) => paperLabel(p)).join(", ")
                       : "—"}
                   </td>
                   <td className="p-2.5">
@@ -400,7 +481,7 @@ export default function AssignAssessmentsPanel({
                       <BookOpen className="h-3.5 w-3.5" />
                       {a.status === "published" ? "View" : "Syllabus"}
                     </Button>
-                    {canManage && a.status === "draft" && isReady(a) && (
+                    {canManage && a.status === "draft" && isReady(a, teacherSubjectSet) && (
                       <PublishButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
                     )}
                     {canManage && a.status === "draft" && (
@@ -408,7 +489,8 @@ export default function AssignAssessmentsPanel({
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {otherTests.map((t) => (
                 <tr
                   key={t._id}
@@ -443,6 +525,15 @@ export default function AssignAssessmentsPanel({
 
       <TestSubjectsDialog
         assignment={subjectsAssignment}
+        subjectFilter={
+          subjectsAssignment && isTeacher
+            ? subjectIdsForScope(
+                scopeRows,
+                idOf(subjectsAssignment.classId),
+                idOf(subjectsAssignment.sectionId) || undefined,
+              )
+            : undefined
+        }
         onOpenChange={(open) => {
           if (!open) setSubjectsAssignment(null);
         }}
@@ -459,6 +550,8 @@ export default function AssignAssessmentsPanel({
         sessionId={effectiveSessionId}
         catalogItems={catalogItems}
         branch={branch}
+        isTeacher={isTeacher}
+        scopeRows={scopeRows}
         onCreated={(a) => {
           invalidate();
           setAssignOpen(false);
@@ -474,6 +567,8 @@ export default function AssignAssessmentsPanel({
         sessionId={effectiveSessionId}
         assignment={configAssignment}
         canManage={canManage}
+        isTeacher={isTeacher}
+        scopeRows={scopeRows}
         onSaved={() => {
           invalidate();
           setConfigAssignment(null);
@@ -546,16 +641,20 @@ function formatPaperDate(value?: string) {
 
 function TestSubjectsDialog({
   assignment,
+  subjectFilter,
   onOpenChange,
   onEnterMarks,
   onEnterExam,
 }: {
   assignment: AssessmentAssignment | null;
+  subjectFilter?: Set<string>;
   onOpenChange: (open: boolean) => void;
   onEnterMarks: (testId: string) => void;
   onEnterExam: (examId: string) => void;
 }) {
-  const papers = assignment?.papers || [];
+  const papers = (assignment?.papers || []).filter((p) =>
+    subjectFilter && subjectFilter.size ? subjectFilter.has(idOf(p.subjectId)) : true,
+  );
   return (
     <Dialog open={Boolean(assignment)} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -568,7 +667,7 @@ function TestSubjectsDialog({
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           {assignment
-            ? `${ASSESSMENT_TYPE_LABELS[assignment.assessmentType as AssessmentType] || assignment.assessmentType} for every subject.`
+            ? `${ASSESSMENT_TYPE_LABELS[assignment.assessmentType as AssessmentType] || assignment.assessmentType} — subjects in your teaching scope.`
             : ""}
         </p>
         {!papers.length ? (
@@ -626,6 +725,8 @@ function AssignDialog({
   sessionId,
   catalogItems,
   branch,
+  isTeacher,
+  scopeRows,
   onCreated,
 }: {
   open: boolean;
@@ -633,6 +734,8 @@ function AssignDialog({
   sessionId: string;
   catalogItems: AssessmentPlanItem[];
   branch: "test" | "exam";
+  isTeacher: boolean;
+  scopeRows: TeacherTestScopeAssignment[];
   onCreated: (a: AssessmentAssignment) => void;
 }) {
   const { toast } = useToast();
@@ -648,17 +751,30 @@ function AssignDialog({
     }
   }, [open, branch]);
 
-  const { data: classes = [] } = useQuery({
+  const { data: allClasses = [] } = useQuery({
     queryKey: ["academy-classes", sessionId],
     queryFn: () => fetchAcademyClasses({ sessionId, status: "active" }),
-    enabled: open && Boolean(sessionId),
+    enabled: open && Boolean(sessionId) && !isTeacher,
   });
 
-  const { data: sections = [] } = useQuery({
+  const { data: allSections = [] } = useQuery({
     queryKey: ["academy-sections", classId],
     queryFn: () => fetchSectionsByClass(classId, { status: "active" }),
-    enabled: Boolean(classId),
+    enabled: Boolean(classId) && !isTeacher,
   });
+
+  const classes = isTeacher ? uniqueClassOptions(scopeRows) : (allClasses as AcademyClass[]);
+  const sections = isTeacher
+    ? sectionOptionsForClass(scopeRows, classId)
+    : (allSections as AcademySection[]);
+
+  const subjectHint = useMemo(() => {
+    if (!isTeacher || !classId || !sectionId) return "";
+    const names = scopeRows
+      .filter((r) => r.classId === classId && r.sectionId === sectionId)
+      .map((r) => r.subjectName);
+    return names.length ? `Your subjects: ${names.join(", ")}` : "";
+  }, [isTeacher, classId, sectionId, scopeRows]);
 
   const mut = useMutation({
     mutationFn: () =>
@@ -670,6 +786,8 @@ function AssignDialog({
     onSuccess: (res) => onCreated(res.assignment),
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
+
+  const canContinue = Boolean(planItemId && classId && (!isTeacher || sectionId));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -708,46 +826,46 @@ function AssignDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="_">Select class</SelectItem>
-                {(classes as AcademyClass[]).map((c) => (
+                {classes.map((c) => (
                   <SelectItem key={c._id} value={c._id}>
-                    {c.className}
+                    {"className" in c ? c.className : (c as AcademyClass).className}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>Section (optional)</Label>
+            <Label>{isTeacher ? "Section" : "Section (optional)"}</Label>
             <Select
               value={sectionId || "_"}
               onValueChange={(v) => setSectionId(v === "_" ? "" : v)}
               disabled={!classId}
             >
               <SelectTrigger>
-                <SelectValue placeholder="All sections" />
+                <SelectValue placeholder={isTeacher ? "Select section" : "All sections"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_">All sections</SelectItem>
-                {(sections as AcademySection[]).map((s) => (
+                {!isTeacher && <SelectItem value="_">All sections</SelectItem>}
+                {isTeacher && <SelectItem value="_">Select section</SelectItem>}
+                {sections.map((s) => (
                   <SelectItem key={s._id} value={s._id}>
-                    {s.sectionName}
+                    {"sectionName" in s ? s.sectionName : (s as AcademySection).sectionName}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <p className="text-xs text-muted-foreground">
-            Choose a catalog {branch === "test" ? "test" : "exam"}. Date, marks, and syllabus come next. The same catalog item can be used for another class.
+            {isTeacher
+              ? `Choose a catalog test and one of your assigned class/sections. ${subjectHint}`
+              : `Choose a catalog ${branch === "test" ? "test" : "exam"}. Date, marks, and syllabus come next. The same catalog item can be used for another class.`}
           </p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            disabled={!planItemId || !classId || mut.isPending}
-            onClick={() => mut.mutate()}
-          >
+          <Button disabled={!canContinue || mut.isPending} onClick={() => mut.mutate()}>
             {mut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Continue
           </Button>
@@ -763,6 +881,8 @@ function ConfigureAssignmentDialog({
   sessionId,
   assignment,
   canManage,
+  isTeacher,
+  scopeRows,
   onSaved,
 }: {
   open: boolean;
@@ -770,6 +890,8 @@ function ConfigureAssignmentDialog({
   sessionId: string;
   assignment: AssessmentAssignment | null;
   canManage: boolean;
+  isTeacher: boolean;
+  scopeRows: TeacherTestScopeAssignment[];
   onSaved: () => void;
 }) {
   const { toast } = useToast();
@@ -794,23 +916,38 @@ function ConfigureAssignmentDialog({
     setPaperRows(map);
   }, [assignment]);
 
-  const { data: sections = [] } = useQuery({
+  const { data: allSections = [] } = useQuery({
     queryKey: ["academy-sections", classId],
     queryFn: () => fetchSectionsByClass(classId, { status: "active" }),
-    enabled: Boolean(classId),
+    enabled: Boolean(classId) && !isTeacher,
   });
 
-  const { data: subjects = [] } = useQuery({
+  const { data: allSubjects = [] } = useQuery({
     queryKey: ["academy-subjects", classId],
     queryFn: () => fetchSubjectsByClass(classId),
     enabled: Boolean(classId),
   });
 
+  const sections = isTeacher
+    ? sectionOptionsForClass(scopeRows, classId)
+    : (allSections as AcademySection[]);
+
+  const allowedSubjectIds = useMemo(() => {
+    if (!isTeacher) return null;
+    return subjectIdsForScope(scopeRows, classId, sectionId || undefined);
+  }, [isTeacher, scopeRows, classId, sectionId]);
+
+  const subjects = useMemo(() => {
+    const list = allSubjects as AcademySubject[];
+    if (!allowedSubjectIds) return list;
+    return list.filter((s) => allowedSubjectIds.has(s._id));
+  }, [allSubjects, allowedSubjectIds]);
+
   useEffect(() => {
     if (!subjects.length) return;
     setPaperRows((prev) => {
       const next = { ...prev };
-      for (const s of subjects as AcademySubject[]) {
+      for (const s of subjects) {
         if (!next[s._id]) next[s._id] = { totalMarks: "", examDate: "", syllabus: "" };
       }
       return next;
@@ -821,11 +958,12 @@ function ConfigureAssignmentDialog({
     mutationFn: async () => {
       if (!assignment) return;
       if (!published && sectionId !== idOf(assignment.sectionId)) {
+        if (isTeacher && !sectionId) throw new Error("Section is required");
         await updateAssessmentAssignment(sessionId, assignment._id, {
           sectionId: sectionId || null,
         });
       }
-      const papers = (subjects as AcademySubject[]).map((s) => {
+      const papers = subjects.map((s) => {
         const row = paperRows[s._id] || { totalMarks: "", examDate: "", syllabus: "" };
         return {
           subjectId: s._id,
@@ -845,6 +983,8 @@ function ConfigureAssignmentDialog({
 
   if (!assignment) return null;
 
+  const canEditPapers = canManage && (!published || isTeacher);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -860,24 +1000,28 @@ function ConfigureAssignmentDialog({
             <Select
               value={sectionId || "_"}
               onValueChange={(v) => setSectionId(v === "_" ? "" : v)}
-              disabled={published || !canManage}
+              disabled={published || !canManage || isTeacher}
             >
               <SelectTrigger>
-                <SelectValue placeholder="All sections" />
+                <SelectValue placeholder={isTeacher ? "Section" : "All sections"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_">All sections</SelectItem>
-                {(sections as AcademySection[]).map((s) => (
+                {!isTeacher && <SelectItem value="_">All sections</SelectItem>}
+                {sections.map((s) => (
                   <SelectItem key={s._id} value={s._id}>
-                    {s.sectionName}
+                    {"sectionName" in s ? s.sectionName : (s as AcademySection).sectionName}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {!(subjects as AcademySubject[]).length ? (
-            <p className="text-sm text-muted-foreground">No subjects on this class yet.</p>
+          {!subjects.length ? (
+            <p className="text-sm text-muted-foreground">
+              {isTeacher
+                ? "No subjects assigned to you for this class/section."
+                : "No subjects on this class yet."}
+            </p>
           ) : (
             <div className="border rounded-md overflow-x-auto">
               <table className="w-full text-sm">
@@ -890,7 +1034,7 @@ function ConfigureAssignmentDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {(subjects as AcademySubject[]).map((s) => {
+                  {subjects.map((s) => {
                     const row = paperRows[s._id] || { totalMarks: "", examDate: "", syllabus: "" };
                     return (
                       <tr key={s._id} className="border-t">
@@ -901,7 +1045,7 @@ function ConfigureAssignmentDialog({
                             min={1}
                             className="h-8"
                             value={row.totalMarks}
-                            disabled={published || !canManage}
+                            disabled={!canEditPapers}
                             onChange={(e) =>
                               setPaperRows((prev) => ({
                                 ...prev,
@@ -915,7 +1059,7 @@ function ConfigureAssignmentDialog({
                             type="date"
                             className="h-8"
                             value={row.examDate}
-                            disabled={published || !canManage}
+                            disabled={!canEditPapers}
                             onChange={(e) =>
                               setPaperRows((prev) => ({
                                 ...prev,
@@ -929,7 +1073,7 @@ function ConfigureAssignmentDialog({
                             className="min-h-[2.5rem] text-sm"
                             rows={1}
                             value={row.syllabus}
-                            disabled={published || !canManage}
+                            disabled={!canEditPapers}
                             placeholder="Syllabus / chapters"
                             onChange={(e) =>
                               setPaperRows((prev) => ({
@@ -947,7 +1091,9 @@ function ConfigureAssignmentDialog({
             </div>
           )}
           <p className="text-xs text-muted-foreground">
-            Leave a subject blank to skip. Filled rows need both marks and date.
+            {isTeacher
+              ? "Only your assigned subjects are shown. Leave blank to skip. Filled rows need both marks and date."
+              : "Leave a subject blank to skip. Filled rows need both marks and date."}
           </p>
         </div>
 
@@ -955,7 +1101,7 @@ function ConfigureAssignmentDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          {!published && canManage && (
+          {canEditPapers && (
             <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
               {saveMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Save syllabus

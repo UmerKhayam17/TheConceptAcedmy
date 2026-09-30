@@ -19,6 +19,113 @@ const { generateRegistrationNumber } = require('../../utils/academyRegistrationN
 
 const STUDENT_PHOTO_DIR = path.join(__dirname, '../../../uploads/students');
 
+/** Default parent portal password for all auto-created parent logins. */
+const DEFAULT_PARENT_PASSWORD = 'Concept@1234';
+const PARENT_EMAIL_DOMAIN = 'concept.edu.pk';
+
+/** Matches frontend PARENT_DEFAULT_MODULE_PERMISSIONS / seeded parent role. */
+const PARENT_DEFAULT_MODULE_PERMISSIONS = {
+  student: ['view'],
+  attendance: ['view'],
+  exam: ['view'],
+  timetable: ['view'],
+  chat: ['view', 'create', 'participate'],
+  announcement: ['view'],
+};
+
+function parentModulePermissionsMap() {
+  return new Map(Object.entries(PARENT_DEFAULT_MODULE_PERMISSIONS));
+}
+
+function sanitizeEmailLocalPart(value) {
+  return (
+    String(value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+      .slice(0, 48) || 'student'
+  );
+}
+
+/** e.g. sohaib.tces2026000002@concept.edu.pk — unique even when names match. */
+function buildParentPortalEmail(studentName, studentId) {
+  const namePart = sanitizeEmailLocalPart(studentName);
+  const idPart = sanitizeEmailLocalPart(studentId);
+  return `${namePart}.${idPart}@${PARENT_EMAIL_DOMAIN}`;
+}
+
+/**
+ * Create (or reuse) a parent User for portal login. No student User is created.
+ * Links via guardianEmail === parent email (parentScope).
+ */
+async function ensureParentPortalUser({
+  studentName,
+  fatherName,
+  guardianName,
+  phone,
+  studentId,
+  resetPassword = false,
+}) {
+  const parentRole = await Role.findOne({ name: 'parent' });
+  if (!parentRole) throw new ApiError(500, 'Roles not initialized');
+
+  const parentEmail = buildParentPortalEmail(studentName, studentId);
+  const parentPassword = DEFAULT_PARENT_PASSWORD;
+  const parentName =
+    (guardianName && String(guardianName).trim()) ||
+    (fatherName && String(fatherName).trim()) ||
+    `${String(studentName || '').trim()} Parent`;
+
+  let parentUser = await User.findOne({ email: parentEmail });
+  let created = false;
+  if (!parentUser) {
+    parentUser = await User.create({
+      name: parentName,
+      email: parentEmail,
+      phone: phone || '',
+      password: await bcrypt.hash(parentPassword, 12),
+      role: parentRole._id,
+      isActive: true,
+      modulePermissions: parentModulePermissionsMap(),
+    });
+    created = true;
+  } else {
+    let dirty = false;
+    if (resetPassword) {
+      parentUser.password = await bcrypt.hash(parentPassword, 12);
+      dirty = true;
+    }
+    // Drop fee from parent accounts; ensure exam (test results) view remains.
+    const perms = parentUser.modulePermissions;
+    const asMap =
+      perms instanceof Map
+        ? new Map(perms)
+        : new Map(Object.entries(perms && typeof perms === 'object' ? perms : {}));
+    let changed = false;
+    if (asMap.has('fee')) {
+      asMap.delete('fee');
+      changed = true;
+    }
+    if (!asMap.has('exam')) {
+      asMap.set('exam', ['view']);
+      changed = true;
+    }
+    if (asMap.size === 0) {
+      parentUser.modulePermissions = parentModulePermissionsMap();
+      dirty = true;
+    } else if (changed) {
+      parentUser.modulePermissions = asMap;
+      dirty = true;
+    }
+    if (phone && !parentUser.phone) {
+      parentUser.phone = phone;
+      dirty = true;
+    }
+    if (dirty) await parentUser.save();
+  }
+
+  return { parentUser, parentEmail, parentPassword, created };
+}
+
 function saveStudentPhotoFile(studentMongoId, file) {
   if (!file?.buffer?.length) throw new ApiError(400, 'Image file required');
   fs.mkdirSync(STUDENT_PHOTO_DIR, { recursive: true });
@@ -709,31 +816,33 @@ async function activateStudent(id, payload, userId) {
   if (!payload.gender) throw new ApiError(400, 'Gender is required');
 
   const profile = pickStudentProfile(payload);
-  const studentRole = await Role.findOne({ name: 'student' });
-  if (!studentRole) throw new ApiError(500, 'Roles not initialized');
-
-  const parentEmail = (payload.guardianEmail || '').trim().toLowerCase();
   const officialStudentId = await generateStudentId();
   const rollNumber = await generateAcademyRollNumber(classId);
-  const portalEmail = `${rollNumber.replace(/[^a-zA-Z0-9]/g, '')}@student.academy.local`.toLowerCase();
-  const studPwd = payload.studentPassword || 'Student@123456';
+  const studentName = (payload.studentName || student.studentName).trim();
+  const fatherName = (payload.fatherName || student.fatherName).trim();
 
-  const studentUser = await User.create({
-    name: (payload.studentName || student.studentName).trim(),
-    email: portalEmail,
+  const { parentEmail, parentPassword } = await ensureParentPortalUser({
+    studentName,
+    fatherName,
+    guardianName: payload.guardianName || student.guardianName,
     phone,
-    password: await bcrypt.hash(studPwd, 12),
-    role: studentRole._id,
+    studentId: officialStudentId,
   });
 
   student.studentId = officialStudentId;
   student.rollNumber = rollNumber;
-  student.userId = studentUser._id;
-  student.studentName = (payload.studentName || student.studentName).trim();
-  student.fatherName = (payload.fatherName || student.fatherName).trim();
+  student.userId = undefined;
+  student.studentName = studentName;
+  student.fatherName = fatherName;
   student.phone = phone;
   student.gender = payload.gender;
+  if (payload.guardianName !== undefined) {
+    student.guardianName = String(payload.guardianName || '').trim();
+  } else if (!student.guardianName) {
+    student.guardianName = fatherName;
+  }
   applyProfileToStudent(student, payload);
+  student.guardianEmail = parentEmail;
   student.classId = classId;
   student.sectionId = payload.sectionId;
   student.selectedSubjects = subjectIds;
@@ -778,9 +887,8 @@ async function activateStudent(id, payload, userId) {
     credentials: {
       studentId: officialStudentId,
       rollNumber,
-      studentEmail: portalEmail,
-      studentPassword: studPwd,
-      ...(parentEmail ? { parentEmail } : {}),
+      parentEmail,
+      parentPassword,
     },
   };
 }
@@ -826,35 +934,32 @@ async function registerDirectStudent(payload, userId) {
   if (!payload.dateOfBirth) throw new ApiError(400, 'Date of birth is required');
 
   const profile = pickStudentProfile(payload);
-  const studentRole = await Role.findOne({ name: 'student' });
-  if (!studentRole) throw new ApiError(500, 'Roles not initialized');
-
-  const parentEmail = (payload.guardianEmail || '').trim().toLowerCase();
   const registrationNumber = await generateRegistrationNumber();
   const officialStudentId = await generateStudentId();
   const rollNumber = await generateAcademyRollNumber(classId);
-  const portalEmail = `${rollNumber.replace(/[^a-zA-Z0-9]/g, '')}@student.academy.local`.toLowerCase();
-  const studPwd = payload.studentPassword || 'Student@123456';
+  const studentName = payload.studentName.trim();
+  const fatherName = payload.fatherName.trim();
 
-  const studentUser = await User.create({
-    name: payload.studentName.trim(),
-    email: portalEmail,
+  const { parentEmail, parentPassword } = await ensureParentPortalUser({
+    studentName,
+    fatherName,
+    guardianName: payload.guardianName,
     phone,
-    password: await bcrypt.hash(studPwd, 12),
-    role: studentRole._id,
+    studentId: officialStudentId,
   });
 
   const student = await AcademyStudent.create({
     registrationNumber,
     studentId: officialStudentId,
     rollNumber,
-    userId: studentUser._id,
-    studentName: payload.studentName.trim(),
-    fatherName: payload.fatherName.trim(),
+    studentName,
+    fatherName,
     phone,
     gender: payload.gender,
     dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : undefined,
     ...profile,
+    guardianEmail: parentEmail,
+    guardianName: (payload.guardianName || fatherName || '').trim(),
     classId,
     sectionId: payload.sectionId,
     selectedSubjects: subjectIds,
@@ -899,10 +1004,63 @@ async function registerDirectStudent(payload, userId) {
     credentials: {
       studentId: officialStudentId,
       rollNumber,
-      studentEmail: portalEmail,
-      studentPassword: studPwd,
-      ...(parentEmail ? { parentEmail } : {}),
+      parentEmail,
+      parentPassword,
     },
+  };
+}
+
+/**
+ * Create/reset parent portal emails + passwords for all active students.
+ * Password is always Concept@1234 so staff can print credentials.
+ */
+async function provisionParentPortalsForAllActiveStudents() {
+  const students = await AcademyStudent.find({
+    status: 'active',
+    studentId: { $exists: true, $nin: [null, ''] },
+  })
+    .select('studentId studentName fatherName guardianName phone guardianEmail')
+    .sort({ studentName: 1 });
+
+  const rows = [];
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  for (const student of students) {
+    const { parentEmail, parentPassword, created } = await ensureParentPortalUser({
+      studentName: student.studentName,
+      fatherName: student.fatherName,
+      guardianName: student.guardianName,
+      phone: student.phone,
+      studentId: student.studentId,
+      resetPassword: true,
+    });
+
+    if (String(student.guardianEmail || '').toLowerCase() !== parentEmail) {
+      student.guardianEmail = parentEmail;
+      // eslint-disable-next-line no-await-in-loop
+      await student.save();
+    }
+
+    if (created) createdCount += 1;
+    else updatedCount += 1;
+
+    rows.push({
+      studentMongoId: String(student._id),
+      studentId: student.studentId,
+      studentName: student.studentName,
+      parentEmail,
+      parentPassword,
+      created,
+    });
+  }
+
+  return {
+    total: rows.length,
+    createdCount,
+    updatedCount,
+    defaultPassword: DEFAULT_PARENT_PASSWORD,
+    rows,
   };
 }
 
@@ -919,4 +1077,7 @@ module.exports = {
   deleteStudent,
   uploadStudentPhoto,
   getDiscountReport,
+  provisionParentPortalsForAllActiveStudents,
+  buildParentPortalEmail,
+  DEFAULT_PARENT_PASSWORD,
 };

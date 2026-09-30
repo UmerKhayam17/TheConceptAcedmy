@@ -83,9 +83,15 @@ const deleteTeacherProfile = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const { roleNameOf } = require('../../utils/parentScope');
+
 // Teacher assignments
 const listTeacherAssignments = catchAsync(async (req, res) => {
-  const data = await teacherAssignmentService.listTeacherAssignments(req.query);
+  const query = { ...req.query };
+  if (roleNameOf(req) === 'teacher') {
+    query.teacherId = String(req.user._id);
+  }
+  const data = await teacherAssignmentService.listTeacherAssignments(query);
   res.json({ success: true, data });
 });
 

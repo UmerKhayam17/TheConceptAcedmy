@@ -626,6 +626,106 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
   },
 ];
 
+/** Parent portal sidebar — children, schedule, attendance, and messaging only. */
+export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    collapsible: false,
+    items: [
+      {
+        id: "dashboard",
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        moduleKey: "dashboard",
+        href: (role) => moduleHref(role, "dashboard"),
+        isActive: (pathname, role) => pathname === p(role),
+      },
+    ],
+  },
+  {
+    id: "my-children",
+    label: "My Children",
+    icon: GraduationCap,
+    collapsible: true,
+    items: [
+      {
+        id: "students",
+        label: "My Children",
+        icon: GraduationCap,
+        moduleKey: "students",
+        href: (role) => moduleHref(role, "students"),
+      },
+      {
+        id: "student-attendance",
+        label: "Attendance",
+        icon: ClipboardList,
+        moduleKey: "attendance",
+        href: (role) => moduleHref(role, "attendance"),
+      },
+      {
+        id: "student-timetable",
+        label: "Timetable",
+        icon: CalendarDays,
+        moduleKey: "timetable",
+        href: (role) => timetableHref(role, "view"),
+      },
+      {
+        id: "test-results",
+        label: "Test results",
+        icon: Award,
+        moduleKey: "exams",
+        href: (role) => moduleHref(role, "students"),
+      },
+    ],
+  },
+  {
+    id: "communication",
+    label: "Communication",
+    icon: MessageSquare,
+    collapsible: true,
+    items: [
+      {
+        id: "chat",
+        label: "Chat",
+        icon: MessageSquare,
+        moduleKey: "chat",
+        href: (role) => moduleHref(role, "chat"),
+      },
+      {
+        id: "announcements",
+        label: "Announcements",
+        icon: Bell,
+        moduleKey: "announcements",
+        href: (role) => moduleHref(role, "announcements"),
+      },
+      {
+        id: "notifications",
+        label: "Notifications",
+        icon: Bell,
+        moduleKey: "notifications",
+        href: (role) => moduleHref(role, "notifications"),
+      },
+    ],
+  },
+  {
+    id: "resources",
+    label: "School",
+    icon: Calendar,
+    collapsible: true,
+    items: [
+      {
+        id: "school-calendar",
+        label: "School Calendar",
+        icon: CalendarDays,
+        moduleKey: "school-calendar",
+        href: (role) => moduleHref(role, "school-calendar"),
+      },
+    ],
+  },
+];
+
 /** Accountant portal sidebar — finance-focused modules from accountant RBAC defaults. */
 export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
   {
@@ -804,6 +904,7 @@ export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
 export function sidebarNavForRole(role: Role): SidebarNavGroup[] {
   if (role === "teacher") return TEACHER_SIDEBAR_NAV;
   if (role === "accountant") return ACCOUNTANT_SIDEBAR_NAV;
+  if (role === "parent") return PARENT_SIDEBAR_NAV;
   return SIDEBAR_NAV;
 }
 

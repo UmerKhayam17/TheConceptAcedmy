@@ -141,12 +141,19 @@ async function buildFeeQuery({ studentId, studentIds, status, month, year, class
   if (month) q.month = Number(month);
   if (year) q.year = Number(year);
   if (studentId) {
-    q.studentId = studentId;
+    // Aggregate $match does not cast strings — must use ObjectId.
+    q.studentId = mongoose.isValidObjectId(studentId)
+      ? new mongoose.Types.ObjectId(String(studentId))
+      : studentId;
     return q;
   }
   // Array (including empty) means an explicit scope — never fall through to all fees
   if (Array.isArray(studentIds)) {
-    q.studentId = { $in: studentIds };
+    q.studentId = {
+      $in: studentIds
+        .filter(Boolean)
+        .map((id) => (mongoose.isValidObjectId(id) ? new mongoose.Types.ObjectId(String(id)) : id)),
+    };
     return q;
   }
   if (classId) {

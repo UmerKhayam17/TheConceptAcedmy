@@ -128,7 +128,7 @@ export default function AcademyFeesManagement({
   const now = new Date();
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState(() => (user?.role === "parent" ? "paid" : ""));
   const [classFilter, setClassFilter] = useState("");
   const [selectedParentStudentId, setSelectedParentStudentId] = useState<string>(() => {
     try {
@@ -146,7 +146,10 @@ export default function AcademyFeesManagement({
   const [paymentNotes, setPaymentNotes] = useState("");
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
 
+  const childScoped = Boolean(studentId) || isParent;
   const effectiveStudentId = studentId || (isParent ? selectedParentStudentId || undefined : undefined);
+  /** Parents see this child's fee history (paid emphasized); staff keep status filters. */
+  const effectiveStatusFilter = isParent ? "" : statusFilter;
 
   const filterParams = useMemo(
     () => ({
@@ -200,23 +203,25 @@ export default function AcademyFeesManagement({
     enabled: showFilters && !studentId && !isParent && hasScope,
   });
 
-  const { data: summary, isLoading: summaryLoading } = useQuery({
-    queryKey: ["academy-fees-summary", filterParams],
-    queryFn: () => fetchAcademyFeeSummary(filterParams),
-    enabled: scopeEnabled,
-  });
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["academy-fees", page, statusFilter, feeTypeFilter, filterParams],
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["academy-fees", page, effectiveStatusFilter, feeTypeFilter, filterParams],
     queryFn: () =>
       fetchAcademyFees({
         page,
         limit: 20,
-        status: statusFilter || undefined,
+        status: effectiveStatusFilter || undefined,
         feeType: feeTypeFilter || undefined,
         ...filterParams,
       }),
-    enabled: scopeEnabled,
+    enabled: scopeEnabled && (!isParent || Boolean(effectiveStudentId)),
+    retry: false,
+  });
+
+  const { data: summary, isLoading: summaryLoading, isError: summaryError, error: summaryErr } = useQuery({
+    queryKey: ["academy-fees-summary", filterParams, effectiveStatusFilter],
+    queryFn: () => fetchAcademyFeeSummary(filterParams),
+    enabled: scopeEnabled && (!isParent || Boolean(effectiveStudentId)),
+    retry: false,
   });
 
   const genMut = useMutation({
@@ -322,8 +327,9 @@ export default function AcademyFeesManagement({
     );
   }, [records, search]);
 
-  const canPay = caps.canEdit || caps.canCreate;
-  const canGenerate = showGenerate && !studentId && writable && (caps.canCreate || caps.canEdit);
+  const canPay = !isParent && (caps.canEdit || caps.canCreate);
+  const canGenerate = showGenerate && !studentId && !isParent && writable && (caps.canCreate || caps.canEdit);
+  const feeTableColSpan = childScoped ? (isParent ? 6 : 7) : 9;
 
   const downloadMonthWise = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
@@ -356,34 +362,62 @@ export default function AcademyFeesManagement({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Collected</p>
-          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
-            {summaryLoading ? "…" : formatPkr(summary?.totalPaid)}
-          </p>
+      {(isError || summaryError) && (
+        <Card className="p-3 border-destructive/40 bg-destructive/5 text-sm text-destructive">
+          {(error as Error)?.message || (summaryErr as Error)?.message || "Could not load fee records."}
         </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Outstanding</p>
-          <p className="text-lg font-semibold text-destructive">
-            {summaryLoading ? "…" : formatPkr(summary?.totalPending)}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Records</p>
-          <p className="text-lg font-semibold text-primary">
-            {summaryLoading ? "…" : summary?.recordsCount ?? 0}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Pending / overdue</p>
-          <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">
-            {summaryLoading
-              ? "…"
-              : `${summary?.byStatus.pending ?? 0} / ${summary?.byStatus.overdue ?? 0}`}
-          </p>
-        </Card>
-      </div>
+      )}
+      {isParent ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <Card className="p-3">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Paid</p>
+            <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+              {summaryLoading ? "…" : formatPkr(summary?.totalPaid)}
+            </p>
+          </Card>
+          <Card className="p-3">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Outstanding</p>
+            <p className="text-lg font-semibold text-destructive">
+              {summaryLoading ? "…" : formatPkr(summary?.totalPending)}
+            </p>
+          </Card>
+          <Card className="p-3 col-span-2 sm:col-span-1">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Records</p>
+            <p className="text-lg font-semibold text-primary">
+              {summaryLoading ? "…" : summary?.recordsCount ?? 0}
+            </p>
+          </Card>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <Card className="p-3">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Collected</p>
+            <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+              {summaryLoading ? "…" : formatPkr(summary?.totalPaid)}
+            </p>
+          </Card>
+          <Card className="p-3">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Outstanding</p>
+            <p className="text-lg font-semibold text-destructive">
+              {summaryLoading ? "…" : formatPkr(summary?.totalPending)}
+            </p>
+          </Card>
+          <Card className="p-3">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Records</p>
+            <p className="text-lg font-semibold text-primary">
+              {summaryLoading ? "…" : summary?.recordsCount ?? 0}
+            </p>
+          </Card>
+          <Card className="p-3">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Pending / overdue</p>
+            <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">
+              {summaryLoading
+                ? "…"
+                : `${summary?.byStatus.pending ?? 0} / ${summary?.byStatus.overdue ?? 0}`}
+            </p>
+          </Card>
+        </div>
+      )}
 
       {showFilters && !studentId && (
         <Card className="p-3 space-y-3">
@@ -411,26 +445,30 @@ export default function AcademyFeesManagement({
                 </select>
               </div>
             )}
-            <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Month</Label>
-              <Input
-                type="number"
-                min={1}
-                max={12}
-                className="h-9 w-full"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-              />
-            </div>
-            <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Year</Label>
-              <Input
-                type="number"
-                className="h-9 w-full"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-              />
-            </div>
+            {!isParent && (
+              <div className="min-w-0">
+                <Label className="mb-1 block text-xs">Month</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={12}
+                  className="h-9 w-full"
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                />
+              </div>
+            )}
+            {!isParent && (
+              <div className="min-w-0">
+                <Label className="mb-1 block text-xs">Year</Label>
+                <Input
+                  type="number"
+                  className="h-9 w-full"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                />
+              </div>
+            )}
             {!isParent && (
               <div className="min-w-0 col-span-2 sm:col-span-1">
                 <Label className="mb-1 block text-xs">Class</Label>
@@ -448,32 +486,36 @@ export default function AcademyFeesManagement({
                 </select>
               </div>
             )}
-            <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Status</Label>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="">All</option>
-                <option value="pending">Pending</option>
-                <option value="paid">Paid</option>
-                <option value="overdue">Overdue</option>
-                <option value="waived">Waived</option>
-              </select>
-            </div>
-            <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Type</Label>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={feeTypeFilter}
-                onChange={(e) => setFeeTypeFilter(e.target.value)}
-              >
-                <option value="">All types</option>
-                <option value="monthly">Monthly</option>
-                <option value="admission">Admission</option>
-              </select>
-            </div>
+            {!isParent && (
+              <div className="min-w-0">
+                <Label className="mb-1 block text-xs">Status</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="waived">Waived</option>
+                </select>
+              </div>
+            )}
+            {!isParent && (
+              <div className="min-w-0">
+                <Label className="mb-1 block text-xs">Type</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={feeTypeFilter}
+                  onChange={(e) => setFeeTypeFilter(e.target.value)}
+                >
+                  <option value="">All types</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="admission">Admission</option>
+                </select>
+              </div>
+            )}
           </div>
           {!isParent && (canGenerate || caps.canView) && (
             <div className="flex flex-col sm:flex-row gap-2 sm:flex-wrap sm:items-center">
@@ -503,9 +545,16 @@ export default function AcademyFeesManagement({
       <PanelSearchBar
         value={search}
         onChange={setSearch}
-        placeholder="Search student, class, receipt…"
+        placeholder={
+          isParent || studentId ? "Search receipt or period…" : "Search student, class, receipt…"
+        }
         className="max-w-md"
       />
+      {isParent ? (
+        <p className="text-xs text-muted-foreground">
+          Showing fee records for your child only. School-wide collections are not available here.
+        </p>
+      ) : null}
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -513,43 +562,54 @@ export default function AcademyFeesManagement({
             <thead className="bg-muted/50 border-b">
               <tr>
                 <th className="text-left p-2.5 font-medium">Receipt</th>
-                <th className="text-left p-2.5 font-medium">Student</th>
-                {!studentId && <th className="text-left p-2.5 font-medium hidden md:table-cell">Class</th>}
+                {!childScoped && <th className="text-left p-2.5 font-medium">Student</th>}
+                {!childScoped && (
+                  <th className="text-left p-2.5 font-medium hidden md:table-cell">Class</th>
+                )}
                 <th className="text-left p-2.5 font-medium">Period</th>
                 <th className="text-left p-2.5 font-medium">Type</th>
                 <th className="text-left p-2.5 font-medium">Amount</th>
                 <th className="text-left p-2.5 font-medium">Status</th>
-                <th className="text-left p-2.5 font-medium">Pending months</th>
+                {!isParent && <th className="text-left p-2.5 font-medium">Pending months</th>}
                 <th className="text-right p-2.5 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={studentId ? 8 : 9} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={feeTableColSpan} className="p-6 text-center text-muted-foreground">
                     Loading fee records…
                   </td>
                 </tr>
               )}
-              {!isLoading && records.length === 0 && (
+              {!isLoading && isParent && !effectiveStudentId && (
                 <tr>
-                  <td colSpan={studentId ? 8 : 9} className="p-6 text-center text-muted-foreground">
-                    {studentId
-                      ? "No fee records for this student yet."
-                      : "No fee records for this period. Generate monthly fees or register students."}
+                  <td colSpan={feeTableColSpan} className="p-6 text-center text-muted-foreground">
+                    Select a child to view paid fees.
+                  </td>
+                </tr>
+              )}
+              {!isLoading && (!isParent || effectiveStudentId) && records.length === 0 && (
+                <tr>
+                  <td colSpan={feeTableColSpan} className="p-6 text-center text-muted-foreground">
+                    {isParent
+                      ? "No fee records for this child yet."
+                      : studentId
+                        ? "No fee records for this student yet."
+                        : "No fee records for this period. Generate monthly fees or register students."}
                   </td>
                 </tr>
               )}
               {!isLoading && records.length > 0 && recordsFiltered.length === 0 && (
                 <tr>
-                  <td colSpan={studentId ? 8 : 9} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={feeTableColSpan} className="p-6 text-center text-muted-foreground">
                     No records match your filters.
                   </td>
                 </tr>
               )}
               {recordsFiltered.map((r) => {
                 const sid = studentMongoId(r);
-                const detailHref = routes && sid ? routes.detail(sid) : null;
+                const detailHref = routes && sid && !isParent ? routes.detail(sid) : null;
                 const payable = isUnpaid(r.status);
                 const printing =
                   printMut.isPending &&
@@ -558,30 +618,32 @@ export default function AcademyFeesManagement({
                   <tr
                     key={r._id}
                     className={
-                      payable
+                      payable && !isParent
                         ? "border-b last:border-0 bg-red-500/10 text-red-700 dark:text-red-300"
                         : "border-b last:border-0 hover:bg-muted/30"
                     }
                   >
                     <td className="p-2.5 font-mono text-xs">{r.receiptNumber || "—"}</td>
-                    <td className="p-2.5">
-                      {detailHref ? (
-                        <Link
-                          to={detailHref}
-                          className={`font-medium hover:underline ${payable ? "text-red-700 dark:text-red-300" : "text-primary"}`}
-                        >
-                          {studentName(r)}
-                        </Link>
-                      ) : (
-                        <div className={`font-medium ${payable ? "text-red-700 dark:text-red-300" : ""}`}>
-                          {studentName(r)}
-                        </div>
-                      )}
-                      <p className={`text-xs ${payable ? "text-red-700/80 dark:text-red-300/80" : "text-muted-foreground"}`}>
-                        {studentCode(r)}
-                      </p>
-                    </td>
-                    {!studentId && (
+                    {!childScoped && (
+                      <td className="p-2.5">
+                        {detailHref ? (
+                          <Link
+                            to={detailHref}
+                            className={`font-medium hover:underline ${payable ? "text-red-700 dark:text-red-300" : "text-primary"}`}
+                          >
+                            {studentName(r)}
+                          </Link>
+                        ) : (
+                          <div className={`font-medium ${payable ? "text-red-700 dark:text-red-300" : ""}`}>
+                            {studentName(r)}
+                          </div>
+                        )}
+                        <p className={`text-xs ${payable ? "text-red-700/80 dark:text-red-300/80" : "text-muted-foreground"}`}>
+                          {studentCode(r)}
+                        </p>
+                      </td>
+                    )}
+                    {!childScoped && (
                       <td className="p-2.5 hidden md:table-cell">{classNameFromRecord(r)}</td>
                     )}
                     <td className="p-2.5">{periodLabel(r)}</td>
@@ -590,20 +652,22 @@ export default function AcademyFeesManagement({
                     <td className="p-2.5">
                       <StatusPill status={r.status} />
                     </td>
-                    <td className="p-2.5">
-                      {(r.unpaidMonthCount || 0) > 0 ? (
-                        <div>
-                          <p className="font-semibold">
-                            {r.unpaidMonthCount} month{r.unpaidMonthCount === 1 ? "" : "s"}
-                          </p>
-                          {(r.unpaidMonthCount || 0) > 1 && r.unpaidFrom && r.unpaidTo && (
-                            <p className="text-xs opacity-80">{r.unpaidFrom} – {r.unpaidTo}</p>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
+                    {!isParent && (
+                      <td className="p-2.5">
+                        {(r.unpaidMonthCount || 0) > 0 ? (
+                          <div>
+                            <p className="font-semibold">
+                              {r.unpaidMonthCount} month{r.unpaidMonthCount === 1 ? "" : "s"}
+                            </p>
+                            {(r.unpaidMonthCount || 0) > 1 && r.unpaidFrom && r.unpaidTo && (
+                              <p className="text-xs opacity-80">{r.unpaidFrom} – {r.unpaidTo}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="p-2.5 text-right">
                       <div className="inline-flex flex-col items-stretch sm:flex-row sm:items-center sm:justify-end gap-1.5 min-w-[7.5rem] sm:min-w-0">
                         {payable && canPay && (

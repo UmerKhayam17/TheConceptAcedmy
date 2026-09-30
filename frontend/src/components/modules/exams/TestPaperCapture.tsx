@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Camera, ImagePlus, Loader2, Eye } from "lucide-react";
+import { Camera, ImagePlus, Loader2 } from "lucide-react";
 import { resolveUploadUrl } from "@/lib/studentManagementApi";
 
 export default function TestPaperCapture({
@@ -32,7 +32,7 @@ export default function TestPaperCapture({
   };
 
   return (
-    <div className="flex flex-col items-center gap-1 min-w-[88px]">
+    <div className="flex flex-col items-center justify-center gap-1 w-full min-w-[56px]">
       <input
         ref={galleryRef}
         type="file"
@@ -54,20 +54,20 @@ export default function TestPaperCapture({
       {src ? (
         <button
           type="button"
-          className="h-12 w-12 rounded-md border overflow-hidden bg-muted hover:ring-2 ring-primary/40"
+          className="h-14 w-14 shrink-0 rounded-md border overflow-hidden bg-muted hover:ring-2 ring-primary/40 mx-auto"
           onClick={() => setPreviewOpen(true)}
           title="View test paper"
         >
           <img src={src} alt="Test paper" className="h-full w-full object-cover" />
         </button>
       ) : (
-        <div className="h-12 w-12 rounded-md border border-dashed bg-muted/50 flex items-center justify-center text-muted-foreground">
+        <div className="h-14 w-14 shrink-0 rounded-md border border-dashed bg-muted/50 flex items-center justify-center text-muted-foreground mx-auto">
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
         </div>
       )}
 
       {!disabled && (
-        <div className="flex gap-0.5">
+        <div className="flex gap-0.5 justify-center">
           <Button
             type="button"
             variant="outline"
@@ -90,18 +90,6 @@ export default function TestPaperCapture({
           >
             <Camera className="h-3.5 w-3.5" />
           </Button>
-          {src && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              title="View full size"
-              onClick={() => setPreviewOpen(true)}
-            >
-              <Eye className="h-3.5 w-3.5" />
-            </Button>
-          )}
         </div>
       )}
 

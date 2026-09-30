@@ -34,16 +34,18 @@ import {
 } from "@/lib/studentManagementApi";
 import { fetchStudentExamResults, type ExamResult } from "@/lib/examApi";
 import AssessmentFormDialog from "@/components/modules/exams/AssessmentFormDialog";
+import TestPaperCapture from "@/components/modules/exams/TestPaperCapture";
 import AcademyFeesManagement from "@/components/modules/student-management/AcademyFeesManagement";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { getAccessToken } from "@/lib/auth";
+import { createdByLabel } from "@/lib/createdBy";
+import CreatedByLine from "@/components/modules/CreatedByLine";
 import { getApiRoot } from "@/lib/api";
 import {
   academyStudentRoutes,
   type AcademyStudentRoutes,
 } from "@/lib/studentManagementMenus";
-import CreatedByLine from "@/components/modules/CreatedByLine";
 import {
   classLabel,
   examPercentage,
@@ -117,7 +119,10 @@ function DataTable({
         <thead className="bg-muted/50 border-b">
           <tr>
             {headers.map((h) => (
-              <th key={h} className="text-left p-3 font-medium">
+              <th
+                key={h}
+                className={`p-3 font-medium ${h === "Media" ? "text-center" : "text-left"}`}
+              >
                 {h}
               </th>
             ))}
@@ -127,7 +132,10 @@ function DataTable({
           {rows.map((cells, i) => (
             <tr key={i} className="border-b last:border-0">
               {cells.map((cell, j) => (
-                <td key={j} className="p-3">
+                <td
+                  key={j}
+                  className={`p-3 ${headers[j] === "Media" ? "text-center align-middle" : ""}`}
+                >
                   {cell}
                 </td>
               ))}
@@ -208,7 +216,7 @@ function ProfileTab({ student }: { student: AcademyStudent }) {
           <DetailRow label="CNIC" value={student.fatherGuardianCnic} />
           <DetailRow label="Occupation" value={student.guardianOccupation} />
           <DetailRow label="Work address" value={student.guardianWorkAddress} />
-          <DetailRow label="Guardian email" value={student.guardianEmail} />
+          <DetailRow label="Parent portal email" value={student.guardianEmail} />
         </div>
       </section>
 
@@ -403,8 +411,10 @@ function TestsTab({
   const [search, setSearch] = useState("");
   const recordsFiltered = useMemo(() => {
     if (!search.trim()) return records;
-    return records.filter((r) =>
-      matchesPanelSearch(
+    return records.filter((r) => {
+      const classTest =
+        r.classTestId && typeof r.classTestId === "object" ? r.classTestId : null;
+      return matchesPanelSearch(
         search,
         r.title,
         r.assessmentType,
@@ -412,9 +422,11 @@ function TestsTab({
         r.remarks,
         r.subjectId ? subjectName(r.subjectId as AcademySubject) : "",
         r.obtainedMarks,
-        r.totalMarks
-      )
-    );
+        r.totalMarks,
+        createdByLabel(classTest?.createdBy || classTest?.teacherId || r.createdBy),
+        createdByLabel(r.recordedBy || r.createdBy)
+      );
+    });
   }, [records, search]);
 
   const { data: termResults = [] } = useQuery({
@@ -483,44 +495,75 @@ function TestsTab({
           <EmptyBlock message="No tests match your search." />
         ) : (
           <DataTable
-            headers={["Date", "Title", "Type", "Subject", "Obtained", "Total", "%", "Remarks", ""]}
-            rows={recordsFiltered.map((r: AcademyAssessmentRecord) => [
-              formatDate(r.examDate),
-              r.title,
-              ASSESSMENT_TYPE_LABELS[r.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
-                r.assessmentType,
-              r.subjectId ? subjectName(r.subjectId as AcademySubject) : "—",
-              r.obtainedMarks,
-              r.totalMarks,
-              examPercentage(r.obtainedMarks, r.totalMarks),
-              r.remarks || "—",
-              canManageTests ? (
-                <span className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setEditing(r);
-                      setDialogOpen(true);
-                    }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive"
-                    onClick={() => {
-                      if (window.confirm("Delete this test?")) deleteMut.mutate(r._id);
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </span>
-              ) : (
-                "—"
-              ),
-            ])}
+            headers={[
+              "Date",
+              "Title",
+              "Type",
+              "Subject",
+              "Obtained",
+              "Total",
+              "%",
+              "Media",
+              "Test created by",
+              "Marks by",
+              "Remarks",
+              "",
+            ]}
+            rows={recordsFiltered.map((r: AcademyAssessmentRecord) => {
+              const classTest =
+                r.classTestId && typeof r.classTestId === "object" ? r.classTestId : null;
+              const testCreatedBy =
+                classTest?.createdBy || classTest?.teacherId || r.createdBy;
+              const marksBy = r.recordedBy || r.createdBy;
+              return [
+                formatDate(r.examDate),
+                r.title,
+                ASSESSMENT_TYPE_LABELS[r.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
+                  r.assessmentType,
+                r.subjectId ? subjectName(r.subjectId as AcademySubject) : "—",
+                r.obtainedMarks,
+                r.totalMarks,
+                examPercentage(r.obtainedMarks, r.totalMarks),
+                r.testPaperImage ? (
+                  <TestPaperCapture
+                    value={r.testPaperImage}
+                    disabled
+                    onPick={() => undefined}
+                  />
+                ) : (
+                  <span className="text-xs text-muted-foreground">No image</span>
+                ),
+                createdByLabel(testCreatedBy),
+                createdByLabel(marksBy),
+                r.remarks || "—",
+                canManageTests ? (
+                  <span className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditing(r);
+                        setDialogOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => {
+                        if (window.confirm("Delete this test?")) deleteMut.mutate(r._id);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </span>
+                ) : (
+                  "—"
+                ),
+              ];
+            })}
           />
         )}
       </div>
@@ -634,6 +677,7 @@ export default function StudentDetailPage({
 
   const { student, enrollment, attendance, fees, assessments } = record;
   const isPending = student.status === "pending_fee";
+  const isParent = user?.role === "parent";
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-4 space-y-4">
@@ -698,8 +742,11 @@ export default function StudentDetailPage({
               : "—"
           }
         />
-        <QuickStat label="Fees" value={fees.summary.recordsCount} />
-        <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />
+        <QuickStat
+          label={isParent ? "Paid fees" : "Fees"}
+          value={isParent ? formatPkr(fees.summary.totalPaid) : fees.summary.recordsCount}
+        />
+        {!isParent && <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />}
         <QuickStat label="Tests" value={assessments.summary.count} />
         <QuickStat
           label="Avg %"

@@ -53,11 +53,14 @@ const academyClassTestSchema = new mongoose.Schema(
     planId: { type: mongoose.Schema.Types.ObjectId, ref: 'SessionAssessmentPlan', index: true },
     planItemId: { type: mongoose.Schema.Types.ObjectId },
     assignmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'AssessmentAssignment', index: true },
+    /** Teaching teacher for this subject/class — from TeacherAssignment, not only createdBy. */
+    teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true, collection: 'classtests' }
 );
 
 academyClassTestSchema.index({ seriesId: 1, occurrenceIndex: 1 });
+academyClassTestSchema.index({ classId: 1, sectionId: 1, subjectId: 1 });
 
 module.exports = mongoose.model('AcademyClassTest', academyClassTestSchema);

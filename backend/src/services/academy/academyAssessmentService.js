@@ -15,6 +15,16 @@ async function listByStudent(studentId) {
   return AcademyAssessment.find({ studentId })
     .sort({ examDate: -1 })
     .populate('subjectId', 'subjectName subjectCode')
+    .populate('createdBy', 'name email')
+    .populate('recordedBy', 'name email')
+    .populate({
+      path: 'classTestId',
+      select: 'title createdBy teacherId',
+      populate: [
+        { path: 'createdBy', select: 'name email' },
+        { path: 'teacherId', select: 'name email' },
+      ],
+    })
     .lean();
 }
 
@@ -49,10 +59,16 @@ async function createAssessment(studentId, body, userId) {
   });
   return AcademyAssessment.findById(doc._id)
     .populate('subjectId', 'subjectName subjectCode')
+    .populate('createdBy', 'name email')
+    .populate('recordedBy', 'name email')
+    .populate({ path: 'classTestId', select: 'title createdBy teacherId', populate: [
+      { path: 'createdBy', select: 'name email' },
+      { path: 'teacherId', select: 'name email' },
+    ] })
     .lean();
 }
 
-async function updateAssessment(id, body) {
+async function updateAssessment(id, body, userId) {
   const existing = await AcademyAssessment.findById(id);
   if (!existing) throw new ApiError(404, 'Assessment not found');
   const obtained = body.obtainedMarks ?? existing.obtainedMarks;
@@ -77,10 +93,17 @@ async function updateAssessment(id, body) {
       ...(body.obtainedMarks !== undefined && { obtainedMarks: body.obtainedMarks }),
       ...(body.remarks !== undefined && { remarks: body.remarks }),
       ...(body.testPaperImage !== undefined && { testPaperImage: body.testPaperImage || '' }),
+      ...(userId && { recordedBy: userId }),
     },
     { new: true }
   )
     .populate('subjectId', 'subjectName subjectCode')
+    .populate('createdBy', 'name email')
+    .populate('recordedBy', 'name email')
+    .populate({ path: 'classTestId', select: 'title createdBy teacherId', populate: [
+      { path: 'createdBy', select: 'name email' },
+      { path: 'teacherId', select: 'name email' },
+    ] })
     .lean();
   return updated;
 }
@@ -185,7 +208,7 @@ async function bulkSaveClassTest(body, userId) {
     };
 
     if (row.assessmentId) {
-      const updated = await updateAssessment(row.assessmentId, payload);
+      const updated = await updateAssessment(row.assessmentId, payload, userId);
       saved.push(updated);
       continue;
     }
@@ -198,7 +221,7 @@ async function bulkSaveClassTest(body, userId) {
       examDate: { $gte: start, $lte: end },
     });
     if (dup) {
-      const updated = await updateAssessment(dup._id, payload);
+      const updated = await updateAssessment(dup._id, payload, userId);
       saved.push(updated);
     } else {
       const created = await createAssessment(row.studentId, payload, userId);

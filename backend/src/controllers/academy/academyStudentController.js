@@ -180,6 +180,11 @@ const uploadPhoto = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const provisionParentPortals = catchAsync(async (req, res) => {
+  const data = await studentService.provisionParentPortalsForAllActiveStudents();
+  res.json({ success: true, data });
+});
+
 module.exports = {
   register,
   registerProvisional,
@@ -195,4 +200,5 @@ module.exports = {
   remove,
   discountReport,
   uploadPhoto,
+  provisionParentPortals,
 };

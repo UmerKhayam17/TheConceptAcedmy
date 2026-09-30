@@ -36,16 +36,30 @@ const updateItem = catchAsync(async (req, res) => {
 });
 
 const listAssignments = catchAsync(async (req, res) => {
-  const data = await planService.listAssignments(req.params.sessionId, {
-    category: req.query.category,
-    planItemId: req.query.planItemId,
-    status: req.query.status,
-  });
+  const data = await planService.listAssignments(
+    req.params.sessionId,
+    {
+      category: req.query.category,
+      planItemId: req.query.planItemId,
+      status: req.query.status,
+    },
+    req.user
+  );
+  res.json({ success: true, data });
+});
+
+const teacherTestScope = catchAsync(async (req, res) => {
+  const data = await planService.getTeacherTestScope(req.params.sessionId, req.user);
   res.json({ success: true, data });
 });
 
 const createAssignment = catchAsync(async (req, res) => {
-  const data = await planService.createAssignment(req.params.sessionId, req.body, req.user._id);
+  const data = await planService.createAssignment(
+    req.params.sessionId,
+    req.body,
+    req.user._id,
+    req.user
+  );
   res.status(201).json({ success: true, data });
 });
 
@@ -54,7 +68,8 @@ const updateAssignment = catchAsync(async (req, res) => {
     req.params.sessionId,
     req.params.assignmentId,
     req.body,
-    req.user._id
+    req.user._id,
+    req.user
   );
   res.json({ success: true, data });
 });
@@ -64,13 +79,18 @@ const upsertPapers = catchAsync(async (req, res) => {
     req.params.sessionId,
     req.params.assignmentId,
     req.body.papers,
-    req.user._id
+    req.user._id,
+    req.user
   );
   res.json({ success: true, data });
 });
 
 const deleteAssignment = catchAsync(async (req, res) => {
-  const data = await planService.deleteAssignment(req.params.sessionId, req.params.assignmentId);
+  const data = await planService.deleteAssignment(
+    req.params.sessionId,
+    req.params.assignmentId,
+    req.user
+  );
   res.json({ success: true, data });
 });
 
@@ -78,7 +98,8 @@ const publishAssignment = catchAsync(async (req, res) => {
   const data = await planService.publishAssignment(
     req.params.sessionId,
     req.params.assignmentId,
-    req.user._id
+    req.user._id,
+    req.user
   );
   res.json({ success: true, data });
 });
@@ -98,6 +119,7 @@ module.exports = {
   clear,
   updateItem,
   listAssignments,
+  teacherTestScope,
   createAssignment,
   updateAssignment,
   upsertPapers,

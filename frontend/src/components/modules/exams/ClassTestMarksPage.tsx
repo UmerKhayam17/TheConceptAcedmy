@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import type { Role } from "@/lib/auth";
 import type { ModuleActionCaps } from "@/lib/permissions";
-import { classTestMarksHref, classTestSeriesHref, testExamsHref } from "@/lib/testExamsMenus";
+import { classTestSeriesHref, testExamsHref } from "@/lib/testExamsMenus";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import CreatedByLine from "@/components/modules/CreatedByLine";
 import { matchesPanelSearch } from "@/lib/panelSearch";
@@ -33,6 +33,11 @@ function classNameOf(test: AcademyClassTest) {
 function subjectNameOf(test: AcademyClassTest) {
   const s = test.subjectId;
   return typeof s === "object" && s ? s.subjectName : "—";
+}
+
+function sectionNameOf(test: AcademyClassTest) {
+  const s = test.sectionId;
+  return typeof s === "object" && s ? s.sectionName : "";
 }
 
 export default function ClassTestMarksPage({
@@ -80,7 +85,16 @@ export default function ClassTestMarksPage({
   const rowsFiltered = useMemo(() => {
     if (!search.trim()) return rows;
     return rows.filter((row) =>
-      matchesPanelSearch(search, row.student.studentName, row.student.studentId, row.student.fatherName)
+      matchesPanelSearch(
+        search,
+        row.student.studentName,
+        row.student.studentId,
+        row.student.fatherName,
+        row.student.rollNumber,
+        row.student.phone,
+        row.student.sectionName,
+        row.student.guardianName
+      )
     );
   }, [rows, search]);
 
@@ -181,6 +195,8 @@ export default function ClassTestMarksPage({
     );
   }
 
+  const sectionLabel = sectionNameOf(test);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b pb-4">
@@ -201,11 +217,15 @@ export default function ClassTestMarksPage({
             {test.seriesLabel || test.title}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {classNameOf(test)} · {subjectNameOf(test)} ·{" "}
+            {classNameOf(test)}
+            {sectionLabel ? ` · ${sectionLabel}` : ""} · {subjectNameOf(test)} ·{" "}
             {ASSESSMENT_TYPE_LABELS[test.assessmentType as AssessmentType]} ·{" "}
             {formatClassTestSchedule(test)} · Total {test.totalMarks} marks
           </p>
-          <CreatedByLine createdBy={test.createdBy} />
+          <CreatedByLine createdBy={test.createdBy} label="Test created by" />
+          {test.teacherId && typeof test.teacherId === "object" && (
+            <CreatedByLine createdBy={test.teacherId} label="Assigned teacher" />
+          )}
           {test.occurrenceIndex && test.occurrenceCount && test.occurrenceCount > 1 && (
             <Badge variant="secondary" className="text-xs">
               {test.recurrence === "weekly"
@@ -235,7 +255,7 @@ export default function ClassTestMarksPage({
       <PanelSearchBar
         value={search}
         onChange={setSearch}
-        placeholder="Search student name or ID…"
+        placeholder="Search name, ID, father, roll, phone…"
         className="max-w-md"
       />
 
@@ -252,11 +272,14 @@ export default function ClassTestMarksPage({
               <thead className="bg-muted/50">
                 <tr>
                   <th className="text-left p-3 font-medium">#</th>
-                  <th className="text-left p-3 font-medium min-w-[200px]">Student</th>
-                  <th className="text-left p-3 font-medium">ID</th>
+                  <th className="text-left p-3 font-medium min-w-[140px]">Student</th>
+                  <th className="text-left p-3 font-medium min-w-[120px]">Father name</th>
+                  <th className="text-left p-3 font-medium min-w-[130px]">Roll number</th>
+                  <th className="text-left p-3 font-medium">Section</th>
+                  <th className="text-left p-3 font-medium min-w-[110px]">Phone</th>
                   <th className="text-center p-3 font-medium w-36">Obtained</th>
                   <th className="text-center p-3 font-medium w-[100px]">Test paper</th>
-                  <th className="text-left p-3 font-medium min-w-[160px]">Remarks</th>
+                  <th className="text-left p-3 font-medium min-w-[140px]">Remarks</th>
                 </tr>
               </thead>
               <tbody>
@@ -270,8 +293,17 @@ export default function ClassTestMarksPage({
                   return (
                     <tr key={sid} className="border-b hover:bg-muted/20">
                       <td className="p-3 text-muted-foreground">{idx + 1}</td>
-                      <td className="p-3 font-medium">{row.student.studentName}</td>
-                      <td className="p-3 font-mono text-xs text-muted-foreground">{row.student.studentId}</td>
+                      <td className="p-3 font-medium whitespace-nowrap">{row.student.studentName}</td>
+                      <td className="p-3 text-muted-foreground whitespace-nowrap">
+                        {row.student.fatherName || "—"}
+                      </td>
+                      <td className="p-3 font-mono text-xs whitespace-nowrap">
+                        {row.student.rollNumber || "—"}
+                      </td>
+                      <td className="p-3 text-muted-foreground">{row.student.sectionName || "—"}</td>
+                      <td className="p-3 text-muted-foreground whitespace-nowrap">
+                        {row.student.phone || "—"}
+                      </td>
                       <td className="p-3">
                         <div className="flex items-center justify-center gap-1">
                           <Input

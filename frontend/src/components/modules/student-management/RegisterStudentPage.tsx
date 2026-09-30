@@ -36,8 +36,6 @@ import {
   Tag,
   Trash2,
   KeyRound,
-  Eye,
-  EyeOff,
   ImageIcon,
   User,
   Users,
@@ -276,7 +274,6 @@ export default function RegisterStudentPage({
   const [form, setForm] = useState(defaultRegisterForm);
   const [feePreview, setFeePreview] = useState<FeePreview | null>(null);
   const [formReady, setFormReady] = useState(!studentId);
-  const [showParentPassword, setShowParentPassword] = useState(false);
   const [choiceSelections, setChoiceSelections] = useState<Record<string, string>>({});
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -881,21 +878,17 @@ export default function RegisterStudentPage({
               <div className="relative">
                 <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  type={showParentPassword ? "text" : "password"}
-                  className="pl-9 pr-10"
-                  placeholder="Minimum 8 characters"
+                  type="text"
+                  className="pl-9 font-mono"
+                  placeholder="Concept@1234"
                   value={form.parentPassword}
                   onChange={(e) => setForm((f) => ({ ...f, parentPassword: e.target.value }))}
                 />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
-                  onClick={() => setShowParentPassword((p) => !p)}
-                  aria-label={showParentPassword ? "Hide password" : "Show password"}
-                >
-                  {showParentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
               </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Password is shown in plain text:{" "}
+                <span className="font-medium text-foreground font-mono">Concept@1234</span>
+              </p>
             </FormField>
             )}
           </div>
@@ -1394,16 +1387,20 @@ export default function RegisterStudentPage({
                 <p className="font-medium">{credentials.rollNumber}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Student login</p>
-                <p className="font-medium break-all">{credentials.studentEmail}</p>
+                <p className="text-xs text-muted-foreground">Parent login email</p>
+                <p className="font-medium break-all">
+                  {credentials.parentEmail || credentials.studentEmail}
+                </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Student password</p>
-                <p className="font-medium">{credentials.studentPassword}</p>
+                <p className="text-xs text-muted-foreground">Parent password</p>
+                <p className="font-medium font-mono tracking-wide">
+                  {credentials.parentPassword || credentials.studentPassword || "Concept@1234"}
+                </p>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Parent portal access can be set up separately from the Users module.
+              Only parents have portal access. Share these credentials with the family. Default password is Concept@1234.
             </p>
           </div>
         )}

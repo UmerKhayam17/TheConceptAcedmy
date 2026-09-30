@@ -59,7 +59,7 @@ export const USER_SCHEMA_FIELDS: UserSchemaField[] = [
     optionalOnEdit: true,
     colSpan: 2,
     showInTable: false,
-    placeholder: "Min. 8 characters",
+    placeholder: "Concept@1234 or custom password",
   },
   {
     key: "phone",

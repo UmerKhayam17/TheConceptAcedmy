@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, UserX, ImageIcon, Eye, EyeOff } from "lucide-react";
+import { Plus, Pencil, UserX, ImageIcon, Eye, EyeOff, KeyRound, Loader2, Trash2 } from "lucide-react";
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -29,6 +29,7 @@ import {
   createStaffUser,
   TEACHER_DEFAULT_MODULE_PERMISSIONS,
   ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS,
+  PARENT_DEFAULT_MODULE_PERMISSIONS,
   fetchAllUsers,
   fetchAllRoles,
   fetchParentStudents,
@@ -39,6 +40,7 @@ import {
   roleDisplayLabel,
   assignParentStudents,
   updateStaffUser,
+  deleteStaffUser,
   uploadStaffProfilePhoto,
   normalizeModulePermissions,
   type RoleOption,
@@ -53,8 +55,14 @@ import ParentUserCreateFields, {
 } from "@/components/modules/ParentUserCreateFields";
 import PanelToolbar from "@/components/modules/PanelToolbar";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
-import { fetchAcademyStudents, type AcademyStudent } from "@/lib/studentManagementApi";
+import {
+  fetchAcademyStudents,
+  provisionParentPortals,
+  type AcademyStudent,
+  type ParentPortalProvisionResult,
+} from "@/lib/studentManagementApi";
 import { resolveUploadUrl } from "@/lib/api";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 function setFormField(setter: React.Dispatch<React.SetStateAction<UserFormValues>>, key: UserFieldKey, value: string) {
   setter((prev) => ({ ...prev, [key]: value }));
@@ -73,7 +81,6 @@ function SchemaFieldControl({
   onChange: (v: string) => void;
   roleOptions: RoleOption[];
 }) {
-  const [showPassword, setShowPassword] = useState(false);
   const selectOptions =
     field.optionsFrom === "roles"
       ? roleOptions.map((r) => ({ value: r._id, label: r.name }))
@@ -120,26 +127,21 @@ function SchemaFieldControl({
 
   return (
     field.inputType === "password" ? (
-      <div className="relative">
+      <div className="space-y-1">
         <Input
-          type={showPassword ? "text" : "password"}
+          type="text"
           autoComplete="new-password"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="pr-10"
+          className="font-mono"
           required={
             field.required && !(mode === "edit" && field.key === "password" && field.optionalOnEdit)
           }
         />
-        <button
-          type="button"
-          onClick={() => setShowPassword((p) => !p)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
-          aria-label={showPassword ? "Hide password" : "Show password"}
-        >
-          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
+        {mode === "create" ? (
+          <p className="text-xs text-muted-foreground">Password is shown in plain text so you can copy it.</p>
+        ) : null}
       </div>
     ) : (
       <Input
@@ -259,6 +261,14 @@ const UsersModule = ({
   const [editingWasParent, setEditingWasParent] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [provisionOpen, setProvisionOpen] = useState(false);
+  const [provisionResult, setProvisionResult] = useState<ParentPortalProvisionResult | null>(null);
+  const [showProvisionPasswords, setShowProvisionPasswords] = useState(true);
+  const [createdParentCredentials, setCreatedParentCredentials] = useState<{
+    name: string;
+    email: string;
+    password: string;
+  } | null>(null);
 
   const roleOptions = useMemo(() => {
     if (scope === "staff") {
@@ -272,15 +282,46 @@ const UsersModule = ({
   const isAccountantRole = (selectedRole?.name || "").toLowerCase() === "accountant";
   const isParentCreate = open && mode === "create" && isParentRole;
 
-  // Seed default RBAC matrix when creating teacher / accountant (admin can still override).
+  // Seed default RBAC matrix when creating teacher / accountant / parent (admin can still override).
   useEffect(() => {
-    if (!open || mode !== "create" || isParentRole) return;
+    if (!open || mode !== "create") return;
+    if (isParentRole) {
+      setParentCreate((prev) => ({
+        ...prev,
+        password: prev.password || "Concept@1234",
+        modulePermissions:
+          Object.keys(prev.modulePermissions || {}).length > 0
+            ? prev.modulePermissions
+            : { ...PARENT_DEFAULT_MODULE_PERMISSIONS },
+      }));
+      return;
+    }
     if (isTeacherRole) {
       setModulePerms({ ...TEACHER_DEFAULT_MODULE_PERMISSIONS });
     } else if (isAccountantRole) {
       setModulePerms({ ...ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS });
     }
   }, [open, mode, isTeacherRole, isAccountantRole, isParentRole, form.role]);
+
+  const provisionMutation = useMutation({
+    mutationFn: async () => {
+      if (!caps.canCreate) throw new Error("You do not have permission to create parent portals.");
+      return provisionParentPortals();
+    },
+    onSuccess: (data) => {
+      setProvisionResult(data);
+      setProvisionOpen(true);
+      setShowProvisionPasswords(true);
+      void qc.invalidateQueries({ queryKey: STAFF_QUERY });
+      toast({
+        title: "Parent portals ready",
+        description: `${data.createdCount} created, ${data.updatedCount} updated (${data.total} students).`,
+      });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Provision failed", description: e.message, variant: "destructive" });
+    },
+  });
 
   const { data: parentStudentChoices = [], isLoading: parentStudentChoicesLoading } = useQuery({
     queryKey: ["academy-student-choices", isParentRole, mode],
@@ -336,11 +377,15 @@ const UsersModule = ({
         if (!parentCreate.studentId) throw new Error("Select a student for this parent.");
         if (!parentCreate.name.trim()) throw new Error("Selected student has no name.");
         if (!parentCreate.email.trim()) {
-          throw new Error("Selected student has no email. Add an email on the student record first.");
+          throw new Error("Could not build a portal email. Ensure the student has an official Student ID.");
         }
         if (!parentCreate.password || parentCreate.password.length < 8) {
           throw new Error("Password must be at least 8 characters.");
         }
+        const mods =
+          Object.keys(parentCreate.modulePermissions || {}).length > 0
+            ? parentCreate.modulePermissions
+            : { ...PARENT_DEFAULT_MODULE_PERMISSIONS };
         const u = await createStaffUser({
           name: parentCreate.name.trim(),
           email: parentCreate.email.trim().toLowerCase(),
@@ -349,10 +394,17 @@ const UsersModule = ({
           role: form.role,
           isActive: true,
           salary: 0,
-          modulePermissions: parentCreate.modulePermissions,
+          modulePermissions: mods,
         });
         await assignParentStudents(u._id, [parentCreate.studentId]);
-        return u;
+        return {
+          user: u,
+          parentCredentials: {
+            name: parentCreate.name.trim(),
+            email: parentCreate.email.trim().toLowerCase(),
+            password: parentCreate.password,
+          },
+        };
       }
 
       const fields = visibleFormFields(mode);
@@ -388,7 +440,7 @@ const UsersModule = ({
           modulePermissions: permsPayload,
         });
         if (photoFile) await uploadStaffProfilePhoto(u._id, photoFile);
-        return u;
+        return { user: u, parentCredentials: null };
       }
       if (!editingId) throw new Error("Missing user");
       const payload: Parameters<typeof updateStaffUser>[1] = {
@@ -405,9 +457,9 @@ const UsersModule = ({
       if (photoFile) await uploadStaffProfilePhoto(editingId, photoFile);
       if (isParentRole) await assignParentStudents(editingId, parentStudentIds);
       if (!isParentRole && editingWasParent) await assignParentStudents(editingId, []);
-      return u;
+      return { user: u, parentCredentials: null };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast({
         title: mode === "create"
           ? isParentRole ? "Parent user created" : "User created"
@@ -416,6 +468,9 @@ const UsersModule = ({
       void qc.invalidateQueries({ queryKey: STAFF_QUERY });
       setOpen(false);
       clearFormState();
+      if (result.parentCredentials) {
+        setCreatedParentCredentials(result.parentCredentials);
+      }
     },
     onError: (e: Error) => {
       toast({ title: "Save failed", description: e.message, variant: "destructive" });
@@ -433,6 +488,20 @@ const UsersModule = ({
     },
     onError: (e: Error) => {
       toast({ title: "Update failed", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => {
+      if (!caps.canDelete) throw new Error("Not allowed.");
+      return deleteStaffUser(id);
+    },
+    onSuccess: () => {
+      toast({ title: "User deleted" });
+      void qc.invalidateQueries({ queryKey: STAFF_QUERY });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Delete failed", description: e.message, variant: "destructive" });
     },
   });
 
@@ -489,8 +558,10 @@ const UsersModule = ({
 
   const cols = tableColumns();
   const showLinkedStudents = scope === "all";
+  const showParentPasswordCol = scope === "all";
   const showActions = scope === "staff" || caps.canEdit || caps.canDelete;
-  const tableColSpan = cols.length + 2 + (showLinkedStudents ? 1 : 0) + (showActions ? 1 : 0);
+  const tableColSpan =
+    cols.length + 2 + (showLinkedStudents ? 1 : 0) + (showParentPasswordCol ? 1 : 0) + (showActions ? 1 : 0);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -499,6 +570,29 @@ const UsersModule = ({
         onSearchChange={setSearch}
         searchPlaceholder="Search name, email, phone, role…"
       >
+        {caps.canCreate && scope !== "staff" && (
+          <Button
+            variant="outline"
+            disabled={provisionMutation.isPending}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  "Create or reset parent portal email and password (Concept@1234) for every active student?",
+                )
+              ) {
+                return;
+              }
+              provisionMutation.mutate();
+            }}
+          >
+            {provisionMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <KeyRound className="h-4 w-4" />
+            )}
+            Create parent emails & passwords
+          </Button>
+        )}
         {caps.canCreate && (
           <Button variant="hero" onClick={openCreate}>
             <Plus className="h-4 w-4" /> {scope === "staff" ? "Add staff" : "Add user"}
@@ -677,6 +771,9 @@ const UsersModule = ({
                 {showLinkedStudents && (
                   <th className="text-left font-medium px-4 py-3 min-w-[10rem]">Linked students</th>
                 )}
+                {showParentPasswordCol && (
+                  <th className="text-left font-medium px-4 py-3 min-w-[8rem]">Password</th>
+                )}
                 <th className="text-left font-medium px-4 py-3">Modules</th>
                 {showActions && <th className="px-4 py-3 w-28" />}
               </tr>
@@ -725,6 +822,15 @@ const UsersModule = ({
                           <LinkedStudentsCell user={u} />
                         </td>
                       )}
+                      {showParentPasswordCol && (
+                        <td className="px-4 py-3 align-top">
+                          {isParentUser(u) ? (
+                            <span className="font-mono text-xs tracking-wide">Concept@1234</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-muted-foreground">
                         {(() => {
                           const mods = u.modulePermissions && typeof u.modulePermissions === "object"
@@ -768,10 +874,31 @@ const UsersModule = ({
                                 if (window.confirm(`Deactivate ${u.name}?`)) deactivateMutation.mutate(u._id);
                               }}
                               aria-label="Deactivate"
+                              title="Deactivate"
                             >
                               <UserX className="h-4 w-4 text-destructive" />
                             </Button>
                           ) : null}
+                          {caps.canDelete && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={deleteMutation.isPending}
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Permanently delete ${u.name}? This cannot be undone.`,
+                                  )
+                                ) {
+                                  deleteMutation.mutate(u._id);
+                                }
+                              }}
+                              aria-label="Delete"
+                              title="Delete user"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         </td>
                       )}
                     </tr>
@@ -782,6 +909,116 @@ const UsersModule = ({
           </table>
         </div>
       </Card>
+
+      <Dialog
+        open={Boolean(createdParentCredentials)}
+        onOpenChange={(o) => {
+          if (!o) setCreatedParentCredentials(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Parent portal credentials</DialogTitle>
+          </DialogHeader>
+          {createdParentCredentials && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-muted-foreground text-xs">Student / parent name</p>
+                <p className="font-medium">{createdParentCredentials.name}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Login email</p>
+                <p className="font-medium break-all">{createdParentCredentials.email}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Password</p>
+                <p className="font-medium font-mono tracking-wide">{createdParentCredentials.password}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Share these credentials with the family. Default password is Concept@1234.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" onClick={() => setCreatedParentCredentials(null)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={provisionOpen}
+        onOpenChange={(o) => {
+          setProvisionOpen(o);
+          if (!o) setProvisionResult(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Parent portal emails & passwords</DialogTitle>
+          </DialogHeader>
+          {provisionResult && (
+            <div className="space-y-3 min-h-0 flex-1 flex flex-col">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <p className="text-muted-foreground">
+                  {provisionResult.total} students · {provisionResult.createdCount} new ·{" "}
+                  {provisionResult.updatedCount} updated · password{" "}
+                  <span className="font-medium text-foreground font-mono">
+                    {provisionResult.defaultPassword}
+                  </span>
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowProvisionPasswords((p) => !p)}
+                >
+                  {showProvisionPasswords ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                  {showProvisionPasswords ? "Hide passwords" : "Show passwords"}
+                </Button>
+              </div>
+              <ScrollArea className="h-[min(420px,50vh)] rounded-md border border-border">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-background border-b border-border">
+                    <tr>
+                      <th className="text-left font-medium px-3 py-2">Student</th>
+                      <th className="text-left font-medium px-3 py-2">Student ID</th>
+                      <th className="text-left font-medium px-3 py-2">Email</th>
+                      <th className="text-left font-medium px-3 py-2">Password</th>
+                      <th className="text-left font-medium px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {provisionResult.rows.map((row) => (
+                      <tr key={row.studentMongoId} className="border-t border-border">
+                        <td className="px-3 py-2">{row.studentName}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{row.studentId}</td>
+                        <td className="px-3 py-2 break-all text-xs">{row.parentEmail}</td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {showProvisionPasswords ? row.parentPassword : "••••••••"}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">
+                          {row.created ? "Created" : "Updated"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </ScrollArea>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" onClick={() => setProvisionOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

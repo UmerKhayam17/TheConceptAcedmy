@@ -189,10 +189,13 @@ const createUser = catchAsync(async (req, res) => {
   const Role = require('../models/Role');
   const roleDoc = await Role.findById(role);
   const roleName = String(roleDoc?.name || '').toLowerCase();
+  if (roleName === 'student') {
+    throw new ApiError(400, 'Student portal logins are disabled. Create a parent user instead.');
+  }
 
-  // New teachers / accountants inherit role defaults when none provided.
+  // New teachers / accountants / parents inherit role defaults when none provided.
   if (
-    (roleName === 'teacher' || roleName === 'accountant') &&
+    (roleName === 'teacher' || roleName === 'accountant' || roleName === 'parent') &&
     (!userModulePerms || userModulePerms.size === 0)
   ) {
     if (roleName === 'teacher') {
@@ -201,12 +204,26 @@ const createUser = catchAsync(async (req, res) => {
         roleDoc?.modulePermissions instanceof Map && roleDoc.modulePermissions.size > 0
           ? new Map(roleDoc.modulePermissions)
           : teacherModulePermissionsMap();
-    } else {
+    } else if (roleName === 'accountant') {
       const { accountantModulePermissionsMap } = require('../config/accountantDefaults');
       userModulePerms =
         roleDoc?.modulePermissions instanceof Map && roleDoc.modulePermissions.size > 0
           ? new Map(roleDoc.modulePermissions)
           : accountantModulePermissionsMap();
+    } else if (roleName === 'parent') {
+      userModulePerms =
+        roleDoc?.modulePermissions instanceof Map && roleDoc.modulePermissions.size > 0
+          ? new Map(roleDoc.modulePermissions)
+          : new Map(
+              Object.entries({
+                student: ['view'],
+                attendance: ['view'],
+                exam: ['view'],
+                timetable: ['view'],
+                chat: ['view', 'create', 'participate'],
+                announcement: ['view'],
+              })
+            );
     }
   }
 
@@ -352,11 +369,39 @@ const revokeModulePermissions = catchAsync(async (req, res) => {
   res.json({ success: true, data: serializeUser(updatedUser) });
 });
 
+const deleteUser = catchAsync(async (req, res) => {
+  const targetId = String(req.params.id || '');
+  if (!targetId) throw new ApiError(400, 'User id required');
+  if (String(req.user._id) === targetId) {
+    throw new ApiError(400, 'You cannot delete your own account.');
+  }
+
+  const user = await User.findById(targetId).populate('role');
+  if (!user) throw new ApiError(404, 'User not found');
+
+  const roleName = String(user.role?.name || '').toLowerCase();
+  if (roleName === 'admin') {
+    const adminCount = await User.countDocuments({
+      role: user.role._id,
+      _id: { $ne: user._id },
+      isActive: true,
+    });
+    if (adminCount === 0) {
+      throw new ApiError(400, 'Cannot delete the last active admin account.');
+    }
+  }
+
+  await User.findByIdAndDelete(user._id);
+  notifyStaff(req, 'deleted', String(user._id));
+  res.json({ success: true, data: { deleted: true, id: String(user._id) } });
+});
+
 module.exports = {
   listUsers,
   listModuleRegistry,
   createUser,
   updateUser,
+  deleteUser,
   uploadProfilePhoto,
   patchPermissions,
   patchModulePermissions,

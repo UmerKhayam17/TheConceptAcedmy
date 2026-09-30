@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { protect } = require('../middleware/auth');
-const { requirePermission, requireAnyPermission } = require('../middleware/permissions');
+const { requirePermission, requireAnyPermission, requireFeeReadAccess } = require('../middleware/permissions');
 const { validate } = require('../middleware/validate');
 const schemas = require('../validators/academySchemas');
 
@@ -206,6 +206,11 @@ router.get(
   studentCtrl.exportStudents
 );
 router.get('/students', requirePermission('view_academy_students'), studentCtrl.list);
+router.post(
+  '/students/provision-parent-portals',
+  requireAnyPermission('manage_users', 'manage_academy_students', 'activate_student'),
+  studentCtrl.provisionParentPortals
+);
 router.get(
   '/students/discount-report',
   requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
@@ -304,7 +309,7 @@ router.delete('/students/:id', requirePermission('manage_academy_students'), stu
 // Fee management
 router.get(
   '/fees/summary',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.summary
 );
 router.get(
@@ -329,7 +334,7 @@ router.get(
 );
 router.get(
   '/fees',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.list
 );
 router.post(
@@ -340,12 +345,12 @@ router.post(
 );
 router.get(
   '/fees/challan/:studentId',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.challan
 );
 router.get(
   '/fees/:id/receipt',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.receipt
 );
 router.post(
@@ -362,7 +367,7 @@ router.patch(
 );
 router.get(
   '/fees/student/:studentId',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.studentHistory
 );
 

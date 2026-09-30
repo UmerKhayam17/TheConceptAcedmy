@@ -15,6 +15,16 @@ const {
 } = require('../../config/assessmentTaxonomy');
 const { assertSessionWritable } = require('../session/sessionGuard');
 const { createNotificationForUser, emitModuleSync } = require('../realtime/realtimeService');
+const {
+  isTeacherRole,
+  idStr,
+  getTeacherScopeCombos,
+  assignmentMatchesCombos,
+  subjectIdsForClassSection,
+  assertTeacherHasClassSection,
+  assertTeacherCanAccessAssignment,
+  resolveTeacherForCombo,
+} = require('./teacherTestScope');
 
 const ASSIGN_POPULATE = [
   { path: 'classId', select: 'className sessionId' },
@@ -222,17 +232,25 @@ async function findDuplicateAssignment(planItemId, classId, sectionId, excludeId
 }
 
 /** Assessments module: list assignments (optionally by category / plan item). */
-async function listAssignments(sessionId, { category, planItemId, status } = {}) {
+async function listAssignments(sessionId, { category, planItemId, status } = {}, actor) {
   await getSession(sessionId);
   const q = { sessionId };
   if (category) q.category = category;
   if (planItemId) q.planItemId = planItemId;
   if (status) q.status = status;
 
-  const rows = await AssessmentAssignment.find(q)
+  let rows = await AssessmentAssignment.find(q)
     .populate(ASSIGN_POPULATE)
     .sort({ name: 1, createdAt: 1 })
     .lean();
+
+  if (isTeacherRole(actor)) {
+    const combos = await getTeacherScopeCombos(actor._id, sessionId);
+    rows = rows.filter((a) => {
+      if (a.category === 'exam') return false;
+      return assignmentMatchesCombos(a, combos);
+    });
+  }
 
   const { plan } = await getOrCreatePlan(sessionId);
   return {
@@ -241,8 +259,41 @@ async function listAssignments(sessionId, { category, planItemId, status } = {})
   };
 }
 
+async function getTeacherTestScope(sessionId, actor) {
+  await getSession(sessionId);
+  if (!isTeacherRole(actor)) {
+    throw new ApiError(403, 'Teacher scope is only available to teachers');
+  }
+  const combos = await getTeacherScopeCombos(actor._id, sessionId);
+  const TeacherAssignment = require('../../models/timetable/TeacherAssignment');
+  const rows = await TeacherAssignment.find({
+    teacher: actor._id,
+    session: sessionId,
+    isActive: true,
+  })
+    .populate('class', 'className')
+    .populate('section', 'sectionName')
+    .populate('subject', 'subjectName subjectCode')
+    .sort({ priority: 1 })
+    .lean();
+
+  return {
+    combos,
+    assignments: rows.map((r) => ({
+      _id: String(r._id),
+      classId: String(r.class?._id || r.class),
+      className: r.class?.className || '',
+      sectionId: String(r.section?._id || r.section),
+      sectionName: r.section?.sectionName || '',
+      subjectId: String(r.subject?._id || r.subject),
+      subjectName: r.subject?.subjectName || '',
+      subjectCode: r.subject?.subjectCode || '',
+    })),
+  };
+}
+
 /** Assign catalog test/exam to a class (+ optional section). Same item → many classes. */
-async function createAssignment(sessionId, body, userId) {
+async function createAssignment(sessionId, body, userId, actor) {
   await assertSessionWritable(sessionId);
   const { plan, session } = await getOrCreatePlan(sessionId);
   if (plan.status !== 'ready' || !plan.items?.length) {
@@ -251,6 +302,15 @@ async function createAssignment(sessionId, body, userId) {
 
   const item = plan.items.id(body.planItemId);
   if (!item) throw new ApiError(404, 'Catalog test/exam not found');
+
+  if (isTeacherRole(actor)) {
+    if (item.category !== 'test') {
+      throw new ApiError(403, 'Teachers can only assign catalog tests, not formal exams');
+    }
+    if (!body.sectionId) {
+      throw new ApiError(400, 'Section is required for teachers');
+    }
+  }
 
   if (!body.classId) throw new ApiError(400, 'Class is required');
   const cls = await AcademyClass.findOne({ _id: body.classId, sessionId });
@@ -263,8 +323,22 @@ async function createAssignment(sessionId, body, userId) {
     sectionId = body.sectionId;
   }
 
+  if (isTeacherRole(actor)) {
+    await assertTeacherHasClassSection(actor._id, {
+      classId: body.classId,
+      sectionId,
+      sessionId,
+    });
+  }
+
   const dup = await findDuplicateAssignment(item._id, body.classId, sectionId);
   if (dup) {
+    // Teachers join the shared catalog assignment for this class/section.
+    if (isTeacherRole(actor)) {
+      await assertTeacherCanAccessAssignment(actor._id, dup, sessionId);
+      const populated = await AssessmentAssignment.findById(dup._id).populate(ASSIGN_POPULATE);
+      return { assignment: populated, session, reused: true };
+    }
     throw new ApiError(409, `${item.name} is already assigned to this class${sectionId ? '/section' : ''}`);
   }
 
@@ -288,13 +362,23 @@ async function createAssignment(sessionId, body, userId) {
   return { assignment: populated, session };
 }
 
-async function updateAssignment(sessionId, assignmentId, body, userId) {
+async function updateAssignment(sessionId, assignmentId, body, userId, actor) {
   await assertSessionWritable(sessionId);
   const doc = await AssessmentAssignment.findOne({ _id: assignmentId, sessionId });
   if (!doc) throw new ApiError(404, 'Assignment not found');
   if (doc.status === 'published') throw new ApiError(400, 'Published assignments are locked');
 
+  if (isTeacherRole(actor)) {
+    await assertTeacherCanAccessAssignment(actor._id, doc, sessionId);
+    if (doc.category !== 'test') {
+      throw new ApiError(403, 'Teachers cannot modify exam assignments');
+    }
+  }
+
   if (body.classId !== undefined) {
+    if (isTeacherRole(actor)) {
+      throw new ApiError(403, 'Teachers cannot change class on an assignment');
+    }
     const cls = await AcademyClass.findOne({ _id: body.classId, sessionId });
     if (!cls) throw new ApiError(400, 'Class not found in this session');
     const classChanged = String(doc.classId) !== String(body.classId);
@@ -307,10 +391,20 @@ async function updateAssignment(sessionId, assignmentId, body, userId) {
 
   if (body.sectionId !== undefined) {
     if (!body.sectionId) {
+      if (isTeacherRole(actor)) {
+        throw new ApiError(400, 'Section is required for teachers');
+      }
       doc.sectionId = undefined;
     } else {
       const sec = await AcademySection.findOne({ _id: body.sectionId, classId: doc.classId });
       if (!sec) throw new ApiError(400, 'Section not found for this class');
+      if (isTeacherRole(actor)) {
+        await assertTeacherHasClassSection(actor._id, {
+          classId: doc.classId,
+          sectionId: body.sectionId,
+          sessionId,
+        });
+      }
       doc.sectionId = body.sectionId;
     }
   }
@@ -326,36 +420,130 @@ async function updateAssignment(sessionId, assignmentId, body, userId) {
   return { assignment: populated };
 }
 
-async function upsertAssignmentPapers(sessionId, assignmentId, papersInput, userId) {
+function parsePaperRow(row, allowedSubjectIds) {
+  if (!row.subjectId || !allowedSubjectIds.has(String(row.subjectId))) {
+    return { skip: true };
+  }
+  const totalMarks = row.totalMarks != null && row.totalMarks !== '' ? Number(row.totalMarks) : undefined;
+  const examDate = row.examDate ? new Date(row.examDate) : undefined;
+  const syllabus = row.syllabus != null ? String(row.syllabus).trim() : '';
+
+  if (!totalMarks && !examDate && !syllabus) return { clear: true, subjectId: row.subjectId };
+  if (!totalMarks || totalMarks < 1) throw new ApiError(400, 'Total marks required for each included subject');
+  if (!examDate || Number.isNaN(examDate.getTime())) {
+    throw new ApiError(400, 'Test date required for each included subject');
+  }
+  return { subjectId: row.subjectId, totalMarks, examDate, syllabus };
+}
+
+async function createClassTestFromPaper(doc, paper, userId) {
+  const teacherId =
+    (await resolveTeacherForCombo({
+      sessionId: doc.sessionId,
+      classId: doc.classId,
+      sectionId: doc.sectionId,
+      subjectId: paper.subjectId,
+    })) || userId;
+
+  return AcademyClassTest.create({
+    classId: doc.classId,
+    sectionId: doc.sectionId || undefined,
+    subjectId: paper.subjectId,
+    title: `${doc.name} — ${assessmentTypeLabel(doc.assessmentType)}`,
+    seriesLabel: doc.name,
+    assessmentType: doc.assessmentType,
+    examDate: paper.examDate,
+    testTime: '09:00',
+    totalMarks: paper.totalMarks,
+    syllabus: paper.syllabus || '',
+    status: 'open',
+    recurrence: 'once',
+    planId: doc.planId,
+    planItemId: doc.planItemId,
+    assignmentId: doc._id,
+    teacherId,
+    createdBy: userId,
+  });
+}
+
+async function upsertAssignmentPapers(sessionId, assignmentId, papersInput, userId, actor) {
   await assertSessionWritable(sessionId);
   const doc = await AssessmentAssignment.findOne({ _id: assignmentId, sessionId });
   if (!doc) throw new ApiError(404, 'Assignment not found');
-  if (doc.status === 'published') throw new ApiError(400, 'Published assignments are locked');
 
-  const subjects = await AcademySubject.find({ classId: doc.classId, status: 'active' }).select('_id');
-  const allowed = new Set(subjects.map((s) => String(s._id)));
-
-  if (!Array.isArray(papersInput)) throw new ApiError(400, 'papers must be an array');
-
-  const next = [];
-  for (const row of papersInput) {
-    if (!row.subjectId || !allowed.has(String(row.subjectId))) {
-      throw new ApiError(400, 'Invalid subject for this class');
+  const teacher = isTeacherRole(actor);
+  let teacherSubjectIds = null;
+  if (teacher) {
+    if (doc.category !== 'test') {
+      throw new ApiError(403, 'Teachers cannot edit exam papers');
     }
-    const totalMarks = row.totalMarks != null && row.totalMarks !== '' ? Number(row.totalMarks) : undefined;
-    const examDate = row.examDate ? new Date(row.examDate) : undefined;
-    const syllabus = row.syllabus != null ? String(row.syllabus).trim() : '';
-
-    if (!totalMarks && !examDate && !syllabus) continue;
-    if (!totalMarks || totalMarks < 1) throw new ApiError(400, 'Total marks required for each included subject');
-    if (!examDate || Number.isNaN(examDate.getTime())) {
-      throw new ApiError(400, 'Test date required for each included subject');
+    const combos = await assertTeacherCanAccessAssignment(actor._id, doc, sessionId);
+    teacherSubjectIds = subjectIdsForClassSection(combos, doc.classId, doc.sectionId);
+    if (!teacherSubjectIds.size) {
+      throw new ApiError(403, 'You have no subjects assigned for this class/section');
     }
-
-    next.push({ subjectId: row.subjectId, totalMarks, examDate, syllabus });
+  } else if (doc.status === 'published') {
+    throw new ApiError(400, 'Published assignments are locked');
   }
 
-  doc.papers = next;
+  const subjects = await AcademySubject.find({ classId: doc.classId, status: 'active' }).select('_id');
+  const classAllowed = new Set(subjects.map((s) => String(s._id)));
+  if (!Array.isArray(papersInput)) throw new ApiError(400, 'papers must be an array');
+
+  const existingBySubject = new Map(
+    (doc.papers || []).map((p) => [String(p.subjectId), p])
+  );
+
+  if (teacher) {
+    for (const row of papersInput) {
+      const sid = String(row.subjectId || '');
+      if (!sid) continue;
+      if (!teacherSubjectIds.has(sid)) {
+        throw new ApiError(403, 'You are not assigned to this subject/class combination');
+      }
+      const parsed = parsePaperRow(row, classAllowed);
+      if (parsed.skip) throw new ApiError(400, 'Invalid subject for this class');
+      const prev = existingBySubject.get(sid);
+      if (parsed.clear) {
+        if (prev?.classTestId) {
+          throw new ApiError(400, 'Cannot remove a subject that already has a published class test');
+        }
+        existingBySubject.delete(sid);
+        continue;
+      }
+      const nextPaper = {
+        subjectId: parsed.subjectId,
+        totalMarks: parsed.totalMarks,
+        examDate: parsed.examDate,
+        syllabus: parsed.syllabus,
+        classTestId: prev?.classTestId,
+      };
+      if (doc.status === 'published' && !nextPaper.classTestId) {
+        const created = await createClassTestFromPaper(doc, nextPaper, userId);
+        nextPaper.classTestId = created._id;
+        emitModuleSync('exam', 'class-test', 'created', { sessionId: String(sessionId) });
+      }
+      existingBySubject.set(sid, nextPaper);
+    }
+    doc.papers = [...existingBySubject.values()];
+  } else {
+    const next = [];
+    for (const row of papersInput) {
+      const parsed = parsePaperRow(row, classAllowed);
+      if (parsed.skip) throw new ApiError(400, 'Invalid subject for this class');
+      if (parsed.clear) continue;
+      const prev = existingBySubject.get(String(parsed.subjectId));
+      next.push({
+        subjectId: parsed.subjectId,
+        totalMarks: parsed.totalMarks,
+        examDate: parsed.examDate,
+        syllabus: parsed.syllabus,
+        classTestId: prev?.classTestId,
+      });
+    }
+    doc.papers = next;
+  }
+
   doc.updatedBy = userId;
   await doc.save();
 
@@ -363,18 +551,24 @@ async function upsertAssignmentPapers(sessionId, assignmentId, papersInput, user
   return { assignment: populated };
 }
 
-async function deleteAssignment(sessionId, assignmentId) {
+async function deleteAssignment(sessionId, assignmentId, actor) {
   await assertSessionWritable(sessionId);
   const doc = await AssessmentAssignment.findOne({ _id: assignmentId, sessionId });
   if (!doc) throw new ApiError(404, 'Assignment not found');
   if (doc.status === 'published') throw new ApiError(400, 'Cannot delete a published assignment');
+  if (isTeacherRole(actor)) {
+    await assertTeacherCanAccessAssignment(actor._id, doc, sessionId);
+    if (doc.category !== 'test') {
+      throw new ApiError(403, 'Teachers cannot delete exam assignments');
+    }
+  }
   await doc.deleteOne();
   emitModuleSync('exam', 'assessment-assignment', 'deleted', { sessionId: String(sessionId) });
   return { ok: true };
 }
 
 /** Publish one class assignment → live class tests / exam + parent notify. */
-async function publishAssignment(sessionId, assignmentId, userId) {
+async function publishAssignment(sessionId, assignmentId, userId, actor) {
   await assertSessionWritable(sessionId);
   const session = await getSession(sessionId);
   const doc = await AssessmentAssignment.findOne({ _id: assignmentId, sessionId });
@@ -384,30 +578,30 @@ async function publishAssignment(sessionId, assignmentId, userId) {
     throw new ApiError(400, 'Add at least one subject with marks and date before publishing');
   }
 
+  if (isTeacherRole(actor)) {
+    if (doc.category !== 'test') {
+      throw new ApiError(403, 'Teachers cannot publish exam assignments');
+    }
+    const combos = await assertTeacherCanAccessAssignment(actor._id, doc, sessionId);
+    const allowedSubjects = subjectIdsForClassSection(combos, doc.classId, doc.sectionId);
+    const ready = doc.papers.filter(paperReady);
+    const outside = ready.filter((p) => !allowedSubjects.has(idStr(p.subjectId)));
+    if (outside.length) {
+      throw new ApiError(
+        403,
+        'This assignment includes subjects outside your teaching scope. Ask an admin to publish, or remove those subjects.'
+      );
+    }
+  }
+
   const readyPapers = doc.papers.filter(paperReady);
   let testsCreated = 0;
   let examsCreated = 0;
 
   if (doc.category === 'test') {
     for (const paper of readyPapers) {
-      const created = await AcademyClassTest.create({
-        classId: doc.classId,
-        sectionId: doc.sectionId || undefined,
-        subjectId: paper.subjectId,
-        title: `${doc.name} — ${assessmentTypeLabel(doc.assessmentType)}`,
-        seriesLabel: doc.name,
-        assessmentType: doc.assessmentType,
-        examDate: paper.examDate,
-        testTime: '09:00',
-        totalMarks: paper.totalMarks,
-        syllabus: paper.syllabus || '',
-        status: 'open',
-        recurrence: 'once',
-        planId: doc.planId,
-        planItemId: doc.planItemId,
-        assignmentId: doc._id,
-        createdBy: userId,
-      });
+      if (paper.classTestId) continue;
+      const created = await createClassTestFromPaper(doc, paper, userId);
       paper.classTestId = created._id;
       testsCreated += 1;
     }
@@ -546,6 +740,7 @@ module.exports = {
   clearPlan,
   updateCatalogItem,
   listAssignments,
+  getTeacherTestScope,
   createAssignment,
   updateAssignment,
   upsertAssignmentPapers,

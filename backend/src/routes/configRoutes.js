@@ -80,6 +80,11 @@ router.get(
   planSessionPerm,
   assessmentPlanCtrl.listAssignments
 );
+router.get(
+  '/sessions/:sessionId/teacher-test-scope',
+  requireAnyPermission('manage_sessions', 'manage_exams', 'enter_exam_marks', 'view_results'),
+  assessmentPlanCtrl.teacherTestScope
+);
 router.post(
   '/sessions/:sessionId/assessment-assignments',
   requireAnyPermission('manage_sessions', 'manage_exams', 'enter_exam_marks'),
@@ -97,7 +102,7 @@ router.put(
 );
 router.delete(
   '/sessions/:sessionId/assessment-assignments/:assignmentId',
-  requireAnyPermission('manage_sessions', 'manage_exams'),
+  requireAnyPermission('manage_sessions', 'manage_exams', 'enter_exam_marks'),
   assessmentPlanCtrl.deleteAssignment
 );
 router.post(
