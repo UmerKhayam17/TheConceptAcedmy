@@ -47,6 +47,7 @@ const StaffAttendanceModule = lazy(() => import("@/components/modules/StaffAtten
 const StaffDetailPage = lazy(() => import("@/components/modules/staff/StaffDetailPage"));
 const TeacherFeatureModule = lazy(() => import("@/components/modules/TeacherFeatureModule"));
 const AdminDashboard = lazy(() => import("@/components/modules/AdminDashboard"));
+const TeacherDashboard = lazy(() => import("@/components/modules/TeacherDashboard"));
 const FinanceDashboard = lazy(() => import("@/components/modules/FinanceDashboard"));
 
 function ModuleFallback() {
@@ -266,6 +267,14 @@ const Panel = () => {
         {r === "admin" || r === "accountant" ? (
           <LazyModule>
             <AdminDashboard role={r} name={session.name} />
+          </LazyModule>
+        ) : r === "teacher" ? (
+          <LazyModule>
+            <TeacherDashboard
+              role={r}
+              name={session.name}
+              avatarUrl={session.profileImage}
+            />
           </LazyModule>
         ) : (
           <Dashboard role={r} name={session.name} modulePermissions={session.modulePermissions} />

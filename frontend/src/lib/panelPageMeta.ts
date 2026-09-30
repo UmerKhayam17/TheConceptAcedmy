@@ -62,6 +62,16 @@ export function resolvePanelPageMeta(
   }
 
   if (best) {
+    if (role === "teacher" && !slug) {
+      return {
+        title: "Teacher Dashboard",
+        icon: LayoutDashboard,
+        breadcrumbParent: "Dashboard",
+        breadcrumbCurrent: "Teacher Dashboard",
+        showSession: true,
+        allowAllSessions,
+      };
+    }
     return {
       title: best.item.label,
       icon: best.item.icon,
@@ -75,6 +85,16 @@ export function resolvePanelPageMeta(
   // Fallback: MODULES catalog / dashboard
   if (!slug) {
     const cfg = roleMeta[role];
+    if (role === "teacher") {
+      return {
+        title: "Teacher Dashboard",
+        icon: LayoutDashboard,
+        breadcrumbParent: "Dashboard",
+        breadcrumbCurrent: "Teacher Dashboard",
+        showSession: true,
+        allowAllSessions: true,
+      };
+    }
     return {
       title: "Dashboard",
       icon: LayoutDashboard,
