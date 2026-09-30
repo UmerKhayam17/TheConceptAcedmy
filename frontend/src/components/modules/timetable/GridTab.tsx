@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCircle, Check, Copy, Pencil, Plus, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -29,9 +30,16 @@ import {
   type ScheduleSlot,
 } from "@/lib/timetableApi";
 import type { SchoolSubject } from "@/lib/configApi";
-import { DAY_LABELS, DAY_ORDER, normalizeWorkingDays, slotMatchesPeriod } from "./constants";
+import {
+  DAY_FULL_LABELS,
+  DAY_LABELS,
+  FULL_WEEK_DAYS,
+  normalizeWorkingDays,
+  slotMatchesPeriod,
+} from "./constants";
 import TimetableSlotCard from "./TimetableSlotCard";
 
+type DayApplyMode = "single" | "fullWeek" | "custom";
 type SlotSubjectOption =
   | { key: string; kind: "single"; label: string; subjectIds: [string] }
   | { key: string; kind: "choice"; label: string; groupName: string; subjectIds: string[] };
@@ -118,11 +126,15 @@ export default function GridTab({
     optionKey: string;
     teachersBySubject: Record<string, string>;
     roomId: string;
-  }>({ optionKey: "", teachersBySubject: {}, roomId: "" });
+    dayApplyMode: DayApplyMode;
+    selectedDays: Weekday[];
+  }>({ optionKey: "", teachersBySubject: {}, roomId: "", dayApplyMode: "single", selectedDays: [] });
   const [draggingSlotId, setDraggingSlotId] = useState<string | null>(null);
   const [dropOver, setDropOver] = useState<{ day: Weekday; periodId: string } | null>(null);
   const [editingLive, setEditingLive] = useState(false);
   const skipClickRef = useRef(false);
+  /** Sync ref so dragOver/drop work before React re-renders after dragStart. */
+  const draggingSlotIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setClassId("");
@@ -210,22 +222,47 @@ export default function GridTab({
         if (!teacher) throw new Error("Select a teacher for each subject");
         return { subject: subjectId, teacher };
       });
-      return upsertScheduleSlot(activeVersionId, {
+
+      const payload: Parameters<typeof upsertScheduleSlot>[1] = {
         day: slotDialog.day,
         periodId: slotDialog.period._id,
         entries,
         room: form.roomId || null,
-      });
+      };
+
+      if (form.dayApplyMode === "fullWeek") {
+        payload.applyToFullWeek = true;
+      } else if (form.dayApplyMode === "custom") {
+        const days = [...(form.selectedDays.length ? form.selectedDays : [slotDialog.day])];
+        if (!days.includes(slotDialog.day)) days.push(slotDialog.day);
+        payload.days = days;
+      }
+
+      return upsertScheduleSlot(activeVersionId, payload);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["timetable-grid", activeVersionId] });
       qc.invalidateQueries({ queryKey: ["section-schedule", sessionId, sectionId] });
       qc.invalidateQueries({ queryKey: ["my-teacher-schedule", sessionId] });
       setSlotDialog(null);
-      toast({ title: "Slot saved" });
+      const multi =
+        result && typeof result === "object" && "created" in result
+          ? (result as { created: number }).created
+          : 0;
+      toast({
+        title: multi > 1 ? `Saved on ${multi} days` : "Slot saved",
+        description:
+          multi > 1
+            ? "Same subject, teacher, and period applied across the selected days."
+            : undefined,
+      });
     },
     onError: (e: Error) =>
-      toast({ title: "Could not save slot", description: e.message, variant: "destructive" }),
+      toast({
+        title: "Could not save slot",
+        description: e.message,
+        variant: "destructive",
+      }),
   });
 
   const deleteSlotMut = useMutation({
@@ -366,13 +403,37 @@ export default function GridTab({
 
   const handleDrop = (e: React.DragEvent, day: Weekday, periodId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     setDropOver(null);
     if (!canEditGrid) return;
-    const slotId = e.dataTransfer.getData("application/timetable-slot-id") || draggingSlotId;
+    const slotId =
+      e.dataTransfer.getData("application/timetable-slot-id") ||
+      e.dataTransfer.getData("text/plain") ||
+      draggingSlotIdRef.current ||
+      draggingSlotId;
     if (!slotId) return;
     skipClickRef.current = true;
+    draggingSlotIdRef.current = null;
     setDraggingSlotId(null);
     moveSlotMut.mutate({ slotId, day, periodId });
+  };
+
+  const beginSlotDrag = (e: React.DragEvent, slotId: string) => {
+    if (!canEditGrid) {
+      e.preventDefault();
+      return;
+    }
+    draggingSlotIdRef.current = slotId;
+    setDraggingSlotId(slotId);
+    e.dataTransfer.setData("application/timetable-slot-id", slotId);
+    e.dataTransfer.setData("text/plain", slotId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const endSlotDrag = () => {
+    draggingSlotIdRef.current = null;
+    setDraggingSlotId(null);
+    setDropOver(null);
   };
 
   const openCell = (day: Weekday, period: PeriodSlot) => {
@@ -384,13 +445,16 @@ export default function GridTab({
       optionKey,
       teachersBySubject: teachersBySubjectForOption(option, existing),
       roomId: existing?.room?._id || "",
+      dayApplyMode: "single",
+      selectedDays: [day],
     });
     setSlotDialog({ day, period, existing });
   };
 
   const canSaveSlot =
     Boolean(selectedOption) &&
-    (selectedOption?.subjectIds.every((id) => form.teachersBySubject[id]) ?? false);
+    (selectedOption?.subjectIds.every((id) => form.teachersBySubject[id]) ?? false) &&
+    (form.dayApplyMode !== "custom" || form.selectedDays.length > 0);
 
   const sectionLabel = sections.find((s) => s._id === sectionId);
   const classLabel = classes.find((c) => c._id === classId);
@@ -468,13 +532,18 @@ export default function GridTab({
                   setEditingLive(true);
                 }}
               >
-                <Pencil className="h-4 w-4" /> Edit timetable
+                <Pencil className="h-4 w-4" /> Edit this timetable
               </Button>
             )}
             {isPublished && editingLive && (
               <Button variant="outline" className="gap-2" onClick={() => setEditingLive(false)}>
                 <Check className="h-4 w-4" /> Done editing
               </Button>
+            )}
+            {!isPublished && activeVersion?.status === "draft" && (
+              <Badge variant="secondary" className="h-10 px-3 text-xs font-normal gap-1.5">
+                <Pencil className="h-3.5 w-3.5" /> Draft — click lessons to edit
+              </Badge>
             )}
             <Button variant="outline" className="gap-2" onClick={() => validateMut.mutate()}>
               <AlertCircle className="h-4 w-4" /> Validate
@@ -491,6 +560,24 @@ export default function GridTab({
         )}
       </div>
 
+      {sectionId && isPublished && !editingLive && canManageGrid && grid && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-amber-900 dark:text-amber-200">
+            This timetable is published. Turn on edit mode to change subjects, teachers, or move lessons.
+          </p>
+          <Button
+            size="sm"
+            className="gap-2 shrink-0"
+            onClick={() => {
+              if (publishedVersion?._id) setVersionId(publishedVersion._id);
+              setEditingLive(true);
+            }}
+          >
+            <Pencil className="h-4 w-4" /> Edit this timetable
+          </Button>
+        </div>
+      )}
+
       {sectionId && grid && (
         <>
           <div className="flex flex-wrap items-center gap-2">
@@ -501,12 +588,17 @@ export default function GridTab({
               v{grid.version.version} · {grid.version.status}
             </Badge>
             {isPublished && !editingLive && canManageGrid && (
-              <span className="text-xs text-muted-foreground">Published — click Edit timetable to make changes</span>
+              <span className="text-xs text-muted-foreground">
+                Published — click Edit timetable to change lessons
+              </span>
+            )}
+            {canEditGrid && (
+              <span className="text-xs text-muted-foreground">
+                Drag a lesson to move it · click the pencil to edit details
+              </span>
             )}
             {canEditGrid && isPublished && (
-              <span className="text-xs text-amber-700 dark:text-amber-400">
-                Editing live timetable — click a cell to change a period
-              </span>
+              <span className="text-xs text-amber-700 dark:text-amber-400">Editing live timetable</span>
             )}
           </div>
 
@@ -532,23 +624,43 @@ export default function GridTab({
                       const slot = getSlot(day, period._id);
                       const isDropTarget =
                         dropOver?.day === day && dropOver?.periodId === period._id;
+                      const isDragActive = Boolean(draggingSlotId || draggingSlotIdRef.current);
                       return (
                         <td
                           key={day}
                           className={cn(
-                            "p-2 align-top min-w-[100px] transition-colors",
+                            "p-2 align-top min-w-[100px] min-h-[64px] transition-colors",
                             canEditGrid && "hover:bg-muted/40",
                             isDropTarget && "bg-accent/15 ring-2 ring-inset ring-accent/50",
                             moveSlotMut.isPending && "pointer-events-none opacity-60"
                           )}
                           onClick={() => handleCellClick(day, period)}
+                          onDragEnter={(e) => {
+                            if (!canEditGrid) return;
+                            if (!draggingSlotIdRef.current && !draggingSlotId) return;
+                            e.preventDefault();
+                            setDropOver({ day, periodId: period._id });
+                          }}
                           onDragOver={(e) => {
-                            if (!canEditGrid || !draggingSlotId) return;
+                            if (!canEditGrid) return;
+                            // Accept drops even before React state catches up from dragStart
+                            if (!draggingSlotIdRef.current && !draggingSlotId) {
+                              const types = Array.from(e.dataTransfer.types || []);
+                              if (
+                                !types.includes("application/timetable-slot-id") &&
+                                !types.includes("text/plain")
+                              ) {
+                                return;
+                              }
+                            }
                             e.preventDefault();
                             e.dataTransfer.dropEffect = "move";
                             setDropOver({ day, periodId: period._id });
                           }}
-                          onDragLeave={() => {
+                          onDragLeave={(e) => {
+                            // Ignore leave events that bubble from children
+                            const related = e.relatedTarget as Node | null;
+                            if (related && e.currentTarget.contains(related)) return;
                             setDropOver((prev) =>
                               prev?.day === day && prev?.periodId === period._id ? null : prev
                             );
@@ -560,25 +672,39 @@ export default function GridTab({
                               slot={slot}
                               draggable={canEditGrid && !slot.locked}
                               isDragging={draggingSlotId === slot._id}
-                              onDragStart={(e) => {
-                                if (!canEditGrid || slot.locked) {
-                                  e.preventDefault();
+                              isDropTarget={isDropTarget && draggingSlotId !== slot._id}
+                              onEdit={
+                                canEditGrid
+                                  ? () => {
+                                      skipClickRef.current = true;
+                                      openCell(day, period);
+                                    }
+                                  : undefined
+                              }
+                              onDragStart={(e) => beginSlotDrag(e, slot._id)}
+                              onDragEnd={endSlotDrag}
+                              onDragOver={(e) => {
+                                if (!canEditGrid) return;
+                                if (
+                                  !draggingSlotIdRef.current &&
+                                  !draggingSlotId &&
+                                  !Array.from(e.dataTransfer.types || []).length
+                                ) {
                                   return;
                                 }
-                                setDraggingSlotId(slot._id);
-                                e.dataTransfer.setData("application/timetable-slot-id", slot._id);
-                                e.dataTransfer.effectAllowed = "move";
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.dataTransfer.dropEffect = "move";
+                                setDropOver({ day, periodId: period._id });
                               }}
-                              onDragEnd={() => {
-                                setDraggingSlotId(null);
-                                setDropOver(null);
-                              }}
+                              onDrop={(e) => handleDrop(e, day, period._id)}
                             />
                           ) : (
                             <span
                               className={cn(
                                 "block min-h-[52px] text-muted-foreground",
-                                isDropTarget && "font-medium text-accent"
+                                isDragActive && canEditGrid && "rounded border border-dashed border-muted-foreground/30",
+                                isDropTarget && "font-medium text-accent border-accent/50"
                               )}
                             >
                               {isDropTarget ? "Drop here" : "—"}
@@ -615,6 +741,8 @@ export default function GridTab({
                     optionKey: key,
                     teachersBySubject: teachersBySubjectForOption(option),
                     roomId: "",
+                    dayApplyMode: form.dayApplyMode,
+                    selectedDays: form.selectedDays,
                   });
                 }}
               >
@@ -666,6 +794,114 @@ export default function GridTab({
                   </div>
                 );
               })}
+
+            <div className="space-y-2 rounded-md border p-3">
+              <Label className="text-sm font-medium">Apply schedule to</Label>
+              <div className="space-y-2 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="dayApplyMode"
+                    className="h-4 w-4 accent-primary"
+                    checked={form.dayApplyMode === "single"}
+                    onChange={() =>
+                      setForm((f) => ({
+                        ...f,
+                        dayApplyMode: "single",
+                        selectedDays: slotDialog ? [slotDialog.day] : f.selectedDays,
+                      }))
+                    }
+                  />
+                  <span>
+                    This day only
+                    {slotDialog ? ` (${DAY_FULL_LABELS[slotDialog.day]})` : ""}
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="dayApplyMode"
+                    className="h-4 w-4 accent-primary"
+                    checked={form.dayApplyMode === "fullWeek"}
+                    onChange={() =>
+                      setForm((f) => ({
+                        ...f,
+                        dayApplyMode: "fullWeek",
+                        selectedDays: [...FULL_WEEK_DAYS],
+                      }))
+                    }
+                  />
+                  <span>Full week (Mon–Fri)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="dayApplyMode"
+                    className="h-4 w-4 accent-primary"
+                    checked={form.dayApplyMode === "custom"}
+                    onChange={() =>
+                      setForm((f) => ({
+                        ...f,
+                        dayApplyMode: "custom",
+                        selectedDays:
+                          f.selectedDays.length > 0
+                            ? f.selectedDays
+                            : slotDialog
+                              ? [slotDialog.day]
+                              : [],
+                      }))
+                    }
+                  />
+                  <span>Select specific days</span>
+                </label>
+              </div>
+
+              {(form.dayApplyMode === "fullWeek" || form.dayApplyMode === "custom") && (
+                <div className="flex flex-wrap gap-3 pt-1">
+                  {(form.dayApplyMode === "fullWeek" ? FULL_WEEK_DAYS : workingDays).map((day) => {
+                    const checked =
+                      form.dayApplyMode === "fullWeek"
+                        ? true
+                        : form.selectedDays.includes(day);
+                    const lockedPrimary = slotDialog?.day === day;
+                    return (
+                      <label
+                        key={day}
+                        className={cn(
+                          "inline-flex items-center gap-2 text-sm",
+                          form.dayApplyMode === "fullWeek" && "opacity-70"
+                        )}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          disabled={form.dayApplyMode === "fullWeek" || lockedPrimary}
+                          onCheckedChange={(v) => {
+                            if (form.dayApplyMode !== "custom") return;
+                            setForm((f) => {
+                              const on = v === true;
+                              let next = f.selectedDays.filter((d) => d !== day);
+                              if (on) next = [...next, day];
+                              if (slotDialog && !next.includes(slotDialog.day)) {
+                                next = [...next, slotDialog.day];
+                              }
+                              return { ...f, selectedDays: next };
+                            });
+                          }}
+                        />
+                        {DAY_LABELS[day]}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              {form.dayApplyMode !== "single" && (
+                <p className="text-xs text-muted-foreground">
+                  Conflicts on any selected day (teacher, class/section, or room) will block saving
+                  all days.
+                </p>
+              )}
+            </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             {slotDialog?.existing && (
@@ -681,7 +917,11 @@ export default function GridTab({
             )}
             <Button variant="outline" onClick={() => setSlotDialog(null)}>Cancel</Button>
             <Button disabled={!canSaveSlot || saveSlotMut.isPending} onClick={() => saveSlotMut.mutate()}>
-              Save
+              {form.dayApplyMode === "single"
+                ? "Save"
+                : form.dayApplyMode === "fullWeek"
+                  ? "Save full week"
+                  : `Save ${Math.max(form.selectedDays.length, 1)} days`}
             </Button>
           </DialogFooter>
         </DialogContent>

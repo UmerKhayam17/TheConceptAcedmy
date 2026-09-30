@@ -42,6 +42,7 @@ async function listExams({ classId } = {}) {
   if (classId) q.academyClass = classId;
   return Exam.find(q)
     .populate('academyClass', 'className')
+    .populate('dateSheet.subject', 'subjectName subjectCode')
     .populate('createdBy', 'name email')
     .sort({ startDate: -1 })
     .lean();
@@ -50,6 +51,7 @@ async function listExams({ classId } = {}) {
 async function getExamById(id) {
   const exam = await Exam.findById(id)
     .populate('academyClass', 'className')
+    .populate('dateSheet.subject', 'subjectName subjectCode')
     .populate('createdBy', 'name email')
     .lean();
   if (!exam) throw new ApiError(404, 'Exam not found');

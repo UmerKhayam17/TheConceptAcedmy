@@ -10,6 +10,7 @@ import {
   resolveModuleCaps,
   type ModuleKey,
 } from "@/lib/permissions";
+import { UserAvatarBadge } from "@/components/PanelUserMenu";
 
 const SettingsModule = () => {
   const { user } = useAuth();
@@ -34,28 +35,35 @@ const SettingsModule = () => {
     role,
   );
 
-  // Get module permissions for display
   const modulePerms = user?.modulePermissions ? Object.entries(user.modulePermissions) : [];
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4 max-w-2xl">
-      <Card className="p-4 space-y-3">
+      <div>
+        <h1 className="font-display text-xl sm:text-2xl font-bold text-primary">My Profile</h1>
+        <p className="text-sm text-muted-foreground mt-1">Your account details and access</p>
+      </div>
+
+      <Card className="p-4 sm:p-5 space-y-4">
         <div className="font-semibold text-primary">Your account</div>
         {user ? (
-          <dl className="text-sm space-y-2">
-            <div>
-              <dt className="text-muted-foreground text-xs">Name</dt>
-              <dd className="font-medium">{user.name}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground text-xs">Email</dt>
-              <dd>{user.email}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground text-xs">Role</dt>
-              <dd className="capitalize">{user.role}</dd>
-            </div>
-          </dl>
+          <div className="flex items-start gap-4">
+            <UserAvatarBadge user={user} className="h-16 w-16 text-base" />
+            <dl className="text-sm space-y-2 min-w-0 flex-1">
+              <div>
+                <dt className="text-muted-foreground text-xs">Name</dt>
+                <dd className="font-medium truncate">{user.name}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs">Email</dt>
+                <dd className="truncate">{user.email}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs">Role</dt>
+                <dd className="capitalize">{user.role}</dd>
+              </div>
+            </dl>
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">Not signed in.</p>
         )}
@@ -82,16 +90,18 @@ const SettingsModule = () => {
       {(permissionsCaps.canView || catalogCaps.canView) && (
         <Card className="p-4 space-y-2">
           <div className="font-semibold text-primary">Access & permissions</div>
-          {permissionsCaps.canView && (
-            <Button variant="outline" size="sm" asChild>
-              <Link to={moduleHref(role, "permissions")}>Open Permissions</Link>
-            </Button>
-          )}
-          {catalogCaps.canView && (
-            <Button variant="ghost" size="sm" asChild className="block">
-              <Link to={moduleHref(role, "permission-catalog")}>View permission catalog</Link>
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {permissionsCaps.canView && (
+              <Button variant="outline" size="sm" asChild>
+                <Link to={moduleHref(role, "permissions")}>Open Permissions</Link>
+              </Button>
+            )}
+            {catalogCaps.canView && (
+              <Button variant="ghost" size="sm" asChild>
+                <Link to={moduleHref(role, "permission-catalog")}>Permission catalog</Link>
+              </Button>
+            )}
+          </div>
         </Card>
       )}
     </div>

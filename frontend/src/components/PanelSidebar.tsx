@@ -73,7 +73,10 @@ const PanelSidebar = ({ user }: { user: SessionUser }) => {
   const visibleGroups = sidebarNavForRole(user.role)
     .map((group) => ({
       ...group,
-      items: group.items.filter(canView),
+      items: group.items.filter(canView).map((item) => ({
+        ...item,
+        children: item.children?.filter(canView),
+      })),
     }))
     .filter((group) => group.items.length > 0);
 
@@ -84,6 +87,25 @@ const PanelSidebar = ({ user }: { user: SessionUser }) => {
     const href = item.href(user.role);
     const active = navItemIsActive(item, pathname, user.role);
     const Icon = item.icon;
+    if (item.children?.length) {
+      const childActive = item.children.some((child) => navItemIsActive(child, pathname, user.role));
+      return (
+        <SidebarMenuSubItem key={`${item.id}-${childActive ? "on" : "off"}`}>
+          <Collapsible defaultOpen={childActive} className="group/nested">
+            <CollapsibleTrigger className="flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-xs text-sidebar-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{item.label}</span>
+              <ChevronDown className="ml-auto h-3 w-3 shrink-0 transition-transform group-data-[state=open]/nested:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarMenuSub className="mx-0 ml-2 border-l border-sidebar-border pl-2 py-0.5 gap-0.5">
+                {item.children.map((child) => renderLink(child, true))}
+              </SidebarMenuSub>
+            </CollapsibleContent>
+          </Collapsible>
+        </SidebarMenuSubItem>
+      );
+    }
     if (compact) {
       return (
         <SidebarMenuSubItem key={item.id}>

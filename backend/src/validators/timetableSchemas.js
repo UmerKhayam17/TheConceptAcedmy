@@ -121,6 +121,10 @@ const timetableVersionBody = Joi.object({
 
 const scheduleSlotBody = Joi.object({
   day: Joi.string().valid(...WEEKDAYS).required(),
+  /** Extra days to create the same period assignment (Mon–Fri apply, or custom selection). */
+  days: Joi.array().items(Joi.string().valid(...WEEKDAYS)).min(1).max(7),
+  /** Shorthand: create Mon–Fri at the same period/subject/teachers. */
+  applyToFullWeek: Joi.boolean(),
   periodId: objectId.required(),
   /** Single-subject slots (legacy / simple). */
   subject: objectId,

@@ -478,19 +478,40 @@ async function listUnpaidForChallan(studentId, months) {
 }
 
 async function recordPayment(feeRecordId, { paymentMethod, notes }, userId) {
-  const record = await AcademyFeeRecord.findById(feeRecordId).populate('studentId');
-  if (!record) throw new ApiError(404, 'Fee record not found');
-  if (record.status === 'paid') throw new ApiError(400, 'Fee already paid');
+  const existing = await AcademyFeeRecord.findById(feeRecordId).populate('studentId');
+  if (!existing) throw new ApiError(404, 'Fee record not found');
+  if (existing.status === 'paid') throw new ApiError(400, 'Fee already paid');
 
-  record.status = 'paid';
-  record.paidAt = new Date();
-  record.paymentMethod = paymentMethod || 'cash';
-  record.notes = notes || '';
-  record.recordedBy = userId;
-  if (!record.receiptNumber && record.studentId) {
-    record.receiptNumber = receiptNumber(record.studentId, record.month, record.year, record.feeType);
+  const nextReceipt =
+    existing.receiptNumber ||
+    (existing.studentId
+      ? receiptNumber(existing.studentId, existing.month, existing.year, existing.feeType)
+      : undefined);
+
+  // Atomic: only one concurrent payer can flip pending/overdue → paid
+  const record = await AcademyFeeRecord.findOneAndUpdate(
+    {
+      _id: feeRecordId,
+      status: { $in: ['pending', 'overdue'] },
+    },
+    {
+      $set: {
+        status: 'paid',
+        paidAt: new Date(),
+        paymentMethod: paymentMethod || 'cash',
+        notes: notes || '',
+        recordedBy: userId,
+        ...(nextReceipt ? { receiptNumber: nextReceipt } : {}),
+      },
+    },
+    { new: true }
+  ).populate('studentId');
+
+  if (!record) {
+    const again = await AcademyFeeRecord.findById(feeRecordId).select('status').lean();
+    if (again?.status === 'paid') throw new ApiError(400, 'Fee already paid');
+    throw new ApiError(409, 'Could not record payment — please retry');
   }
-  await record.save();
   return record;
 }
 
@@ -504,7 +525,30 @@ async function recordPayments(feeRecordIds, payload, userId) {
 
   const paid = [];
   for (const record of records) {
-    paid.push(await recordPayment(record._id, payload, userId));
+    // eslint-disable-next-line no-await-in-loop
+    const updated = await AcademyFeeRecord.findOneAndUpdate(
+      {
+        _id: record._id,
+        status: { $in: ['pending', 'overdue'] },
+      },
+      {
+        $set: {
+          status: 'paid',
+          paidAt: new Date(),
+          paymentMethod: payload.paymentMethod || 'cash',
+          notes: payload.notes || '',
+          recordedBy: userId,
+          receiptNumber:
+            record.receiptNumber ||
+            receiptNumber(record.studentId, record.month, record.year, record.feeType),
+        },
+      },
+      { new: true }
+    );
+    if (!updated) {
+      throw new ApiError(400, 'One of the selected fees is already paid');
+    }
+    paid.push(updated);
   }
   return {
     paid: paid.length,

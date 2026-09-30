@@ -12,9 +12,9 @@ const SYSTEM_MODULES = [
   {
     key: 'exam',
     panelSlug: 'exams',
-    label: 'Exam & Results',
+    label: 'Assessments',
     icon: 'Award',
-    description: 'Exams, marks, results, and report cards',
+    description: 'Tests, exams, marks, and results',
     order: 60,
     actions: ['view', 'create', 'edit', 'delete', 'publish'],
   },

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ALL_ASSESSMENT_TYPE_KEYS } = require('../../config/assessmentTaxonomy');
 
 const academyAssessmentSchema = new mongoose.Schema(
   {
@@ -17,8 +18,8 @@ const academyAssessmentSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     assessmentType: {
       type: String,
-      enum: ['quiz', 'weekly', 'monthly', 'midterm', 'final', 'assignment', 'practice', 'other'],
-      default: 'monthly',
+      enum: ALL_ASSESSMENT_TYPE_KEYS,
+      default: 'weekly',
     },
     examDate: { type: Date, required: true, index: true },
     totalMarks: { type: Number, required: true, min: 0 },

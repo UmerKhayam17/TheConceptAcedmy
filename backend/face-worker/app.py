@@ -30,10 +30,14 @@ FACE_WORKER_SECRET = (os.environ.get("FACE_WORKER_SECRET") or "").strip()
 async def verify_shared_secret(request: Request, call_next):
     if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
         return await call_next(request)
-    if FACE_WORKER_SECRET:
-        header = request.headers.get("x-face-worker-secret") or ""
-        if header != FACE_WORKER_SECRET:
-            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    if not FACE_WORKER_SECRET:
+        return JSONResponse(
+            {"detail": "FACE_WORKER_SECRET is not configured on the face worker"},
+            status_code=503,
+        )
+    header = request.headers.get("x-face-worker-secret") or ""
+    if header != FACE_WORKER_SECRET:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     return await call_next(request)
 
 _engine = None

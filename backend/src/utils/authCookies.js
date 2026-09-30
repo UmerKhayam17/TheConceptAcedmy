@@ -48,6 +48,19 @@ function getRefreshCookieOptions(req) {
   };
 }
 
+function getAccessCookieOptions(req) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const crossOrigin = isCrossOriginRequest(req);
+  const secure = isProd || browserIsHttps(req) || crossOrigin;
+  return {
+    httpOnly: true,
+    secure,
+    sameSite: crossOrigin && secure ? 'none' : 'lax',
+    maxAge: parseDurationMs(process.env.JWT_ACCESS_EXPIRES || '12h'),
+    path: '/',
+  };
+}
+
 /** Drop older copies saved with different Secure / SameSite flags. */
 function clearRefreshCookie(res) {
   const variants = [
@@ -60,14 +73,33 @@ function clearRefreshCookie(res) {
   variants.forEach((opts) => res.clearCookie('refreshToken', opts));
 }
 
+function clearAccessCookie(res) {
+  const variants = [
+    { path: '/', httpOnly: true, sameSite: 'lax', secure: false },
+    { path: '/', httpOnly: true, sameSite: 'lax', secure: true },
+    { path: '/', httpOnly: true, sameSite: 'none', secure: true },
+    { path: '/', httpOnly: true, sameSite: 'strict', secure: false },
+    { path: '/', httpOnly: true, sameSite: 'strict', secure: true },
+  ];
+  variants.forEach((opts) => res.clearCookie('accessToken', opts));
+}
+
 function setRefreshCookie(res, req, refreshToken) {
   clearRefreshCookie(res);
   res.cookie('refreshToken', refreshToken, getRefreshCookieOptions(req));
 }
 
+function setAccessCookie(res, req, accessToken) {
+  clearAccessCookie(res);
+  res.cookie('accessToken', accessToken, getAccessCookieOptions(req));
+}
+
 module.exports = {
   getRefreshCookieOptions,
+  getAccessCookieOptions,
   parseDurationMs,
   clearRefreshCookie,
+  clearAccessCookie,
   setRefreshCookie,
+  setAccessCookie,
 };

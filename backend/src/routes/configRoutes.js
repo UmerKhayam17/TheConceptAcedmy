@@ -2,6 +2,7 @@ const { Router } = require('express');
 const ctrl = require('../controllers/configController');
 const sessionHistoryCtrl = require('../controllers/sessionHistoryController');
 const academyImportCtrl = require('../controllers/academy/academySessionImportController');
+const assessmentPlanCtrl = require('../controllers/academy/assessmentPlanController');
 const academySchemas = require('../validators/academySchemas');
 const { protect } = require('../middleware/auth');
 const { requirePermission, requireAnyPermission } = require('../middleware/permissions');
@@ -17,7 +18,7 @@ router.get(
   ctrl.listSystemModules
 );
 
-router.get('/sessions', requireAnyPermission('manage_sessions', 'generate_vouchers', 'temporary_register_student', 'activate_student'), ctrl.listSessions);
+router.get('/sessions', requireAnyPermission('manage_sessions', 'generate_vouchers', 'temporary_register_student', 'activate_student', 'view_results', 'view_students', 'enter_exam_marks', 'manage_exams'), ctrl.listSessions);
 router.post('/sessions', requirePermission('manage_sessions'), validate(schemas.sessionBody), ctrl.createSession);
 router.patch('/sessions/:id', requirePermission('manage_sessions'), ctrl.patchSession);
 router.get('/sessions/:id/history', requireAnyPermission('manage_sessions', 'view_timetables'), sessionHistoryCtrl.getHistory);
@@ -42,6 +43,72 @@ router.post(
   requirePermission('manage_sessions'),
   validate(academySchemas.academySessionImportBody),
   sessionHistoryCtrl.shiftConfiguration
+);
+
+const planSessionPerm = requireAnyPermission(
+  'manage_sessions',
+  'manage_exams',
+  'enter_exam_marks',
+  'view_results',
+  'view_students'
+);
+
+router.get('/sessions/:sessionId/assessment-plan', planSessionPerm, assessmentPlanCtrl.getPlan);
+router.post(
+  '/sessions/:sessionId/assessment-plan/items',
+  requireAnyPermission('manage_sessions', 'manage_exams'),
+  assessmentPlanCtrl.addItem
+);
+router.delete(
+  '/sessions/:sessionId/assessment-plan/items/:itemId',
+  requireAnyPermission('manage_sessions', 'manage_exams'),
+  assessmentPlanCtrl.deleteItem
+);
+router.post(
+  '/sessions/:sessionId/assessment-plan/clear',
+  requireAnyPermission('manage_sessions', 'manage_exams'),
+  assessmentPlanCtrl.clear
+);
+router.patch(
+  '/sessions/:sessionId/assessment-plan/items/:itemId',
+  requireAnyPermission('manage_sessions', 'manage_exams'),
+  assessmentPlanCtrl.updateItem
+);
+
+router.get(
+  '/sessions/:sessionId/assessment-assignments',
+  planSessionPerm,
+  assessmentPlanCtrl.listAssignments
+);
+router.post(
+  '/sessions/:sessionId/assessment-assignments',
+  requireAnyPermission('manage_sessions', 'manage_exams', 'enter_exam_marks'),
+  assessmentPlanCtrl.createAssignment
+);
+router.patch(
+  '/sessions/:sessionId/assessment-assignments/:assignmentId',
+  requireAnyPermission('manage_sessions', 'manage_exams', 'enter_exam_marks'),
+  assessmentPlanCtrl.updateAssignment
+);
+router.put(
+  '/sessions/:sessionId/assessment-assignments/:assignmentId/papers',
+  requireAnyPermission('manage_sessions', 'manage_exams', 'enter_exam_marks'),
+  assessmentPlanCtrl.upsertPapers
+);
+router.delete(
+  '/sessions/:sessionId/assessment-assignments/:assignmentId',
+  requireAnyPermission('manage_sessions', 'manage_exams'),
+  assessmentPlanCtrl.deleteAssignment
+);
+router.post(
+  '/sessions/:sessionId/assessment-assignments/:assignmentId/publish',
+  requireAnyPermission('manage_sessions', 'manage_exams', 'publish_results', 'enter_exam_marks'),
+  assessmentPlanCtrl.publishAssignment
+);
+router.get(
+  '/sessions/:sessionId/assessment-plan/date-sheet',
+  planSessionPerm,
+  assessmentPlanCtrl.dateSheet
 );
 
 router.get('/classes', requireAnyPermission('manage_classes', 'view_timetables', 'view_students', 'mark_attendance'), ctrl.listClasses);

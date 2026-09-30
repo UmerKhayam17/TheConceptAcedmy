@@ -240,7 +240,6 @@ export type SessionEnrollmentImportResult = {
 };
 
 export type SessionShiftResult = {
-  defaults: { classesCreated: number; subjectsCreated: number };
   enrollment: SessionEnrollmentImportResult;
   timetable: {
     periodTemplates: number;
@@ -308,3 +307,192 @@ export const createSubject = (body: {
 
 export const patchSubject = (id: string, body: Partial<SchoolSubject & { class: string }>) =>
   api<SchoolSubject>(`/subjects/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+
+/* ── Session Assessment Catalog + Assignments ─────────────────────── */
+
+export type AssessmentPlanStatus = "empty" | "ready";
+
+export type AssessmentPlanPaper = {
+  _id?: string;
+  subjectId:
+    | string
+    | { _id: string; subjectName?: string; subjectCode?: string; classId?: string };
+  totalMarks?: number;
+  examDate?: string;
+  syllabus?: string;
+  classTestId?: string;
+};
+
+export type AssessmentPlanItem = {
+  _id: string;
+  category: "test" | "exam";
+  name: string;
+  assessmentType: string;
+  assignmentCount?: number;
+  publishedCount?: number;
+};
+
+export type SessionAssessmentPlan = {
+  _id: string;
+  sessionId: string;
+  status: AssessmentPlanStatus;
+  items: AssessmentPlanItem[];
+};
+
+export type AssessmentPlanSummary = {
+  totalItems: number;
+  testCount: number;
+  examCount: number;
+  status: AssessmentPlanStatus;
+  assignmentCount: number;
+  publishedAssignmentCount: number;
+};
+
+export type AssessmentPlanPayload = {
+  plan: SessionAssessmentPlan;
+  session: AcademicSession;
+  summary: AssessmentPlanSummary;
+};
+
+export type AssessmentAssignment = {
+  _id: string;
+  sessionId: string;
+  planId: string;
+  planItemId: string;
+  category: "test" | "exam";
+  name: string;
+  assessmentType: string;
+  classId: string | { _id: string; className?: string };
+  sectionId?: string | { _id: string; sectionName?: string };
+  papers: AssessmentPlanPaper[];
+  status: "draft" | "published";
+  examId?: string;
+  publishedAt?: string;
+};
+
+export type AssessmentAssignmentsPayload = {
+  plan: { _id: string; status: AssessmentPlanStatus; items: AssessmentPlanItem[] };
+  assignments: AssessmentAssignment[];
+};
+
+export type DateSheetRow = {
+  category: "test" | "exam";
+  assessmentType: string;
+  assessmentTypeLabel: string;
+  testName: string;
+  className: string;
+  classId: string;
+  sectionName: string;
+  sectionId: string;
+  subjectName: string;
+  subjectId: string;
+  totalMarks: number;
+  examDate: string;
+  syllabus: string;
+  classTestId: string;
+  examId: string;
+  assignmentId?: string;
+};
+
+export type DateSheetPayload = {
+  session: AcademicSession;
+  publishedAt?: string;
+  rows: DateSheetRow[];
+};
+
+export const fetchAssessmentPlan = (sessionId: string) =>
+  api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan`);
+
+export const addAssessmentPlanItem = (
+  sessionId: string,
+  body: { name: string; assessmentType: string },
+) =>
+  api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan/items`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const deleteAssessmentPlanItem = (sessionId: string, itemId: string) =>
+  api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan/items/${itemId}`, {
+    method: "DELETE",
+  });
+
+export const clearAssessmentPlan = (sessionId: string) =>
+  api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan/clear`, { method: "POST" });
+
+export const updateAssessmentPlanItem = (
+  sessionId: string,
+  itemId: string,
+  body: { name?: string; assessmentType?: string },
+) =>
+  api<AssessmentPlanPayload>(`/sessions/${sessionId}/assessment-plan/items/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+
+export const fetchAssessmentAssignments = (
+  sessionId: string,
+  params?: { category?: string; planItemId?: string; status?: string },
+) => {
+  const q = new URLSearchParams();
+  if (params?.category) q.set("category", params.category);
+  if (params?.planItemId) q.set("planItemId", params.planItemId);
+  if (params?.status) q.set("status", params.status);
+  const qs = q.toString();
+  return api<AssessmentAssignmentsPayload>(
+    `/sessions/${sessionId}/assessment-assignments${qs ? `?${qs}` : ""}`,
+  );
+};
+
+export const createAssessmentAssignment = (
+  sessionId: string,
+  body: { planItemId: string; classId: string; sectionId?: string },
+) =>
+  api<{ assignment: AssessmentAssignment; session: AcademicSession }>(
+    `/sessions/${sessionId}/assessment-assignments`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+
+export const updateAssessmentAssignment = (
+  sessionId: string,
+  assignmentId: string,
+  body: { classId?: string; sectionId?: string | null },
+) =>
+  api<{ assignment: AssessmentAssignment }>(
+    `/sessions/${sessionId}/assessment-assignments/${assignmentId}`,
+    { method: "PATCH", body: JSON.stringify(body) },
+  );
+
+export const upsertAssessmentAssignmentPapers = (
+  sessionId: string,
+  assignmentId: string,
+  papers: { subjectId: string; totalMarks?: number | string; examDate?: string; syllabus?: string }[],
+) =>
+  api<{ assignment: AssessmentAssignment }>(
+    `/sessions/${sessionId}/assessment-assignments/${assignmentId}/papers`,
+    { method: "PUT", body: JSON.stringify({ papers }) },
+  );
+
+export const deleteAssessmentAssignment = (sessionId: string, assignmentId: string) =>
+  api<{ ok: boolean }>(`/sessions/${sessionId}/assessment-assignments/${assignmentId}`, {
+    method: "DELETE",
+  });
+
+export const publishAssessmentAssignment = (sessionId: string, assignmentId: string) =>
+  api<{ assignment: AssessmentAssignment; published: { testsCreated: number; examsCreated: number } }>(
+    `/sessions/${sessionId}/assessment-assignments/${assignmentId}/publish`,
+    { method: "POST" },
+  );
+
+export const fetchAssessmentDateSheet = (
+  sessionId: string,
+  params?: { classId?: string; sectionId?: string },
+) => {
+  const q = new URLSearchParams();
+  if (params?.classId) q.set("classId", params.classId);
+  if (params?.sectionId) q.set("sectionId", params.sectionId);
+  const qs = q.toString();
+  return api<DateSheetPayload>(
+    `/sessions/${sessionId}/assessment-plan/date-sheet${qs ? `?${qs}` : ""}`,
+  );
+};
