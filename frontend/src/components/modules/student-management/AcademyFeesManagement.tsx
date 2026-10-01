@@ -60,9 +60,10 @@ import {
   EnrollmentVoucherWizard,
 } from "./EnrollmentVoucherWizard";
 
-const feeFilterLabelClass = "mb-1.5 block text-xs font-semibold text-[#10264D]";
+const feeFilterLabelClass =
+  "mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
 const feeFilterSelectClass =
-  "h-10 w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white py-2 text-sm font-medium text-[#10264D] shadow-none outline-none transition-colors hover:border-slate-300 focus:border-blue-300 focus:ring-2 focus:ring-blue-100";
+  "h-9 w-full cursor-pointer appearance-none rounded-md border border-border bg-background py-1.5 text-sm text-foreground shadow-none outline-none transition-colors hover:border-primary/30 focus:border-primary focus:ring-2 focus:ring-primary/10";
 
 function FeeFilterField({
   label,
@@ -97,21 +98,21 @@ function FeeFilterSelect({
   return (
     <div className={cn("relative", className)}>
       {leadingIcon ? (
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
           {leadingIcon}
         </span>
       ) : null}
       <select
         className={cn(
           feeFilterSelectClass,
-          leadingIcon ? "pl-9 pr-9" : "pl-3 pr-9",
+          leadingIcon ? "pl-8 pr-8" : "pl-3 pr-8",
         )}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
         {children}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
     </div>
   );
 }
@@ -553,10 +554,17 @@ export default function AcademyFeesManagement({
       )}
 
       {showFilters && !studentId && (
-        <div className="rounded-2xl border border-slate-200/80 bg-[#F7FAFC] p-3 sm:p-4">
-          <div className="flex flex-wrap items-end gap-3">
+        <div className="rounded-xl border border-border bg-card px-3.5 py-3 shadow-sm">
+          <div
+            className={cn(
+              "grid items-end gap-2.5",
+              isParent
+                ? "grid-cols-1 sm:grid-cols-[220px_minmax(0,1fr)]"
+                : "grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,1.15fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(200px,1.5fr)]",
+            )}
+          >
             {isParent && (
-              <FeeFilterField label="Child" className="w-full min-w-[180px] sm:w-[220px]">
+              <FeeFilterField label="Child">
                 <FeeFilterSelect
                   value={selectedParentStudentId}
                   onChange={setSelectedParentStudentId}
@@ -572,11 +580,11 @@ export default function AcademyFeesManagement({
             )}
             {!isParent && (
               <>
-                <FeeFilterField label="Month" className="min-w-[150px] flex-1 basis-[150px] sm:max-w-[180px]">
+                <FeeFilterField label="Month">
                   <FeeFilterSelect
                     value={month}
                     onChange={setMonth}
-                    leadingIcon={<CalendarDays className="h-4 w-4" />}
+                    leadingIcon={<CalendarDays className="h-3.5 w-3.5" />}
                   >
                     {MONTH_NAMES.map((name, idx) => (
                       <option key={name} value={String(idx + 1)}>
@@ -585,7 +593,7 @@ export default function AcademyFeesManagement({
                     ))}
                   </FeeFilterSelect>
                 </FeeFilterField>
-                <FeeFilterField label="Year" className="w-[100px] shrink-0">
+                <FeeFilterField label="Year">
                   <FeeFilterSelect value={year} onChange={setYear}>
                     {Array.from({ length: 6 }, (_, i) => {
                       const y = String(Number(now.getFullYear()) - 2 + i);
@@ -597,7 +605,7 @@ export default function AcademyFeesManagement({
                     })}
                   </FeeFilterSelect>
                 </FeeFilterField>
-                <FeeFilterField label="Class" className="min-w-[130px] flex-1 basis-[130px] sm:max-w-[160px]">
+                <FeeFilterField label="Class">
                   <FeeFilterSelect value={classFilter} onChange={setClassFilter}>
                     <option value="">All classes</option>
                     {classes.map((c) => (
@@ -607,7 +615,7 @@ export default function AcademyFeesManagement({
                     ))}
                   </FeeFilterSelect>
                 </FeeFilterField>
-                <FeeFilterField label="Status" className="min-w-[110px] flex-1 basis-[110px] sm:max-w-[130px]">
+                <FeeFilterField label="Status">
                   <FeeFilterSelect value={statusFilter} onChange={setStatusFilter}>
                     <option value="">All</option>
                     <option value="pending">Pending</option>
@@ -616,7 +624,7 @@ export default function AcademyFeesManagement({
                     <option value="waived">Waived</option>
                   </FeeFilterSelect>
                 </FeeFilterField>
-                <FeeFilterField label="Type" className="min-w-[120px] flex-1 basis-[120px] sm:max-w-[140px]">
+                <FeeFilterField label="Type">
                   <FeeFilterSelect value={feeTypeFilter} onChange={setFeeTypeFilter}>
                     <option value="">All types</option>
                     <option value="monthly">Monthly</option>
@@ -627,13 +635,11 @@ export default function AcademyFeesManagement({
               </>
             )}
 
-            <div className="relative min-w-[200px] flex-[1.4] basis-[220px]">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <div className={cn("relative min-w-0", !isParent && "col-span-2 md:col-span-1")}>
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
-                className="h-10 rounded-xl border-slate-200 bg-white pl-9 pr-9 text-sm text-[#10264D] shadow-none placeholder:text-slate-400 focus-visible:ring-blue-100"
-                placeholder={
-                  isParent ? "Search receipt or period…" : "Search student, class, receipt..."
-                }
+                className="h-9 rounded-md border-border bg-background pl-8 pr-8 text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-primary/15"
+                placeholder={isParent ? "Search receipt or period…" : "Search student, class, receipt"}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 aria-label="Search fees"
@@ -643,49 +649,49 @@ export default function AcademyFeesManagement({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="absolute right-0.5 top-0.5 h-9 w-9 text-slate-400"
+                  className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
                   onClick={() => setSearch("")}
                   aria-label="Clear search"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3.5 w-3.5" />
                 </Button>
               ) : null}
             </div>
-
-            {!isParent && (canGenerate || caps.canView || caps.canEdit || caps.canCreate) && (
-              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
-                {!studentId && (caps.canEdit || caps.canCreate) && writable && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-10 gap-2 rounded-xl border-[#BFDBFE] bg-white px-4 text-sm font-semibold text-[#1D4ED8] hover:bg-[#EFF6FF]"
-                    onClick={() => setEnrollmentWizardOpen(true)}
-                  >
-                    <Receipt className="h-4 w-4" />
-                    Enrollment voucher
-                  </Button>
-                )}
-                {canGenerate && (
-                  <Button
-                    className="h-10 gap-2 rounded-xl bg-[#2F80ED] px-4 text-sm font-semibold text-white hover:bg-[#2563EB]"
-                    disabled={genMut.isPending}
-                    onClick={() => genMut.mutate()}
-                  >
-                    <Download className="h-4 w-4" />
-                    {genMut.isPending ? "Generating…" : "Generate Report"}
-                  </Button>
-                )}
-                {!studentId && caps.canView && (
-                  <DefaulterListDownload
-                    className="h-10 max-w-[11.5rem] justify-center rounded-xl border-[#BFDBFE] bg-[#EFF6FF] px-3 text-[12px] font-semibold text-[#1D4ED8] hover:bg-[#DBEAFE] hover:text-[#1E40AF]"
-                    label="Download Defaulter List"
-                    exporting={exportingMonthWise}
-                    onDownload={(format) => void downloadMonthWise(format)}
-                  />
-                )}
-              </div>
-            )}
           </div>
+
+          {!isParent && (canGenerate || caps.canView || caps.canEdit || caps.canCreate) && (
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
+              {!studentId && (caps.canEdit || caps.canCreate) && writable && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 gap-1.5 whitespace-nowrap rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted"
+                  onClick={() => setEnrollmentWizardOpen(true)}
+                >
+                  <Receipt className="h-4 w-4 text-primary" />
+                  Enrollment voucher
+                </Button>
+              )}
+              {canGenerate && (
+                <Button
+                  className="h-9 gap-1.5 whitespace-nowrap rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  disabled={genMut.isPending}
+                  onClick={() => genMut.mutate()}
+                >
+                  <Download className="h-4 w-4" />
+                  {genMut.isPending ? "Generating…" : "Generate Report"}
+                </Button>
+              )}
+              {!studentId && caps.canView && (
+                <DefaulterListDownload
+                  className="h-9 whitespace-nowrap rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground"
+                  label="Download Defaulter List"
+                  exporting={exportingMonthWise}
+                  onDownload={(format) => void downloadMonthWise(format)}
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
 

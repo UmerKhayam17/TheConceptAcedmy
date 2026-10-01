@@ -394,10 +394,10 @@ export function EnrollmentVoucherWizard({
                 <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-md border p-2">
                   {sharedSubjects.length > 0 || streamSubjects.length > 0 ? (
                     <>
-                      {sharedSubjects.length > 0 && (
+                      {streamSubjects.length > 0 && (
                         <div>
-                          <p className="text-xs font-semibold text-slate-500 mb-1">Shared</p>
-                          {sharedSubjects.map((s) => (
+                          <p className="text-xs font-semibold text-slate-500 mb-1">Stream</p>
+                          {streamSubjects.map((s) => (
                             <label key={s._id} className="flex items-center gap-2 text-sm">
                               <input
                                 type="checkbox"
@@ -410,10 +410,10 @@ export function EnrollmentVoucherWizard({
                           ))}
                         </div>
                       )}
-                      {streamSubjects.length > 0 && (
-                        <div className={sharedSubjects.length ? "pt-2 border-t" : ""}>
-                          <p className="text-xs font-semibold text-slate-500 mb-1">Stream</p>
-                          {streamSubjects.map((s) => (
+                      {sharedSubjects.length > 0 && (
+                        <div className={streamSubjects.length ? "pt-2 border-t" : ""}>
+                          <p className="text-xs font-semibold text-slate-500 mb-1">Shared</p>
+                          {sharedSubjects.map((s) => (
                             <label key={s._id} className="flex items-center gap-2 text-sm">
                               <input
                                 type="checkbox"

@@ -11,7 +11,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import {
+  ClipboardList,
+  GraduationCap,
+  Layers,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
@@ -41,6 +49,13 @@ function subjectNames(ids: AcademyDiscipline["subjectIds"]): string {
 function subjectIdList(ids: AcademyDiscipline["subjectIds"]): string[] {
   if (!Array.isArray(ids)) return [];
   return ids.map((s) => (typeof s === "string" ? s : s._id));
+}
+
+function formatCreated(iso?: string) {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 export default function DisciplinesTab({

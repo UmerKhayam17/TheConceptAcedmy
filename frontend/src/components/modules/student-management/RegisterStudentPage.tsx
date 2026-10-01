@@ -1264,11 +1264,11 @@ export default function RegisterStudentPage({
                     <>
                       {(sharedSubjects || streamSubjects) ? (
                         <div className="space-y-3">
-                          {sharedSubjects && sharedSubjects.length > 0 && (
+                          {streamSubjects && streamSubjects.length > 0 && (
                             <div className="space-y-2">
-                              <p className="text-sm font-medium">Shared subjects</p>
+                              <p className="text-sm font-medium">Stream subjects</p>
                               <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                                {sharedSubjects.map((s) => {
+                                {streamSubjects.map((s) => {
                                   const selected = form.selectedSubjects.includes(s._id);
                                   return (
                                     <label
@@ -1286,11 +1286,11 @@ export default function RegisterStudentPage({
                               </div>
                             </div>
                           )}
-                          {streamSubjects && streamSubjects.length > 0 && (
+                          {sharedSubjects && sharedSubjects.length > 0 && (
                             <div className="space-y-2">
-                              <p className="text-sm font-medium">Stream subjects</p>
+                              <p className="text-sm font-medium">Shared subjects</p>
                               <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                                {streamSubjects.map((s) => {
+                                {sharedSubjects.map((s) => {
                                   const selected = form.selectedSubjects.includes(s._id);
                                   return (
                                     <label
