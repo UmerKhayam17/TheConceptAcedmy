@@ -140,6 +140,41 @@ router.patch(
 );
 router.delete('/subjects/:id', requirePermission('manage_academy_subjects'), subjectCtrl.remove);
 
+// Disciplines / streams (Medical, Engineering, ICS — typically 1st & 2nd Year)
+const disciplineCtrl = require('../controllers/academy/academyDisciplineController');
+router.get(
+  '/classes/:classId/disciplines',
+  requireAnyPermission(
+    'view_academy_students',
+    'manage_academy_subjects',
+    'manage_academy_students',
+    'manage_academy_classes'
+  ),
+  disciplineCtrl.listByClass
+);
+router.post(
+  '/classes/:classId/disciplines/defaults',
+  requirePermission('manage_academy_subjects'),
+  disciplineCtrl.createDefaults
+);
+router.post(
+  '/disciplines',
+  requirePermission('manage_academy_subjects'),
+  validate(schemas.academyDisciplineBody),
+  disciplineCtrl.create
+);
+router.patch(
+  '/disciplines/:id',
+  requirePermission('manage_academy_subjects'),
+  validate(schemas.academyDisciplinePatch),
+  disciplineCtrl.update
+);
+router.delete(
+  '/disciplines/:id',
+  requirePermission('manage_academy_subjects'),
+  disciplineCtrl.remove
+);
+
 // Fee structure
 router.get(
   '/fee-structures',

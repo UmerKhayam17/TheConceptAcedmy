@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { BookOpen, GraduationCap, Layers, UserPlus, Wallet } from "lucide-react";
+import { BookOpen, GraduationCap, Layers, Route, UserPlus, Wallet } from "lucide-react";
 import type { Role } from "./auth";
 import { buildSidebarSubmenuGroups } from "./sidebarSubmenu";
 
@@ -7,12 +7,13 @@ export type StudentManagementSection =
   | "classes"
   | "sections"
   | "subjects"
+  | "disciplines"
   | "fees-structure"
   | "registration"
   | "fees"
   | "fee-defaulters";
 
-/** Academy setup — follow order: session → class → section → student. */
+/** Academy setup — follow order: session → class → section → subjects → disciplines → fee → student. */
 export const STUDENT_MANAGEMENT_SECTIONS: {
   key: StudentManagementSection;
   label: string;
@@ -21,12 +22,13 @@ export const STUDENT_MANAGEMENT_SECTIONS: {
   { key: "classes", label: "Classes", icon: GraduationCap },
   { key: "sections", label: "Sections", icon: Layers },
   { key: "subjects", label: "Subjects", icon: BookOpen },
+  { key: "disciplines", label: "Disciplines", icon: Route },
   { key: "fees-structure", label: "Fee structure", icon: Wallet },
   { key: "registration", label: "Register students", icon: UserPlus },
 ];
 
 export const STUDENT_MANAGEMENT_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(STUDENT_MANAGEMENT_SECTIONS, [
-  { label: "1. Structure", keys: ["classes", "sections", "subjects"] },
+  { label: "1. Structure", keys: ["classes", "sections", "subjects", "disciplines"] },
   { label: "2. Enrollment", keys: ["registration"] },
   { label: "3. Fees", keys: ["fees-structure"] },
 ]);

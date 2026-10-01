@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   assignSectionAfterPayment,
   fetchAcademyStudents,
+  fetchDisciplinesByClassWithMeta,
   fetchEnrollmentSubjects,
   fetchSectionsByClass,
   getAcademyStudent,
@@ -60,6 +61,7 @@ export function EnrollmentVoucherWizard({
   const [search, setSearch] = useState("");
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [isFullPackage, setIsFullPackage] = useState(false);
+  const [disciplineId, setDisciplineId] = useState("");
   const [monthlyDiscount, setMonthlyDiscount] = useState("0");
   const [admissionDiscount, setAdmissionDiscount] = useState("0");
   const [voucher, setVoucher] = useState<AcademyFeeRecord | null>(null);
@@ -76,6 +78,7 @@ export function EnrollmentVoucherWizard({
     setSearch("");
     setSelectedSubjects([]);
     setIsFullPackage(false);
+    setDisciplineId("");
     setMonthlyDiscount("0");
     setAdmissionDiscount("0");
     setVoucher(null);
@@ -105,10 +108,31 @@ export function EnrollmentVoucherWizard({
     if (student?.gender) setGender(student.gender);
   }, [student?.gender]);
 
-  const { data: layout, isLoading: layoutLoading } = useQuery({
-    queryKey: ["enrollment-subjects", classId, "no-section"],
-    queryFn: () => fetchEnrollmentSubjects(classId),
+  useEffect(() => {
+    if (!student?.disciplineId) return;
+    const id =
+      typeof student.disciplineId === "object"
+        ? student.disciplineId._id
+        : String(student.disciplineId);
+    if (id) setDisciplineId(id);
+  }, [student?.disciplineId]);
+
+  const { data: disciplineResult } = useQuery({
+    queryKey: ["academy-disciplines", classId],
+    queryFn: () => fetchDisciplinesByClassWithMeta(classId, { status: "active" }),
     enabled: open && Boolean(classId) && (step === "subjects" || step === "voucher"),
+  });
+  const disciplines = disciplineResult?.data ?? [];
+  const requiresDiscipline = Boolean(disciplineResult?.meta?.requiresDiscipline);
+
+  const { data: layout, isLoading: layoutLoading } = useQuery({
+    queryKey: ["enrollment-subjects", classId, "no-section", disciplineId],
+    queryFn: () => fetchEnrollmentSubjects(classId, undefined, disciplineId || undefined),
+    enabled:
+      open &&
+      Boolean(classId) &&
+      (step === "subjects" || step === "voucher") &&
+      (!requiresDiscipline || Boolean(disciplineId)),
   });
 
   const { data: preview } = useQuery({
@@ -143,6 +167,8 @@ export function EnrollmentVoucherWizard({
 
   const coreSubjects = layout?.coreSubjects || [];
   const choiceGroups = layout?.choiceGroups || [];
+  const sharedSubjects = layout?.sharedSubjects || [];
+  const streamSubjects = layout?.streamSubjects || [];
 
   const toggleSubject = (id: string, opts?: { keepFullPackage?: boolean }) => {
     if (!opts?.keepFullPackage) setIsFullPackage(false);
@@ -155,6 +181,7 @@ export function EnrollmentVoucherWizard({
     mutationFn: () =>
       prepareEnrollmentVoucher(studentId, {
         classId,
+        disciplineId: disciplineId || undefined,
         selectedSubjects,
         isFullPackage,
         monthlyFeeDiscount: Number(monthlyDiscount) || 0,
@@ -223,6 +250,7 @@ export function EnrollmentVoucherWizard({
 
   const canGenerate =
     Boolean(studentId && classId) &&
+    (!requiresDiscipline || Boolean(disciplineId)) &&
     (isFullPackage || selectedSubjects.length > 0) &&
     !generateMut.isPending;
 
@@ -317,9 +345,32 @@ export function EnrollmentVoucherWizard({
                   <option value="other">Other</option>
                 </select>
               </div>
+              {requiresDiscipline ? (
+                <div>
+                  <Label>Discipline</Label>
+                  <select
+                    className="mt-1 h-9 w-full rounded-md border px-2 text-sm"
+                    value={disciplineId}
+                    onChange={(e) => {
+                      setDisciplineId(e.target.value);
+                      setSelectedSubjects([]);
+                      setIsFullPackage(false);
+                    }}
+                  >
+                    <option value="">Medical / Eng / ICS…</option>
+                    {disciplines.map((d) => (
+                      <option key={d._id} value={d._id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
             </div>
 
-            {layoutLoading ? (
+            {requiresDiscipline && !disciplineId ? (
+              <p className="text-xs text-amber-700">Select a discipline to load stream subjects.</p>
+            ) : layoutLoading ? (
               <div className="text-sm text-muted-foreground flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading subjects…
               </div>
@@ -341,17 +392,54 @@ export function EnrollmentVoucherWizard({
                 </label>
 
                 <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-md border p-2">
-                  {coreSubjects.map((s) => (
-                    <label key={s._id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={isFullPackage || selectedSubjects.includes(s._id)}
-                        disabled={isFullPackage}
-                        onChange={() => toggleSubject(s._id)}
-                      />
-                      {s.subjectName}
-                    </label>
-                  ))}
+                  {sharedSubjects.length > 0 || streamSubjects.length > 0 ? (
+                    <>
+                      {sharedSubjects.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 mb-1">Shared</p>
+                          {sharedSubjects.map((s) => (
+                            <label key={s._id} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={isFullPackage || selectedSubjects.includes(s._id)}
+                                disabled={isFullPackage}
+                                onChange={() => toggleSubject(s._id)}
+                              />
+                              {s.subjectName}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {streamSubjects.length > 0 && (
+                        <div className={sharedSubjects.length ? "pt-2 border-t" : ""}>
+                          <p className="text-xs font-semibold text-slate-500 mb-1">Stream</p>
+                          {streamSubjects.map((s) => (
+                            <label key={s._id} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={isFullPackage || selectedSubjects.includes(s._id)}
+                                disabled={isFullPackage}
+                                onChange={() => toggleSubject(s._id)}
+                              />
+                              {s.subjectName}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    coreSubjects.map((s) => (
+                      <label key={s._id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={isFullPackage || selectedSubjects.includes(s._id)}
+                          disabled={isFullPackage}
+                          onChange={() => toggleSubject(s._id)}
+                        />
+                        {s.subjectName}
+                      </label>
+                    ))
+                  )}
                   {choiceGroups.map((g) => (
                     <div key={g._id} className="pt-2 border-t">
                       <p className="text-xs font-semibold text-slate-500 mb-1">

@@ -1,4 +1,4 @@
-import { getApiRoot, parseJson, resolveUploadUrl } from "@/lib/api";
+import { parseJson, resolveUploadUrl } from "@/lib/api";
 
 export { resolveUploadUrl };
 import { authedFetch } from "@/lib/auth";
@@ -54,6 +54,25 @@ export interface EnrollmentSubjectLayout {
     pickCount: number;
     subjects: AcademySubject[];
   }[];
+  disciplineId?: string | null;
+  sharedSubjects?: AcademySubject[];
+  streamSubjects?: AcademySubject[];
+}
+
+export interface AcademyDiscipline {
+  _id: string;
+  name: string;
+  code: string;
+  classId: string;
+  subjectIds: AcademySubject[] | string[];
+  status: "active" | "inactive";
+  createdAt?: string;
+  createdBy?: CreatedByUser | string;
+}
+
+export interface AcademyDisciplinesListMeta {
+  requiresDiscipline: boolean;
+  suggestsDisciplines: boolean;
 }
 
 export interface AcademySection {
@@ -120,6 +139,7 @@ export interface AcademyStudentRegisterBody {
   gender: string;
   classId: string;
   sectionId: string;
+  disciplineId?: string;
   selectedSubjects: string[];
   isFullPackage: boolean;
   discountAmount?: number;
@@ -184,6 +204,7 @@ export interface AcademyStudent {
   address?: string;
   classId: string | AcademyClass;
   sectionId?: string | AcademySection;
+  disciplineId?: string | AcademyDiscipline | null;
   selectedSubjects: AcademySubject[] | string[];
   isFullPackage: boolean;
   monthlyFee: number;
@@ -391,10 +412,68 @@ export const fetchSubjectsByClass = (classId: string, params?: { status?: string
   return api<AcademySubject[]>(`/classes/${classId}/subjects${q ? `?${q}` : ""}`);
 };
 
-export const fetchEnrollmentSubjects = (classId: string, sectionId?: string) => {
-  const q = sectionId ? `?sectionId=${sectionId}` : "";
-  return api<EnrollmentSubjectLayout>(`/classes/${classId}/enrollment-subjects${q}`);
+export const fetchEnrollmentSubjects = (
+  classId: string,
+  sectionId?: string,
+  disciplineId?: string,
+) => {
+  const qp = new URLSearchParams();
+  if (sectionId) qp.set("sectionId", sectionId);
+  if (disciplineId) qp.set("disciplineId", disciplineId);
+  const q = qp.toString();
+  return api<EnrollmentSubjectLayout>(`/classes/${classId}/enrollment-subjects${q ? `?${q}` : ""}`);
 };
+
+/** Streams for a class (Medical / Engineering / ICS). Empty for 9th/10th until configured. */
+export const fetchDisciplinesByClass = (classId: string, params?: { status?: string }) => {
+  const q = params?.status ? `?status=${params.status}` : "";
+  return api<AcademyDiscipline[]>(`/classes/${classId}/disciplines${q}`);
+};
+
+/** Full response with requiresDiscipline / suggestsDisciplines meta. */
+export async function fetchDisciplinesByClassWithMeta(
+  classId: string,
+  params?: { status?: string },
+): Promise<{ data: AcademyDiscipline[]; meta: AcademyDisciplinesListMeta }> {
+  const q = params?.status ? `?status=${params.status}` : "";
+  const res = await authedFetch(`/student-management/classes/${classId}/disciplines${q}`);
+  const json = await parseJson<{
+    success: boolean;
+    data: AcademyDiscipline[];
+    meta?: AcademyDisciplinesListMeta;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(json.message || `Request failed (${res.status})`);
+  return {
+    data: json.data || [],
+    meta: json.meta || { requiresDiscipline: false, suggestsDisciplines: false },
+  };
+}
+
+export const createAcademyDiscipline = (body: {
+  name: string;
+  code?: string;
+  classId: string;
+  subjectIds?: string[];
+  status?: "active" | "inactive";
+}) => api<AcademyDiscipline>("/disciplines", { method: "POST", body: JSON.stringify(body) });
+
+export const createStandardDisciplines = (classId: string) =>
+  api<{
+    created: number;
+    skipped: number;
+    linked?: { code: string; count: number }[];
+    suggestsDisciplines: boolean;
+    disciplines: AcademyDiscipline[];
+  }>(`/classes/${classId}/disciplines/defaults`, { method: "POST" });
+
+export const updateAcademyDiscipline = (
+  id: string,
+  body: Partial<Pick<AcademyDiscipline, "name" | "code" | "status">> & { subjectIds?: string[] },
+) => api<AcademyDiscipline>(`/disciplines/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+
+export const deleteAcademyDiscipline = (id: string) =>
+  api<{ deleted: boolean }>(`/disciplines/${id}`, { method: "DELETE" });
 
 /** Derived choice groups from subjects (same choiceGroupName within a class). */
 export const fetchSubjectChoiceGroups = (classId: string) =>
@@ -579,6 +658,7 @@ export async function activateAcademyStudent(id: string, body: AcademyStudentAct
 
 export type EnrollmentVoucherBody = {
   classId?: string;
+  disciplineId?: string;
   selectedSubjects: string[];
   isFullPackage: boolean;
   discountAmount?: number;

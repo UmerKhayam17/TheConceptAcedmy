@@ -151,6 +151,8 @@ function assessmentSummary(assessments) {
 async function getStudentRecord(id) {
   const student = await AcademyStudent.findById(id)
     .populate('classId', 'className totalSubjects sessionId')
+    .populate('sectionId', 'sectionName')
+    .populate('disciplineId', 'name code')
     .populate('selectedSubjects', 'subjectName subjectCode')
     .populate('feeStructureId')
     .populate('createdBy', 'name email');

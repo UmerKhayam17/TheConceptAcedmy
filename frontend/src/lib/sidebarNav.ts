@@ -28,6 +28,7 @@ import {
   Users,
   UserCog,
   KeyRound,
+  Route,
 } from "lucide-react";
 import type { Role } from "./auth";
 import type { ModuleKey } from "./permissions";
@@ -123,6 +124,15 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: BookOpen,
         moduleKey: "student-management",
         href: (role) => studentManagementHref(role, "subjects"),
+      },
+      {
+        id: "disciplines",
+        label: "Disciplines",
+        icon: Route,
+        moduleKey: "student-management",
+        href: (role) => studentManagementHref(role, "disciplines"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/student-management/disciplines`),
       },
       {
         id: "assessments-config",

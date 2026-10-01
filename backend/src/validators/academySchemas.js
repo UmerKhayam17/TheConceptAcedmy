@@ -60,6 +60,21 @@ const academySectionPatch = Joi.object({
   status: Joi.string().valid('active', 'inactive'),
 }).min(1);
 
+const academyDisciplineBody = Joi.object({
+  name: Joi.string().trim().required(),
+  code: Joi.string().trim().allow('').optional(),
+  classId: objectId.required(),
+  subjectIds: Joi.array().items(objectId).default([]),
+  status: Joi.string().valid('active', 'inactive').optional(),
+});
+
+const academyDisciplinePatch = Joi.object({
+  name: Joi.string().trim(),
+  code: Joi.string().trim(),
+  subjectIds: Joi.array().items(objectId),
+  status: Joi.string().valid('active', 'inactive'),
+}).min(1);
+
 const academyFeeStructureBody = Joi.object({
   classId: objectId.required(),
   perSubjectFee: Joi.number().min(0).required(),
@@ -112,6 +127,7 @@ const academyStudentRegister = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId.required(),
   sectionId: objectId.required(),
+  disciplineId: objectId.allow(null, ''),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -139,6 +155,7 @@ const academyStudentActivate = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId,
   sectionId: objectId.required(),
+  disciplineId: objectId.allow(null, ''),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -175,6 +192,7 @@ const academyEnrollmentVoucher = Joi.object({
   mobileNo: Joi.string().trim(),
   gender: Joi.string().valid('male', 'female', 'other'),
   classId: objectId,
+  disciplineId: objectId.allow(null, ''),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -230,6 +248,7 @@ const academyStudentDirectRegister = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId.required(),
   sectionId: objectId.required(),
+  disciplineId: objectId.allow(null, ''),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -263,6 +282,7 @@ const academyStudentPatch = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other'),
   classId: objectId,
   sectionId: objectId,
+  disciplineId: objectId.allow(null, ''),
   selectedSubjects: Joi.array().items(objectId),
   isFullPackage: Joi.boolean(),
   discountAmount: Joi.number().min(0),
@@ -521,6 +541,8 @@ module.exports = {
   academySubjectBulkChoiceBody,
   academySectionBody,
   academySectionPatch,
+  academyDisciplineBody,
+  academyDisciplinePatch,
   academyFeeStructureBody,
   academyFeeStructurePatch,
   academyStudentRegister,

@@ -258,6 +258,16 @@ function ProfileTab({ student, hideSensitive = false }: { student: AcademyStuden
           <SectionTitle>Fee structure at registration</SectionTitle>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
             <DetailRow label="Class" value={classLabel(student.classId)} />
+            {student.disciplineId && (
+              <DetailRow
+                label="Discipline"
+                value={
+                  typeof student.disciplineId === "object"
+                    ? student.disciplineId.name
+                    : String(student.disciplineId)
+                }
+              />
+            )}
             <DetailRow label="Monthly fee" value={formatPkr(student.monthlyFee)} />
             <DetailRow label="Admission fee" value={formatPkr(student.admissionFee)} />
             <DetailRow label="Monthly fee discount" value={formatPkr(student.monthlyFeeDiscount)} />
@@ -284,6 +294,16 @@ function ProfileTab({ student, hideSensitive = false }: { student: AcademyStuden
         <section className="rounded-lg border p-4 space-y-3">
           <SectionTitle>Class</SectionTitle>
           <DetailRow label="Class" value={classLabel(student.classId)} />
+          {student.disciplineId && (
+            <DetailRow
+              label="Discipline"
+              value={
+                typeof student.disciplineId === "object"
+                  ? student.disciplineId.name
+                  : String(student.disciplineId)
+              }
+            />
+          )}
         </section>
       )}
     </div>
@@ -304,6 +324,16 @@ function EnrollmentTab({ record }: { record: AcademyStudentRecord }) {
           value={enrollment.isFullPackage ? "Full package" : "Selected subjects"}
         />
         <SummaryCard label="Class" value={classLabel(student.classId)} />
+        {student.disciplineId && (
+          <SummaryCard
+            label="Discipline"
+            value={
+              typeof student.disciplineId === "object"
+                ? student.disciplineId.name
+                : String(student.disciplineId)
+            }
+          />
+        )}
       </div>
 
       {subjects.length === 0 ? (

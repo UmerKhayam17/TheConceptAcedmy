@@ -42,12 +42,13 @@ export const defaultRegisterForm = () => ({
   gender: "male",
   classId: "",
   sectionId: "",
+  disciplineId: "",
   isFullPackage: false,
   selectedSubjects: [] as string[],
   discountAmount: "",
   monthlyFeeDiscount: "",
   admissionFeeDiscount: "",
-  status: "active" as const,
+  status: "active" as "active" | "inactive" | "suspended" | "pending_fee",
 });
 
 export function mapStudentToForm(student: AcademyStudent) {
@@ -85,6 +86,10 @@ export function mapStudentToForm(student: AcademyStudent) {
     gender: student.gender || "male",
     classId: resolveClassId(student.classId),
     sectionId: typeof student.sectionId === "object" && student.sectionId ? student.sectionId._id : String(student.sectionId || ""),
+    disciplineId:
+      typeof student.disciplineId === "object" && student.disciplineId
+        ? student.disciplineId._id
+        : String(student.disciplineId || ""),
     isFullPackage: student.isFullPackage ?? false,
     selectedSubjects: resolveSubjectIds(student.selectedSubjects),
     discountAmount: String(student.discountAmount ?? 0),
@@ -117,6 +122,7 @@ export function buildStudentPayload(form: ReturnType<typeof defaultRegisterForm>
     gender: form.gender,
     classId: form.classId,
     sectionId: form.sectionId,
+    ...(form.disciplineId ? { disciplineId: form.disciplineId } : {}),
     selectedSubjects: form.selectedSubjects,
     isFullPackage: form.isFullPackage,
     monthlyFeeDiscount: Number(form.monthlyFeeDiscount) || 0,

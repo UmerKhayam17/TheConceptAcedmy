@@ -15,6 +15,7 @@ const {
 } = require('./academyFeeStructureService');
 const { createEnrollmentFeeVouchers } = require('./academyFeeService');
 const { validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
+const { resolveEnrollmentDiscipline } = require('./academyDisciplineService');
 const { generateAcademyRollNumber, generateTemporaryRollNumber } = require('../../utils/academyRollNumber');
 const { generateRegistrationNumber } = require('../../utils/academyRegistrationNumber');
 
@@ -209,8 +210,8 @@ function applyProfileToStudent(student, payload) {
   if (payload.academicHistory !== undefined) student.academicHistory = profile.academicHistory;
 }
 
-async function validateSubjects(classId, sectionId, subjectIds, isFullPackage) {
-  return validateEnrollmentSubjects(classId, sectionId, subjectIds, isFullPackage);
+async function validateSubjects(classId, sectionId, subjectIds, isFullPackage, disciplineId) {
+  return validateEnrollmentSubjects(classId, sectionId, subjectIds, isFullPackage, disciplineId);
 }
 
 async function registerStudent(payload, userId) {
@@ -232,7 +233,14 @@ async function registerStudent(payload, userId) {
     throw new ApiError(400, 'Class must belong to an academic session before enrolling students');
   }
 
-  const subjectIds = await validateSubjects(payload.classId, payload.sectionId, payload.selectedSubjects, isFullPackage);
+  const disciplineId = await resolveEnrollmentDiscipline(payload.classId, payload.disciplineId);
+  const subjectIds = await validateSubjects(
+    payload.classId,
+    payload.sectionId,
+    payload.selectedSubjects,
+    isFullPackage,
+    disciplineId
+  );
 
   const fees = calculateFeesWithDiscount(feeStructure, {
     selectedSubjectIds: subjectIds,
@@ -282,6 +290,7 @@ async function registerStudent(payload, userId) {
     ...profile,
     classId: payload.classId,
     sectionId: payload.sectionId,
+    disciplineId: disciplineId || undefined,
     selectedSubjects: subjectIds,
     isFullPackage,
     ...fees,
@@ -295,6 +304,7 @@ async function registerStudent(payload, userId) {
 
   return student.populate([
     { path: 'classId', select: 'className' },
+    { path: 'disciplineId', select: 'name code' },
     { path: 'selectedSubjects', select: 'subjectName subjectCode' },
     { path: 'createdBy', select: 'name email' },
   ]);
@@ -332,6 +342,7 @@ async function updateStudent(id, payload) {
   const needsFeeRecalc =
     payload.classId ||
     payload.sectionId ||
+    payload.disciplineId !== undefined ||
     payload.selectedSubjects ||
     payload.isFullPackage !== undefined ||
     payload.discountAmount !== undefined ||
@@ -351,12 +362,18 @@ async function updateStudent(id, payload) {
   if (needsFeeRecalc) {
     const feeStructure = await getByClass(classId);
     if (!feeStructure) throw new ApiError(400, 'No active fee structure for class');
+    const disciplineId = await resolveEnrollmentDiscipline(
+      classId,
+      payload.disciplineId !== undefined ? payload.disciplineId : student.disciplineId
+    );
     const subjectIds = await validateSubjects(
       classId,
       sectionId,
       payload.selectedSubjects || student.selectedSubjects,
-      isFullPackage
+      isFullPackage,
+      disciplineId
     );
+    student.disciplineId = disciplineId || undefined;
     student.isFullPackage = isFullPackage;
     student.selectedSubjects = subjectIds;
     const hasSeparateDiscounts =
@@ -390,6 +407,7 @@ async function updateStudent(id, payload) {
   await student.save();
   return student.populate([
     { path: 'classId', select: 'className' },
+    { path: 'disciplineId', select: 'name code' },
     { path: 'selectedSubjects', select: 'subjectName subjectCode' },
     { path: 'createdBy', select: 'name email' },
   ]);
@@ -399,6 +417,7 @@ async function getStudent(id) {
   const student = await AcademyStudent.findById(id)
     .populate('classId', 'className totalSubjects')
     .populate('sectionId', 'sectionName useClassSubjects')
+    .populate('disciplineId', 'name code')
     .populate('selectedSubjects', 'subjectName subjectCode')
     .populate('feeStructureId');
   if (!student) throw new ApiError(404, 'Student not found');
@@ -467,6 +486,7 @@ async function listStudents({
         populate: { path: 'sessionId', select: 'name status' },
       })
       .populate('sectionId', 'sectionName')
+      .populate('disciplineId', 'name code')
       .populate('selectedSubjects', 'subjectName')
       .populate('createdBy', 'name email')
       .sort(sort)
@@ -812,11 +832,16 @@ async function activateStudent(id, payload, userId) {
     throw new ApiError(400, 'Section does not belong to this class');
   }
 
+  const disciplineId = await resolveEnrollmentDiscipline(
+    classId,
+    payload.disciplineId !== undefined ? payload.disciplineId : student.disciplineId
+  );
   const subjectIds = await validateSubjects(
     classId,
     payload.sectionId,
     payload.selectedSubjects || [],
-    isFullPackage
+    isFullPackage,
+    disciplineId
   );
 
   const fees = calculateFeesWithDiscount(feeStructure, {
@@ -860,6 +885,7 @@ async function activateStudent(id, payload, userId) {
   student.guardianEmail = parentEmail;
   student.classId = classId;
   student.sectionId = payload.sectionId;
+  student.disciplineId = disciplineId || undefined;
   student.selectedSubjects = subjectIds;
   student.isFullPackage = isFullPackage;
   Object.assign(student, fees);
@@ -877,6 +903,7 @@ async function activateStudent(id, payload, userId) {
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
     { path: 'sectionId', select: 'sectionName' },
+    { path: 'disciplineId', select: 'name code' },
     { path: 'selectedSubjects', select: 'subjectName subjectCode' },
     { path: 'createdBy', select: 'name email' },
   ]);
@@ -912,12 +939,17 @@ async function prepareEnrollmentVoucher(id, payload, userId) {
   if (!feeStructure) throw new ApiError(400, 'Configure fee structure for this class first');
 
   const isFullPackage = Boolean(payload.isFullPackage);
+  const disciplineId = await resolveEnrollmentDiscipline(
+    classId,
+    payload.disciplineId !== undefined ? payload.disciplineId : student.disciplineId
+  );
   // Validate against class subjects (no section yet).
   const subjectIds = await validateSubjects(
     classId,
     null,
     payload.selectedSubjects || [],
-    isFullPackage
+    isFullPackage,
+    disciplineId
   );
   if (!isFullPackage && (!subjectIds || !subjectIds.length)) {
     throw new ApiError(400, 'Select at least one subject or choose full package');
@@ -959,6 +991,7 @@ async function prepareEnrollmentVoucher(id, payload, userId) {
 
   student.classId = classId;
   student.sectionId = undefined;
+  student.disciplineId = disciplineId || undefined;
   student.selectedSubjects = subjectIds;
   student.isFullPackage = isFullPackage;
   Object.assign(student, fees);
@@ -974,6 +1007,7 @@ async function prepareEnrollmentVoucher(id, payload, userId) {
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
+    { path: 'disciplineId', select: 'name code' },
     { path: 'selectedSubjects', select: 'subjectName subjectCode' },
     { path: 'createdBy', select: 'name email' },
   ]);
@@ -1020,11 +1054,13 @@ async function assignSectionAfterPayment(id, payload, userId) {
   }
 
   // Re-validate stored subjects against the chosen section layout.
+  const disciplineId = await resolveEnrollmentDiscipline(classId, student.disciplineId);
   const subjectIds = await validateSubjects(
     classId,
     payload.sectionId,
     (student.selectedSubjects || []).map(String),
-    Boolean(student.isFullPackage)
+    Boolean(student.isFullPackage),
+    disciplineId
   );
 
   const phone = (payload.phone || payload.mobileNo || student.phone || '').trim();
@@ -1064,6 +1100,7 @@ async function assignSectionAfterPayment(id, payload, userId) {
   student.guardianEmail = parentEmail;
   student.classId = classId;
   student.sectionId = payload.sectionId;
+  student.disciplineId = disciplineId || undefined;
   student.selectedSubjects = subjectIds;
   student.status = 'active';
   student.activatedAt = new Date();
@@ -1074,6 +1111,7 @@ async function assignSectionAfterPayment(id, payload, userId) {
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
     { path: 'sectionId', select: 'sectionName' },
+    { path: 'disciplineId', select: 'name code' },
     { path: 'selectedSubjects', select: 'subjectName subjectCode' },
     { path: 'createdBy', select: 'name email' },
   ]);
@@ -1107,11 +1145,13 @@ async function registerDirectStudent(payload, userId) {
     throw new ApiError(400, 'Section does not belong to this class');
   }
 
+  const disciplineId = await resolveEnrollmentDiscipline(classId, payload.disciplineId);
   const subjectIds = await validateSubjects(
     classId,
     payload.sectionId,
     payload.selectedSubjects || [],
-    isFullPackage
+    isFullPackage,
+    disciplineId
   );
 
   const fees = calculateFeesWithDiscount(feeStructure, {
@@ -1158,6 +1198,7 @@ async function registerDirectStudent(payload, userId) {
     guardianName: (payload.guardianName || fatherName || '').trim(),
     classId,
     sectionId: payload.sectionId,
+    disciplineId: disciplineId || undefined,
     selectedSubjects: subjectIds,
     isFullPackage,
     ...fees,
@@ -1175,6 +1216,7 @@ async function registerDirectStudent(payload, userId) {
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
     { path: 'sectionId', select: 'sectionName' },
+    { path: 'disciplineId', select: 'name code' },
     { path: 'selectedSubjects', select: 'subjectName subjectCode' },
     { path: 'createdBy', select: 'name email' },
   ]);

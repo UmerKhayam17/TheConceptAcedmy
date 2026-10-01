@@ -45,7 +45,11 @@ const enrollmentLayout = catchAsync(async (req, res) => {
   if (teacherScope) {
     ensureClassInTeacherScope(teacherScope, req.params.classId);
   }
-  const data = await getEnrollmentLayout(req.params.classId, req.query.sectionId);
+  const data = await getEnrollmentLayout(
+    req.params.classId,
+    req.query.sectionId,
+    req.query.disciplineId
+  );
   res.json({ success: true, data });
 });
 

@@ -14,6 +14,7 @@ import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import ClassesTab from "@/components/modules/student-management/ClassesTab";
 import SectionsTab from "@/components/modules/student-management/SectionsTab";
 import SubjectsTab from "@/components/modules/student-management/SubjectsTab";
+import DisciplinesTab from "@/components/modules/student-management/DisciplinesTab";
 import FeeStructureTab from "@/components/modules/student-management/FeeStructureTab";
 import RegistrationTab from "@/components/modules/student-management/RegistrationTab";
 import RegisterStudentPage from "@/components/modules/student-management/RegisterStudentPage";
@@ -104,6 +105,7 @@ const StudentManagementModule = ({
     if (section === "classes") return <ClassesTab caps={caps} sessionId={sessionId} />;
     if (section === "sections") return <SectionsTab caps={caps} sessionId={sessionId} />;
     if (section === "subjects") return <SubjectsTab caps={caps} sessionId={sessionId} />;
+    if (section === "disciplines") return <DisciplinesTab caps={caps} sessionId={sessionId} />;
     if (section === "fees-structure") return <FeeStructureTab caps={caps} sessionId={sessionId} />;
     if (section === "registration") {
       return <RegistrationTab caps={caps} routes={registrationRoutes ?? undefined} sessionId={sessionId} enrollmentFlow="intake" />;

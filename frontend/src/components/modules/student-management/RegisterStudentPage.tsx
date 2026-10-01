@@ -61,6 +61,7 @@ import {
 } from "@/lib/studentManagementMenus";
 import {
   fetchAcademyClasses,
+  fetchDisciplinesByClassWithMeta,
   fetchEnrollmentSubjects,
   fetchSectionsByClass,
   getAcademyStudent,
@@ -351,13 +352,39 @@ export default function RegisterStudentPage({
     enabled: isEdit || isActivate || isDirect || Boolean(sessionId),
   });
 
+  const { data: disciplineResult } = useQuery({
+    queryKey: ["academy-disciplines", form.classId],
+    queryFn: () => fetchDisciplinesByClassWithMeta(form.classId, { status: "active" }),
+    enabled: Boolean(form.classId),
+  });
+  const disciplines = disciplineResult?.data ?? [];
+  const requiresDiscipline = Boolean(disciplineResult?.meta?.requiresDiscipline);
+
   const { data: enrollmentLayout, isLoading: enrollmentLoading } = useQuery({
-    queryKey: ["enrollment-subjects", form.classId, form.sectionId],
-    queryFn: () => fetchEnrollmentSubjects(form.classId, form.sectionId),
-    enabled: Boolean(form.classId) && Boolean(form.sectionId),
+    queryKey: ["enrollment-subjects", form.classId, form.sectionId, form.disciplineId],
+    queryFn: () =>
+      fetchEnrollmentSubjects(
+        form.classId,
+        form.sectionId,
+        form.disciplineId || undefined,
+      ),
+    enabled:
+      Boolean(form.classId) &&
+      Boolean(form.sectionId) &&
+      (!requiresDiscipline || Boolean(form.disciplineId)),
   });
 
   const hasChoiceGroups = Boolean(enrollmentLayout?.hasChoiceGroups);
+  const sharedSubjects = enrollmentLayout?.sharedSubjects?.length
+    ? enrollmentLayout.sharedSubjects
+    : null;
+  const streamSubjects = enrollmentLayout?.streamSubjects?.length
+    ? enrollmentLayout.streamSubjects
+    : null;
+  const displayCoreSubjects =
+    sharedSubjects || streamSubjects
+      ? [...(sharedSubjects || []), ...(streamSubjects || [])]
+      : enrollmentLayout?.coreSubjects ?? [];
 
   useEffect(() => {
     if (!enrollmentLayout?.hasChoiceGroups || !formReady) return;
@@ -591,6 +618,7 @@ export default function RegisterStudentPage({
     }
     if (!form.classId) missing.push("Class");
     if (!form.sectionId) missing.push("Section");
+    if (requiresDiscipline && !form.disciplineId) missing.push("Discipline / Stream");
     if (!subjectSelectionValid) {
       if (form.isFullPackage && hasChoiceGroups) {
         missing.push("One elective per group (section 6)");
@@ -617,6 +645,7 @@ export default function RegisterStudentPage({
     && (!form.contactPhoneRes.trim() || isValidLandline(form.contactPhoneRes))
     && form.classId
     && form.sectionId
+    && (!requiresDiscipline || Boolean(form.disciplineId))
     && subjectSelectionValid
     && (isEdit || isAccountsEnrollment
       ? true
@@ -1048,6 +1077,7 @@ export default function RegisterStudentPage({
                   ...f,
                   classId: e.target.value,
                   sectionId: "",
+                  disciplineId: "",
                   selectedSubjects: [],
                   isFullPackage: false,
                 }));
@@ -1084,10 +1114,45 @@ export default function RegisterStudentPage({
             </IconSelect>
           </FormField>
 
-          {form.classId && form.sectionId && (
+          {requiresDiscipline && (
+            <FormField label="Discipline / Stream" required>
+              <IconSelect
+                id="enroll-discipline"
+                icon={GraduationCap}
+                value={form.disciplineId}
+                onChange={(e) => {
+                  setForm((f) => ({
+                    ...f,
+                    disciplineId: e.target.value,
+                    selectedSubjects: [],
+                    isFullPackage: false,
+                  }));
+                  setChoiceSelections({});
+                }}
+                disabled={!form.classId}
+              >
+                <option value="">Choose Medical / Engineering / ICS…</option>
+                {disciplines.map((d) => (
+                  <option key={d._id} value={d._id}>
+                    {d.name}
+                  </option>
+                ))}
+              </IconSelect>
+              {disciplines.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  No active disciplines — configure them under Student Management → Disciplines.
+                </p>
+              )}
+            </FormField>
+          )}
+
+          {form.classId && form.sectionId && (!requiresDiscipline || form.disciplineId) && (
             <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
               <p className="text-sm font-medium">
                 Subjects for {selectedClassName}
+                {form.disciplineId
+                  ? ` · ${disciplines.find((d) => d._id === form.disciplineId)?.name || "stream"}`
+                  : ""}
               </p>
 
               <label className="flex items-start gap-3 rounded-md border bg-background p-3 cursor-pointer hover:bg-muted/30">
@@ -1197,42 +1262,89 @@ export default function RegisterStudentPage({
 
                   {!enrollmentLoading && !hasChoiceGroups && (
                     <>
-                      <p className="text-sm text-muted-foreground">
-                        Or select one or more subjects (checkboxes):
-                      </p>
-                      {(enrollmentLayout?.coreSubjects.length ?? 0) === 0 ? (
-                        <p className="text-sm text-amber-700 dark:text-amber-400">
-                          No subjects found for this class. Add subjects in the Subjects tab first.
-                        </p>
-                      ) : (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                          {(enrollmentLayout?.coreSubjects ?? []).map((s) => {
-                            const selected = form.selectedSubjects.includes(s._id);
-                            return (
-                              <label
-                                key={s._id}
-                                className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"
-                                  }`}
-                              >
-                                <Checkbox
-                                  checked={selected}
-                                  onCheckedChange={() => toggleSubject(s._id)}
-                                />
-                                <div className="min-w-0">
-                                  <p className="font-medium text-sm truncate">{s.subjectName}</p>
-                                  <p className="text-xs text-muted-foreground">{s.subjectCode}</p>
-                                </div>
-                              </label>
-                            );
-                          })}
+                      {(sharedSubjects || streamSubjects) ? (
+                        <div className="space-y-3">
+                          {sharedSubjects && sharedSubjects.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium">Shared subjects</p>
+                              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                {sharedSubjects.map((s) => {
+                                  const selected = form.selectedSubjects.includes(s._id);
+                                  return (
+                                    <label
+                                      key={s._id}
+                                      className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
+                                    >
+                                      <Checkbox checked={selected} onCheckedChange={() => toggleSubject(s._id)} />
+                                      <div className="min-w-0">
+                                        <p className="font-medium text-sm truncate">{s.subjectName}</p>
+                                        <p className="text-xs text-muted-foreground">{s.subjectCode}</p>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {streamSubjects && streamSubjects.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium">Stream subjects</p>
+                              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                {streamSubjects.map((s) => {
+                                  const selected = form.selectedSubjects.includes(s._id);
+                                  return (
+                                    <label
+                                      key={s._id}
+                                      className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
+                                    >
+                                      <Checkbox checked={selected} onCheckedChange={() => toggleSubject(s._id)} />
+                                      <div className="min-w-0">
+                                        <p className="font-medium text-sm truncate">{s.subjectName}</p>
+                                        <p className="text-xs text-muted-foreground">{s.subjectCode}</p>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
+                      ) : (
+                        <>
+                          <p className="text-sm text-muted-foreground">
+                            Or select one or more subjects (checkboxes):
+                          </p>
+                          {(enrollmentLayout?.coreSubjects.length ?? 0) === 0 ? (
+                            <p className="text-sm text-amber-700 dark:text-amber-400">
+                              No subjects found for this class. Add subjects in the Subjects tab first.
+                            </p>
+                          ) : (
+                            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                              {(enrollmentLayout?.coreSubjects ?? []).map((s) => {
+                                const selected = form.selectedSubjects.includes(s._id);
+                                return (
+                                  <label
+                                    key={s._id}
+                                    className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
+                                  >
+                                    <Checkbox checked={selected} onCheckedChange={() => toggleSubject(s._id)} />
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-sm truncate">{s.subjectName}</p>
+                                      <p className="text-xs text-muted-foreground">{s.subjectCode}</p>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
                       )}
                       {form.selectedSubjects.length > 0 && (
                         <p className="text-sm font-medium text-primary">
                           {form.selectedSubjects.length} subject{form.selectedSubjects.length > 1 ? "s" : ""} selected
                         </p>
                       )}
-                      {!subjectSelectionValid && (enrollmentLayout?.coreSubjects.length ?? 0) > 0 && (
+                      {!subjectSelectionValid && displayCoreSubjects.length > 0 && (
                         <p className="text-sm text-destructive">Select at least one subject or choose full package.</p>
                       )}
                     </>
