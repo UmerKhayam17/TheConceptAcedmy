@@ -413,10 +413,7 @@ export default function DisciplinesTab({
                     </td>
                     <td className="px-3 py-3.5">
                       <div className="font-medium text-[#10244A]">{d.name}</div>
-                      <div className="mt-0.5 text-xs text-slate-500">
-                        <span className="font-mono">{d.code}</span>
-                        <span> · {subjectNames(d.subjectIds)}</span>
-                      </div>
+                      <div className="mt-0.5 text-xs text-slate-500">{subjectNames(d.subjectIds)}</div>
                     </td>
                     <td className="px-3 py-3.5 text-slate-600">{formatCreated(d.createdAt)}</td>
                     <td className="px-3 py-3.5 text-slate-600">{createdByLabel(d.createdBy)}</td>
