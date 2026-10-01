@@ -549,7 +549,27 @@ const CHALLAN_COPIES = [
   { label: 'ACCOUNTS COPY', signRight: 'Cashier' },
 ];
 
-function drawChallanCopy(doc, box, copy, records, brand) {
+const CHALLAN_INSTRUCTIONS = [
+  'Pay the full total on or before the due date.',
+  'Every charge listed above is included in the total.',
+  'This challan is a demand, not a receipt, until payment is recorded.',
+];
+
+function drawChallanLogo(doc, logoPath, centerX, top, size) {
+  if (!logoPath) return 0;
+  try {
+    const box = size + 6;
+    doc.save();
+    doc.roundedRect(centerX - box / 2, top, box, box, 4).fill('#FFFFFF').strokeColor('#D6DEE8').lineWidth(0.6).stroke();
+    doc.image(logoPath, centerX - size / 2, top + 3, { fit: [size, size] });
+    doc.restore();
+    return box + 6;
+  } catch {
+    return 0;
+  }
+}
+
+function drawChallanCopy(doc, box, copy, records, brand, logoPath) {
   const { x, y, w, h } = box;
   const pad = 10;
   const innerX = x + pad;
@@ -571,8 +591,10 @@ function drawChallanCopy(doc, box, copy, records, brand) {
   doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(10);
   pdfLine(doc, copy.label, x, y + 5, { width: w, align: 'center' });
 
-  let cy = y + 28;
-  doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(12);
+  let cy = y + 24;
+  const logoHeight = drawChallanLogo(doc, logoPath, x + w / 2, cy, 52);
+  cy += logoHeight;
+  doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(11);
   pdfLine(doc, brand.name, innerX, cy, { width: innerW, align: 'center' });
   cy += 15;
   doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8);
@@ -596,48 +618,83 @@ function drawChallanCopy(doc, box, copy, records, brand) {
   writeField('Class', classLine);
   writeField('Period', periods);
   writeField('Due date', dueDates.join(', ') || '—');
-  cy += 6;
+  cy += 8;
+
+  const amountCol = 96;
+  const nameCol = innerW - amountCol;
+  const headerH = 18;
+  const rowH = 18;
+  const totalH = 22;
+  const footerTop = y + h - 118;
+  const maxTableBottom = footerTop - 22;
+  const visibleLines = [];
+  lines.forEach((line) => {
+    const nextBottom = cy + headerH + (visibleLines.length + 1) * rowH + totalH;
+    if (nextBottom <= maxTableBottom) visibleLines.push(line);
+  });
+  const tableH = headerH + visibleLines.length * rowH + totalH;
+  const tableTop = cy;
 
   doc.save();
-  doc.rect(innerX, cy, innerW, 16).fill('#EEF5FF');
+  doc.rect(innerX, tableTop, innerW, headerH).fill(brand.colors.navy);
+  doc.restore();
+  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(8);
+  pdfLine(doc, 'Particular', innerX + 8, tableTop + 5, { width: nameCol - 14 });
+  pdfLine(doc, 'Amount', innerX + nameCol, tableTop + 5, { width: amountCol - 8, align: 'right' });
+
+  visibleLines.forEach((line, index) => {
+    const rowTop = tableTop + headerH + index * rowH;
+    if (index % 2 === 1) {
+      doc.save();
+      doc.rect(innerX, rowTop, innerW, rowH).fill('#F7FAFD');
+      doc.restore();
+    }
+    doc.fillColor('#10244A').font('Helvetica').fontSize(9);
+    pdfLine(doc, fitText(doc, line.name, nameCol - 16), innerX + 8, rowTop + 5, { width: nameCol - 16 });
+    doc.font('Helvetica-Bold');
+    pdfLine(doc, formatPkr(line.amount), innerX + nameCol, rowTop + 5, { width: amountCol - 8, align: 'right' });
+  });
+
+  const totalTop = tableTop + headerH + visibleLines.length * rowH;
+  doc.save();
+  doc.rect(innerX, totalTop, innerW, totalH).fill(brand.colors.navy);
+  doc.restore();
+  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(9);
+  pdfLine(doc, 'Total', innerX + 8, totalTop + 6, { width: nameCol - 14 });
+  pdfLine(doc, formatPkr(total), innerX + nameCol, totalTop + 6, { width: amountCol - 8, align: 'right' });
+
+  doc.save();
+  doc.strokeColor('#D6DEE8').lineWidth(0.6);
+  for (let index = 1; index < visibleLines.length; index += 1) {
+    const lineY = tableTop + headerH + index * rowH;
+    doc.moveTo(innerX, lineY).lineTo(innerX + innerW, lineY).stroke();
+  }
+  doc.moveTo(innerX + nameCol, tableTop + headerH).lineTo(innerX + nameCol, totalTop).stroke();
+  doc.strokeColor(brand.colors.white).lineWidth(0.6);
+  doc.moveTo(innerX + nameCol, totalTop).lineTo(innerX + nameCol, tableTop + tableH).stroke();
+  doc.strokeColor(brand.colors.navy).lineWidth(1);
+  doc.rect(innerX, tableTop, innerW, tableH).stroke();
+  doc.restore();
+
+  cy = tableTop + tableH + 6;
+  doc.fillColor('#10244A').font('Helvetica-Oblique').fontSize(7.5);
+  doc.text(amountInWords(total), innerX, cy, { width: innerW, align: 'center', lineGap: 0 });
+
+  doc.save();
+  doc.rect(innerX, footerTop, innerW, 82).fill('#F4F8FF');
   doc.restore();
   doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(8);
-  pdfLine(doc, 'Particular', innerX + 6, cy + 4, { width: innerW * 0.58 });
-  pdfLine(doc, 'Amount', innerX + innerW - 86, cy + 4, { width: 80, align: 'right' });
-  cy += 18;
-
-  const lineLimit = y + h - 118;
-  lines.forEach((line) => {
-    if (cy > lineLimit) return;
-    doc.fillColor('#10244A').font('Helvetica').fontSize(9);
-    pdfLine(doc, fitText(doc, line.name, innerW - 96), innerX + 6, cy, { width: innerW - 96 });
-    doc.font('Helvetica-Bold').fontSize(9);
-    pdfLine(doc, formatPkr(line.amount), innerX + innerW - 90, cy, { width: 84, align: 'right' });
-    cy += 14;
-  });
-
-  cy += 4;
-  doc.save();
-  doc.rect(innerX, cy, innerW, 24).fill(brand.colors.navy);
-  doc.restore();
-  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(10);
-  pdfLine(doc, 'TOTAL', innerX + 6, cy + 7, { width: 70 });
-  pdfLine(doc, formatPkr(total), innerX + innerW - 120, cy + 7, { width: 114, align: 'right' });
-  cy += 32;
-
+  pdfLine(doc, 'Instructions', innerX + 6, footerTop + 6, { width: innerW - 12 });
   doc.fillColor('#10244A').font('Helvetica').fontSize(8);
-  const words = amountInWords(total);
-  const wordHeight = doc.heightOfString(words, { width: innerW, align: 'center' });
-  doc.text(words, innerX, cy, { width: innerW, align: 'center' });
-  cy += wordHeight + 8;
-
-  doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(7.5);
-  doc.text('Valid as a demand until payment is recorded. This is not a receipt.', innerX, cy, {
-    width: innerW,
-    align: 'center',
+  let instructionY = footerTop + 18;
+  CHALLAN_INSTRUCTIONS.forEach((line, index) => {
+    const text = `${index + 1}. ${line}`;
+    const textHeight = doc.heightOfString(text, { width: innerW - 12, lineGap: 0 });
+    doc.text(text, innerX + 6, instructionY, { width: innerW - 12, lineGap: 0 });
+    instructionY += textHeight + 3;
   });
 
-  const sigY = y + h - 28;
+  const sigY = y + h - 26;
   doc.save();
   doc.strokeColor(brand.colors.line).lineWidth(0.8);
   doc.moveTo(innerX + 4, sigY).lineTo(innerX + 78, sigY).stroke();
@@ -700,18 +757,36 @@ function drawThermalChallan(doc, records, brand, logoPath) {
   dashLine(doc, x, y, w);
   y += 10;
 
-  records.forEach((record, index) => {
+  const lines = challanLineItems(records);
+  if (lines.length) {
     doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8);
-    pdfLine(doc, `${index + 1}. ${periodLabel(record)}`, x, y, { width: w });
+    pdfLine(doc, 'Charges', x, y, { width: w });
     y += 12;
-    y = thermalKv(doc, 'Type', feeTypeLabel(record.feeType, { short: true }), x, y, w);
-    y = thermalKv(doc, 'Status', statusLabel(record.status), x, y, w);
-    y = thermalKv(doc, 'Due', formatDate(record.dueDate), x, y, w);
-    y = thermalKv(doc, 'Amount', formatPkr(record.amount), x, y, w);
-    y += 2;
-    dashLine(doc, x, y, w);
-    y += 8;
-  });
+    lines.forEach((line) => {
+      doc.fillColor('#000000').font('Helvetica').fontSize(8);
+      const amountText = formatPkr(line.amount);
+      doc.font('Helvetica-Bold');
+      const amountW = Math.min(86, doc.widthOfString(amountText) + 6);
+      doc.font('Helvetica');
+      pdfLine(doc, fitText(doc, line.name, w - amountW - 4), x, y, { width: w - amountW - 4 });
+      doc.font('Helvetica-Bold');
+      pdfLine(doc, amountText, x + w - amountW, y, { width: amountW, align: 'right' });
+      y += 12;
+    });
+  } else {
+    records.forEach((record, index) => {
+      doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8);
+      pdfLine(doc, `${index + 1}. ${periodLabel(record)}`, x, y, { width: w });
+      y += 12;
+      y = thermalKv(doc, 'Type', feeTypeLabel(record.feeType, { short: true }), x, y, w);
+      y = thermalKv(doc, 'Due', formatDate(record.dueDate), x, y, w);
+      y = thermalKv(doc, 'Amount', formatPkr(record.amount), x, y, w);
+      y += 2;
+    });
+  }
+  y += 2;
+  dashLine(doc, x, y, w);
+  y += 8;
 
   const total = challanTotal(records);
   doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11);
@@ -722,9 +797,15 @@ function drawThermalChallan(doc, records, brand, logoPath) {
   y += 6;
   dashLine(doc, x, y, w);
   y += 10;
-  doc.fillColor('#333333').font('Helvetica').fontSize(7);
-  pdfLine(doc, 'Pay at the accounts office', x, y, { width: w, align: 'center' });
+  doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8);
+  pdfLine(doc, 'Instructions', x, y, { width: w, align: 'center' });
   y += 12;
+  doc.fillColor('#333333').font('Helvetica').fontSize(7);
+  CHALLAN_INSTRUCTIONS.forEach((line, index) => {
+    y = pdfWrapCenter(doc, `${index + 1}. ${line}`, x, y, w, 10);
+    y += 2;
+  });
+  y += 6;
   doc.font('Helvetica-Oblique').fontSize(6.5);
   pdfLine(doc, 'Computer-generated challan  ·  not a receipt', x, y, { width: w, align: 'center' });
   y += 12;
@@ -768,6 +849,7 @@ function renderThermalFeeChallanPdf(records, meta = {}) {
 
 function renderA4FeeChallanPdf(records, meta = {}) {
   const brand = ACADEMY_BRAND;
+  const logoPath = resolveLogoPath();
 
   return new Promise((resolve, reject) => {
     try {
@@ -796,7 +878,7 @@ function renderA4FeeChallanPdf(records, meta = {}) {
 
       CHALLAN_COPIES.forEach((copy, index) => {
         const x = margin + index * (panelW + gap);
-        drawChallanCopy(doc, { x, y: margin, w: panelW, h: panelH }, copy, records, brand);
+        drawChallanCopy(doc, { x, y: margin, w: panelW, h: panelH }, copy, records, brand, logoPath);
         if (index < CHALLAN_COPIES.length - 1) {
           const cutX = x + panelW + gap / 2;
           doc.save();

@@ -398,17 +398,17 @@ export default function FeeDefaultersTab({
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               className="gap-2"
-                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "thermal" })}
-                            >
-                              <Receipt className="h-4 w-4" />
-                              Thermal
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="gap-2"
                               onClick={() => printMut.mutate({ studentId: d.student._id, size: "a4" })}
                             >
                               <FileText className="h-4 w-4" />
                               A4
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "thermal" })}
+                            >
+                              <Receipt className="h-4 w-4" />
+                              Thermal
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
