@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const mongoose = require('mongoose');
 const ApiError = require('../../utils/ApiError');
 const {
@@ -11,6 +13,29 @@ const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { notifyByAccess } = require('../realtime/realtimeService');
 const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
+
+const PAYMENT_SLIP_DIR = path.join(__dirname, '../../../uploads/payment-slips');
+
+function resolvePaidAt(value) {
+  if (!value) return new Date();
+  const raw = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(raw.getTime())) throw new ApiError(400, 'Invalid payment date');
+  const paidAt = new Date(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate(), 12, 0, 0, 0);
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+  if (paidAt > endOfToday) throw new ApiError(400, 'Payment date cannot be in the future');
+  return paidAt;
+}
+
+function savePaymentSlip(file) {
+  if (!file?.buffer?.length) return '';
+  fs.mkdirSync(PAYMENT_SLIP_DIR, { recursive: true });
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const safeExt = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'].includes(ext) ? ext : '.jpg';
+  const filename = `slip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${safeExt}`;
+  fs.writeFileSync(path.join(PAYMENT_SLIP_DIR, filename), file.buffer);
+  return `/uploads/payment-slips/${filename}`;
+}
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -747,7 +772,7 @@ async function addStationeryCharge(studentId, { amount, month, year, notes } = {
   return record;
 }
 
-async function recordPayment(feeRecordId, { paymentMethod, notes }, userId) {
+async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt }, userId, slipFile) {
   const existing = await AcademyFeeRecord.findById(feeRecordId).populate('studentId');
   if (!existing) throw new ApiError(404, 'Fee record not found');
   if (existing.status === 'paid') throw new ApiError(400, 'Fee already paid');
@@ -757,6 +782,7 @@ async function recordPayment(feeRecordId, { paymentMethod, notes }, userId) {
     (existing.studentId
       ? receiptNumber(existing.studentId, existing.month, existing.year, existing.feeType)
       : undefined);
+  const paymentSlip = savePaymentSlip(slipFile);
 
   // Atomic: only one concurrent payer can flip pending/overdue → paid
   const record = await AcademyFeeRecord.findOneAndUpdate(
@@ -767,11 +793,12 @@ async function recordPayment(feeRecordId, { paymentMethod, notes }, userId) {
     {
       $set: {
         status: 'paid',
-        paidAt: new Date(),
+        paidAt: resolvePaidAt(paidAt),
         paymentMethod: paymentMethod || 'cash',
         notes: notes || '',
         recordedBy: userId,
         ...(nextReceipt ? { receiptNumber: nextReceipt } : {}),
+        ...(paymentSlip ? { paymentSlip } : {}),
       },
     },
     { new: true }
@@ -796,7 +823,7 @@ async function recordPayment(feeRecordId, { paymentMethod, notes }, userId) {
   return { record, needsSectionAssignment: Boolean(needsSectionAssignment) };
 }
 
-async function recordPayments(feeRecordIds, payload, userId) {
+async function recordPayments(feeRecordIds, payload, userId, slipFile) {
   const ids = [...new Set((feeRecordIds || []).map(String))];
   const records = await AcademyFeeRecord.find({ _id: { $in: ids } }).sort({ year: 1, month: 1 });
   if (records.length !== ids.length) throw new ApiError(404, 'One or more fee records were not found');
@@ -804,6 +831,8 @@ async function recordPayments(feeRecordIds, payload, userId) {
   if (students.size !== 1) throw new ApiError(400, 'Pay fees for one student at a time');
   if (records.some((r) => r.status === 'paid')) throw new ApiError(400, 'One of the selected fees is already paid');
 
+  const paidAt = resolvePaidAt(payload.paidAt);
+  const paymentSlip = savePaymentSlip(slipFile);
   const paid = [];
   for (const record of records) {
     // eslint-disable-next-line no-await-in-loop
@@ -815,13 +844,14 @@ async function recordPayments(feeRecordIds, payload, userId) {
       {
         $set: {
           status: 'paid',
-          paidAt: new Date(),
+          paidAt,
           paymentMethod: payload.paymentMethod || 'cash',
           notes: payload.notes || '',
           recordedBy: userId,
           receiptNumber:
             record.receiptNumber ||
             receiptNumber(record.studentId, record.month, record.year, record.feeType),
+          ...(paymentSlip ? { paymentSlip } : {}),
         },
       },
       { new: true }

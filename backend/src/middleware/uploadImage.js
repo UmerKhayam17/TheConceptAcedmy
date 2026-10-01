@@ -17,4 +17,18 @@ const uploadImage = multer({
   },
 });
 
-module.exports = { uploadImage };
+/** Payment slips: photo or PDF, up to 5 MB. */
+const uploadPaymentSlip = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const hasAllowedMime = /^(image\/(jpeg|png|gif|webp)|application\/pdf)$/i.test(file.mimetype || '');
+    const hasAllowedExt = /\.(jpe?g|png|gif|webp|pdf)$/i.test(file.originalname || '');
+    if (hasAllowedMime || hasAllowedExt) {
+      return cb(null, true);
+    }
+    return cb(new ApiError(400, 'Payment slip must be an image or PDF'));
+  },
+});
+
+module.exports = { uploadImage, uploadPaymentSlip };

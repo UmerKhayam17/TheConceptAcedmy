@@ -115,7 +115,7 @@ const challan = catchAsync(async (req, res) => {
 });
 
 const pay = catchAsync(async (req, res) => {
-  const result = await feeService.recordPayment(req.params.id, req.body, req.user._id);
+  const result = await feeService.recordPayment(req.params.id, req.body, req.user._id, req.file);
   rt.feeCrud('updated', req.params.id);
   res.json({
     success: true,
@@ -126,7 +126,7 @@ const pay = catchAsync(async (req, res) => {
 });
 
 const payMany = catchAsync(async (req, res) => {
-  const data = await feeService.recordPayments(req.body.feeRecordIds, req.body, req.user._id);
+  const data = await feeService.recordPayments(req.body.feeRecordIds, req.body, req.user._id, req.file);
   rt.feeCrud('updated', 'batch');
   res.json({
     success: true,

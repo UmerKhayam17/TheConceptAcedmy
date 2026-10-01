@@ -49,6 +49,7 @@ import {
   type AcademyFeeRecord,
   type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
+import { resolveUploadUrl } from "@/lib/api";
 import { academyStudentRoutes, type AcademyStudentRoutes } from "@/lib/studentManagementMenus";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
@@ -58,6 +59,13 @@ import {
   AssignSectionDialog,
   EnrollmentVoucherWizard,
 } from "./EnrollmentVoucherWizard";
+
+function todayInputValue() {
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
 
 const feeFilterLabelClass =
   "mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
@@ -157,6 +165,37 @@ function isUnpaid(status: string) {
   return status === "pending" || status === "overdue";
 }
 
+function isPdfSlip(path: string) {
+  return /\.pdf$/i.test(path.split("?")[0] || "");
+}
+
+function PaymentSlipThumb({ path, onOpen }: { path: string; onOpen: () => void }) {
+  const src = resolveUploadUrl(path);
+  if (isPdfSlip(path)) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="inline-flex h-16 w-[4.5rem] flex-col items-center justify-center gap-0.5 rounded-md border border-[#D6E4F7] bg-[#F4F8FF] text-[#10244A]"
+        title="View payment slip"
+      >
+        <FileText className="h-5 w-5" />
+        <span className="text-[10px] font-semibold">PDF</span>
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="inline-block overflow-hidden rounded-md border border-[#D6E4F7] bg-white"
+      title="View payment slip"
+    >
+      <img src={src} alt="Payment slip" className="h-16 w-20 object-cover" />
+    </button>
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   const colors: Record<string, string> = {
     paid: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
@@ -219,6 +258,10 @@ export default function AcademyFeesManagement({
   const [selectedFeeIds, setSelectedFeeIds] = useState<string[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [paymentDate, setPaymentDate] = useState(todayInputValue);
+  const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
+  const [slipInputKey, setSlipInputKey] = useState(0);
+  const [slipPreview, setSlipPreview] = useState<string | null>(null);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
   const [enrollmentWizardOpen, setEnrollmentWizardOpen] = useState(false);
   const [assignSectionStudentId, setAssignSectionStudentId] = useState<string | null>(null);
@@ -356,6 +399,8 @@ export default function AcademyFeesManagement({
         feeRecordIds: selectedFeeIds,
         paymentMethod,
         notes: paymentNotes.trim() || undefined,
+        paidAt: paymentDate,
+        slip: paymentSlip,
       }),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["academy-fees"] });
@@ -366,6 +411,9 @@ export default function AcademyFeesManagement({
       setPayRecord(null);
       setSelectedFeeIds([]);
       setPaymentNotes("");
+      setPaymentDate(todayInputValue());
+      setPaymentSlip(null);
+      setSlipInputKey((key) => key + 1);
       toast({
         title: "Payment recorded",
         description: `${result.paid} month${result.paid === 1 ? "" : "s"} · ${formatPkr(result.total)}`,
@@ -415,7 +463,7 @@ export default function AcademyFeesManagement({
 
   const canPay = !isParent && (caps.canEdit || caps.canCreate);
   const canGenerate = showGenerate && !studentId && !isParent && writable && (caps.canCreate || caps.canEdit);
-  const feeTableColSpan = childScoped ? (isParent ? 6 : 7) : 9;
+  const feeTableColSpan = childScoped ? (isParent ? 7 : 8) : 10;
 
   const downloadMonthWise = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
@@ -645,6 +693,7 @@ export default function AcademyFeesManagement({
                 <th className="text-left p-2.5 font-medium">Type</th>
                 <th className="text-left p-2.5 font-medium">Amount</th>
                 <th className="text-left p-2.5 font-medium">Status</th>
+                <th className="text-left p-2.5 font-medium">Slip</th>
                 {!isParent && <th className="text-left p-2.5 font-medium">Pending months</th>}
                 <th className="text-right p-2.5 font-medium">Action</th>
               </tr>
@@ -739,6 +788,13 @@ export default function AcademyFeesManagement({
                     <td className="p-2.5">
                       <StatusPill status={r.status} />
                     </td>
+                    <td className="p-2.5">
+                      {r.status === "paid" && r.paymentSlip ? (
+                        <PaymentSlipThumb path={r.paymentSlip} onOpen={() => setSlipPreview(r.paymentSlip || null)} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                     {!isParent && (
                       <td className="p-2.5">
                         {(r.unpaidMonthCount || 0) > 0 ? (
@@ -767,6 +823,9 @@ export default function AcademyFeesManagement({
                               setPayRecord(r);
                               setPaymentMethod("cash");
                               setPaymentNotes("");
+                              setPaymentDate(todayInputValue());
+                              setPaymentSlip(null);
+                              setSlipInputKey((key) => key + 1);
                             }}
                           >
                             Record payment
@@ -946,18 +1005,57 @@ export default function AcademyFeesManagement({
                   <span className="font-semibold">{formatPkr(selectedTotal)}</span>
                 </div>
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="payment-date">Payment date</Label>
+                  <Input
+                    id="payment-date"
+                    type="date"
+                    value={paymentDate}
+                    max={todayInputValue()}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Payment method</Label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="bank_transfer">Bank transfer</option>
+                    <option value="online">Online</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
               <div className="space-y-1.5">
-                <Label>Payment method</Label>
-                <select
-                  className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="online">Online</option>
-                  <option value="other">Other</option>
-                </select>
+                <Label htmlFor="payment-slip">Payment slip</Label>
+                <input
+                  id="payment-slip"
+                  key={slipInputKey}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.pdf"
+                  className="block w-full text-sm text-foreground file:mr-3 file:h-9 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/40"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (file && file.size > 5 * 1024 * 1024) {
+                      toast({
+                        title: "Slip is too large",
+                        description: "Upload an image or PDF up to 5 MB.",
+                        variant: "destructive",
+                      });
+                      e.target.value = "";
+                      setPaymentSlip(null);
+                      return;
+                    }
+                    setPaymentSlip(file);
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {paymentSlip ? paymentSlip.name : "Image or PDF, optional"}
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>Notes (optional)</Label>
@@ -975,12 +1073,33 @@ export default function AcademyFeesManagement({
             </Button>
             <Button
               variant="hero"
-              disabled={payMut.isPending || selectedFeeIds.length === 0}
+              disabled={payMut.isPending || selectedFeeIds.length === 0 || !paymentDate}
               onClick={() => payMut.mutate()}
             >
               Confirm payment
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(slipPreview)} onOpenChange={(open) => { if (!open) setSlipPreview(null); }}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Payment slip</DialogTitle>
+          </DialogHeader>
+          {slipPreview && isPdfSlip(slipPreview) ? (
+            <iframe
+              src={resolveUploadUrl(slipPreview)}
+              title="Payment slip"
+              className="h-[70vh] w-full rounded-md border bg-white"
+            />
+          ) : slipPreview ? (
+            <img
+              src={resolveUploadUrl(slipPreview)}
+              alt="Payment slip"
+              className="max-h-[70vh] w-full rounded-md border bg-white object-contain"
+            />
+          ) : null}
         </DialogContent>
       </Dialog>
 

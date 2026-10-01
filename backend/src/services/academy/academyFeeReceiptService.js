@@ -198,7 +198,7 @@ function drawThermalReceipt(doc, record, brand, logoPath) {
 
   if (logoPath) {
     try {
-      const logo = 32;
+      const logo = 56;
       doc.image(logoPath, x + (w - logo) / 2, y, { fit: [logo, logo] });
       y += logo + 6;
     } catch {
@@ -289,6 +289,7 @@ function drawThermalReceipt(doc, record, brand, logoPath) {
   doc.font('Helvetica-Oblique').fontSize(6.5);
   pdfLine(doc, 'Computer-generated receipt', x, y, { width: w, align: 'center' });
   y += 12;
+  drawPaidWatermark(doc, { x: 0, y: 0, w: pageW, h: y }, { fontSize: 86 });
   return y;
 }
 
@@ -332,15 +333,13 @@ function renderThermalFeeReceiptPdf(record, meta = {}) {
 function renderA4FeeReceiptPdf(record, meta = {}) {
   const brand = ACADEMY_BRAND;
   const logoPath = resolveLogoPath();
-  const { student, classLine, recordedBy } = receiptContext(record);
 
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
         size: 'A4',
-        layout: 'portrait',
-        margin: 32,
-        bufferPages: true,
+        layout: 'landscape',
+        margin: 0,
         info: {
           Title: `Fee Receipt ${record.receiptNumber || ''} — ${brand.name}`,
           Author: brand.name,
@@ -353,155 +352,32 @@ function renderA4FeeReceiptPdf(record, meta = {}) {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      drawPdfLetterhead(doc, brand, logoPath);
-
       const pageW = doc.page.width;
-      const innerX = 40;
-      const innerW = pageW - 80;
-      let y = 98;
+      const pageH = doc.page.height;
+      const margin = 14;
+      const gap = 12;
+      const panelW = (pageW - margin * 2 - gap * 2) / 3;
+      const panelH = pageH - margin * 2;
 
-      doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(16);
-      pdfLine(doc, 'FEE RECEIPT', innerX, y, { width: innerW, align: 'center' });
-      y += 20;
-      doc.fillColor(brand.colors.gold).font('Helvetica-Oblique').fontSize(9);
-      pdfLine(doc, 'Official payment voucher  ·  Student copy', innerX, y, {
-        width: innerW,
-        align: 'center',
+      RECEIPT_COPIES.forEach((copy, index) => {
+        const x = margin + index * (panelW + gap);
+        const box = { x, y: margin, w: panelW, h: panelH };
+        drawChallanCopy(doc, box, copy, [record], brand, logoPath, { paid: true });
+        if (index < RECEIPT_COPIES.length - 1) {
+          const cutX = x + panelW + gap / 2;
+          doc.save();
+          doc.strokeColor('#B7C3D1').lineWidth(0.8).dash(3, { space: 3 });
+          doc.moveTo(cutX, margin - 4).lineTo(cutX, pageH - margin + 4).stroke();
+          doc.restore();
+        }
       });
-      y += 22;
 
-      doc.save();
-      doc.roundedRect(innerX, y, innerW, 52, 6).fill('#F6F8FB');
-      doc.roundedRect(innerX, y, innerW, 52, 6).strokeColor(brand.colors.gold).lineWidth(1.2).stroke();
-      doc.restore();
-
-      doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8);
-      pdfLine(doc, 'RECEIPT NO.', innerX + 14, y + 10);
-      doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(12);
-      pdfLine(doc, record.receiptNumber || '—', innerX + 14, y + 24);
-
-      doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8);
-      pdfLine(doc, 'DATE', innerX + innerW / 2, y + 10);
-      doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(12);
-      pdfLine(doc, formatDate(record.paidAt || record.updatedAt || new Date()), innerX + innerW / 2, y + 24);
-
-      doc.save();
-      doc.roundedRect(innerX + innerW - 78, y + 12, 64, 28, 4).fill('#059669');
-      doc.restore();
-      doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(11);
-      pdfLine(doc, 'PAID', innerX + innerW - 78, y + 20, { width: 64, align: 'center' });
-      y += 68;
-
-      doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(9);
-      pdfLine(doc, 'RECEIVED FROM', innerX, y);
-      y += 8;
-      doc.save();
-      doc.moveTo(innerX, y).lineTo(innerX + innerW, y).strokeColor(brand.colors.gold).lineWidth(1.5).stroke();
-      doc.restore();
-      y += 14;
-
-      const colW = innerW / 2;
-      const labelW = 88;
-      const valueW = colW - labelW - 8;
-      drawRow(doc, 'Student', student?.studentName || '—', innerX, y, labelW, valueW, brand);
-      drawRow(doc, 'Father', student?.fatherName || '—', innerX + colW, y, labelW, valueW, brand);
-      y += 18;
-      drawRow(doc, 'Student ID', student?.studentId || '—', innerX, y, labelW, valueW, brand);
-      drawRow(doc, 'Class', classLine || '—', innerX + colW, y, labelW, valueW, brand);
-      y += 18;
-      drawRow(doc, 'Phone', student?.phone || '—', innerX, y, labelW, valueW, brand);
-      y += 28;
-
-      doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(9);
-      pdfLine(doc, 'FEE PARTICULARS', innerX, y);
-      y += 8;
-      doc.save();
-      doc.moveTo(innerX, y).lineTo(innerX + innerW, y).strokeColor(brand.colors.gold).lineWidth(1.5).stroke();
-      doc.restore();
-      y += 14;
-
-      drawRow(doc, 'Fee type', feeTypeLabel(record.feeType), innerX, y, labelW, valueW, brand);
-      drawRow(doc, 'Period', periodLabel(record), innerX + colW, y, labelW, valueW, brand);
-      y += 18;
-      drawRow(doc, 'Payment', paymentMethodLabel(record.paymentMethod), innerX, y, labelW, valueW, brand);
-      y += 18;
-      feeComponents(record).forEach((line) => {
-        drawRow(doc, line.name, formatPkr(line.amount), innerX, y, labelW, valueW, brand);
-        y += 16;
-      });
-      drawRow(doc, 'Amount', formatPkr(record.amount), innerX + colW, y, labelW, valueW, brand);
-      y += 22;
-
-      doc.save();
-      doc.roundedRect(innerX, y, innerW, 44, 6).fill(brand.colors.navy);
-      doc.restore();
-      doc.fillColor('#C5D0DC').font('Helvetica').fontSize(8);
-      pdfLine(doc, 'AMOUNT IN WORDS', innerX + 14, y + 8);
-      doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(11);
-      pdfLine(doc, fitText(doc, amountInWords(record.amount), innerW - 28), innerX + 14, y + 22, {
-        width: innerW - 28,
-      });
-      y += 58;
-
-      if (record.notes) {
-        doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8.5);
-        pdfLine(doc, 'Remarks', innerX, y, { width: 88 });
-        doc.fillColor('#1A2A3A').font('Helvetica').fontSize(9);
-        pdfLine(doc, fitText(doc, record.notes, innerW - 96), innerX + 88, y, { width: innerW - 96 });
-        y += 22;
-      }
-
-      y += 24;
-      const signW = (innerW - 40) / 2;
-      doc.save();
-      doc.moveTo(innerX, y).lineTo(innerX + signW, y).strokeColor(brand.colors.line).lineWidth(0.8).stroke();
-      doc
-        .moveTo(innerX + innerW - signW, y)
-        .lineTo(innerX + innerW, y)
-        .strokeColor(brand.colors.line)
-        .lineWidth(0.8)
-        .stroke();
-      doc.restore();
-      y += 8;
-      doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8);
-      pdfLine(doc, recordedBy ? `Received by  ·  ${recordedBy}` : 'Received by', innerX, y, {
-        width: signW,
-        align: 'center',
-      });
-      pdfLine(doc, 'Student / Parent signature', innerX + innerW - signW, y, {
-        width: signW,
-        align: 'center',
-      });
-      y += 28;
-
-      doc.fillColor(brand.colors.muted).font('Helvetica-Oblique').fontSize(8);
-      pdfLine(
-        doc,
-        'This is a computer-generated receipt and is valid without a physical stamp.',
-        innerX,
-        y,
-        { width: innerW, align: 'center' }
-      );
-
-      const range = doc.bufferedPageRange();
-      for (let i = 0; i < range.count; i += 1) {
-        doc.switchToPage(range.start + i);
-        drawPdfFooterText(
-          doc,
-          brand,
-          'Official fee receipt',
-          { generatedAt: meta.generatedAt || new Date() },
-          i + 1,
-          range.count
-        );
-      }
       doc.end();
     } catch (err) {
       reject(err);
     }
   });
 }
-
 function challanHeading(records) {
   const monthly = records.filter((r) => r.feeType === 'monthly').length;
   if (monthly === records.length && monthly > 0) {
@@ -549,11 +425,42 @@ const CHALLAN_COPIES = [
   { label: 'ACCOUNTS COPY', signRight: 'Cashier' },
 ];
 
-const CHALLAN_INSTRUCTIONS = [
+const CHALLAN_RULES = [
   'Pay the full total on or before the due date.',
-  'Every charge listed above is included in the total.',
-  'This challan is a demand, not a receipt, until payment is recorded.',
+  'Every charge in the table is included in the total. Part payment is not accepted.',
+  'This challan is a demand only. A receipt is issued after payment is recorded.',
+  'Fees once paid are not refundable.',
+  'Keep the student copy. Return the accounts copy to the academy after payment.',
 ];
+
+const RECEIPT_RULES = [
+  'This receipt confirms that the total above has been received in full.',
+  'Every charge in the table is included in the amount paid.',
+  'Fees once paid are not refundable.',
+  'Keep the student copy. The accounts copy stays with the academy.',
+];
+
+const RECEIPT_COPIES = [
+  { label: 'STUDENT COPY', signLeft: 'Student / Parent', signRight: 'Accounts' },
+  { label: 'BANK COPY', signLeft: 'Depositor', signRight: 'Bank officer' },
+  { label: 'ACCOUNTS COPY', signLeft: 'Received by', signRight: 'Cashier' },
+];
+
+function drawPaidWatermark(doc, box, options = {}) {
+  const { x, y, w, h } = box;
+  const fontSize = options.fontSize || 118;
+  doc.save();
+  doc.rect(x, y, w, h).clip();
+  doc.fillColor('#0B6B3A');
+  doc.fillOpacity(0.22);
+  doc.font('Helvetica-Bold').fontSize(fontSize);
+  const text = 'PAID';
+  const textWidth = doc.widthOfString(text);
+  doc.translate(x + w / 2, y + h * 0.46);
+  doc.rotate(-28);
+  doc.text(text, -textWidth / 2, -fontSize * 0.38, { lineBreak: false });
+  doc.restore();
+}
 
 function drawChallanLogo(doc, logoPath, centerX, top, size) {
   if (!logoPath) return 0;
@@ -569,7 +476,9 @@ function drawChallanLogo(doc, logoPath, centerX, top, size) {
   }
 }
 
-function drawChallanCopy(doc, box, copy, records, brand, logoPath) {
+function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {}) {
+  const paid = Boolean(options.paid);
+  const rules = paid ? RECEIPT_RULES : CHALLAN_RULES;
   const { x, y, w, h } = box;
   const pad = 10;
   const innerX = x + pad;
@@ -601,7 +510,7 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath) {
   pdfLine(doc, brand.phones.join('   |   '), innerX, cy, { width: innerW, align: 'center' });
   cy += 12;
   doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(11);
-  pdfLine(doc, 'FEE CHALLAN', innerX, cy, { width: innerW, align: 'center' });
+  pdfLine(doc, paid ? 'FEE RECEIPT' : 'FEE CHALLAN', innerX, cy, { width: innerW, align: 'center' });
   cy += 16;
 
   const writeField = (label, value) => {
@@ -617,7 +526,14 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath) {
   writeField('Student ID', student?.studentId);
   writeField('Class', classLine);
   writeField('Period', periods);
-  writeField('Due date', dueDates.join(', ') || '—');
+  if (paid) {
+    const paidRecord = records[0];
+    writeField('Receipt', paidRecord?.receiptNumber);
+    writeField('Paid on', formatDate(paidRecord?.paidAt || paidRecord?.updatedAt));
+    writeField('Payment', paymentMethodLabel(paidRecord?.paymentMethod));
+  } else {
+    writeField('Due date', dueDates.join(', ') || '—');
+  }
   cy += 8;
 
   const amountCol = 96;
@@ -625,8 +541,8 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath) {
   const headerH = 18;
   const rowH = 18;
   const totalH = 22;
-  const footerTop = y + h - 118;
-  const maxTableBottom = footerTop - 22;
+  const footerTop = y + h - 156;
+  const maxTableBottom = footerTop - 18;
   const visibleLines = [];
   lines.forEach((line) => {
     const nextBottom = cy + headerH + (visibleLines.length + 1) * rowH + totalH;
@@ -679,19 +595,25 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath) {
   cy = tableTop + tableH + 6;
   doc.fillColor('#10244A').font('Helvetica-Oblique').fontSize(7.5);
   doc.text(amountInWords(total), innerX, cy, { width: innerW, align: 'center', lineGap: 0 });
+  cy += 16;
 
+  const rulesTop = Math.max(cy, footerTop);
+  const rulesBottom = y + h - 36;
   doc.save();
-  doc.rect(innerX, footerTop, innerW, 82).fill('#F4F8FF');
+  doc.rect(innerX, rulesTop, innerW, 16).fill(brand.colors.navy);
+  doc.rect(innerX, rulesTop, innerW, rulesBottom - rulesTop).lineWidth(0.8).strokeColor(brand.colors.navy).stroke();
   doc.restore();
-  doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(8);
-  pdfLine(doc, 'Instructions', innerX + 6, footerTop + 6, { width: innerW - 12 });
-  doc.fillColor('#10244A').font('Helvetica').fontSize(8);
-  let instructionY = footerTop + 18;
-  CHALLAN_INSTRUCTIONS.forEach((line, index) => {
-    const text = `${index + 1}. ${line}`;
-    const textHeight = doc.heightOfString(text, { width: innerW - 12, lineGap: 0 });
-    doc.text(text, innerX + 6, instructionY, { width: innerW - 12, lineGap: 0 });
-    instructionY += textHeight + 3;
+  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(8);
+  pdfLine(doc, 'Rules & Instructions', innerX + 6, rulesTop + 4, { width: innerW - 12 });
+
+  doc.fillColor('#10244A').font('Helvetica').fontSize(7.5);
+  let ruleY = rulesTop + 20;
+  rules.forEach((rule, index) => {
+    const text = `${index + 1}. ${rule}`;
+    const textHeight = doc.heightOfString(text, { width: innerW - 14, lineGap: 1 });
+    if (ruleY + textHeight > rulesBottom - 4) return;
+    doc.text(text, innerX + 7, ruleY, { width: innerW - 14, lineGap: 1 });
+    ruleY += textHeight + 3;
   });
 
   const sigY = y + h - 26;
@@ -701,8 +623,9 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath) {
   doc.moveTo(innerX + innerW - 78, sigY).lineTo(innerX + innerW - 4, sigY).stroke();
   doc.restore();
   doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(7.5);
-  pdfLine(doc, 'Depositor', innerX + 4, sigY + 4, { width: 74, align: 'center' });
+  pdfLine(doc, copy.signLeft || 'Depositor', innerX + 4, sigY + 4, { width: 74, align: 'center' });
   pdfLine(doc, copy.signRight, innerX + innerW - 78, sigY + 4, { width: 74, align: 'center' });
+  if (paid) drawPaidWatermark(doc, box);
 }
 
 function drawThermalChallan(doc, records, brand, logoPath) {
@@ -798,12 +721,14 @@ function drawThermalChallan(doc, records, brand, logoPath) {
   dashLine(doc, x, y, w);
   y += 10;
   doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8);
-  pdfLine(doc, 'Instructions', x, y, { width: w, align: 'center' });
+  pdfLine(doc, 'Rules & Instructions', x, y, { width: w });
   y += 12;
-  doc.fillColor('#333333').font('Helvetica').fontSize(7);
-  CHALLAN_INSTRUCTIONS.forEach((line, index) => {
-    y = pdfWrapCenter(doc, `${index + 1}. ${line}`, x, y, w, 10);
-    y += 2;
+  doc.fillColor('#222222').font('Helvetica').fontSize(7);
+  CHALLAN_RULES.forEach((rule, index) => {
+    const text = `${index + 1}. ${rule}`;
+    const textHeight = doc.heightOfString(text, { width: w, lineGap: 1 });
+    doc.text(text, x, y, { width: w, lineGap: 1 });
+    y += textHeight + 3;
   });
   y += 6;
   doc.font('Helvetica-Oblique').fontSize(6.5);

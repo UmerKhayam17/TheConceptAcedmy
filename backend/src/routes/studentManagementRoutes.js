@@ -16,7 +16,25 @@ const attendanceCtrl = require('../controllers/academy/academyAttendanceControll
 const assessmentCtrl = require('../controllers/academy/academyAssessmentController');
 const classTestCtrl = require('../controllers/academy/academyClassTestController');
 const dashboardCtrl = require('../controllers/academy/academyDashboardController');
-const { uploadImage } = require('../middleware/uploadImage');
+const { uploadImage, uploadPaymentSlip } = require('../middleware/uploadImage');
+
+function normalizeFeePayBody(req, _res, next) {
+  const raw = req.body?.feeRecordIds;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        req.body.feeRecordIds = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        req.body.feeRecordIds = [];
+      }
+    } else {
+      req.body.feeRecordIds = trimmed ? [trimmed] : [];
+    }
+  }
+  next();
+}
 
 const router = Router();
 router.use(protect);
@@ -443,6 +461,8 @@ router.get(
 router.post(
   '/fees/pay',
   requirePermission('manage_academy_fees'),
+  uploadPaymentSlip.single('slip'),
+  normalizeFeePayBody,
   validate(schemas.academyFeePayMany),
   feeCtrl.payMany
 );

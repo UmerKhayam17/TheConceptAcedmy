@@ -334,12 +334,14 @@ const academyStudentPatch = Joi.object({
 const academyFeePay = Joi.object({
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').default('cash'),
   notes: Joi.string().allow('').optional(),
+  paidAt: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 const academyFeePayMany = Joi.object({
   feeRecordIds: Joi.array().items(objectId).min(1).max(24).required(),
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').default('cash'),
   notes: Joi.string().allow('').optional(),
+  paidAt: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 const academyFeeGenerate = Joi.object({

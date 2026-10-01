@@ -243,6 +243,7 @@ export interface AcademyFeeRecord {
   receiptNumber?: string;
   paidAt?: string;
   paymentMethod?: string;
+  paymentSlip?: string;
   notes?: string;
   components?: { name: string; amount: number; kind?: "tuition" | "admission" | "charge" }[];
   /** Unpaid monthly vouchers for this student, across every month. */
@@ -1165,11 +1166,18 @@ export async function payAcademyFees(body: {
   feeRecordIds: string[];
   paymentMethod?: string;
   notes?: string;
+  paidAt?: string;
+  slip?: File | null;
 }) {
+  const fd = new FormData();
+  fd.append("feeRecordIds", JSON.stringify(body.feeRecordIds));
+  if (body.paymentMethod) fd.append("paymentMethod", body.paymentMethod);
+  if (body.notes) fd.append("notes", body.notes);
+  if (body.paidAt) fd.append("paidAt", body.paidAt);
+  if (body.slip) fd.append("slip", body.slip);
   const res = await authedFetch(`/student-management/fees/pay`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: fd,
   });
   const parsed = await parseJson<{
     success?: boolean;
