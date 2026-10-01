@@ -10,6 +10,7 @@ import {
 import { Plus, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
+import AdditionalChargesPanel from "./AdditionalChargesPanel";
 import {
   createFeeStructure,
   fetchAcademyClasses,
@@ -241,6 +242,8 @@ export default function FeeStructureTab({ caps, sessionId }: { caps: ModuleActio
           </table>
         </div>
       </Card>
+
+      <AdditionalChargesPanel caps={caps} sessionId={sessionId} />
 
       <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditRow(null); }}>
         <DialogContent className="sm:max-w-md">

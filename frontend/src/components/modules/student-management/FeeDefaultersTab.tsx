@@ -1,23 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Download, FileText, Loader2, Phone, Printer, Receipt } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
-  addStationeryCharge,
   exportFeeDefaultersCsv,
   exportFeeDefaultersMonthWise,
   type DefaulterReportFormat,
@@ -71,12 +69,10 @@ export default function FeeDefaultersTab({
   sessionId?: string;
 }) {
   const { toast } = useToast();
-  const qc = useQueryClient();
   const { user } = useAuth();
   const routes = user?.role ? academyStudentRoutes(user.role, "records") : null;
-  const { apiSessionId, writable, hasScope } = useSessionScope(sessionId);
+  const { apiSessionId, hasScope } = useSessionScope(sessionId);
 
-  const now = new Date();
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
   const [classFilter, setClassFilter] = useState("");
@@ -84,16 +80,6 @@ export default function FeeDefaultersTab({
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
-  const [challanTarget, setChallanTarget] = useState<{
-    studentId: string;
-    studentName: string;
-  } | null>(null);
-  const [stationeryAmount, setStationeryAmount] = useState("");
-  const [stationeryNotes, setStationeryNotes] = useState("");
-  const [stationeryMonth, setStationeryMonth] = useState(String(now.getMonth() + 1));
-  const [stationeryYear, setStationeryYear] = useState(String(now.getFullYear()));
-
-  const canCharge = caps.canEdit || caps.canCreate;
 
   const printMut = useMutation({
     mutationFn: ({ studentId, size }: { studentId: string; size: FeeReceiptSize }) =>
@@ -101,83 +87,6 @@ export default function FeeDefaultersTab({
     onError: (e: Error) =>
       toast({ title: "Could not print challan", description: e.message, variant: "destructive" }),
   });
-
-  const resetChallanDialog = () => {
-    setChallanTarget(null);
-    setStationeryAmount("");
-    setStationeryNotes("");
-    setStationeryMonth(String(now.getMonth() + 1));
-    setStationeryYear(String(now.getFullYear()));
-  };
-
-  const openChallanDialog = (d: FeeDefaulter) => {
-    setChallanTarget({
-      studentId: d.student._id,
-      studentName: d.student.studentName,
-    });
-    setStationeryAmount("");
-    setStationeryNotes("");
-    setStationeryMonth(month || String(now.getMonth() + 1));
-    setStationeryYear(year || String(now.getFullYear()));
-  };
-
-  const stationeryMut = useMutation({
-    mutationFn: async () => {
-      if (!challanTarget) throw new Error("Select a student first.");
-      if (!writable) throw new Error("Switch to the active session to add stationery.");
-      const amount = Number(stationeryAmount);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error("Enter a stationery amount greater than 0.");
-      }
-      return addStationeryCharge({
-        studentId: challanTarget.studentId,
-        amount,
-        month: Number(stationeryMonth),
-        year: Number(stationeryYear),
-        notes: stationeryNotes.trim() || undefined,
-      });
-    },
-    onSuccess: (record) => {
-      qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
-      qc.invalidateQueries({ queryKey: ["fee-defaulters-summary"] });
-      qc.invalidateQueries({ queryKey: ["academy-fees"] });
-      toast({
-        title: "Stationery charge added",
-        description: `${formatPkr(record.amount)} will appear on this student's challan.`,
-      });
-      setStationeryAmount("");
-      setStationeryNotes("");
-    },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const printChallanWithOptionalStationery = async (size: FeeReceiptSize) => {
-    if (!challanTarget) return;
-    try {
-      const amount = Number(stationeryAmount);
-      if (stationeryAmount.trim() && Number.isFinite(amount) && amount > 0) {
-        if (!writable) throw new Error("Switch to the active session to add stationery.");
-        await addStationeryCharge({
-          studentId: challanTarget.studentId,
-          amount,
-          month: Number(stationeryMonth),
-          year: Number(stationeryYear),
-          notes: stationeryNotes.trim() || undefined,
-        });
-        qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
-        qc.invalidateQueries({ queryKey: ["fee-defaulters-summary"] });
-        qc.invalidateQueries({ queryKey: ["academy-fees"] });
-      }
-      await printMut.mutateAsync({ studentId: challanTarget.studentId, size });
-      resetChallanDialog();
-    } catch (e) {
-      toast({
-        title: "Could not print challan",
-        description: e instanceof Error ? e.message : "Something went wrong",
-        variant: "destructive",
-      });
-    }
-  };
 
   const filterParams = useMemo(
     () => ({
@@ -469,21 +378,40 @@ export default function FeeDefaultersTab({
                     </td>
                     <td className="p-2.5 text-right">
                       <div className="inline-flex items-center justify-end gap-1.5">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="h-8 w-8"
-                          disabled={printMut.isPending && printMut.variables?.studentId === d.student._id}
-                          aria-label="Print challan"
-                          title="Print challan (optional stationery)"
-                          onClick={() => openChallanDialog(d)}
-                        >
-                          {printMut.isPending && printMut.variables?.studentId === d.student._id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Printer className="h-4 w-4" />
-                          )}
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8"
+                              disabled={printMut.isPending && printMut.variables?.studentId === d.student._id}
+                              aria-label="Print challan"
+                              title="Print challan"
+                            >
+                              {printMut.isPending && printMut.variables?.studentId === d.student._id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Printer className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "thermal" })}
+                            >
+                              <Receipt className="h-4 w-4" />
+                              Thermal
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "a4" })}
+                            >
+                              <FileText className="h-4 w-4" />
+                              A4
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         {(caps.canEdit || caps.canCreate) && detailHref && (
                           <Button size="sm" variant="outline" asChild>
                             <Link to={detailHref}>Collect fee</Link>
@@ -516,144 +444,6 @@ export default function FeeDefaultersTab({
           </div>
         )}
       </Card>
-
-      <Dialog
-        open={Boolean(challanTarget)}
-        onOpenChange={(o) => {
-          if (!o) resetChallanDialog();
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Print fee challan</DialogTitle>
-          </DialogHeader>
-          {challanTarget && (
-            <div className="space-y-3 text-sm">
-              <p>
-                <span className="text-muted-foreground">Student:</span>{" "}
-                <span className="font-medium">{challanTarget.studentName}</span>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Optionally add a stationery charge for this student before printing. Leave blank to
-                print unpaid fees only.
-              </p>
-              {canCharge && (
-                <div className="space-y-3 rounded-md border p-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="defaulter-stationery-amount">Stationery charge (PKR)</Label>
-                    <Input
-                      id="defaulter-stationery-amount"
-                      type="number"
-                      min={0}
-                      step="1"
-                      inputMode="decimal"
-                      placeholder="e.g. 500"
-                      value={stationeryAmount}
-                      onChange={(e) => setStationeryAmount(e.target.value)}
-                      disabled={!writable}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="defaulter-stationery-month">Month</Label>
-                      <select
-                        id="defaulter-stationery-month"
-                        className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
-                        value={stationeryMonth}
-                        onChange={(e) => setStationeryMonth(e.target.value)}
-                        disabled={!writable}
-                      >
-                        {MONTH_NAMES.map((name, idx) => (
-                          <option key={name} value={String(idx + 1)}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="defaulter-stationery-year">Year</Label>
-                      <select
-                        id="defaulter-stationery-year"
-                        className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
-                        value={stationeryYear}
-                        onChange={(e) => setStationeryYear(e.target.value)}
-                        disabled={!writable}
-                      >
-                        {Array.from({ length: 6 }, (_, i) => {
-                          const y = String(Number(now.getFullYear()) - 2 + i);
-                          return (
-                            <option key={y} value={y}>
-                              {y}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="defaulter-stationery-notes">Notes (optional)</Label>
-                    <Input
-                      id="defaulter-stationery-notes"
-                      value={stationeryNotes}
-                      onChange={(e) => setStationeryNotes(e.target.value)}
-                      placeholder="Books, notebooks, etc."
-                      disabled={!writable}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
-            {canCharge && (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full sm:w-auto"
-                disabled={
-                  !writable ||
-                  stationeryMut.isPending ||
-                  printMut.isPending ||
-                  !stationeryAmount.trim()
-                }
-                onClick={() => stationeryMut.mutate()}
-              >
-                {stationeryMut.isPending ? "Saving…" : "Add stationery only"}
-              </Button>
-            )}
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2"
-                disabled={printMut.isPending || stationeryMut.isPending}
-                onClick={() => void printChallanWithOptionalStationery("thermal")}
-              >
-                {printMut.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Receipt className="h-4 w-4" />
-                )}
-                Thermal
-              </Button>
-              <Button
-                type="button"
-                variant="hero"
-                className="gap-2"
-                disabled={printMut.isPending || stationeryMut.isPending}
-                onClick={() => void printChallanWithOptionalStationery("a4")}
-              >
-                {printMut.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-                A4
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

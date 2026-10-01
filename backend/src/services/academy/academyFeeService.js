@@ -1,8 +1,13 @@
 const mongoose = require('mongoose');
 const ApiError = require('../../utils/ApiError');
-const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
+const {
+  chargeApplies,
+  componentFromCharge,
+  listActiveCharges,
+} = require('./academyAdditionalChargeService');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyClass = require('../../models/academy/AcademyClass');
+const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { notifyByAccess } = require('../realtime/realtimeService');
 const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
@@ -144,6 +149,24 @@ function monthlyBillAmount(student) {
   return Math.max(0, fee - discount);
 }
 
+function roundMoney(n) {
+  return Math.round(Number(n) * 100) / 100;
+}
+
+/** Tuition plus charges scheduled for this month. One total, with a line breakdown. */
+function composeMonthlyComponents(student, month, charges, tuitionAmount) {
+  const tuition = roundMoney(tuitionAmount);
+  const components = [];
+  if (tuition > 0) components.push({ name: 'Tuition', amount: tuition, kind: 'tuition' });
+  for (const charge of charges || []) {
+    if (!chargeApplies(charge, student, month)) continue;
+    const line = componentFromCharge(charge);
+    if (line.amount > 0) components.push(line);
+  }
+  const amount = roundMoney(components.reduce((sum, line) => sum + line.amount, 0));
+  return { amount, components };
+}
+
 /**
  * Nominal due day is the 10th. For the current calendar month, never set a past
  * due date so newly issued challans do not flip to overdue on the same day.
@@ -192,7 +215,13 @@ async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new D
   const year = asOf.getFullYear();
   const dueDate = resolveMonthlyDueDate(month, year);
   const { admissionAmount, monthlyAmount } = splitEnrollmentAmounts(fees);
-  const totalDue = Math.max(0, admissionAmount + monthlyAmount);
+  const charges = await listActiveCharges();
+  const tuitionBill = composeMonthlyComponents(student, month, charges, monthlyAmount);
+  const components = [...tuitionBill.components];
+  if (admissionAmount > 0) {
+    components.push({ name: 'Admission', amount: roundMoney(admissionAmount), kind: 'admission' });
+  }
+  const totalDue = roundMoney(components.reduce((sum, line) => sum + line.amount, 0));
   if (totalDue <= 0) return [];
 
   const existingAdm = await AcademyFeeRecord.findOne({
@@ -206,7 +235,7 @@ async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new D
       return [existingAdm];
     }
     if (replacePending && ['pending', 'overdue'].includes(existingAdm.status)) {
-      existingAdm.amount = totalDue;
+      existingAdm.amount = Math.max(0, admissionAmount + monthlyAmount);
       existingAdm.dueDate = dueDate;
       existingAdm.notes = 'First month: monthly fee + admission fee (after discounts)';
       existingAdm.recordedBy = userId;
@@ -235,6 +264,7 @@ async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new D
     dueDate,
     receiptNumber: receiptNumber(student, month, year, 'admission'),
     notes: 'First month: monthly fee + admission fee (after discounts)',
+    components,
     createdBy: userId,
     recordedBy: userId,
     pendingNoticeAt: new Date(),
@@ -522,6 +552,7 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
   const studentQ = { status: 'active' };
   if (classId) studentQ.classId = classId;
   const students = await AcademyStudent.find(studentQ);
+  const charges = await listActiveCharges();
   const dueDate = resolveMonthlyDueDate(month, year);
   const created = [];
   const skipped = [];
@@ -573,7 +604,12 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       continue;
     }
 
-    const amount = monthlyBillAmount(student);
+    const { amount, components } = composeMonthlyComponents(
+      student,
+      month,
+      charges,
+      monthlyBillAmount(student)
+    );
     if (amount <= 0) {
       skipped.push(student._id);
       continue;
@@ -584,6 +620,7 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       month,
       year,
       amount,
+      components,
       feeType: 'monthly',
       status: 'pending',
       dueDate,

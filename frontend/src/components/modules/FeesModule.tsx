@@ -2,11 +2,12 @@ import { useState } from "react";
 import type { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import AcademyFeesManagement from "@/components/modules/student-management/AcademyFeesManagement";
 import FeeDefaultersTab from "@/components/modules/student-management/FeeDefaultersTab";
+import FeeStructureTab from "@/components/modules/student-management/FeeStructureTab";
 import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
-type FeesView = "records" | "defaulters";
+type FeesView = "records" | "structures" | "defaulters";
 
 /** Panel Fee Management — live academy tuition fees from the API */
 const FeesModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleActionCaps }) => {
@@ -34,6 +35,20 @@ const FeesModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleAction
           {!isParent && (
             <button
               type="button"
+              onClick={() => setView("structures")}
+              className={cn(
+                "flex-1 sm:flex-none px-3 py-2 sm:py-1.5 text-sm font-medium rounded-md transition-colors",
+                view === "structures"
+                  ? "bg-background text-primary shadow-sm"
+                  : "text-muted-foreground hover:text-primary"
+              )}
+            >
+              Fee structures
+            </button>
+          )}
+          {!isParent && (
+            <button
+              type="button"
               onClick={() => setView("defaulters")}
               className={cn(
                 "flex-1 sm:flex-none px-3 py-2 sm:py-1.5 text-sm font-medium rounded-md transition-colors",
@@ -46,7 +61,9 @@ const FeesModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleAction
             </button>
           )}
         </div>
-        {view === "records" || isParent ? (
+        {view === "structures" && !isParent ? (
+          <FeeStructureTab caps={caps} sessionId={sessionId} />
+        ) : view === "records" || isParent ? (
           <AcademyFeesManagement caps={caps} sessionId={isParent ? undefined : sessionId} />
         ) : (
           <FeeDefaultersTab caps={caps} sessionId={sessionId} />

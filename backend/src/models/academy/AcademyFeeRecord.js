@@ -17,6 +17,16 @@ const academyFeeRecordSchema = new mongoose.Schema(
     receiptNumber: { type: String, trim: true },
     paymentMethod: { type: String, enum: ['cash', 'bank_transfer', 'online', 'other'], default: 'cash' },
     notes: { type: String, trim: true },
+    /**
+     * Optional breakdown of `amount` (tuition, admission, additional charges).
+     * Older records omit this and keep their original amount unchanged.
+     */
+    components: [{
+      name: { type: String, trim: true },
+      amount: { type: Number, min: 0 },
+      kind: { type: String, enum: ['tuition', 'admission', 'charge'] },
+      chargeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademyAdditionalCharge' },
+    }],
     recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     /** Set once when staff are told this voucher is unpaid. */

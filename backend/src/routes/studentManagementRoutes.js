@@ -213,6 +213,30 @@ router.delete(
   requirePermission('manage_academy_fee_structures'),
   feeStructureCtrl.remove
 );
+
+const additionalChargeCtrl = require('../controllers/academy/academyAdditionalChargeController');
+router.get(
+  '/additional-charges',
+  requireAnyPermission('view_academy_students', 'manage_academy_fee_structures', 'manage_academy_fees'),
+  additionalChargeCtrl.list
+);
+router.post(
+  '/additional-charges',
+  requireAnyPermission('manage_academy_fee_structures', 'manage_academy_fees'),
+  validate(schemas.academyAdditionalChargeBody),
+  additionalChargeCtrl.create
+);
+router.patch(
+  '/additional-charges/:id',
+  requireAnyPermission('manage_academy_fee_structures', 'manage_academy_fees'),
+  validate(schemas.academyAdditionalChargePatch),
+  additionalChargeCtrl.update
+);
+router.delete(
+  '/additional-charges/:id',
+  requireAnyPermission('manage_academy_fee_structures', 'manage_academy_fees'),
+  additionalChargeCtrl.remove
+);
 router.post(
   '/fee-structures/preview',
   requireAnyPermission('view_academy_students', 'manage_academy_students'),

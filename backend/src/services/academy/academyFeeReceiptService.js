@@ -99,6 +99,11 @@ function feeTypeLabel(feeType, { short = false } = {}) {
   return short ? 'Monthly' : 'Monthly fee';
 }
 
+function feeComponents(record) {
+  if (!Array.isArray(record?.components)) return [];
+  return record.components.filter((line) => line && Number(line.amount) > 0 && line.name);
+}
+
 function studentOf(record) {
   const s = record.studentId;
   return s && typeof s === 'object' ? s : null;
@@ -246,6 +251,13 @@ function drawThermalReceipt(doc, record, brand, logoPath) {
 
   y = thermalKv(doc, 'Fee', feeTypeLabel(record.feeType), x, y, w);
   y = thermalKv(doc, 'Period', periodLabel(record), x, y, w);
+  const lines = feeComponents(record);
+  if (lines.length) {
+    y += 4;
+    lines.forEach((line) => {
+      y = thermalKv(doc, line.name, formatPkr(line.amount), x, y, w);
+    });
+  }
   y += 6;
   doc.fillColor('#000000').font('Helvetica-Bold').fontSize(12);
   pdfLine(doc, formatPkr(record.amount), x, y, { width: w, align: 'center' });
@@ -412,6 +424,11 @@ function renderA4FeeReceiptPdf(record, meta = {}) {
       drawRow(doc, 'Period', periodLabel(record), innerX + colW, y, labelW, valueW, brand);
       y += 18;
       drawRow(doc, 'Payment', paymentMethodLabel(record.paymentMethod), innerX, y, labelW, valueW, brand);
+      y += 18;
+      feeComponents(record).forEach((line) => {
+        drawRow(doc, line.name, formatPkr(line.amount), innerX, y, labelW, valueW, brand);
+        y += 16;
+      });
       drawRow(doc, 'Amount', formatPkr(record.amount), innerX + colW, y, labelW, valueW, brand);
       y += 22;
 
@@ -499,8 +516,136 @@ function statusLabel(status) {
   return String(status || 'UNPAID').toUpperCase();
 }
 
+function challanLineItems(records) {
+  const many = records.length > 1;
+  const lines = [];
+  records.forEach((record) => {
+    const parts = feeComponents(record);
+    const period = periodLabel(record);
+    if (parts.length) {
+      parts.forEach((line) => {
+        lines.push({
+          name: many ? `${line.name} · ${period}` : line.name,
+          amount: Number(line.amount) || 0,
+        });
+      });
+      return;
+    }
+    lines.push({
+      name: many ? `${feeTypeLabel(record.feeType)} · ${period}` : feeTypeLabel(record.feeType),
+      amount: Number(record.amount) || 0,
+    });
+  });
+  return lines;
+}
+
 function challanTotal(records) {
-  return records.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  return challanLineItems(records).reduce((sum, line) => sum + line.amount, 0);
+}
+
+const CHALLAN_COPIES = [
+  { label: 'STUDENT COPY', signRight: 'Accounts' },
+  { label: 'BANK COPY', signRight: 'Bank officer' },
+  { label: 'ACCOUNTS COPY', signRight: 'Cashier' },
+];
+
+function drawChallanCopy(doc, box, copy, records, brand) {
+  const { x, y, w, h } = box;
+  const pad = 10;
+  const innerX = x + pad;
+  const innerW = w - pad * 2;
+  const first = records[0];
+  const { student, classLine } = receiptContext(first);
+  const lines = challanLineItems(records);
+  const total = lines.reduce((sum, line) => sum + line.amount, 0);
+  const periods = [...new Set(records.map((record) => periodLabel(record)))].join(', ');
+  const dueDates = [...new Set(records.map((record) => formatDate(record.dueDate)).filter((value) => value && value !== '—'))];
+
+  doc.save();
+  doc.rect(x, y, w, h).lineWidth(1.1).strokeColor(brand.colors.navy).stroke();
+  doc.restore();
+
+  doc.save();
+  doc.rect(x, y, w, 20).fill(brand.colors.navy);
+  doc.restore();
+  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(10);
+  pdfLine(doc, copy.label, x, y + 5, { width: w, align: 'center' });
+
+  let cy = y + 28;
+  doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(12);
+  pdfLine(doc, brand.name, innerX, cy, { width: innerW, align: 'center' });
+  cy += 15;
+  doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8);
+  pdfLine(doc, brand.phones.join('   |   '), innerX, cy, { width: innerW, align: 'center' });
+  cy += 12;
+  doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(11);
+  pdfLine(doc, 'FEE CHALLAN', innerX, cy, { width: innerW, align: 'center' });
+  cy += 16;
+
+  const writeField = (label, value) => {
+    doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8);
+    pdfLine(doc, label, innerX, cy, { width: 68 });
+    doc.fillColor('#10244A').font('Helvetica-Bold').fontSize(9);
+    pdfLine(doc, fitText(doc, value || '—', innerW - 70), innerX + 70, cy, { width: innerW - 70 });
+    cy += 13;
+  };
+
+  writeField('Student', student?.studentName);
+  writeField('Father', student?.fatherName);
+  writeField('Student ID', student?.studentId);
+  writeField('Class', classLine);
+  writeField('Period', periods);
+  writeField('Due date', dueDates.join(', ') || '—');
+  cy += 6;
+
+  doc.save();
+  doc.rect(innerX, cy, innerW, 16).fill('#EEF5FF');
+  doc.restore();
+  doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(8);
+  pdfLine(doc, 'Particular', innerX + 6, cy + 4, { width: innerW * 0.58 });
+  pdfLine(doc, 'Amount', innerX + innerW - 86, cy + 4, { width: 80, align: 'right' });
+  cy += 18;
+
+  const lineLimit = y + h - 118;
+  lines.forEach((line) => {
+    if (cy > lineLimit) return;
+    doc.fillColor('#10244A').font('Helvetica').fontSize(9);
+    pdfLine(doc, fitText(doc, line.name, innerW - 96), innerX + 6, cy, { width: innerW - 96 });
+    doc.font('Helvetica-Bold').fontSize(9);
+    pdfLine(doc, formatPkr(line.amount), innerX + innerW - 90, cy, { width: 84, align: 'right' });
+    cy += 14;
+  });
+
+  cy += 4;
+  doc.save();
+  doc.rect(innerX, cy, innerW, 24).fill(brand.colors.navy);
+  doc.restore();
+  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(10);
+  pdfLine(doc, 'TOTAL', innerX + 6, cy + 7, { width: 70 });
+  pdfLine(doc, formatPkr(total), innerX + innerW - 120, cy + 7, { width: 114, align: 'right' });
+  cy += 32;
+
+  doc.fillColor('#10244A').font('Helvetica').fontSize(8);
+  const words = amountInWords(total);
+  const wordHeight = doc.heightOfString(words, { width: innerW, align: 'center' });
+  doc.text(words, innerX, cy, { width: innerW, align: 'center' });
+  cy += wordHeight + 8;
+
+  doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(7.5);
+  doc.text('Valid as a demand until payment is recorded. This is not a receipt.', innerX, cy, {
+    width: innerW,
+    align: 'center',
+  });
+
+  const sigY = y + h - 28;
+  doc.save();
+  doc.strokeColor(brand.colors.line).lineWidth(0.8);
+  doc.moveTo(innerX + 4, sigY).lineTo(innerX + 78, sigY).stroke();
+  doc.moveTo(innerX + innerW - 78, sigY).lineTo(innerX + innerW - 4, sigY).stroke();
+  doc.restore();
+  doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(7.5);
+  pdfLine(doc, 'Depositor', innerX + 4, sigY + 4, { width: 74, align: 'center' });
+  pdfLine(doc, copy.signRight, innerX + innerW - 78, sigY + 4, { width: 74, align: 'center' });
 }
 
 function drawThermalChallan(doc, records, brand, logoPath) {
@@ -623,18 +768,13 @@ function renderThermalFeeChallanPdf(records, meta = {}) {
 
 function renderA4FeeChallanPdf(records, meta = {}) {
   const brand = ACADEMY_BRAND;
-  const logoPath = resolveLogoPath();
-  const first = records[0];
-  const { student, classLine } = receiptContext(first);
-  const total = challanTotal(records);
 
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
         size: 'A4',
-        layout: 'portrait',
-        margin: 32,
-        bufferPages: true,
+        layout: 'landscape',
+        margin: 0,
         info: {
           Title: `${challanHeading(records)} — ${brand.name}`,
           Author: brand.name,
@@ -647,129 +787,25 @@ function renderA4FeeChallanPdf(records, meta = {}) {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      drawPdfLetterhead(doc, brand, logoPath);
-
       const pageW = doc.page.width;
-      const innerX = 40;
-      const innerW = pageW - 80;
-      let y = 98;
+      const pageH = doc.page.height;
+      const margin = 14;
+      const gap = 12;
+      const panelW = (pageW - margin * 2 - gap * 2) / 3;
+      const panelH = pageH - margin * 2;
 
-      doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(16);
-      pdfLine(doc, challanHeading(records), innerX, y, { width: innerW, align: 'center' });
-      y += 20;
-      doc.fillColor(brand.colors.gold).font('Helvetica-Oblique').fontSize(9);
-      pdfLine(doc, 'Demand voucher  ·  payable until marked paid', innerX, y, {
-        width: innerW,
-        align: 'center',
-      });
-      y += 22;
-
-      doc.save();
-      doc.roundedRect(innerX, y, innerW, 52, 6).fill('#F6F8FB');
-      doc.roundedRect(innerX, y, innerW, 52, 6).strokeColor(brand.colors.gold).lineWidth(1.2).stroke();
-      doc.restore();
-
-      doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8);
-      pdfLine(doc, 'CHALLAN', innerX + 14, y + 10);
-      doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(12);
-      pdfLine(doc, `${records.length} unpaid`, innerX + 14, y + 24);
-
-      doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8);
-      pdfLine(doc, 'PRINTED', innerX + innerW / 2, y + 10);
-      doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(12);
-      pdfLine(doc, formatDate(meta.generatedAt || new Date()), innerX + innerW / 2, y + 24);
-
-      doc.save();
-      doc.roundedRect(innerX + innerW - 86, y + 12, 72, 28, 4).fill('#B91C1C');
-      doc.restore();
-      doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(11);
-      pdfLine(doc, 'UNPAID', innerX + innerW - 86, y + 20, { width: 72, align: 'center' });
-      y += 68;
-
-      const colW = innerW / 2;
-      const labelW = 88;
-      const valueW = colW - labelW - 8;
-      drawRow(doc, 'Student', student?.studentName || '—', innerX, y, labelW, valueW, brand);
-      drawRow(doc, 'Father', student?.fatherName || '—', innerX + colW, y, labelW, valueW, brand);
-      y += 18;
-      drawRow(doc, 'Student ID', student?.studentId || '—', innerX, y, labelW, valueW, brand);
-      drawRow(doc, 'Class', classLine || '—', innerX + colW, y, labelW, valueW, brand);
-      y += 18;
-      drawRow(doc, 'Phone', student?.phone || '—', innerX, y, labelW, valueW, brand);
-      y += 26;
-
-      doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(9);
-      pdfLine(doc, 'UNPAID MONTHS', innerX, y);
-      y += 8;
-      doc.save();
-      doc.moveTo(innerX, y).lineTo(innerX + innerW, y).strokeColor(brand.colors.gold).lineWidth(1.5).stroke();
-      doc.restore();
-      y += 10;
-
-      const cols = [36, 150, 90, 90, innerW - 366];
-      const headers = ['#', 'Period', 'Type', 'Status', 'Amount'];
-      doc.fillColor(brand.colors.muted).font('Helvetica-Bold').fontSize(8);
-      let hx = innerX;
-      headers.forEach((header, i) => {
-        pdfLine(doc, header, hx, y, { width: cols[i] });
-        hx += cols[i];
-      });
-      y += 14;
-
-      records.forEach((record, index) => {
-        if (y > doc.page.height - 160) {
-          doc.addPage();
-          y = 48;
+      CHALLAN_COPIES.forEach((copy, index) => {
+        const x = margin + index * (panelW + gap);
+        drawChallanCopy(doc, { x, y: margin, w: panelW, h: panelH }, copy, records, brand);
+        if (index < CHALLAN_COPIES.length - 1) {
+          const cutX = x + panelW + gap / 2;
+          doc.save();
+          doc.strokeColor('#B7C3D1').lineWidth(0.8).dash(3, { space: 3 });
+          doc.moveTo(cutX, margin - 4).lineTo(cutX, pageH - margin + 4).stroke();
+          doc.restore();
         }
-        const cells = [
-          String(index + 1),
-          periodLabel(record),
-          feeTypeLabel(record.feeType, { short: true }),
-          statusLabel(record.status),
-          formatPkr(record.amount),
-        ];
-        doc.fillColor('#1A2A3A').font('Helvetica').fontSize(9);
-        let cx = innerX;
-        cells.forEach((cell, i) => {
-          pdfLine(doc, fitText(doc, cell, cols[i] - 6), cx, y, { width: cols[i] - 6 });
-          cx += cols[i];
-        });
-        y += 16;
       });
 
-      y += 8;
-      doc.save();
-      doc.roundedRect(innerX, y, innerW, 44, 6).fill(brand.colors.navy);
-      doc.restore();
-      doc.fillColor('#C5D0DC').font('Helvetica').fontSize(8);
-      pdfLine(doc, 'TOTAL DUE', innerX + 14, y + 8);
-      doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(12);
-      pdfLine(doc, `${formatPkr(total)}   ·   ${fitText(doc, amountInWords(total), innerW - 180)}`, innerX + 14, y + 22, {
-        width: innerW - 28,
-      });
-      y += 64;
-
-      doc.fillColor(brand.colors.muted).font('Helvetica-Oblique').fontSize(8);
-      pdfLine(
-        doc,
-        'This challan is a demand for unpaid fees. It becomes a receipt only after payment is recorded.',
-        innerX,
-        y,
-        { width: innerW, align: 'center' }
-      );
-
-      const range = doc.bufferedPageRange();
-      for (let i = 0; i < range.count; i += 1) {
-        doc.switchToPage(range.start + i);
-        drawPdfFooterText(
-          doc,
-          brand,
-          'Fee challan',
-          { generatedAt: meta.generatedAt || new Date() },
-          i + 1,
-          range.count
-        );
-      }
       doc.end();
     } catch (err) {
       reject(err);

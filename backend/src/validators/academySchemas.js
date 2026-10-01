@@ -92,6 +92,30 @@ const academyFeeStructurePatch = Joi.object({
   effectiveDate: Joi.date(),
 }).min(1);
 
+const academyAdditionalChargeBody = Joi.object({
+  name: Joi.string().trim().required(),
+  amount: Joi.number().min(0).required(),
+  frequency: Joi.string().valid('every_month', 'selected_months').required(),
+  months: Joi.array().items(Joi.number().integer().min(1).max(12)).default([]),
+  applicability: Joi.string().valid('all', 'class', 'students').required(),
+  classIds: Joi.array().items(objectId).default([]),
+  sectionIds: Joi.array().items(objectId).default([]),
+  studentIds: Joi.array().items(objectId).default([]),
+  status: Joi.string().valid('active', 'inactive').default('active'),
+});
+
+const academyAdditionalChargePatch = Joi.object({
+  name: Joi.string().trim(),
+  amount: Joi.number().min(0),
+  frequency: Joi.string().valid('every_month', 'selected_months'),
+  months: Joi.array().items(Joi.number().integer().min(1).max(12)),
+  applicability: Joi.string().valid('all', 'class', 'students'),
+  classIds: Joi.array().items(objectId),
+  sectionIds: Joi.array().items(objectId),
+  studentIds: Joi.array().items(objectId),
+  status: Joi.string().valid('active', 'inactive'),
+}).min(1);
+
 const academicRecord = Joi.object({
   institutionName: Joi.string().allow('').trim(),
   className: Joi.string().allow('').trim(),
@@ -545,6 +569,8 @@ module.exports = {
   academyDisciplinePatch,
   academyFeeStructureBody,
   academyFeeStructurePatch,
+  academyAdditionalChargeBody,
+  academyAdditionalChargePatch,
   academyStudentRegister,
   academyStudentProvisional,
   academyStudentActivate,

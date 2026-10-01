@@ -244,6 +244,7 @@ export interface AcademyFeeRecord {
   paidAt?: string;
   paymentMethod?: string;
   notes?: string;
+  components?: { name: string; amount: number; kind?: "tuition" | "admission" | "charge" }[];
   /** Unpaid monthly vouchers for this student, across every month. */
   unpaidMonthCount?: number;
   unpaidFrom?: string;
@@ -600,6 +601,56 @@ export const updateFeeStructure = (id: string, body: Partial<AcademyFeeStructure
 
 export const deleteFeeStructure = (id: string) =>
   api<{ deleted: boolean }>(`/fee-structures/${id}`, { method: "DELETE" });
+
+export interface AdditionalChargeRef {
+  _id: string;
+  className?: string;
+  sectionName?: string;
+  studentName?: string;
+  studentId?: string;
+}
+
+export interface AdditionalCharge {
+  _id: string;
+  name: string;
+  amount: number;
+  frequency: "every_month" | "selected_months";
+  months: number[];
+  applicability: "all" | "class" | "students";
+  classIds: AdditionalChargeRef[] | string[];
+  sectionIds: AdditionalChargeRef[] | string[];
+  studentIds: AdditionalChargeRef[] | string[];
+  status: "active" | "inactive";
+}
+
+export const fetchAdditionalCharges = () => api<AdditionalCharge[]>("/additional-charges");
+
+export const createAdditionalCharge = (body: {
+  name: string;
+  amount: number;
+  frequency: "every_month" | "selected_months";
+  months?: number[];
+  applicability: "all" | "class" | "students";
+  classIds?: string[];
+  sectionIds?: string[];
+  studentIds?: string[];
+  status?: "active" | "inactive";
+}) => api<AdditionalCharge>("/additional-charges", { method: "POST", body: JSON.stringify(body) });
+
+export const updateAdditionalCharge = (id: string, body: Partial<{
+  name: string;
+  amount: number;
+  frequency: "every_month" | "selected_months";
+  months: number[];
+  applicability: "all" | "class" | "students";
+  classIds: string[];
+  sectionIds: string[];
+  studentIds: string[];
+  status: "active" | "inactive";
+}>) => api<AdditionalCharge>(`/additional-charges/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+
+export const deleteAdditionalCharge = (id: string) =>
+  api<{ deleted: boolean }>(`/additional-charges/${id}`, { method: "DELETE" });
 
 export const previewFees = (body: {
   classId: string;
