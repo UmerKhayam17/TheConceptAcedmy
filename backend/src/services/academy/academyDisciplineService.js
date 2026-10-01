@@ -36,6 +36,9 @@ async function classRequiresDiscipline(classId) {
   return (await countActiveForClass(classId)) > 0;
 }
 
+const SUBJECT_POPULATE =
+  'subjectName subjectCode status enrollmentType choiceGroupName pickCount';
+
 async function listByClass(classId, { status } = {}) {
   const cls = await AcademyClass.findById(classId);
   if (!cls) throw new ApiError(404, 'Class not found');
@@ -44,8 +47,41 @@ async function listByClass(classId, { status } = {}) {
   if (status) q.status = status;
 
   return AcademyDiscipline.find(q)
-    .populate('subjectIds', 'subjectName subjectCode status enrollmentType choiceGroupName pickCount')
+    .populate('subjectIds', SUBJECT_POPULATE)
+    .populate('createdBy', 'name email')
     .sort({ name: 1 });
+}
+
+/** All streams for a session (or every session when sessionId is omitted). */
+async function listDisciplines({ sessionId, classId, status } = {}) {
+  const q = {};
+  if (status) q.status = status;
+
+  if (classId) {
+    const cls = await AcademyClass.findById(classId).select('_id className');
+    if (!cls) throw new ApiError(404, 'Class not found');
+    q.classId = classId;
+  } else if (sessionId) {
+    const classes = await AcademyClass.find({ sessionId }).select('_id');
+    q.classId = { $in: classes.map((c) => c._id) };
+  }
+
+  const data = await AcademyDiscipline.find(q)
+    .populate('classId', 'className')
+    .populate('subjectIds', SUBJECT_POPULATE)
+    .populate('createdBy', 'name email')
+    .sort({ createdAt: -1, name: 1 });
+
+  let meta = null;
+  if (classId) {
+    const cls = await AcademyClass.findById(classId).select('className');
+    meta = {
+      requiresDiscipline: await classRequiresDiscipline(classId),
+      suggestsDisciplines: cls ? classNameSuggestsDisciplines(cls.className) : false,
+    };
+  }
+
+  return { data, meta };
 }
 
 async function assertDisciplineForClass(disciplineId, classId) {
@@ -229,6 +265,7 @@ module.exports = {
   countActiveForClass,
   classRequiresDiscipline,
   listByClass,
+  listDisciplines,
   assertDisciplineForClass,
   resolveEnrollmentDiscipline,
   createDiscipline,

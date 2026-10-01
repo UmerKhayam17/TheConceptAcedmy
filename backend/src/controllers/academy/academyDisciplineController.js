@@ -1,6 +1,15 @@
 const catchAsync = require('../../utils/catchAsync');
 const disciplineService = require('../../services/academy/academyDisciplineService');
 
+const list = catchAsync(async (req, res) => {
+  const { data, meta } = await disciplineService.listDisciplines({
+    sessionId: req.query.sessionId,
+    classId: req.query.classId,
+    status: req.query.status,
+  });
+  res.json({ success: true, data, meta });
+});
+
 const listByClass = catchAsync(async (req, res) => {
   const AcademyClass = require('../../models/academy/AcademyClass');
   const cls = await AcademyClass.findById(req.params.classId).select('className');
@@ -41,4 +50,4 @@ const remove = catchAsync(async (req, res) => {
   res.json({ success: true, data: { deleted: true } });
 });
 
-module.exports = { listByClass, create, createDefaults, update, remove };
+module.exports = { list, listByClass, create, createDefaults, update, remove };

@@ -143,6 +143,16 @@ router.delete('/subjects/:id', requirePermission('manage_academy_subjects'), sub
 // Disciplines / streams (Medical, Engineering, ICS — typically 1st & 2nd Year)
 const disciplineCtrl = require('../controllers/academy/academyDisciplineController');
 router.get(
+  '/disciplines',
+  requireAnyPermission(
+    'view_academy_students',
+    'manage_academy_subjects',
+    'manage_academy_students',
+    'manage_academy_classes'
+  ),
+  disciplineCtrl.list
+);
+router.get(
   '/classes/:classId/disciplines',
   requireAnyPermission(
     'view_academy_students',

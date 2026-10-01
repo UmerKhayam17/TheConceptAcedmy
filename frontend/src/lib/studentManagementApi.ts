@@ -63,7 +63,7 @@ export interface AcademyDiscipline {
   _id: string;
   name: string;
   code: string;
-  classId: string;
+  classId: string | { _id: string; className?: string };
   subjectIds: AcademySubject[] | string[];
   status: "active" | "inactive";
   createdAt?: string;
@@ -423,6 +423,28 @@ export const fetchEnrollmentSubjects = (
   const q = qp.toString();
   return api<EnrollmentSubjectLayout>(`/classes/${classId}/enrollment-subjects${q ? `?${q}` : ""}`);
 };
+
+/** Streams across a session, or one class when classId is set. */
+export async function fetchAcademyDisciplines(params?: {
+  sessionId?: string;
+  classId?: string;
+  status?: string;
+}): Promise<{ data: AcademyDiscipline[]; meta: AcademyDisciplinesListMeta | null }> {
+  const qp = new URLSearchParams();
+  if (params?.sessionId) qp.set("sessionId", params.sessionId);
+  if (params?.classId) qp.set("classId", params.classId);
+  if (params?.status) qp.set("status", params.status);
+  const q = qp.toString();
+  const res = await authedFetch(`/student-management/disciplines${q ? `?${q}` : ""}`);
+  const json = await parseJson<{
+    success: boolean;
+    data: AcademyDiscipline[];
+    meta?: AcademyDisciplinesListMeta | null;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(json.message || `Request failed (${res.status})`);
+  return { data: json.data || [], meta: json.meta ?? null };
+}
 
 /** Streams for a class (Medical / Engineering / ICS). Empty for 9th/10th until configured. */
 export const fetchDisciplinesByClass = (classId: string, params?: { status?: string }) => {
