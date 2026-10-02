@@ -619,7 +619,7 @@ export default function AcademyFeesManagement({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-9 gap-1.5 whitespace-nowrap rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted"
+                  className="h-9 gap-1.5 whitespace-nowrap rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground"
                   onClick={() => setEnrollmentWizardOpen(true)}
                 >
                   <Receipt className="h-4 w-4 text-primary" />
