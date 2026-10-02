@@ -68,6 +68,14 @@ const createBulkChoice = catchAsync(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+const createDefaults = catchAsync(async (req, res) => {
+  const data = await subjectService.createStandardSubjects(req.params.classId, req.user._id);
+  if (data.created > 0) {
+    rt.subjectCrud('created', req.params.classId);
+  }
+  res.status(201).json({ success: true, data });
+});
+
 const update = catchAsync(async (req, res) => {
   const data = await subjectService.updateSubject(req.params.id, req.body, req.user._id);
   rt.subjectCrud('updated', data._id);
@@ -86,6 +94,7 @@ module.exports = {
   enrollmentLayout,
   create,
   createBulkChoice,
+  createDefaults,
   update,
   remove,
 };

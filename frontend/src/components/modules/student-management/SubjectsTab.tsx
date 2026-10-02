@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -20,6 +20,7 @@ import { studentManagementHref } from "@/lib/studentManagementMenus";
 import {
   createAcademySubject,
   createBulkChoiceSubjects,
+  createStandardSubjects,
   deleteAcademySubject,
   fetchAcademyClasses,
   fetchSubjectChoiceGroups,
@@ -203,6 +204,32 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const defaultsMut = useMutation({
+    mutationFn: () => {
+      if (!classId) throw new Error("Select a class first");
+      if (!writable) throw new Error("Switch to the active academic session to make changes.");
+      return createStandardSubjects(classId);
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["academy-subjects", classId] });
+      qc.invalidateQueries({ queryKey: ["choice-groups", classId] });
+      qc.invalidateQueries({ queryKey: ["enrollment-subjects"] });
+      qc.invalidateQueries({ queryKey: ["academy-classes"] });
+      toast({
+        title: "Subjects initialized",
+        description:
+          data.created > 0
+            ? `Added ${data.created} subject${data.created === 1 ? "" : "s"}${
+                data.skipped ? ` · ${data.skipped} already present` : ""
+              }.`
+            : data.skipped
+              ? `All ${data.skipped} standard subjects already exist.`
+              : "No subjects were added.",
+      });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const delMut = useMutation({
     mutationFn: (id: string) => deleteAcademySubject(id),
     onSuccess: () => {
@@ -258,9 +285,21 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
             <div className="flex flex-wrap items-center gap-2">
               <PanelSearchBar value={search} onChange={setSearch} placeholder="Search subjects…" className="max-w-xs" />
               {caps.canCreate && writable && (
-                <Button className="gap-2 shrink-0" onClick={openCreate}>
-                  <Plus className="h-4 w-4" /> Add Subject
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2 shrink-0"
+                    disabled={!classId || defaultsMut.isPending}
+                    onClick={() => defaultsMut.mutate()}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {defaultsMut.isPending ? "Initializing…" : "Auto initialize"}
+                  </Button>
+                  <Button className="gap-2 shrink-0" onClick={openCreate}>
+                    <Plus className="h-4 w-4" /> Add Subject
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -288,6 +327,13 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                   <tr>
                     <td colSpan={hasActions ? 5 : 4} className="p-8 text-center text-muted-foreground">
                       No subjects for this class yet.
+                      {caps.canCreate && writable ? (
+                        <>
+                          {" "}
+                          Use <span className="font-medium text-foreground">Auto initialize</span> for the
+                          standard list, or add subjects one by one.
+                        </>
+                      ) : null}
                     </td>
                   </tr>
                 )}

@@ -23,6 +23,9 @@ const userSchema = new mongoose.Schema(
     fcmToken: { type: String },
     lastLogin: { type: Date },
     refreshToken: { type: String, select: false },
+    /** Previous refresh hash kept briefly so concurrent / multi-tab refresh does not 401. */
+    refreshTokenPrev: { type: String, select: false },
+    refreshTokenRotatedAt: { type: Date, select: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

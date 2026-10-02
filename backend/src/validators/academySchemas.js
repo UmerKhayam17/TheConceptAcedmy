@@ -9,7 +9,12 @@ const academyClassBody = Joi.object({
   status: Joi.string().valid('active', 'inactive').optional(),
 });
 
-const academyClassPatch = academyClassBody.min(1);
+const academyClassPatch = Joi.object({
+  sessionId: objectId,
+  className: Joi.string().trim().min(1),
+  totalSubjects: Joi.number().integer().min(0),
+  status: Joi.string().valid('active', 'inactive'),
+}).min(1);
 
 const academySubjectBody = Joi.object({
   subjectName: Joi.string().trim().required(),

@@ -210,7 +210,15 @@ export default function DisciplinesTab({
   });
 
   const defaultsMut = useMutation({
-    mutationFn: () => createStandardDisciplines(classId),
+    mutationFn: () => {
+      if (!writable) {
+        throw new Error("Switch to the active academic session to make changes.");
+      }
+      if (!classId) {
+        throw new Error("Select a class first, then add Medical / Engineering / ICS.");
+      }
+      return createStandardDisciplines(classId);
+    },
     onSuccess: (res) => {
       const linkedMsg =
         res.linked?.length
@@ -224,6 +232,26 @@ export default function DisciplinesTab({
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
+
+  const runDefaults = () => {
+    if (!writable) {
+      toast({
+        title: "Active session required",
+        description: "Switch to the active academic session to add streams.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!classId) {
+      toast({
+        title: "Select a class",
+        description: "Choose a class from the list, then click Add Medical / Eng / ICS.",
+        variant: "destructive",
+      });
+      return;
+    }
+    defaultsMut.mutate();
+  };
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteAcademyDiscipline(id),
@@ -311,11 +339,11 @@ export default function DisciplinesTab({
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 gap-1.5 rounded-lg border-[#D6E4F7] bg-white px-4 text-sm font-semibold text-[#10244A] hover:bg-[#F4F8FF]"
-                disabled={!classId || !writable || defaultsMut.isPending}
-                onClick={() => defaultsMut.mutate()}
+                className="h-11 cursor-pointer gap-1.5 rounded-lg border-[#1769E0]/50 bg-[#EEF5FF] px-4 text-sm font-semibold text-[#1769E0] shadow-none hover:bg-[#1769E0] hover:text-white disabled:pointer-events-none disabled:opacity-60"
+                disabled={defaultsMut.isPending}
+                onClick={runDefaults}
               >
-                <Sparkles className="h-4 w-4 text-[#1769E0]" />
+                <Sparkles className="h-4 w-4" />
                 {defaultsMut.isPending ? "Adding…" : "Add Medical / Eng / ICS"}
               </Button>
               <Button

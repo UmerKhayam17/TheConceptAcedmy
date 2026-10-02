@@ -8,10 +8,24 @@ const v1 = require('./routes/v1');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { protectUpload } = require('./middleware/auth');
 
-const clientOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+const clientOrigins = (process.env.CLIENT_URL || 'http://localhost:5173,http://localhost:8080,https://localhost:8080')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+
+// Always allow local Vite HTTPS/HTTP origins in development (proxy + direct API).
+if (process.env.NODE_ENV !== 'production') {
+  [
+    'http://localhost:8080',
+    'https://localhost:8080',
+    'http://127.0.0.1:8080',
+    'https://127.0.0.1:8080',
+    'http://localhost:5173',
+    'https://localhost:5173',
+  ].forEach((o) => {
+    if (!clientOrigins.includes(o)) clientOrigins.push(o);
+  });
+}
 
 const app = express();
 

@@ -140,6 +140,11 @@ router.post(
   validate(schemas.academySubjectBulkChoiceBody),
   subjectCtrl.createBulkChoice
 );
+router.post(
+  '/classes/:classId/subjects/defaults',
+  requirePermission('manage_academy_subjects'),
+  subjectCtrl.createDefaults
+);
 router.get(
   '/classes/:classId/enrollment-subjects',
   requireAnyPermission('view_academy_students', 'manage_academy_students', 'manage_academy_subjects'),

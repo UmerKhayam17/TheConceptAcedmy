@@ -566,6 +566,14 @@ export const createAcademySubject = (body: {
   pickCount?: number;
 }) => api<AcademySubject>("/subjects", { method: "POST", body: JSON.stringify(body) });
 
+/** Create standard core subjects for a class (English, Maths, Sciences, …). Idempotent. */
+export const createStandardSubjects = (classId: string) =>
+  api<{
+    created: number;
+    skipped: number;
+    subjects: AcademySubject[];
+  }>(`/classes/${classId}/subjects/defaults`, { method: "POST" });
+
 export const updateAcademySubject = (
   id: string,
   body: Partial<AcademySubject> & {
@@ -1018,6 +1026,25 @@ export type DashboardOverview = {
     expensesByCategory: { category: string; total: number; count: number }[];
     studentsByClass: { classId: string | null; className: string; count: number }[];
     genderDistribution: { name: string; value: number }[];
+    feesByClass?: {
+      classId: string | null;
+      className: string;
+      assessed: number;
+      collected: number;
+      outstanding: number;
+      pct: number;
+    }[];
+    paymentMethods?: { key: string; name: string; amount: number; count: number }[];
+    revenueByFeeType?: {
+      label: string;
+      month: number;
+      year: number;
+      monthly: number;
+      admission: number;
+      stationery: number;
+    }[];
+    agingBuckets?: { label: string; amount: number; students: number }[];
+    studentPaymentStatus?: { name: string; students: number; pct: number }[];
   };
   widgets: {
     upcomingExams: {
@@ -1055,8 +1082,29 @@ export type DashboardOverview = {
       month: number;
       year: number;
       voucherNumber: string;
+      paymentMethod?: string;
       studentName: string;
       studentId: string;
+    }[];
+    recentExpenses?: {
+      id: string;
+      title: string;
+      amount: number;
+      expenseDate: string;
+      category: string;
+      paymentMethod: string;
+      vendor: string;
+      status: string;
+    }[];
+    recentSalaries?: {
+      id: string;
+      amount: number;
+      month: number;
+      year: number;
+      status: string;
+      paymentMethod: string;
+      paidAt: string | null;
+      staffName: string;
     }[];
     recentAnnouncements: {
       id: string;

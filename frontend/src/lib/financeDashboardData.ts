@@ -1,7 +1,6 @@
 /**
- * Coherent demonstration dataset for the Finance Dashboard.
- * Replace with live API data when backend finance overview is available.
- * Invariant: assessedFees = feesCollected + outstandingFees
+ * Shared finance dashboard types, colors, and formatting helpers.
+ * Live figures come from `/dashboard/overview` via FinanceDashboard.
  */
 
 export const FINANCE_CURRENCY = "PKR";
