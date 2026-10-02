@@ -26,6 +26,8 @@ export type AiPerson = {
   kind: "student" | "staff";
   id: string;
   name: string;
+  /** Present for students — used to disambiguate same names. */
+  fatherName?: string;
   label: string;
   aiEmployeeId: string;
   hasPhoto: boolean;
