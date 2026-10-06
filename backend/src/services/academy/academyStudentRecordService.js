@@ -151,6 +151,8 @@ function assessmentSummary(assessments) {
 async function getStudentRecord(id) {
   const student = await AcademyStudent.findById(id)
     .populate('classId', 'className totalSubjects sessionId')
+    .populate('sectionId', 'sectionName')
+    .populate('disciplineId', 'name code')
     .populate('selectedSubjects', 'subjectName subjectCode')
     .populate('feeStructureId')
     .populate('createdBy', 'name email');
@@ -172,7 +174,17 @@ async function getStudentRecord(id) {
         .populate('subjectId', 'subjectName subjectCode'),
       AcademyAssessment.find({ studentId: id })
         .sort({ examDate: -1 })
-        .populate('subjectId', 'subjectName subjectCode'),
+        .populate('subjectId', 'subjectName subjectCode')
+        .populate('createdBy', 'name email')
+        .populate('recordedBy', 'name email')
+        .populate({
+          path: 'classTestId',
+          select: 'title createdBy teacherId seriesLabel',
+          populate: [
+            { path: 'createdBy', select: 'name email' },
+            { path: 'teacherId', select: 'name email' },
+          ],
+        }),
     ]);
 
   const enrolledIds = new Set(resolveEnrolledSubjectIds(student, allClassSubjects));

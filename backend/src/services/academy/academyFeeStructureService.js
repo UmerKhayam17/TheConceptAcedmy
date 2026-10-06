@@ -74,7 +74,11 @@ function calculateFeesFromStructure(feeStructure, { selectedSubjectIds, isFullPa
   return { monthlyFee, admissionFee, subtotal: monthlyFee + admissionFee };
 }
 
-/** Apply PKR discounts to first payment; list prices stay unchanged for billing. */
+/** Apply PKR discounts.
+ *  First month (enrollment): monthly + admission − discounts → totalFee
+ *  Later months: monthly − monthlyFeeDiscount (applied in fee generation)
+ *  List prices stay on the student for reporting.
+ */
 function applyDiscount(fees, discountOptions = {}) {
   const subtotal = fees.subtotal ?? fees.monthlyFee + fees.admissionFee;
   const monthlyInput = Math.max(0, Number(discountOptions.monthlyFeeDiscount) || 0);

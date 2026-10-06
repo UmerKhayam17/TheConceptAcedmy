@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { GripVertical, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { subjectIcon } from "@/lib/subjectTheme";
 import { scheduleSlotEntries, type ScheduleSlot } from "@/lib/timetableApi";
 import { subjectColor } from "./constants";
 
@@ -30,6 +31,7 @@ export default function TimetableSlotCard({
   const isChoice = entries.length > 1;
   const title = entries.map((e) => e.subject.name).join(" / ");
   const didDragRef = useRef(false);
+  const PrimaryIcon = subjectIcon(entries[0]?.subject.name || slot.subject?.name);
 
   return (
     <div
@@ -70,14 +72,21 @@ export default function TimetableSlotCard({
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-sm leading-snug">{title}</div>
+          <div className="font-semibold text-sm leading-snug inline-flex items-center gap-1.5 min-w-0">
+            <PrimaryIcon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+            <span className="truncate">{title}</span>
+          </div>
           {isChoice ? (
             <div className="mt-1 space-y-0.5">
-              {entries.map((e) => (
-                <div key={e.subject._id} className="text-xs opacity-80">
-                  {e.subject.name}: {e.teacher.name}
-                </div>
-              ))}
+              {entries.map((e) => {
+                const Icon = subjectIcon(e.subject.name);
+                return (
+                  <div key={e.subject._id} className="text-xs opacity-80 inline-flex items-center gap-1">
+                    <Icon className="h-3 w-3 shrink-0" aria-hidden />
+                    {e.subject.name}: {e.teacher.name}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-xs opacity-80">{slot.teacher.name}</div>

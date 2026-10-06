@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import type { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import {
@@ -11,13 +10,15 @@ import {
   type StudentManagementSection,
 } from "@/lib/studentManagementMenus";
 import { useAuth } from "@/hooks/useAuth";
-import SessionBar, { useActiveSessionId } from "@/components/modules/timetable/SessionBar";
+import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import ClassesTab from "@/components/modules/student-management/ClassesTab";
 import SectionsTab from "@/components/modules/student-management/SectionsTab";
 import SubjectsTab from "@/components/modules/student-management/SubjectsTab";
+import DisciplinesTab from "@/components/modules/student-management/DisciplinesTab";
 import FeeStructureTab from "@/components/modules/student-management/FeeStructureTab";
 import RegistrationTab from "@/components/modules/student-management/RegistrationTab";
 import RegisterStudentPage from "@/components/modules/student-management/RegisterStudentPage";
+import EnrollmentActivatePage from "@/components/modules/student-management/EnrollmentActivatePage";
 import StudentDetailPage from "@/components/modules/student-management/StudentDetailPage";
 import ClassDetailPage from "@/components/modules/student-management/ClassDetailPage";
 
@@ -35,8 +36,7 @@ const StudentManagementModule = ({
 }) => {
   const { user } = useAuth();
   const role = user?.role ?? "admin";
-  const [sessionId, setSessionId] = useState("");
-  useActiveSessionId(sessionId, setSessionId);
+  const { sessionId } = usePanelSession();
 
   const registrationRoutes = user?.role ? academyStudentRoutes(user.role, "registration") : null;
   const registrationList = registrationRoutes?.list ?? "../registration";
@@ -54,12 +54,9 @@ const StudentManagementModule = ({
         if (subAction === "activate") {
           if (!caps.canEdit) return <Navigate to={registrationRoutes?.detail(action) ?? registrationList} replace />;
           return (
-            <RegisterStudentPage
-              caps={caps}
+            <EnrollmentActivatePage
               studentId={action}
-              mode="activate"
               routes={registrationRoutes ?? undefined}
-              sessionId={sessionId}
             />
           );
         }
@@ -108,6 +105,7 @@ const StudentManagementModule = ({
     if (section === "classes") return <ClassesTab caps={caps} sessionId={sessionId} />;
     if (section === "sections") return <SectionsTab caps={caps} sessionId={sessionId} />;
     if (section === "subjects") return <SubjectsTab caps={caps} sessionId={sessionId} />;
+    if (section === "disciplines") return <DisciplinesTab caps={caps} sessionId={sessionId} />;
     if (section === "fees-structure") return <FeeStructureTab caps={caps} sessionId={sessionId} />;
     if (section === "registration") {
       return <RegistrationTab caps={caps} routes={registrationRoutes ?? undefined} sessionId={sessionId} enrollmentFlow="intake" />;
@@ -115,12 +113,7 @@ const StudentManagementModule = ({
     return null;
   };
 
-  return (
-    <div>
-      <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />
-      {renderBody()}
-    </div>
-  );
+  return <div>{renderBody()}</div>;
 };
 
 export default StudentManagementModule;

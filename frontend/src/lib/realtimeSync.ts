@@ -18,9 +18,9 @@ const RESOURCE_KEYS: Record<string, string[][]> = {
   sections: [["academy-sections"]],
   subjects: [["academy-subjects"], ["enrollment-subjects"]],
   feeStructures: [["academy-fee-structures"], ["fee-preview"]],
-  fees: [["academy-fees"], ["academy-fees-summary"], ["academy-fee-summary"], ["fee-defaulters"]],
-  salaries: [["academy-salaries"], ["academy-salary-summary"]],
-  expenses: [["academy-expenses"], ["academy-expense-summary"]],
+  fees: [["academy-fees"], ["academy-fees-summary"], ["academy-fee-summary"], ["fee-defaulters"], ["finance-dashboard-overview"], ["finance-dashboard-defaulters"]],
+  salaries: [["academy-salaries"], ["academy-salary-summary"], ["finance-dashboard-overview"]],
+  expenses: [["academy-expenses"], ["academy-expense-summary"], ["finance-dashboard-overview"]],
   attendance: [
     ["academy-attendance"],
     ["academy-attendance-day"],

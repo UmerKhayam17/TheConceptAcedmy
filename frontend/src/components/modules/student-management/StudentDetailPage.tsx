@@ -34,16 +34,18 @@ import {
 } from "@/lib/studentManagementApi";
 import { fetchStudentExamResults, type ExamResult } from "@/lib/examApi";
 import AssessmentFormDialog from "@/components/modules/exams/AssessmentFormDialog";
+import TestPaperCapture from "@/components/modules/exams/TestPaperCapture";
 import AcademyFeesManagement from "@/components/modules/student-management/AcademyFeesManagement";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { getAccessToken } from "@/lib/auth";
+import { createdByLabel } from "@/lib/createdBy";
+import CreatedByLine from "@/components/modules/CreatedByLine";
 import { getApiRoot } from "@/lib/api";
 import {
   academyStudentRoutes,
   type AcademyStudentRoutes,
 } from "@/lib/studentManagementMenus";
-import CreatedByLine from "@/components/modules/CreatedByLine";
 import {
   classLabel,
   examPercentage,
@@ -117,7 +119,10 @@ function DataTable({
         <thead className="bg-muted/50 border-b">
           <tr>
             {headers.map((h) => (
-              <th key={h} className="text-left p-3 font-medium">
+              <th
+                key={h}
+                className={`p-3 font-medium ${h === "Media" ? "text-center" : "text-left"}`}
+              >
                 {h}
               </th>
             ))}
@@ -127,7 +132,10 @@ function DataTable({
           {rows.map((cells, i) => (
             <tr key={i} className="border-b last:border-0">
               {cells.map((cell, j) => (
-                <td key={j} className="p-3">
+                <td
+                  key={j}
+                  className={`p-3 ${headers[j] === "Media" ? "text-center align-middle" : ""}`}
+                >
                   {cell}
                 </td>
               ))}
@@ -155,17 +163,16 @@ function StatusBadge({ status }: { status: string }) {
   };
   return (
     <span
-      className={`inline-flex text-xs font-semibold rounded-full px-2 py-0.5 capitalize ${
-        colors[status] || "bg-muted text-muted-foreground"
-      }`}
+      className={`inline-flex text-xs font-semibold rounded-full px-2 py-0.5 capitalize ${colors[status] || "bg-muted text-muted-foreground"
+        }`}
     >
       {label}
     </span>
   );
 }
 
-function ProfileTab({ student }: { student: AcademyStudent }) {
-  const subtotal = student.monthlyFee + student.admissionFee;
+function ProfileTab({ student, hideSensitive = false }: { student: AcademyStudent; hideSensitive?: boolean }) {
+  const subtotal = (student.monthlyFee || 0) + (student.admissionFee || 0);
   const photoSrc = student.photoImage ? resolveUploadUrl(student.photoImage) : null;
 
   return (
@@ -208,15 +215,17 @@ function ProfileTab({ student }: { student: AcademyStudent }) {
           <DetailRow label="CNIC" value={student.fatherGuardianCnic} />
           <DetailRow label="Occupation" value={student.guardianOccupation} />
           <DetailRow label="Work address" value={student.guardianWorkAddress} />
-          <DetailRow label="Guardian email" value={student.guardianEmail} />
+          {!hideSensitive && (
+            <DetailRow label="Parent portal email" value={student.guardianEmail} />
+          )}
         </div>
       </section>
 
       <section className="rounded-lg border p-4 space-y-3">
         <SectionTitle>Contact & address</SectionTitle>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
-          <DetailRow label="Mobile" value={student.phone} />
-          <DetailRow label="Residence phone" value={student.contactPhoneRes} />
+          {!hideSensitive && <DetailRow label="Mobile" value={student.phone} />}
+          {!hideSensitive && <DetailRow label="Residence phone" value={student.contactPhoneRes} />}
           <DetailRow label="Postal address" value={student.postalAddress || student.address} />
           <DetailRow label="Permanent address" value={student.permanentAddress} />
         </div>
@@ -244,24 +253,59 @@ function ProfileTab({ student }: { student: AcademyStudent }) {
         </section>
       )}
 
-      <section className="rounded-lg border p-4 space-y-3">
-        <SectionTitle>Fee structure at registration</SectionTitle>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+      {!hideSensitive && (
+        <section className="rounded-lg border p-4 space-y-3">
+          <SectionTitle>Fee structure at registration</SectionTitle>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+            <DetailRow label="Class" value={classLabel(student.classId)} />
+            {student.disciplineId && (
+              <DetailRow
+                label="Discipline"
+                value={
+                  typeof student.disciplineId === "object"
+                    ? student.disciplineId.name
+                    : String(student.disciplineId)
+                }
+              />
+            )}
+            <DetailRow label="Monthly fee" value={formatPkr(student.monthlyFee)} />
+            <DetailRow label="Admission fee" value={formatPkr(student.admissionFee)} />
+            <DetailRow label="Monthly fee discount" value={formatPkr(student.monthlyFeeDiscount)} />
+            <DetailRow label="Admission fee discount" value={formatPkr(student.admissionFeeDiscount)} />
+            {(student.discountAmount ?? 0) > 0 &&
+              !(student.monthlyFeeDiscount || student.admissionFeeDiscount) ? (
+              <DetailRow label="Combined discount (legacy)" value={formatPkr(student.discountAmount)} />
+            ) : (
+              <DetailRow label="Total discount" value={formatPkr(student.discountAmount)} />
+            )}
+            <DetailRow label="Subtotal" value={formatPkr(subtotal)} />
+            <DetailRow label="First month challan (monthly + admission − discounts)" value={formatPkr(student.totalFee)} />
+            <DetailRow
+              label="Later months (monthly − discount)"
+              value={formatPkr(
+                Math.max(0, (student.monthlyFee || 0) - (student.monthlyFeeDiscount || 0)),
+              )}
+            />
+          </div>
+        </section>
+      )}
+
+      {hideSensitive && (
+        <section className="rounded-lg border p-4 space-y-3">
+          <SectionTitle>Class</SectionTitle>
           <DetailRow label="Class" value={classLabel(student.classId)} />
-          <DetailRow label="Monthly fee" value={formatPkr(student.monthlyFee)} />
-          <DetailRow label="Admission fee" value={formatPkr(student.admissionFee)} />
-          <DetailRow label="Monthly fee discount" value={formatPkr(student.monthlyFeeDiscount)} />
-          <DetailRow label="Admission fee discount" value={formatPkr(student.admissionFeeDiscount)} />
-          {(student.discountAmount ?? 0) > 0 &&
-          !(student.monthlyFeeDiscount || student.admissionFeeDiscount) ? (
-            <DetailRow label="Combined discount (legacy)" value={formatPkr(student.discountAmount)} />
-          ) : (
-            <DetailRow label="Total discount" value={formatPkr(student.discountAmount)} />
+          {student.disciplineId && (
+            <DetailRow
+              label="Discipline"
+              value={
+                typeof student.disciplineId === "object"
+                  ? student.disciplineId.name
+                  : String(student.disciplineId)
+              }
+            />
           )}
-          <DetailRow label="Subtotal" value={formatPkr(subtotal)} />
-          <DetailRow label="First payment (total)" value={formatPkr(student.totalFee)} />
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }
@@ -280,6 +324,16 @@ function EnrollmentTab({ record }: { record: AcademyStudentRecord }) {
           value={enrollment.isFullPackage ? "Full package" : "Selected subjects"}
         />
         <SummaryCard label="Class" value={classLabel(student.classId)} />
+        {student.disciplineId && (
+          <SummaryCard
+            label="Discipline"
+            value={
+              typeof student.disciplineId === "object"
+                ? student.disciplineId.name
+                : String(student.disciplineId)
+            }
+          />
+        )}
       </div>
 
       {subjects.length === 0 ? (
@@ -403,8 +457,10 @@ function TestsTab({
   const [search, setSearch] = useState("");
   const recordsFiltered = useMemo(() => {
     if (!search.trim()) return records;
-    return records.filter((r) =>
-      matchesPanelSearch(
+    return records.filter((r) => {
+      const classTest =
+        r.classTestId && typeof r.classTestId === "object" ? r.classTestId : null;
+      return matchesPanelSearch(
         search,
         r.title,
         r.assessmentType,
@@ -412,9 +468,11 @@ function TestsTab({
         r.remarks,
         r.subjectId ? subjectName(r.subjectId as AcademySubject) : "",
         r.obtainedMarks,
-        r.totalMarks
-      )
-    );
+        r.totalMarks,
+        createdByLabel(classTest?.createdBy || classTest?.teacherId || r.createdBy),
+        createdByLabel(r.recordedBy || r.createdBy)
+      );
+    });
   }, [records, search]);
 
   const { data: termResults = [] } = useQuery({
@@ -483,44 +541,75 @@ function TestsTab({
           <EmptyBlock message="No tests match your search." />
         ) : (
           <DataTable
-            headers={["Date", "Title", "Type", "Subject", "Obtained", "Total", "%", "Remarks", ""]}
-            rows={recordsFiltered.map((r: AcademyAssessmentRecord) => [
-              formatDate(r.examDate),
-              r.title,
-              ASSESSMENT_TYPE_LABELS[r.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
+            headers={[
+              "Date",
+              "Title",
+              "Type",
+              "Subject",
+              "Obtained",
+              "Total",
+              "%",
+              "Media",
+              "Test created by",
+              "Marks by",
+              "Remarks",
+              "",
+            ]}
+            rows={recordsFiltered.map((r: AcademyAssessmentRecord) => {
+              const classTest =
+                r.classTestId && typeof r.classTestId === "object" ? r.classTestId : null;
+              const testCreatedBy =
+                classTest?.createdBy || classTest?.teacherId || r.createdBy;
+              const marksBy = r.recordedBy || r.createdBy;
+              return [
+                formatDate(r.examDate),
+                r.title,
+                ASSESSMENT_TYPE_LABELS[r.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
                 r.assessmentType,
-              r.subjectId ? subjectName(r.subjectId as AcademySubject) : "—",
-              r.obtainedMarks,
-              r.totalMarks,
-              examPercentage(r.obtainedMarks, r.totalMarks),
-              r.remarks || "—",
-              canManageTests ? (
-                <span className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setEditing(r);
-                      setDialogOpen(true);
-                    }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive"
-                    onClick={() => {
-                      if (window.confirm("Delete this test?")) deleteMut.mutate(r._id);
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </span>
-              ) : (
-                "—"
-              ),
-            ])}
+                r.subjectId ? subjectName(r.subjectId as AcademySubject) : "—",
+                r.obtainedMarks,
+                r.totalMarks,
+                examPercentage(r.obtainedMarks, r.totalMarks),
+                r.testPaperImage ? (
+                  <TestPaperCapture
+                    value={r.testPaperImage}
+                    disabled
+                    onPick={() => undefined}
+                  />
+                ) : (
+                  <span className="text-xs text-muted-foreground">No image</span>
+                ),
+                createdByLabel(testCreatedBy),
+                createdByLabel(marksBy),
+                r.remarks || "—",
+                canManageTests ? (
+                  <span className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditing(r);
+                        setDialogOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => {
+                        if (window.confirm("Delete this test?")) deleteMut.mutate(r._id);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </span>
+                ) : (
+                  "—"
+                ),
+              ];
+            })}
           />
         )}
       </div>
@@ -634,6 +723,9 @@ export default function StudentDetailPage({
 
   const { student, enrollment, attendance, fees, assessments } = record;
   const isPending = student.status === "pending_fee";
+  const isParent = user?.role === "parent";
+  const isTeacher = user?.role === "teacher";
+  const hideSensitive = isTeacher;
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-4 space-y-4">
@@ -655,7 +747,7 @@ export default function StudentDetailPage({
               ? [student.rollNumber, student.registrationNumber].filter(Boolean).join(" · ") || "Pending admission"
               : [student.rollNumber, student.studentId].filter(Boolean).join(" · ")}
           </p>
-          {student.phone && (
+          {!hideSensitive && student.phone && (
             <p className="text-xs text-muted-foreground">{student.phone}</p>
           )}
           <p className="text-xs text-muted-foreground">
@@ -688,28 +780,35 @@ export default function StudentDetailPage({
           (section, subjects, roll number, and portal logins).
         </div>
       ) : (
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-muted/25 px-4 py-2.5">
-        <QuickStat label="Subjects" value={enrollment.subjectCount} />
-        <QuickStat
-          label="Attendance"
-          value={
-            attendance.summary.attendanceRate != null
-              ? `${attendance.summary.attendanceRate}%`
-              : "—"
-          }
-        />
-        <QuickStat label="Fees" value={fees.summary.recordsCount} />
-        <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />
-        <QuickStat label="Tests" value={assessments.summary.count} />
-        <QuickStat
-          label="Avg %"
-          value={
-            assessments.summary.averagePercentage != null
-              ? `${assessments.summary.averagePercentage}%`
-              : "—"
-          }
-        />
-      </div>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-muted/25 px-4 py-2.5">
+          <QuickStat label="Subjects" value={enrollment.subjectCount} />
+          <QuickStat
+            label="Attendance"
+            value={
+              attendance.summary.attendanceRate != null
+                ? `${attendance.summary.attendanceRate}%`
+                : "—"
+            }
+          />
+          {!hideSensitive && (
+            <>
+              <QuickStat
+                label={isParent ? "Paid fees" : "Fees"}
+                value={isParent ? formatPkr(fees.summary.totalPaid) : fees.summary.recordsCount}
+              />
+              {!isParent && <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />}
+            </>
+          )}
+          <QuickStat label="Tests" value={assessments.summary.count} />
+          <QuickStat
+            label="Avg %"
+            value={
+              assessments.summary.averagePercentage != null
+                ? `${assessments.summary.averagePercentage}%`
+                : "—"
+            }
+          />
+        </div>
       )}
 
       <Tabs defaultValue="profile" className="w-full">
@@ -718,62 +817,66 @@ export default function StudentDetailPage({
             <User className="h-3.5 w-3.5" /> Profile
           </TabsTrigger>
           {!isPending && (
-          <>
-          <TabsTrigger value="enrollment" className="gap-1.5">
-            <BookOpen className="h-3.5 w-3.5" /> Enrollment ({enrollment.subjectCount})
-          </TabsTrigger>
-          <TabsTrigger value="timetable" className="gap-1.5">
-            <Calendar className="h-3.5 w-3.5" /> Timetable
-          </TabsTrigger>
-          <TabsTrigger value="attendance" className="gap-1.5">
-            <ClipboardList className="h-3.5 w-3.5" /> Attendance
-          </TabsTrigger>
-          <TabsTrigger value="fees" className="gap-1.5">
-            <Receipt className="h-3.5 w-3.5" /> Fees
-          </TabsTrigger>
-          <TabsTrigger value="tests" className="gap-1.5">
-            <GraduationCap className="h-3.5 w-3.5" /> Test reports
-          </TabsTrigger>
-          </>
+            <>
+              <TabsTrigger value="enrollment" className="gap-1.5">
+                <BookOpen className="h-3.5 w-3.5" /> Enrollment ({enrollment.subjectCount})
+              </TabsTrigger>
+              <TabsTrigger value="timetable" className="gap-1.5">
+                <Calendar className="h-3.5 w-3.5" /> Timetable
+              </TabsTrigger>
+              <TabsTrigger value="attendance" className="gap-1.5">
+                <ClipboardList className="h-3.5 w-3.5" /> Attendance
+              </TabsTrigger>
+              {!hideSensitive && (
+                <TabsTrigger value="fees" className="gap-1.5">
+                  <Receipt className="h-3.5 w-3.5" /> Fees
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="tests" className="gap-1.5">
+                <GraduationCap className="h-3.5 w-3.5" /> Test reports
+              </TabsTrigger>
+            </>
           )}
         </TabsList>
 
         <TabsContent value="profile" className="mt-3 focus-visible:outline-none">
-          <ProfileTab student={student} />
+          <ProfileTab student={student} hideSensitive={hideSensitive} />
         </TabsContent>
         {!isPending && (
-        <>
-        <TabsContent value="enrollment" className="mt-3 focus-visible:outline-none">
-          <EnrollmentTab record={record} />
-        </TabsContent>
-        <TabsContent value="timetable" className="mt-3 focus-visible:outline-none">
-          <TimetableTab slots={record.timetable} />
-        </TabsContent>
-        <TabsContent value="attendance" className="mt-3 focus-visible:outline-none">
-          <AttendanceTab record={record} />
-        </TabsContent>
-        <TabsContent value="fees" className="mt-3 focus-visible:outline-none">
-          <AcademyFeesManagement
-            caps={caps}
-            studentId={studentId}
-            routes={routes ?? undefined}
-            showGenerate={false}
-            showFilters={false}
-          />
-        </TabsContent>
-        <TabsContent value="tests" className="mt-3 focus-visible:outline-none">
-          <TestsTab
-            record={record}
-            studentId={studentId}
-            classId={
-              typeof student.classId === "object" && student.classId
-                ? student.classId._id
-                : String(student.classId)
-            }
-            caps={caps}
-          />
-        </TabsContent>
-        </>
+          <>
+            <TabsContent value="enrollment" className="mt-3 focus-visible:outline-none">
+              <EnrollmentTab record={record} />
+            </TabsContent>
+            <TabsContent value="timetable" className="mt-3 focus-visible:outline-none">
+              <TimetableTab slots={record.timetable} />
+            </TabsContent>
+            <TabsContent value="attendance" className="mt-3 focus-visible:outline-none">
+              <AttendanceTab record={record} />
+            </TabsContent>
+            {!hideSensitive && (
+              <TabsContent value="fees" className="mt-3 focus-visible:outline-none">
+                <AcademyFeesManagement
+                  caps={caps}
+                  studentId={studentId}
+                  routes={routes ?? undefined}
+                  showGenerate={false}
+                  showFilters={false}
+                />
+              </TabsContent>
+            )}
+            <TabsContent value="tests" className="mt-3 focus-visible:outline-none">
+              <TestsTab
+                record={record}
+                studentId={studentId}
+                classId={
+                  typeof student.classId === "object" && student.classId
+                    ? student.classId._id
+                    : String(student.classId)
+                }
+                caps={caps}
+              />
+            </TabsContent>
+          </>
         )}
       </Tabs>
     </div>

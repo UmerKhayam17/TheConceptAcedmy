@@ -15,6 +15,7 @@ router.post('/:id/profile-photo', requirePermission('manage_users'), uploadImage
 router.get('/', requirePermission('manage_users'), ctrl.listUsers);
 router.post('/', requirePermission('manage_users'), validate(schemas.createUser), ctrl.createUser);
 router.patch('/:id', requirePermission('manage_users'), validate(schemas.updateUser), ctrl.updateUser);
+router.delete('/:id', requirePermission('manage_users'), ctrl.deleteUser);
 router.patch('/:id/permissions', requirePermission('manage_roles'), validate(schemas.userPermissions), ctrl.patchPermissions);
 router.patch('/:id/module-permissions', requirePermission('manage_roles'), ctrl.patchModulePermissions);
 router.delete('/:id/module-permissions', requirePermission('manage_roles'), ctrl.revokeModulePermissions);

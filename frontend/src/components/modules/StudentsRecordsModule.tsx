@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import type { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import {
@@ -6,7 +5,7 @@ import {
   isAcademyStudentId,
 } from "@/lib/studentManagementMenus";
 import { useAuth } from "@/hooks/useAuth";
-import SessionBar, { useActiveSessionId } from "@/components/modules/timetable/SessionBar";
+import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import RegistrationTab from "@/components/modules/student-management/RegistrationTab";
 import RegisterStudentPage from "@/components/modules/student-management/RegisterStudentPage";
 import StudentDetailPage from "@/components/modules/student-management/StudentDetailPage";
@@ -24,8 +23,7 @@ const StudentsRecordsModule = ({
 }) => {
   const { user } = useAuth();
   const role = user?.role ?? "admin";
-  const [sessionId, setSessionId] = useState("");
-  useActiveSessionId(sessionId, setSessionId);
+  const { sessionId } = usePanelSession();
 
   const routes = user?.role ? academyStudentRoutes(user.role, "records") : null;
   const listHref = routes?.list ?? "..";
@@ -82,12 +80,7 @@ const StudentsRecordsModule = ({
     );
   })();
 
-  return (
-    <div>
-      <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />
-      {body}
-    </div>
-  );
+  return <div>{body}</div>;
 };
 
 export default StudentsRecordsModule;

@@ -36,8 +36,6 @@ import {
   Tag,
   Trash2,
   KeyRound,
-  Eye,
-  EyeOff,
   ImageIcon,
   User,
   Users,
@@ -63,6 +61,7 @@ import {
 } from "@/lib/studentManagementMenus";
 import {
   fetchAcademyClasses,
+  fetchDisciplinesByClassWithMeta,
   fetchEnrollmentSubjects,
   fetchSectionsByClass,
   getAcademyStudent,
@@ -276,7 +275,6 @@ export default function RegisterStudentPage({
   const [form, setForm] = useState(defaultRegisterForm);
   const [feePreview, setFeePreview] = useState<FeePreview | null>(null);
   const [formReady, setFormReady] = useState(!studentId);
-  const [showParentPassword, setShowParentPassword] = useState(false);
   const [choiceSelections, setChoiceSelections] = useState<Record<string, string>>({});
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -354,13 +352,39 @@ export default function RegisterStudentPage({
     enabled: isEdit || isActivate || isDirect || Boolean(sessionId),
   });
 
+  const { data: disciplineResult } = useQuery({
+    queryKey: ["academy-disciplines", form.classId],
+    queryFn: () => fetchDisciplinesByClassWithMeta(form.classId, { status: "active" }),
+    enabled: Boolean(form.classId),
+  });
+  const disciplines = disciplineResult?.data ?? [];
+  const requiresDiscipline = Boolean(disciplineResult?.meta?.requiresDiscipline);
+
   const { data: enrollmentLayout, isLoading: enrollmentLoading } = useQuery({
-    queryKey: ["enrollment-subjects", form.classId, form.sectionId],
-    queryFn: () => fetchEnrollmentSubjects(form.classId, form.sectionId),
-    enabled: Boolean(form.classId) && Boolean(form.sectionId),
+    queryKey: ["enrollment-subjects", form.classId, form.sectionId, form.disciplineId],
+    queryFn: () =>
+      fetchEnrollmentSubjects(
+        form.classId,
+        form.sectionId,
+        form.disciplineId || undefined,
+      ),
+    enabled:
+      Boolean(form.classId) &&
+      Boolean(form.sectionId) &&
+      (!requiresDiscipline || Boolean(form.disciplineId)),
   });
 
   const hasChoiceGroups = Boolean(enrollmentLayout?.hasChoiceGroups);
+  const sharedSubjects = enrollmentLayout?.sharedSubjects?.length
+    ? enrollmentLayout.sharedSubjects
+    : null;
+  const streamSubjects = enrollmentLayout?.streamSubjects?.length
+    ? enrollmentLayout.streamSubjects
+    : null;
+  const displayCoreSubjects =
+    sharedSubjects || streamSubjects
+      ? [...(sharedSubjects || []), ...(streamSubjects || [])]
+      : enrollmentLayout?.coreSubjects ?? [];
 
   useEffect(() => {
     if (!enrollmentLayout?.hasChoiceGroups || !formReady) return;
@@ -594,6 +618,7 @@ export default function RegisterStudentPage({
     }
     if (!form.classId) missing.push("Class");
     if (!form.sectionId) missing.push("Section");
+    if (requiresDiscipline && !form.disciplineId) missing.push("Discipline / Stream");
     if (!subjectSelectionValid) {
       if (form.isFullPackage && hasChoiceGroups) {
         missing.push("One elective per group (section 6)");
@@ -620,6 +645,7 @@ export default function RegisterStudentPage({
     && (!form.contactPhoneRes.trim() || isValidLandline(form.contactPhoneRes))
     && form.classId
     && form.sectionId
+    && (!requiresDiscipline || Boolean(form.disciplineId))
     && subjectSelectionValid
     && (isEdit || isAccountsEnrollment
       ? true
@@ -666,34 +692,34 @@ export default function RegisterStudentPage({
   const formBody = (
     <div className={cn(asDialog ? "space-y-6" : "space-y-10")}>
       {!asDialog && (
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-6">
-        <div className="space-y-1">
-          <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 mb-2" asChild>
-            <Link to={isEdit ? detailHref : listHref}>
-              <ArrowLeft className="h-4 w-4" /> {isEdit ? "Back to student" : listBackLabel}
-            </Link>
-          </Button>
-          <h2 className="font-display text-xl sm:text-2xl font-semibold text-primary">
-            {isActivate
-              ? "Complete admission & activate"
-              : isDirect
-                ? "Register student"
-              : isEdit
-                ? "Edit student"
-                : "Register new student"}
-          </h2>
-          {isActivate && !existingStudent && (
-            <p className="text-sm text-muted-foreground">
-              Confirm student details, assign section and subjects, then activate.
-            </p>
-          )}
-          {isDirect && (
-            <p className="text-sm text-muted-foreground">
-              Complete the student profile, assign section and subjects, then register.
-            </p>
-          )}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b pb-6">
+          <div className="space-y-1">
+            <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 mb-2" asChild>
+              <Link to={isEdit ? detailHref : listHref}>
+                <ArrowLeft className="h-4 w-4" /> {isEdit ? "Back to student" : listBackLabel}
+              </Link>
+            </Button>
+            <h2 className="font-display text-xl sm:text-2xl font-semibold text-primary">
+              {isActivate
+                ? "Complete admission & activate"
+                : isDirect
+                  ? "Register student"
+                  : isEdit
+                    ? "Edit student"
+                    : "Register new student"}
+            </h2>
+            {isActivate && !existingStudent && (
+              <p className="text-sm text-muted-foreground">
+                Confirm student details, assign section and subjects, then activate.
+              </p>
+            )}
+            {isDirect && (
+              <p className="text-sm text-muted-foreground">
+                Complete the student profile, assign section and subjects, then register.
+              </p>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {isActivate && existingStudent ? (
@@ -877,26 +903,22 @@ export default function RegisterStudentPage({
               />
             </FormField>
             {!isEdit && !isAccountsEnrollment && (
-            <FormField label="Parent login password" required>
-              <div className="relative">
-                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type={showParentPassword ? "text" : "password"}
-                  className="pl-9 pr-10"
-                  placeholder="Minimum 8 characters"
-                  value={form.parentPassword}
-                  onChange={(e) => setForm((f) => ({ ...f, parentPassword: e.target.value }))}
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
-                  onClick={() => setShowParentPassword((p) => !p)}
-                  aria-label={showParentPassword ? "Hide password" : "Show password"}
-                >
-                  {showParentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </FormField>
+              <FormField label="Parent login password" required>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    className="pl-9 font-mono"
+                    placeholder="Concept@1234"
+                    value={form.parentPassword}
+                    onChange={(e) => setForm((f) => ({ ...f, parentPassword: e.target.value }))}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Password is shown in plain text:{" "}
+                  <span className="font-medium text-foreground font-mono">Concept@1234</span>
+                </p>
+              </FormField>
             )}
           </div>
         </section>
@@ -1055,6 +1077,7 @@ export default function RegisterStudentPage({
                   ...f,
                   classId: e.target.value,
                   sectionId: "",
+                  disciplineId: "",
                   selectedSubjects: [],
                   isFullPackage: false,
                 }));
@@ -1091,10 +1114,45 @@ export default function RegisterStudentPage({
             </IconSelect>
           </FormField>
 
-          {form.classId && form.sectionId && (
+          {requiresDiscipline && (
+            <FormField label="Discipline / Stream" required>
+              <IconSelect
+                id="enroll-discipline"
+                icon={GraduationCap}
+                value={form.disciplineId}
+                onChange={(e) => {
+                  setForm((f) => ({
+                    ...f,
+                    disciplineId: e.target.value,
+                    selectedSubjects: [],
+                    isFullPackage: false,
+                  }));
+                  setChoiceSelections({});
+                }}
+                disabled={!form.classId}
+              >
+                <option value="">Choose Medical / Engineering / ICS…</option>
+                {disciplines.map((d) => (
+                  <option key={d._id} value={d._id}>
+                    {d.name}
+                  </option>
+                ))}
+              </IconSelect>
+              {disciplines.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  No active disciplines — configure them under Student Management → Disciplines.
+                </p>
+              )}
+            </FormField>
+          )}
+
+          {form.classId && form.sectionId && (!requiresDiscipline || form.disciplineId) && (
             <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
               <p className="text-sm font-medium">
                 Subjects for {selectedClassName}
+                {form.disciplineId
+                  ? ` · ${disciplines.find((d) => d._id === form.disciplineId)?.name || "stream"}`
+                  : ""}
               </p>
 
               <label className="flex items-start gap-3 rounded-md border bg-background p-3 cursor-pointer hover:bg-muted/30">
@@ -1139,9 +1197,8 @@ export default function RegisterStudentPage({
                           return (
                             <label
                               key={s._id}
-                              className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
-                                selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
-                              }`}
+                              className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
+                                }`}
                             >
                               <Checkbox
                                 checked={selected}
@@ -1183,9 +1240,8 @@ export default function RegisterStudentPage({
                               return (
                                 <label
                                   key={s._id}
-                                  className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
-                                    selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
-                                  }`}
+                                  className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
+                                    }`}
                                 >
                                   <Checkbox
                                     checked={selected}
@@ -1206,43 +1262,89 @@ export default function RegisterStudentPage({
 
                   {!enrollmentLoading && !hasChoiceGroups && (
                     <>
-                      <p className="text-sm text-muted-foreground">
-                        Or select one or more subjects (checkboxes):
-                      </p>
-                      {(enrollmentLayout?.coreSubjects.length ?? 0) === 0 ? (
-                        <p className="text-sm text-amber-700 dark:text-amber-400">
-                          No subjects found for this class. Add subjects in the Subjects tab first.
-                        </p>
-                      ) : (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                          {(enrollmentLayout?.coreSubjects ?? []).map((s) => {
-                            const selected = form.selectedSubjects.includes(s._id);
-                            return (
-                              <label
-                                key={s._id}
-                                className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
-                                  selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"
-                                }`}
-                              >
-                                <Checkbox
-                                  checked={selected}
-                                  onCheckedChange={() => toggleSubject(s._id)}
-                                />
-                                <div className="min-w-0">
-                                  <p className="font-medium text-sm truncate">{s.subjectName}</p>
-                                  <p className="text-xs text-muted-foreground">{s.subjectCode}</p>
-                                </div>
-                              </label>
-                            );
-                          })}
+                      {(sharedSubjects || streamSubjects) ? (
+                        <div className="space-y-3">
+                          {streamSubjects && streamSubjects.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium">Stream subjects</p>
+                              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                {streamSubjects.map((s) => {
+                                  const selected = form.selectedSubjects.includes(s._id);
+                                  return (
+                                    <label
+                                      key={s._id}
+                                      className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
+                                    >
+                                      <Checkbox checked={selected} onCheckedChange={() => toggleSubject(s._id)} />
+                                      <div className="min-w-0">
+                                        <p className="font-medium text-sm truncate">{s.subjectName}</p>
+                                        <p className="text-xs text-muted-foreground">{s.subjectCode}</p>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {sharedSubjects && sharedSubjects.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium">Shared subjects</p>
+                              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                {sharedSubjects.map((s) => {
+                                  const selected = form.selectedSubjects.includes(s._id);
+                                  return (
+                                    <label
+                                      key={s._id}
+                                      className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
+                                    >
+                                      <Checkbox checked={selected} onCheckedChange={() => toggleSubject(s._id)} />
+                                      <div className="min-w-0">
+                                        <p className="font-medium text-sm truncate">{s.subjectName}</p>
+                                        <p className="text-xs text-muted-foreground">{s.subjectCode}</p>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
+                      ) : (
+                        <>
+                          <p className="text-sm text-muted-foreground">
+                            Or select one or more subjects (checkboxes):
+                          </p>
+                          {(enrollmentLayout?.coreSubjects.length ?? 0) === 0 ? (
+                            <p className="text-sm text-amber-700 dark:text-amber-400">
+                              No subjects found for this class. Add subjects in the Subjects tab first.
+                            </p>
+                          ) : (
+                            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                              {(enrollmentLayout?.coreSubjects ?? []).map((s) => {
+                                const selected = form.selectedSubjects.includes(s._id);
+                                return (
+                                  <label
+                                    key={s._id}
+                                    className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer transition-colors ${selected ? "border-primary bg-primary/5" : "bg-background hover:bg-muted/40"}`}
+                                  >
+                                    <Checkbox checked={selected} onCheckedChange={() => toggleSubject(s._id)} />
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-sm truncate">{s.subjectName}</p>
+                                      <p className="text-xs text-muted-foreground">{s.subjectCode}</p>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
                       )}
                       {form.selectedSubjects.length > 0 && (
                         <p className="text-sm font-medium text-primary">
                           {form.selectedSubjects.length} subject{form.selectedSubjects.length > 1 ? "s" : ""} selected
                         </p>
                       )}
-                      {!subjectSelectionValid && (enrollmentLayout?.coreSubjects.length ?? 0) > 0 && (
+                      {!subjectSelectionValid && displayCoreSubjects.length > 0 && (
                         <p className="text-sm text-destructive">Select at least one subject or choose full package.</p>
                       )}
                     </>
@@ -1263,6 +1365,9 @@ export default function RegisterStudentPage({
                 value={form.monthlyFeeDiscount}
                 onChange={(e) => setForm((f) => ({ ...f, monthlyFeeDiscount: e.target.value }))}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Applied on the first-month challan and every later monthly challan
+              </p>
             </FormField>
             <FormField label="Admission fee discount (PKR)">
               <IconInput
@@ -1274,6 +1379,9 @@ export default function RegisterStudentPage({
                 value={form.admissionFeeDiscount}
                 onChange={(e) => setForm((f) => ({ ...f, admissionFeeDiscount: e.target.value }))}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                One-time; included in the first-month challan only
+              </p>
             </FormField>
           </div>
 
@@ -1306,14 +1414,18 @@ export default function RegisterStudentPage({
                 </p>
               </div>
               <div>
-                <span className="text-muted-foreground">Total discount</span>
-                <p className="font-bold text-lg text-destructive">
-                  − ₨ {(feePreview.discountAmount ?? 0).toLocaleString()}
-                </p>
+                <span className="text-muted-foreground">First month due</span>
+                <p className="font-bold text-lg text-accent">₨ {feePreview.totalFee.toLocaleString()}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Total payable</span>
-                <p className="font-bold text-lg text-accent">₨ {feePreview.totalFee.toLocaleString()}</p>
+                <span className="text-muted-foreground">Next months</span>
+                <p className="font-bold text-lg">
+                  ₨{" "}
+                  {Math.max(
+                    0,
+                    (feePreview.monthlyFee || 0) - (feePreview.monthlyFeeDiscount || 0),
+                  ).toLocaleString()}
+                </p>
               </div>
             </div>
           )}
@@ -1355,9 +1467,9 @@ export default function RegisterStudentPage({
                       Register student
                     </>
                   )
-                : isEdit
-                  ? "Save changes"
-                  : "Register & enroll"}
+                  : isEdit
+                    ? "Save changes"
+                    : "Register & enroll"}
           </Button>
         </div>
       </div>
@@ -1394,16 +1506,20 @@ export default function RegisterStudentPage({
                 <p className="font-medium">{credentials.rollNumber}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Student login</p>
-                <p className="font-medium break-all">{credentials.studentEmail}</p>
+                <p className="text-xs text-muted-foreground">Parent login email</p>
+                <p className="font-medium break-all">
+                  {credentials.parentEmail || credentials.studentEmail}
+                </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Student password</p>
-                <p className="font-medium">{credentials.studentPassword}</p>
+                <p className="text-xs text-muted-foreground">Parent password</p>
+                <p className="font-medium font-mono tracking-wide">
+                  {credentials.parentPassword || credentials.studentPassword || "Concept@1234"}
+                </p>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Parent portal access can be set up separately from the Users module.
+              Only parents have portal access. Share these credentials with the family. Default password is Concept@1234.
             </p>
           </div>
         )}

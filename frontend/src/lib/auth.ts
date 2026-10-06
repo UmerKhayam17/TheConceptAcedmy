@@ -16,7 +16,7 @@ const ACCESS_KEY = "tces_access";
 const REFRESH_LOCK_KEY = "tces_refresh_lock";
 
 const AUTH_EVT = "tces-auth-change";
-const REFRESH_BUFFER_MS = 60_000;
+const REFRESH_BUFFER_MS = 90_000;
 
 const authChannel =
   typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tces-auth") : null;
@@ -112,9 +112,16 @@ function stopProactiveRefresh() {
   }
 }
 
-function scheduleProactiveRefresh(_token: string) {
-  // Disabled: do not auto-refresh on a timer (avoids surprise logout/reload cycles).
+function scheduleProactiveRefresh(token: string) {
   stopProactiveRefresh();
+  const exp = decodeTokenExpiryMs(token);
+  if (!exp) return;
+  const delay = Math.max(5_000, exp - Date.now() - REFRESH_BUFFER_MS);
+  proactiveRefreshTimer = setTimeout(() => {
+    void refreshAccessToken({ force: true }).catch(() => {
+      /* network blip — next API call will retry */
+    });
+  }, delay);
 }
 
 function broadcastToken(token: string) {
@@ -215,22 +222,32 @@ async function fetchRefreshOnce(): Promise<RefreshResult> {
 
 let refreshPromise: Promise<string | null> | null = null;
 
+export type RefreshOptions = {
+  /** Skip “token still valid” short-circuit — required after a 401 from the API. */
+  force?: boolean;
+  /** When true, a definitive refresh 401 clears the client session. */
+  logoutOnAuthFailure?: boolean;
+};
+
 /** Refresh access token using httpOnly cookie. Single-flight per tab; coordinates across tabs. */
-export async function refreshAccessToken(): Promise<string | null> {
+export async function refreshAccessToken(options: RefreshOptions = {}): Promise<string | null> {
+  const { force = false, logoutOnAuthFailure = false } = options;
+
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
     const existing = getAccessToken();
-    if (existing && !isAccessTokenExpiringSoon(existing, 0)) {
+    if (!force && existing && !isAccessTokenExpiringSoon(existing, 0)) {
       return existing;
     }
 
     const hasLock = tryAcquireRefreshLock();
     if (!hasLock) {
-      for (let i = 0; i < 20; i++) {
+      // Wait for the other tab to finish refresh + BroadcastChannel update.
+      for (let i = 0; i < 40; i++) {
         await sleep(250);
         const token = getAccessToken();
-        if (token && !isAccessTokenExpiringSoon(token, 0)) {
+        if (token && (force ? !isAccessTokenExpiringSoon(token, REFRESH_BUFFER_MS / 2) : !isAccessTokenExpiringSoon(token, 0))) {
           return token;
         }
       }
@@ -247,8 +264,10 @@ export async function refreshAccessToken(): Promise<string | null> {
         return result.token;
       }
 
-      // Do not auto-logout on refresh failure (network / cookie / transient 401).
-      // Keep the existing session; only explicit logout() clears it.
+      if (result.authFailed && logoutOnAuthFailure) {
+        invalidateSession();
+      }
+
       return null;
     } finally {
       if (hasLock) releaseRefreshLock();
@@ -266,7 +285,7 @@ export async function ensureAccessToken(): Promise<string | null> {
   if (token && !isAccessTokenExpiringSoon(token)) {
     return token;
   }
-  return refreshAccessToken();
+  return refreshAccessToken({ force: !token || isAccessTokenExpiringSoon(token, 0) });
 }
 
 /** Restore session using access token and/or httpOnly refresh cookie. */
@@ -284,7 +303,10 @@ export async function restoreSession(): Promise<SessionUser | null> {
     }
   }
 
-  const newToken = await refreshAccessToken();
+  const newToken = await refreshAccessToken({
+    force: true,
+    logoutOnAuthFailure: Boolean(cachedUser),
+  });
   if (newToken) {
     const user = await fetchMe(newToken);
     if (user) {
@@ -294,10 +316,17 @@ export async function restoreSession(): Promise<SessionUser | null> {
     }
   }
 
-  if (cachedUser && getAccessToken()) {
+  // Soft restore: keep cached profile only when we still have a usable in-memory access token.
+  if (cachedUser && getAccessToken() && !isAccessTokenExpiringSoon(getAccessToken(), 0)) {
     scheduleProactiveRefresh(getAccessToken()!);
     dispatch();
     return cachedUser;
+  }
+
+  if (cachedUser && !getAccessToken()) {
+    // Stale local user with no way to refresh — clear so guards send to login.
+    clearStorage();
+    dispatch();
   }
 
   return null;
@@ -386,7 +415,7 @@ function buildAuthedHeaders(init: RequestInit, token: string | null): Record<str
 }
 
 /**
- * Authenticated fetch with proactive token refresh and automatic 401 → refresh → retry.
+ * Authenticated fetch with proactive token refresh and automatic 401 → force refresh → retry.
  */
 export async function authedFetch(path: string, init: RequestInit = {}, retried = false): Promise<Response> {
   const token = await ensureAccessToken();
@@ -398,11 +427,10 @@ export async function authedFetch(path: string, init: RequestInit = {}, retried 
   });
 
   if (res.status === 401 && !retried) {
-    const refreshed = await refreshAccessToken();
+    const refreshed = await refreshAccessToken({ force: true, logoutOnAuthFailure: true });
     if (refreshed) {
       return authedFetch(path, init, true);
     }
-    // Keep the session; caller can surface the API error without forcing logout.
   }
 
   return res;

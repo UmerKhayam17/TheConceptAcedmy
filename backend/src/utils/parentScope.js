@@ -17,11 +17,16 @@ async function linkedStudentIdsForParent(req) {
   if (email && !email.endsWith('@parent.local') && !email.endsWith('@parent.temp')) {
     or.push({ guardianEmail: { $regex: `^${escapeRegExp(email)}$`, $options: 'i' } });
   }
-  if (phone) {
+  if (phone && phone !== 'N/A') {
     or.push({ phone });
   }
   if (!or.length) return [];
-  const rows = await AcademyStudent.find({ status: 'active', $or: or }).select('_id').lean();
+  const rows = await AcademyStudent.find({
+    status: { $in: ['active', 'pending_fee'] },
+    $or: or,
+  })
+    .select('_id')
+    .lean();
   return rows.map((s) => s._id);
 }
 

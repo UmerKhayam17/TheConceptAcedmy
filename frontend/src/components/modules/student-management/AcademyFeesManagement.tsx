@@ -1,7 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Loader2, Printer, Receipt } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  Download,
+  FileText,
+  Loader2,
+  Printer,
+  Receipt,
+  Search,
+  X,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DefaulterListDownload } from "./DefaulterListDownload";
+import { FeeMetricCards } from "./FeeMetricCards";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -36,15 +47,82 @@ import {
   printFeeChallan,
   printFeeReceipt,
   type AcademyFeeRecord,
-  type AcademyStudentRoutes,
   type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
-import { academyStudentRoutes } from "@/lib/studentManagementMenus";
-import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import { resolveUploadUrl } from "@/lib/api";
+import { academyStudentRoutes, type AcademyStudentRoutes } from "@/lib/studentManagementMenus";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
 import { cn } from "@/lib/utils";
+import {
+  AssignSectionDialog,
+  EnrollmentVoucherWizard,
+} from "./EnrollmentVoucherWizard";
+
+function todayInputValue() {
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+const feeFilterLabelClass =
+  "mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
+const feeFilterSelectClass =
+  "h-9 w-full cursor-pointer appearance-none rounded-md border border-border bg-background py-1.5 text-sm text-foreground shadow-none outline-none transition-colors hover:border-primary/30 focus:border-primary focus:ring-2 focus:ring-primary/10";
+
+function FeeFilterField({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("min-w-0", className)}>
+      <label className={feeFilterLabelClass}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function FeeFilterSelect({
+  value,
+  onChange,
+  children,
+  leadingIcon,
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  children: ReactNode;
+  leadingIcon?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("relative", className)}>
+      {leadingIcon ? (
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+          {leadingIcon}
+        </span>
+      ) : null}
+      <select
+        className={cn(
+          feeFilterSelectClass,
+          leadingIcon ? "pl-8 pr-8" : "pl-3 pr-8",
+        )}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+    </div>
+  );
+}
 
 function studentFromRecord(rec: AcademyFeeRecord) {
   const s = rec.studentId;
@@ -77,8 +155,45 @@ function periodLabel(r: AcademyFeeRecord) {
   return `${MONTH_NAMES[(r.month || 1) - 1]} ${r.year}`;
 }
 
+function feeTypeLabel(feeType: AcademyFeeRecord["feeType"]) {
+  if (feeType === "admission") return "Admission";
+  if (feeType === "stationery") return "Stationery";
+  return "Monthly";
+}
+
 function isUnpaid(status: string) {
   return status === "pending" || status === "overdue";
+}
+
+function isPdfSlip(path: string) {
+  return /\.pdf$/i.test(path.split("?")[0] || "");
+}
+
+function PaymentSlipThumb({ path, onOpen }: { path: string; onOpen: () => void }) {
+  const src = resolveUploadUrl(path);
+  if (isPdfSlip(path)) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="inline-flex h-16 w-[4.5rem] flex-col items-center justify-center gap-0.5 rounded-md border border-[#D6E4F7] bg-[#F4F8FF] text-[#10244A]"
+        title="View payment slip"
+      >
+        <FileText className="h-5 w-5" />
+        <span className="text-[10px] font-semibold">PDF</span>
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="inline-block overflow-hidden rounded-md border border-[#D6E4F7] bg-white"
+      title="View payment slip"
+    >
+      <img src={src} alt="Payment slip" className="h-16 w-20 object-cover" />
+    </button>
+  );
 }
 
 function StatusPill({ status }: { status: string }) {
@@ -90,9 +205,8 @@ function StatusPill({ status }: { status: string }) {
   };
   return (
     <span
-      className={`text-xs font-semibold rounded-full px-2 py-0.5 capitalize ${
-        colors[status] || "bg-muted text-muted-foreground"
-      }`}
+      className={`text-xs font-semibold rounded-full px-2 py-0.5 capitalize ${colors[status] || "bg-muted text-muted-foreground"
+        }`}
     >
       {status}
     </span>
@@ -128,7 +242,7 @@ export default function AcademyFeesManagement({
   const now = new Date();
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState(() => (user?.role === "parent" ? "paid" : ""));
   const [classFilter, setClassFilter] = useState("");
   const [selectedParentStudentId, setSelectedParentStudentId] = useState<string>(() => {
     try {
@@ -144,9 +258,18 @@ export default function AcademyFeesManagement({
   const [selectedFeeIds, setSelectedFeeIds] = useState<string[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [paymentDate, setPaymentDate] = useState(todayInputValue);
+  const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
+  const [slipInputKey, setSlipInputKey] = useState(0);
+  const [slipPreview, setSlipPreview] = useState<string | null>(null);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
+  const [enrollmentWizardOpen, setEnrollmentWizardOpen] = useState(false);
+  const [assignSectionStudentId, setAssignSectionStudentId] = useState<string | null>(null);
 
+  const childScoped = Boolean(studentId) || isParent;
   const effectiveStudentId = studentId || (isParent ? selectedParentStudentId || undefined : undefined);
+  /** Parents see this child's fee history (paid emphasized); staff keep status filters. */
+  const effectiveStatusFilter = isParent ? "" : statusFilter;
 
   const filterParams = useMemo(
     () => ({
@@ -200,23 +323,25 @@ export default function AcademyFeesManagement({
     enabled: showFilters && !studentId && !isParent && hasScope,
   });
 
-  const { data: summary, isLoading: summaryLoading } = useQuery({
-    queryKey: ["academy-fees-summary", filterParams],
-    queryFn: () => fetchAcademyFeeSummary(filterParams),
-    enabled: scopeEnabled,
-  });
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["academy-fees", page, statusFilter, feeTypeFilter, filterParams],
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["academy-fees", page, effectiveStatusFilter, feeTypeFilter, filterParams],
     queryFn: () =>
       fetchAcademyFees({
         page,
         limit: 20,
-        status: statusFilter || undefined,
+        status: effectiveStatusFilter || undefined,
         feeType: feeTypeFilter || undefined,
         ...filterParams,
       }),
-    enabled: scopeEnabled,
+    enabled: scopeEnabled && (!isParent || Boolean(effectiveStudentId)),
+    retry: false,
+  });
+
+  const { data: summary, isLoading: summaryLoading, isError: summaryError, error: summaryErr } = useQuery({
+    queryKey: ["academy-fees-summary", filterParams, effectiveStatusFilter],
+    queryFn: () => fetchAcademyFeeSummary(filterParams),
+    enabled: scopeEnabled && (!isParent || Boolean(effectiveStudentId)),
+    retry: false,
   });
 
   const genMut = useMutation({
@@ -234,7 +359,13 @@ export default function AcademyFeesManagement({
       qc.invalidateQueries({ queryKey: ["academy-student-record"] });
       toast({
         title: "Monthly fees generated",
-        description: `${r.created} created, ${r.skipped} already existed`,
+        description: [
+          `${r.created} created`,
+          `${r.skipped} skipped (already billed / admission month)`,
+          r.repaired ? `${r.repaired} enrollment-month duplicates waived` : null,
+        ]
+          .filter(Boolean)
+          .join(", "),
       });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -268,6 +399,8 @@ export default function AcademyFeesManagement({
         feeRecordIds: selectedFeeIds,
         paymentMethod,
         notes: paymentNotes.trim() || undefined,
+        paidAt: paymentDate,
+        slip: paymentSlip,
       }),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["academy-fees"] });
@@ -278,10 +411,16 @@ export default function AcademyFeesManagement({
       setPayRecord(null);
       setSelectedFeeIds([]);
       setPaymentNotes("");
+      setPaymentDate(todayInputValue());
+      setPaymentSlip(null);
+      setSlipInputKey((key) => key + 1);
       toast({
         title: "Payment recorded",
         description: `${result.paid} month${result.paid === 1 ? "" : "s"} · ${formatPkr(result.total)}`,
       });
+      if (result.needsSectionAssignment && result.studentId) {
+        setAssignSectionStudentId(result.studentId);
+      }
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -322,8 +461,9 @@ export default function AcademyFeesManagement({
     );
   }, [records, search]);
 
-  const canPay = caps.canEdit || caps.canCreate;
-  const canGenerate = showGenerate && !studentId && writable && (caps.canCreate || caps.canEdit);
+  const canPay = !isParent && (caps.canEdit || caps.canCreate);
+  const canGenerate = showGenerate && !studentId && !isParent && writable && (caps.canCreate || caps.canEdit);
+  const feeTableColSpan = childScoped ? (isParent ? 7 : 8) : 10;
 
   const downloadMonthWise = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
@@ -356,51 +496,32 @@ export default function AcademyFeesManagement({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Collected</p>
-          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
-            {summaryLoading ? "…" : formatPkr(summary?.totalPaid)}
-          </p>
+      {(isError || summaryError) && (
+        <Card className="p-3 border-destructive/40 bg-destructive/5 text-sm text-destructive">
+          {(error as Error)?.message || (summaryErr as Error)?.message || "Could not load fee records."}
         </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Outstanding</p>
-          <p className="text-lg font-semibold text-destructive">
-            {summaryLoading ? "…" : formatPkr(summary?.totalPending)}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Records</p>
-          <p className="text-lg font-semibold text-primary">
-            {summaryLoading ? "…" : summary?.recordsCount ?? 0}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Pending / overdue</p>
-          <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">
-            {summaryLoading
-              ? "…"
-              : `${summary?.byStatus.pending ?? 0} / ${summary?.byStatus.overdue ?? 0}`}
-          </p>
-        </Card>
-      </div>
+      )}
+      {isParent ? (
+        <FeeMetricCards summary={summary} loading={summaryLoading} compact />
+      ) : (
+        <FeeMetricCards summary={summary} loading={summaryLoading} />
+      )}
 
       {showFilters && !studentId && (
-        <Card className="p-3 space-y-3">
+        <div className="rounded-xl border border-border bg-card px-3.5 py-3 shadow-sm">
           <div
             className={cn(
-              "grid gap-3 items-end",
-              "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
-              isParent && "sm:grid-cols-3 lg:grid-cols-6",
+              "grid items-end gap-2.5",
+              isParent
+                ? "grid-cols-1 sm:grid-cols-[220px_minmax(0,1fr)]"
+                : "grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,1.15fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(200px,1.5fr)]",
             )}
           >
             {isParent && (
-              <div className="min-w-0 col-span-2 sm:col-span-1">
-                <Label className="mb-1 block text-xs">Child</Label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              <FeeFilterField label="Child">
+                <FeeFilterSelect
                   value={selectedParentStudentId}
-                  onChange={(e) => setSelectedParentStudentId(e.target.value)}
+                  onChange={setSelectedParentStudentId}
                 >
                   <option value="">Select child…</option>
                   {parentStudents.map((s) => (
@@ -408,104 +529,155 @@ export default function AcademyFeesManagement({
                       {s.studentName} ({s.studentId})
                     </option>
                   ))}
-                </select>
-              </div>
+                </FeeFilterSelect>
+              </FeeFilterField>
             )}
-            <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Month</Label>
-              <Input
-                type="number"
-                min={1}
-                max={12}
-                className="h-9 w-full"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-              />
-            </div>
-            <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Year</Label>
-              <Input
-                type="number"
-                className="h-9 w-full"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-              />
-            </div>
             {!isParent && (
-              <div className="min-w-0 col-span-2 sm:col-span-1">
-                <Label className="mb-1 block text-xs">Class</Label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={classFilter}
-                  onChange={(e) => setClassFilter(e.target.value)}
-                >
-                  <option value="">All classes</option>
-                  {classes.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.className}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <FeeFilterField label="Month">
+                  <FeeFilterSelect
+                    value={month}
+                    onChange={setMonth}
+                    leadingIcon={<CalendarDays className="h-3.5 w-3.5" />}
+                  >
+                    {MONTH_NAMES.map((name, idx) => (
+                      <option key={name} value={String(idx + 1)}>
+                        {name} {year}
+                      </option>
+                    ))}
+                  </FeeFilterSelect>
+                </FeeFilterField>
+                <FeeFilterField label="Year">
+                  <FeeFilterSelect value={year} onChange={setYear}>
+                    {Array.from({ length: 6 }, (_, i) => {
+                      const y = String(Number(now.getFullYear()) - 2 + i);
+                      return (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      );
+                    })}
+                  </FeeFilterSelect>
+                </FeeFilterField>
+                <FeeFilterField label="Class">
+                  <FeeFilterSelect value={classFilter} onChange={setClassFilter}>
+                    <option value="">All classes</option>
+                    {classes.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {c.className}
+                      </option>
+                    ))}
+                  </FeeFilterSelect>
+                </FeeFilterField>
+                <FeeFilterField label="Status">
+                  <FeeFilterSelect value={statusFilter} onChange={setStatusFilter}>
+                    <option value="">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="waived">Waived</option>
+                  </FeeFilterSelect>
+                </FeeFilterField>
+                <FeeFilterField label="Type">
+                  <FeeFilterSelect value={feeTypeFilter} onChange={setFeeTypeFilter}>
+                    <option value="">All types</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="admission">Admission</option>
+                    <option value="stationery">Stationery</option>
+                  </FeeFilterSelect>
+                </FeeFilterField>
+              </>
             )}
-            <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Status</Label>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="">All</option>
-                <option value="pending">Pending</option>
-                <option value="paid">Paid</option>
-                <option value="overdue">Overdue</option>
-                <option value="waived">Waived</option>
-              </select>
-            </div>
-            <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Type</Label>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={feeTypeFilter}
-                onChange={(e) => setFeeTypeFilter(e.target.value)}
-              >
-                <option value="">All types</option>
-                <option value="monthly">Monthly</option>
-                <option value="admission">Admission</option>
-              </select>
+
+            <div className={cn("relative min-w-0", !isParent && "col-span-2 md:col-span-1")}>
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-9 rounded-md border-border bg-background pl-8 pr-8 text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-primary/15"
+                placeholder={isParent ? "Search receipt or period…" : "Search student, class, receipt"}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search fees"
+              />
+              {search ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
             </div>
           </div>
-          {!isParent && (canGenerate || caps.canView) && (
-            <div className="flex flex-col sm:flex-row gap-2 sm:flex-wrap sm:items-center">
+
+          {!isParent && (canGenerate || caps.canView || caps.canEdit || caps.canCreate) && (
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
+              {!studentId && (caps.canEdit || caps.canCreate) && writable && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 gap-1.5 whitespace-nowrap rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground"
+                  onClick={() => setEnrollmentWizardOpen(true)}
+                >
+                  <Receipt className="h-4 w-4 text-primary" />
+                  Enrollment voucher
+                </Button>
+              )}
               {canGenerate && (
                 <Button
-                  size="sm"
-                  variant="gold"
-                  className="w-full sm:w-auto"
+                  className="h-9 gap-1.5 whitespace-nowrap rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                   disabled={genMut.isPending}
                   onClick={() => genMut.mutate()}
                 >
-                  {genMut.isPending ? "Generating…" : "Generate monthly fees"}
+                  <Download className="h-4 w-4" />
+                  {genMut.isPending ? "Generating…" : "Generate Report"}
                 </Button>
               )}
               {!studentId && caps.canView && (
                 <DefaulterListDownload
-                  className="w-full sm:w-auto justify-center"
+                  className="h-9 whitespace-nowrap rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground"
+                  label="Download Defaulter List"
                   exporting={exportingMonthWise}
                   onDownload={(format) => void downloadMonthWise(format)}
                 />
               )}
             </div>
           )}
-        </Card>
+        </div>
       )}
 
-      <PanelSearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search student, class, receipt…"
-        className="max-w-md"
-      />
+      {(!showFilters || studentId) && (
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            className="h-10 rounded-xl border-slate-200 bg-white pl-9 pr-9 text-sm shadow-none"
+            placeholder={
+              isParent || studentId ? "Search receipt or period…" : "Search student, class, receipt..."
+            }
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-0.5 top-0.5 h-9 w-9 text-slate-400"
+              onClick={() => setSearch("")}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
+      )}
+      {isParent ? (
+        <p className="text-xs text-muted-foreground">
+          Showing fee records for your child only. School-wide collections are not available here.
+        </p>
+      ) : null}
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -513,43 +685,55 @@ export default function AcademyFeesManagement({
             <thead className="bg-muted/50 border-b">
               <tr>
                 <th className="text-left p-2.5 font-medium">Receipt</th>
-                <th className="text-left p-2.5 font-medium">Student</th>
-                {!studentId && <th className="text-left p-2.5 font-medium hidden md:table-cell">Class</th>}
+                {!childScoped && <th className="text-left p-2.5 font-medium">Student</th>}
+                {!childScoped && (
+                  <th className="text-left p-2.5 font-medium hidden md:table-cell">Class</th>
+                )}
                 <th className="text-left p-2.5 font-medium">Period</th>
                 <th className="text-left p-2.5 font-medium">Type</th>
                 <th className="text-left p-2.5 font-medium">Amount</th>
                 <th className="text-left p-2.5 font-medium">Status</th>
-                <th className="text-left p-2.5 font-medium">Pending months</th>
+                <th className="text-left p-2.5 font-medium">Slip</th>
+                {!isParent && <th className="text-left p-2.5 font-medium">Pending months</th>}
                 <th className="text-right p-2.5 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={studentId ? 8 : 9} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={feeTableColSpan} className="p-6 text-center text-muted-foreground">
                     Loading fee records…
                   </td>
                 </tr>
               )}
-              {!isLoading && records.length === 0 && (
+              {!isLoading && isParent && !effectiveStudentId && (
                 <tr>
-                  <td colSpan={studentId ? 8 : 9} className="p-6 text-center text-muted-foreground">
-                    {studentId
-                      ? "No fee records for this student yet."
-                      : "No fee records for this period. Generate monthly fees or register students."}
+                  <td colSpan={feeTableColSpan} className="p-6 text-center text-muted-foreground">
+                    Select a child to view paid fees.
+                  </td>
+                </tr>
+              )}
+              {!isLoading && (!isParent || effectiveStudentId) && records.length === 0 && (
+                <tr>
+                  <td colSpan={feeTableColSpan} className="p-6 text-center text-muted-foreground">
+                    {isParent
+                      ? "No fee records for this child yet."
+                      : studentId
+                        ? "No fee records for this student yet."
+                        : "No fee records for this period. Generate monthly fees or register students."}
                   </td>
                 </tr>
               )}
               {!isLoading && records.length > 0 && recordsFiltered.length === 0 && (
                 <tr>
-                  <td colSpan={studentId ? 8 : 9} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={feeTableColSpan} className="p-6 text-center text-muted-foreground">
                     No records match your filters.
                   </td>
                 </tr>
               )}
               {recordsFiltered.map((r) => {
                 const sid = studentMongoId(r);
-                const detailHref = routes && sid ? routes.detail(sid) : null;
+                const detailHref = routes && sid && !isParent ? routes.detail(sid) : null;
                 const payable = isUnpaid(r.status);
                 const printing =
                   printMut.isPending &&
@@ -558,52 +742,75 @@ export default function AcademyFeesManagement({
                   <tr
                     key={r._id}
                     className={
-                      payable
+                      payable && !isParent
                         ? "border-b last:border-0 bg-red-500/10 text-red-700 dark:text-red-300"
                         : "border-b last:border-0 hover:bg-muted/30"
                     }
                   >
                     <td className="p-2.5 font-mono text-xs">{r.receiptNumber || "—"}</td>
-                    <td className="p-2.5">
-                      {detailHref ? (
-                        <Link
-                          to={detailHref}
-                          className={`font-medium hover:underline ${payable ? "text-red-700 dark:text-red-300" : "text-primary"}`}
-                        >
-                          {studentName(r)}
-                        </Link>
-                      ) : (
-                        <div className={`font-medium ${payable ? "text-red-700 dark:text-red-300" : ""}`}>
-                          {studentName(r)}
-                        </div>
-                      )}
-                      <p className={`text-xs ${payable ? "text-red-700/80 dark:text-red-300/80" : "text-muted-foreground"}`}>
-                        {studentCode(r)}
-                      </p>
-                    </td>
-                    {!studentId && (
+                    {!childScoped && (
+                      <td className="p-2.5">
+                        {detailHref ? (
+                          <Link
+                            to={detailHref}
+                            className={`font-medium hover:underline ${payable ? "text-red-700 dark:text-red-300" : "text-primary"}`}
+                          >
+                            {studentName(r)}
+                          </Link>
+                        ) : (
+                          <div className={`font-medium ${payable ? "text-red-700 dark:text-red-300" : ""}`}>
+                            {studentName(r)}
+                          </div>
+                        )}
+                        <p className={`text-xs ${payable ? "text-red-700/80 dark:text-red-300/80" : "text-muted-foreground"}`}>
+                          {studentCode(r)}
+                        </p>
+                      </td>
+                    )}
+                    {!childScoped && (
                       <td className="p-2.5 hidden md:table-cell">{classNameFromRecord(r)}</td>
                     )}
                     <td className="p-2.5">{periodLabel(r)}</td>
-                    <td className="p-2.5 capitalize">{r.feeType}</td>
-                    <td className="p-2.5">{formatPkr(r.amount)}</td>
+                    <td className="p-2.5">{feeTypeLabel(r.feeType)}</td>
+                    <td className="p-2.5 align-top">
+                      <div className="text-sm font-semibold tabular-nums">{formatPkr(r.amount)}</div>
+                      {r.components && r.components.length > 0 && (
+                        <ul className="mt-1.5 space-y-1 text-sm">
+                          {r.components.map((line, index) => (
+                            <li key={`${line.name}-${index}`} className="flex items-baseline justify-between gap-4">
+                              <span>{line.name}</span>
+                              <span className="font-medium tabular-nums">{formatPkr(line.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
                     <td className="p-2.5">
                       <StatusPill status={r.status} />
                     </td>
                     <td className="p-2.5">
-                      {(r.unpaidMonthCount || 0) > 0 ? (
-                        <div>
-                          <p className="font-semibold">
-                            {r.unpaidMonthCount} month{r.unpaidMonthCount === 1 ? "" : "s"}
-                          </p>
-                          {(r.unpaidMonthCount || 0) > 1 && r.unpaidFrom && r.unpaidTo && (
-                            <p className="text-xs opacity-80">{r.unpaidFrom} – {r.unpaidTo}</p>
-                          )}
-                        </div>
+                      {r.status === "paid" && r.paymentSlip ? (
+                        <PaymentSlipThumb path={r.paymentSlip} onOpen={() => setSlipPreview(r.paymentSlip || null)} />
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
+                    {!isParent && (
+                      <td className="p-2.5">
+                        {(r.unpaidMonthCount || 0) > 0 ? (
+                          <div>
+                            <p className="font-semibold">
+                              {r.unpaidMonthCount} month{r.unpaidMonthCount === 1 ? "" : "s"}
+                            </p>
+                            {(r.unpaidMonthCount || 0) > 1 && r.unpaidFrom && r.unpaidTo && (
+                              <p className="text-xs opacity-80">{r.unpaidFrom} – {r.unpaidTo}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="p-2.5 text-right">
                       <div className="inline-flex flex-col items-stretch sm:flex-row sm:items-center sm:justify-end gap-1.5 min-w-[7.5rem] sm:min-w-0">
                         {payable && canPay && (
@@ -616,6 +823,9 @@ export default function AcademyFeesManagement({
                               setPayRecord(r);
                               setPaymentMethod("cash");
                               setPaymentNotes("");
+                              setPaymentDate(todayInputValue());
+                              setPaymentSlip(null);
+                              setSlipInputKey((key) => key + 1);
                             }}
                           >
                             Record payment
@@ -628,50 +838,77 @@ export default function AcademyFeesManagement({
                                 {new Date(r.paidAt).toLocaleDateString()}
                               </span>
                             )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-8 w-8 shrink-0"
-                                  disabled={printing}
-                                  aria-label={payable ? "Print challan" : "Print receipt"}
-                                  title={payable ? "Print challan" : "Print receipt"}
-                                >
-                                  {printing ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Printer className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  className="gap-2"
-                                  onClick={() =>
-                                    printMut.mutate(
-                                      payable && sid
-                                        ? { studentId: sid, size: "thermal" }
-                                        : { id: r._id, size: "thermal" }
-                                    )
-                                  }
-                                >
-                                  <Receipt className="h-4 w-4" />
-                                  Thermal
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="gap-2"
-                                  onClick={() =>
-                                    printMut.mutate(
-                                      payable && sid ? { studentId: sid, size: "a4" } : { id: r._id, size: "a4" }
-                                    )
-                                  }
-                                >
-                                  <FileText className="h-4 w-4" />
-                                  A4
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            {payable && sid ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 shrink-0"
+                                    disabled={printing}
+                                    aria-label="Print challan"
+                                    title="Print challan"
+                                  >
+                                    {printing ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Printer className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    className="gap-2"
+                                    onClick={() => printMut.mutate({ studentId: sid, size: "a4" })}
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                    A4
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="gap-2"
+                                    onClick={() => printMut.mutate({ studentId: sid, size: "thermal" })}
+                                  >
+                                    <Receipt className="h-4 w-4" />
+                                    Thermal
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 shrink-0"
+                                    disabled={printing}
+                                    aria-label="Print receipt"
+                                    title="Print receipt"
+                                  >
+                                    {printing ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Printer className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    className="gap-2"
+                                    onClick={() => printMut.mutate({ id: r._id, size: "a4" })}
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                    A4
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="gap-2"
+                                    onClick={() => printMut.mutate({ id: r._id, size: "thermal" })}
+                                  >
+                                    <Receipt className="h-4 w-4" />
+                                    Thermal
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                         )}
                       </div>
@@ -750,7 +987,9 @@ export default function AcademyFeesManagement({
                             />
                             <span className="flex-1">
                               <span className="font-medium">{periodLabel(fee)}</span>
-                              <span className="ml-2 text-xs capitalize text-muted-foreground">{fee.status}</span>
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {feeTypeLabel(fee.feeType)} · {fee.status}
+                              </span>
                             </span>
                             <span className="font-semibold">{formatPkr(fee.amount)}</span>
                           </label>
@@ -761,23 +1000,62 @@ export default function AcademyFeesManagement({
                 )}
                 <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/30">
                   <span className="text-muted-foreground">
-                    {selectedUnpaid.length} month{selectedUnpaid.length === 1 ? "" : "s"} selected
+                    {selectedUnpaid.length} item{selectedUnpaid.length === 1 ? "" : "s"} selected
                   </span>
                   <span className="font-semibold">{formatPkr(selectedTotal)}</span>
                 </div>
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="payment-date">Payment date</Label>
+                  <Input
+                    id="payment-date"
+                    type="date"
+                    value={paymentDate}
+                    max={todayInputValue()}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Payment method</Label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="bank_transfer">Bank transfer</option>
+                    <option value="online">Online</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
               <div className="space-y-1.5">
-                <Label>Payment method</Label>
-                <select
-                  className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="online">Online</option>
-                  <option value="other">Other</option>
-                </select>
+                <Label htmlFor="payment-slip">Payment slip</Label>
+                <input
+                  id="payment-slip"
+                  key={slipInputKey}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.pdf"
+                  className="block w-full text-sm text-foreground file:mr-3 file:h-9 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/40"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (file && file.size > 5 * 1024 * 1024) {
+                      toast({
+                        title: "Slip is too large",
+                        description: "Upload an image or PDF up to 5 MB.",
+                        variant: "destructive",
+                      });
+                      e.target.value = "";
+                      setPaymentSlip(null);
+                      return;
+                    }
+                    setPaymentSlip(file);
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {paymentSlip ? paymentSlip.name : "Image or PDF, optional"}
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>Notes (optional)</Label>
@@ -795,7 +1073,7 @@ export default function AcademyFeesManagement({
             </Button>
             <Button
               variant="hero"
-              disabled={payMut.isPending || selectedFeeIds.length === 0}
+              disabled={payMut.isPending || selectedFeeIds.length === 0 || !paymentDate}
               onClick={() => payMut.mutate()}
             >
               Confirm payment
@@ -803,6 +1081,39 @@ export default function AcademyFeesManagement({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={Boolean(slipPreview)} onOpenChange={(open) => { if (!open) setSlipPreview(null); }}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Payment slip</DialogTitle>
+          </DialogHeader>
+          {slipPreview && isPdfSlip(slipPreview) ? (
+            <iframe
+              src={resolveUploadUrl(slipPreview)}
+              title="Payment slip"
+              className="h-[70vh] w-full rounded-md border bg-white"
+            />
+          ) : slipPreview ? (
+            <img
+              src={resolveUploadUrl(slipPreview)}
+              alt="Payment slip"
+              className="max-h-[70vh] w-full rounded-md border bg-white object-contain"
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <EnrollmentVoucherWizard
+        open={enrollmentWizardOpen}
+        onOpenChange={setEnrollmentWizardOpen}
+      />
+      <AssignSectionDialog
+        open={Boolean(assignSectionStudentId)}
+        onOpenChange={(open) => {
+          if (!open) setAssignSectionStudentId(null);
+        }}
+        studentId={assignSectionStudentId}
+      />
     </div>
   );
 }

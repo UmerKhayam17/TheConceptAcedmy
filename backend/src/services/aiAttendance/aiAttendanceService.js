@@ -224,7 +224,7 @@ async function syncRoster() {
 async function listPeopleForEnrollment() {
   const [students, staffRoles] = await Promise.all([
     AcademyStudent.find({ status: 'active' })
-      .select('studentName studentId aiEmployeeId photoImage classId')
+      .select('studentName fatherName studentId aiEmployeeId photoImage classId')
       .populate('classId', 'className')
       .sort({ studentName: 1 })
       .lean(),
@@ -254,6 +254,7 @@ async function listPeopleForEnrollment() {
         kind: 'student',
         id: String(s._id),
         name: s.studentName,
+        fatherName: s.fatherName || '',
         label: s.studentId || s.classId?.className || '',
         aiEmployeeId,
         hasPhoto: Boolean(s.photoImage),

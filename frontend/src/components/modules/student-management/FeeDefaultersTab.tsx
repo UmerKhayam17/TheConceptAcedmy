@@ -30,7 +30,7 @@ import { academyStudentRoutes } from "@/lib/studentManagementMenus";
 import { DefaulterListDownload } from "./DefaulterListDownload";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
-import { formatDate, formatPkr } from "./studentDisplayUtils";
+import { formatDate, formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
 
 function SeverityBadge({ days }: { days: number }) {
   if (days >= 30) {
@@ -398,17 +398,17 @@ export default function FeeDefaultersTab({
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               className="gap-2"
-                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "thermal" })}
-                            >
-                              <Receipt className="h-4 w-4" />
-                              Thermal
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="gap-2"
                               onClick={() => printMut.mutate({ studentId: d.student._id, size: "a4" })}
                             >
                               <FileText className="h-4 w-4" />
                               A4
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "thermal" })}
+                            >
+                              <Receipt className="h-4 w-4" />
+                              Thermal
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

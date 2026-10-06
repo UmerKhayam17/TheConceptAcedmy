@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { protect } = require('../middleware/auth');
-const { requirePermission, requireAnyPermission } = require('../middleware/permissions');
+const { requirePermission, requireAnyPermission, requireFeeReadAccess } = require('../middleware/permissions');
 const { validate } = require('../middleware/validate');
 const schemas = require('../validators/academySchemas');
 
@@ -16,7 +16,25 @@ const attendanceCtrl = require('../controllers/academy/academyAttendanceControll
 const assessmentCtrl = require('../controllers/academy/academyAssessmentController');
 const classTestCtrl = require('../controllers/academy/academyClassTestController');
 const dashboardCtrl = require('../controllers/academy/academyDashboardController');
-const { uploadImage } = require('../middleware/uploadImage');
+const { uploadImage, uploadPaymentSlip } = require('../middleware/uploadImage');
+
+function normalizeFeePayBody(req, _res, next) {
+  const raw = req.body?.feeRecordIds;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        req.body.feeRecordIds = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        req.body.feeRecordIds = [];
+      }
+    } else {
+      req.body.feeRecordIds = trimmed ? [trimmed] : [];
+    }
+  }
+  next();
+}
 
 const router = Router();
 router.use(protect);
@@ -122,6 +140,11 @@ router.post(
   validate(schemas.academySubjectBulkChoiceBody),
   subjectCtrl.createBulkChoice
 );
+router.post(
+  '/classes/:classId/subjects/defaults',
+  requirePermission('manage_academy_subjects'),
+  subjectCtrl.createDefaults
+);
 router.get(
   '/classes/:classId/enrollment-subjects',
   requireAnyPermission('view_academy_students', 'manage_academy_students', 'manage_academy_subjects'),
@@ -139,6 +162,51 @@ router.patch(
   subjectCtrl.update
 );
 router.delete('/subjects/:id', requirePermission('manage_academy_subjects'), subjectCtrl.remove);
+
+// Disciplines / streams (Medical, Engineering, ICS — typically 1st & 2nd Year)
+const disciplineCtrl = require('../controllers/academy/academyDisciplineController');
+router.get(
+  '/disciplines',
+  requireAnyPermission(
+    'view_academy_students',
+    'manage_academy_subjects',
+    'manage_academy_students',
+    'manage_academy_classes'
+  ),
+  disciplineCtrl.list
+);
+router.get(
+  '/classes/:classId/disciplines',
+  requireAnyPermission(
+    'view_academy_students',
+    'manage_academy_subjects',
+    'manage_academy_students',
+    'manage_academy_classes'
+  ),
+  disciplineCtrl.listByClass
+);
+router.post(
+  '/classes/:classId/disciplines/defaults',
+  requirePermission('manage_academy_subjects'),
+  disciplineCtrl.createDefaults
+);
+router.post(
+  '/disciplines',
+  requirePermission('manage_academy_subjects'),
+  validate(schemas.academyDisciplineBody),
+  disciplineCtrl.create
+);
+router.patch(
+  '/disciplines/:id',
+  requirePermission('manage_academy_subjects'),
+  validate(schemas.academyDisciplinePatch),
+  disciplineCtrl.update
+);
+router.delete(
+  '/disciplines/:id',
+  requirePermission('manage_academy_subjects'),
+  disciplineCtrl.remove
+);
 
 // Fee structure
 router.get(
@@ -167,6 +235,30 @@ router.delete(
   '/fee-structures/:id',
   requirePermission('manage_academy_fee_structures'),
   feeStructureCtrl.remove
+);
+
+const additionalChargeCtrl = require('../controllers/academy/academyAdditionalChargeController');
+router.get(
+  '/additional-charges',
+  requireAnyPermission('view_academy_students', 'manage_academy_fee_structures', 'manage_academy_fees'),
+  additionalChargeCtrl.list
+);
+router.post(
+  '/additional-charges',
+  requireAnyPermission('manage_academy_fee_structures', 'manage_academy_fees'),
+  validate(schemas.academyAdditionalChargeBody),
+  additionalChargeCtrl.create
+);
+router.patch(
+  '/additional-charges/:id',
+  requireAnyPermission('manage_academy_fee_structures', 'manage_academy_fees'),
+  validate(schemas.academyAdditionalChargePatch),
+  additionalChargeCtrl.update
+);
+router.delete(
+  '/additional-charges/:id',
+  requireAnyPermission('manage_academy_fee_structures', 'manage_academy_fees'),
+  additionalChargeCtrl.remove
 );
 router.post(
   '/fee-structures/preview',
@@ -206,6 +298,11 @@ router.get(
   studentCtrl.exportStudents
 );
 router.get('/students', requirePermission('view_academy_students'), studentCtrl.list);
+router.post(
+  '/students/provision-parent-portals',
+  requireAnyPermission('manage_users', 'manage_academy_students', 'activate_student'),
+  studentCtrl.provisionParentPortals
+);
 router.get(
   '/students/discount-report',
   requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
@@ -288,6 +385,18 @@ router.post(
   studentCtrl.activate
 );
 router.post(
+  '/students/:id/enrollment-voucher',
+  requireAnyPermission('activate_student', 'manage_academy_fees', 'manage_academy_students'),
+  validate(schemas.academyEnrollmentVoucher),
+  studentCtrl.prepareEnrollmentVoucher
+);
+router.post(
+  '/students/:id/assign-section',
+  requireAnyPermission('activate_student', 'manage_academy_fees', 'manage_academy_students'),
+  validate(schemas.academyAssignSection),
+  studentCtrl.assignSection
+);
+router.post(
   '/students/:id/photo',
   requirePermission('manage_academy_students'),
   uploadImage.single('photo'),
@@ -304,7 +413,7 @@ router.delete('/students/:id', requirePermission('manage_academy_students'), stu
 // Fee management
 router.get(
   '/fees/summary',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.summary
 );
 router.get(
@@ -329,7 +438,7 @@ router.get(
 );
 router.get(
   '/fees',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.list
 );
 router.post(
@@ -338,19 +447,27 @@ router.post(
   validate(schemas.academyFeeGenerate),
   feeCtrl.generate
 );
+router.post(
+  '/fees/stationery',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeeStationery),
+  feeCtrl.addStationery
+);
 router.get(
   '/fees/challan/:studentId',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.challan
 );
 router.get(
   '/fees/:id/receipt',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.receipt
 );
 router.post(
   '/fees/pay',
   requirePermission('manage_academy_fees'),
+  uploadPaymentSlip.single('slip'),
+  normalizeFeePayBody,
   validate(schemas.academyFeePayMany),
   feeCtrl.payMany
 );
@@ -362,7 +479,7 @@ router.patch(
 );
 router.get(
   '/fees/student/:studentId',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireFeeReadAccess(),
   feeCtrl.studentHistory
 );
 

@@ -9,7 +9,12 @@ const academyClassBody = Joi.object({
   status: Joi.string().valid('active', 'inactive').optional(),
 });
 
-const academyClassPatch = academyClassBody.min(1);
+const academyClassPatch = Joi.object({
+  sessionId: objectId,
+  className: Joi.string().trim().min(1),
+  totalSubjects: Joi.number().integer().min(0),
+  status: Joi.string().valid('active', 'inactive'),
+}).min(1);
 
 const academySubjectBody = Joi.object({
   subjectName: Joi.string().trim().required(),
@@ -60,6 +65,21 @@ const academySectionPatch = Joi.object({
   status: Joi.string().valid('active', 'inactive'),
 }).min(1);
 
+const academyDisciplineBody = Joi.object({
+  name: Joi.string().trim().required(),
+  code: Joi.string().trim().allow('').optional(),
+  classId: objectId.required(),
+  subjectIds: Joi.array().items(objectId).default([]),
+  status: Joi.string().valid('active', 'inactive').optional(),
+});
+
+const academyDisciplinePatch = Joi.object({
+  name: Joi.string().trim(),
+  code: Joi.string().trim(),
+  subjectIds: Joi.array().items(objectId),
+  status: Joi.string().valid('active', 'inactive'),
+}).min(1);
+
 const academyFeeStructureBody = Joi.object({
   classId: objectId.required(),
   perSubjectFee: Joi.number().min(0).required(),
@@ -75,6 +95,30 @@ const academyFeeStructurePatch = Joi.object({
   admissionFee: Joi.number().min(0),
   status: Joi.string().valid('active', 'inactive'),
   effectiveDate: Joi.date(),
+}).min(1);
+
+const academyAdditionalChargeBody = Joi.object({
+  name: Joi.string().trim().required(),
+  amount: Joi.number().min(0).required(),
+  frequency: Joi.string().valid('every_month', 'selected_months').required(),
+  months: Joi.array().items(Joi.number().integer().min(1).max(12)).default([]),
+  applicability: Joi.string().valid('all', 'class', 'students').required(),
+  classIds: Joi.array().items(objectId).default([]),
+  sectionIds: Joi.array().items(objectId).default([]),
+  studentIds: Joi.array().items(objectId).default([]),
+  status: Joi.string().valid('active', 'inactive').default('active'),
+});
+
+const academyAdditionalChargePatch = Joi.object({
+  name: Joi.string().trim(),
+  amount: Joi.number().min(0),
+  frequency: Joi.string().valid('every_month', 'selected_months'),
+  months: Joi.array().items(Joi.number().integer().min(1).max(12)),
+  applicability: Joi.string().valid('all', 'class', 'students'),
+  classIds: Joi.array().items(objectId),
+  sectionIds: Joi.array().items(objectId),
+  studentIds: Joi.array().items(objectId),
+  status: Joi.string().valid('active', 'inactive'),
 }).min(1);
 
 const academicRecord = Joi.object({
@@ -112,6 +156,7 @@ const academyStudentRegister = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId.required(),
   sectionId: objectId.required(),
+  disciplineId: objectId.allow(null, ''),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -139,6 +184,7 @@ const academyStudentActivate = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId,
   sectionId: objectId.required(),
+  disciplineId: objectId.allow(null, ''),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -167,6 +213,62 @@ const academyStudentActivate = Joi.object({
   address: Joi.string().allow('').trim(),
 }).or('phone', 'mobileNo');
 
+/** Subjects + discounts → unpaid enrollment voucher (no section yet). */
+const academyEnrollmentVoucher = Joi.object({
+  studentName: Joi.string().trim(),
+  fatherName: Joi.string().trim(),
+  phone: Joi.string().trim(),
+  mobileNo: Joi.string().trim(),
+  gender: Joi.string().valid('male', 'female', 'other'),
+  classId: objectId,
+  disciplineId: objectId.allow(null, ''),
+  selectedSubjects: Joi.array().items(objectId).default([]),
+  isFullPackage: Joi.boolean().default(false),
+  discountAmount: Joi.number().min(0).default(0),
+  monthlyFeeDiscount: Joi.number().min(0).default(0),
+  admissionFeeDiscount: Joi.number().min(0).default(0),
+  paymentDate: Joi.date().optional(),
+  guardianName: Joi.string().allow('').trim(),
+  dateOfBirth: Joi.date(),
+  nationality: Joi.string().trim(),
+  guardianRelation: Joi.string().allow('').trim(),
+  fatherGuardianCnic: Joi.string().allow('').trim(),
+  guardianOccupation: Joi.string().allow('').trim(),
+  guardianWorkAddress: Joi.string().allow('').trim(),
+  studentEmail: Joi.string().trim().allow('').empty('').email({ tlds: { allow: false } }),
+  postalAddress: Joi.string().allow('').trim(),
+  contactPhoneRes: Joi.string().allow('').trim(),
+  permanentAddress: Joi.string().allow('').trim(),
+  currentSchoolCollege: Joi.string().allow('').trim(),
+  academicHistory: Joi.array().items(academicRecord).default([]),
+  address: Joi.string().allow('').trim(),
+});
+
+/** After paid enrollment voucher — assign section and activate. */
+const academyAssignSection = Joi.object({
+  sectionId: objectId.required(),
+  classId: objectId,
+  studentName: Joi.string().trim(),
+  fatherName: Joi.string().trim(),
+  phone: Joi.string().trim(),
+  mobileNo: Joi.string().trim(),
+  gender: Joi.string().valid('male', 'female', 'other'),
+  guardianName: Joi.string().allow('').trim(),
+  dateOfBirth: Joi.date(),
+  nationality: Joi.string().trim(),
+  guardianRelation: Joi.string().allow('').trim(),
+  fatherGuardianCnic: Joi.string().allow('').trim(),
+  guardianOccupation: Joi.string().allow('').trim(),
+  guardianWorkAddress: Joi.string().allow('').trim(),
+  studentEmail: Joi.string().trim().allow('').empty('').email({ tlds: { allow: false } }),
+  postalAddress: Joi.string().allow('').trim(),
+  contactPhoneRes: Joi.string().allow('').trim(),
+  permanentAddress: Joi.string().allow('').trim(),
+  currentSchoolCollege: Joi.string().allow('').trim(),
+  academicHistory: Joi.array().items(academicRecord).default([]),
+  address: Joi.string().allow('').trim(),
+});
+
 const academyStudentDirectRegister = Joi.object({
   studentName: Joi.string().trim().required(),
   fatherName: Joi.string().trim().required(),
@@ -175,6 +277,7 @@ const academyStudentDirectRegister = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId.required(),
   sectionId: objectId.required(),
+  disciplineId: objectId.allow(null, ''),
   selectedSubjects: Joi.array().items(objectId).default([]),
   isFullPackage: Joi.boolean().default(false),
   discountAmount: Joi.number().min(0).default(0),
@@ -208,6 +311,7 @@ const academyStudentPatch = Joi.object({
   gender: Joi.string().valid('male', 'female', 'other'),
   classId: objectId,
   sectionId: objectId,
+  disciplineId: objectId.allow(null, ''),
   selectedSubjects: Joi.array().items(objectId),
   isFullPackage: Joi.boolean(),
   discountAmount: Joi.number().min(0),
@@ -235,18 +339,28 @@ const academyStudentPatch = Joi.object({
 const academyFeePay = Joi.object({
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').default('cash'),
   notes: Joi.string().allow('').optional(),
+  paidAt: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 const academyFeePayMany = Joi.object({
   feeRecordIds: Joi.array().items(objectId).min(1).max(24).required(),
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').default('cash'),
   notes: Joi.string().allow('').optional(),
+  paidAt: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 const academyFeeGenerate = Joi.object({
   month: Joi.number().integer().min(1).max(12).required(),
   year: Joi.number().integer().min(2000).max(2100).required(),
   classId: objectId.optional(),
+});
+
+const academyFeeStationery = Joi.object({
+  studentId: objectId.required(),
+  amount: Joi.number().positive().max(1_000_000).required(),
+  month: Joi.number().integer().min(1).max(12).optional(),
+  year: Joi.number().integer().min(2000).max(2100).optional(),
+  notes: Joi.string().allow('').trim().max(500).optional(),
 });
 
 const feeDefaultersQuery = Joi.object({
@@ -332,7 +446,9 @@ const academyAssessmentBody = Joi.object({
   assessmentType: Joi.string().valid(...assessmentTypes).default('weekly'),
   examDate: Joi.date().required(),
   totalMarks: Joi.number().min(1).required(),
-  obtainedMarks: Joi.number().min(0).required(),
+  obtainedMarks: Joi.number().min(0).max(Joi.ref('totalMarks')).required().messages({
+    'number.max': 'Obtained marks cannot exceed total marks',
+  }),
   remarks: Joi.string().allow('').trim(),
 });
 
@@ -344,7 +460,20 @@ const academyAssessmentPatch = Joi.object({
   totalMarks: Joi.number().min(1),
   obtainedMarks: Joi.number().min(0),
   remarks: Joi.string().allow('').trim(),
-}).min(1);
+})
+  .min(1)
+  .custom((value, helpers) => {
+    if (
+      value.obtainedMarks != null &&
+      value.totalMarks != null &&
+      Number(value.obtainedMarks) > Number(value.totalMarks)
+    ) {
+      return helpers.error('any.custom', {
+        message: 'Obtained marks cannot exceed total marks',
+      });
+    }
+    return value;
+  });
 
 const academyAssessmentSessionQuery = Joi.object({
   classId: objectId.required(),
@@ -443,16 +572,23 @@ module.exports = {
   academySubjectBulkChoiceBody,
   academySectionBody,
   academySectionPatch,
+  academyDisciplineBody,
+  academyDisciplinePatch,
   academyFeeStructureBody,
   academyFeeStructurePatch,
+  academyAdditionalChargeBody,
+  academyAdditionalChargePatch,
   academyStudentRegister,
   academyStudentProvisional,
   academyStudentActivate,
+  academyEnrollmentVoucher,
+  academyAssignSection,
   academyStudentDirectRegister,
   academyStudentPatch,
   academyFeePay,
   academyFeePayMany,
   academyFeeGenerate,
+  academyFeeStationery,
   feeDefaultersQuery,
   academySalaryPay,
   academySalaryGenerate,

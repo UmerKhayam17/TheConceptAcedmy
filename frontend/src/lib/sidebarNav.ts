@@ -28,6 +28,7 @@ import {
   Users,
   UserCog,
   KeyRound,
+  Route,
 } from "lucide-react";
 import type { Role } from "./auth";
 import type { ModuleKey } from "./permissions";
@@ -125,6 +126,15 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => studentManagementHref(role, "subjects"),
       },
       {
+        id: "disciplines",
+        label: "Disciplines",
+        icon: Route,
+        moduleKey: "student-management",
+        href: (role) => studentManagementHref(role, "disciplines"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/student-management/disciplines`),
+      },
+      {
         id: "assessments-config",
         label: "Assessment Catalog",
         icon: ClipboardList,
@@ -166,11 +176,11 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => systemConfigHref(role, "teachers"),
       },
       {
-        id: "teacher-assignments",
-        label: "Teacher Assignments",
+        id: "subject-teachers",
+        label: "Subject Teachers",
         icon: Link2,
         moduleKey: "system-config",
-        href: (role) => systemConfigHref(role, "teacher-assignments"),
+        href: (role) => systemConfigHref(role, "subject-teachers"),
       },
       {
         id: "periods",
@@ -315,6 +325,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
     icon: Wallet,
     collapsible: true,
     items: [
+      {
+        id: "finance-dashboard",
+        label: "Finance Dashboard",
+        icon: LayoutDashboard,
+        moduleKey: "finance-dashboard",
+        href: (role) => moduleHref(role, "finance-dashboard"),
+      },
       {
         id: "fee-structure",
         label: "Fee Structure",
@@ -479,27 +496,28 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
         moduleKey: "timetable",
         href: (role) => timetableHref(role, "view"),
       },
-      {
-        id: "homework",
-        label: "Homework / Assignments",
-        icon: BookOpen,
-        moduleKey: "homework",
-        href: (role) => moduleHref(role, "homework"),
-      },
-      {
-        id: "study-materials",
-        label: "Study Materials",
-        icon: BookOpen,
-        moduleKey: "study-materials",
-        href: (role) => moduleHref(role, "study-materials"),
-      },
-      {
-        id: "lesson-plans",
-        label: "Lesson Plans",
-        icon: BookOpen,
-        moduleKey: "lesson-plans",
-        href: (role) => moduleHref(role, "lesson-plans"),
-      },
+      // Coming-soon placeholders — hidden from teacher sidebar for now
+      // {
+      //   id: "homework",
+      //   label: "Homework / Assignments",
+      //   icon: BookOpen,
+      //   moduleKey: "homework",
+      //   href: (role) => moduleHref(role, "homework"),
+      // },
+      // {
+      //   id: "study-materials",
+      //   label: "Study Materials",
+      //   icon: BookOpen,
+      //   moduleKey: "study-materials",
+      //   href: (role) => moduleHref(role, "study-materials"),
+      // },
+      // {
+      //   id: "lesson-plans",
+      //   label: "Lesson Plans",
+      //   icon: BookOpen,
+      //   moduleKey: "lesson-plans",
+      //   href: (role) => moduleHref(role, "lesson-plans"),
+      // },
       {
         id: "exams",
         label: "Assessments",
@@ -507,13 +525,13 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
         moduleKey: "exams",
         href: (role) => testExamsHref(role),
       },
-      {
-        id: "student-progress",
-        label: "Student Progress",
-        icon: BarChart3,
-        moduleKey: "student-progress",
-        href: (role) => moduleHref(role, "student-progress"),
-      },
+      // {
+      //   id: "student-progress",
+      //   label: "Student Progress",
+      //   icon: BarChart3,
+      //   moduleKey: "student-progress",
+      //   href: (role) => moduleHref(role, "student-progress"),
+      // },
       {
         id: "attendance",
         label: "Student Attendance",
@@ -543,58 +561,60 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
         moduleKey: "announcements",
         href: (role) => moduleHref(role, "announcements"),
       },
-      {
-        id: "behaviour",
-        label: "Behaviour / Discipline",
-        icon: ClipboardList,
-        moduleKey: "behaviour",
-        href: (role) => moduleHref(role, "behaviour"),
-      },
-      {
-        id: "parent-meetings",
-        label: "Parent Meetings",
-        icon: Users,
-        moduleKey: "parent-meetings",
-        href: (role) => moduleHref(role, "parent-meetings"),
-      },
+      // Coming-soon placeholders — hidden from teacher sidebar for now
+      // {
+      //   id: "behaviour",
+      //   label: "Behaviour / Discipline",
+      //   icon: ClipboardList,
+      //   moduleKey: "behaviour",
+      //   href: (role) => moduleHref(role, "behaviour"),
+      // },
+      // {
+      //   id: "parent-meetings",
+      //   label: "Parent Meetings",
+      //   icon: Users,
+      //   moduleKey: "parent-meetings",
+      //   href: (role) => moduleHref(role, "parent-meetings"),
+      // },
     ],
   },
-  {
-    id: "resources",
-    label: "Resources",
-    icon: Calendar,
-    collapsible: true,
-    items: [
-      {
-        id: "online-classes",
-        label: "Online Classes",
-        icon: LayoutGrid,
-        moduleKey: "online-classes",
-        href: (role) => moduleHref(role, "online-classes"),
-      },
-      {
-        id: "library",
-        label: "Library",
-        icon: BookOpen,
-        moduleKey: "library",
-        href: (role) => moduleHref(role, "library"),
-      },
-      {
-        id: "school-calendar",
-        label: "School Calendar",
-        icon: CalendarDays,
-        moduleKey: "school-calendar",
-        href: (role) => moduleHref(role, "school-calendar"),
-      },
-      {
-        id: "notifications",
-        label: "Notifications",
-        icon: Bell,
-        moduleKey: "notifications",
-        href: (role) => moduleHref(role, "notifications"),
-      },
-    ],
-  },
+  // Coming-soon placeholders — Resources group hidden until modules are built
+  // {
+  //   id: "resources",
+  //   label: "Resources",
+  //   icon: Calendar,
+  //   collapsible: true,
+  //   items: [
+  //     {
+  //       id: "online-classes",
+  //       label: "Online Classes",
+  //       icon: LayoutGrid,
+  //       moduleKey: "online-classes",
+  //       href: (role) => moduleHref(role, "online-classes"),
+  //     },
+  //     {
+  //       id: "library",
+  //       label: "Library",
+  //       icon: BookOpen,
+  //       moduleKey: "library",
+  //       href: (role) => moduleHref(role, "library"),
+  //     },
+  //     {
+  //       id: "school-calendar",
+  //       label: "School Calendar",
+  //       icon: CalendarDays,
+  //       moduleKey: "school-calendar",
+  //       href: (role) => moduleHref(role, "school-calendar"),
+  //     },
+  //     {
+  //       id: "notifications",
+  //       label: "Notifications",
+  //       icon: Bell,
+  //       moduleKey: "notifications",
+  //       href: (role) => moduleHref(role, "notifications"),
+  //     },
+  //   ],
+  // },
   {
     id: "account-tools",
     label: "My Account",
@@ -621,6 +641,99 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: Clock,
         moduleKey: "staff-attendance",
         href: (role) => moduleHref(role, "staff-attendance"),
+      },
+    ],
+  },
+];
+
+/** Parent portal sidebar — children, schedule, attendance, and messaging only. */
+export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    collapsible: false,
+    items: [
+      {
+        id: "dashboard",
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        moduleKey: "dashboard",
+        href: (role) => moduleHref(role, "dashboard"),
+        isActive: (pathname, role) => pathname === p(role),
+      },
+    ],
+  },
+  {
+    id: "my-children",
+    label: "My Children",
+    icon: GraduationCap,
+    collapsible: true,
+    items: [
+      {
+        id: "students",
+        label: "My Children",
+        icon: GraduationCap,
+        moduleKey: "students",
+        href: (role) => moduleHref(role, "students"),
+      },
+      {
+        id: "student-attendance",
+        label: "Attendance",
+        icon: ClipboardList,
+        moduleKey: "attendance",
+        href: (role) => moduleHref(role, "attendance"),
+      },
+      {
+        id: "student-timetable",
+        label: "Timetable",
+        icon: CalendarDays,
+        moduleKey: "timetable",
+        href: (role) => timetableHref(role, "view"),
+      },
+    ],
+  },
+  {
+    id: "communication",
+    label: "Communication",
+    icon: MessageSquare,
+    collapsible: true,
+    items: [
+      {
+        id: "chat",
+        label: "Chat",
+        icon: MessageSquare,
+        moduleKey: "chat",
+        href: (role) => moduleHref(role, "chat"),
+      },
+      {
+        id: "announcements",
+        label: "Announcements",
+        icon: Bell,
+        moduleKey: "announcements",
+        href: (role) => moduleHref(role, "announcements"),
+      },
+      {
+        id: "notifications",
+        label: "Notifications",
+        icon: Bell,
+        moduleKey: "notifications",
+        href: (role) => moduleHref(role, "notifications"),
+      },
+    ],
+  },
+  {
+    id: "resources",
+    label: "School",
+    icon: Calendar,
+    collapsible: true,
+    items: [
+      {
+        id: "school-calendar",
+        label: "School Calendar",
+        icon: CalendarDays,
+        moduleKey: "school-calendar",
+        href: (role) => moduleHref(role, "school-calendar"),
       },
     ],
   },
@@ -681,6 +794,13 @@ export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
     icon: Wallet,
     collapsible: true,
     items: [
+      {
+        id: "finance-dashboard",
+        label: "Finance Dashboard",
+        icon: LayoutDashboard,
+        moduleKey: "finance-dashboard",
+        href: (role) => moduleHref(role, "finance-dashboard"),
+      },
       {
         id: "fee-structure",
         label: "Fee Structure",
@@ -804,6 +924,7 @@ export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
 export function sidebarNavForRole(role: Role): SidebarNavGroup[] {
   if (role === "teacher") return TEACHER_SIDEBAR_NAV;
   if (role === "accountant") return ACCOUNTANT_SIDEBAR_NAV;
+  if (role === "parent") return PARENT_SIDEBAR_NAV;
   return SIDEBAR_NAV;
 }
 
@@ -822,7 +943,7 @@ export function groupIsOpen(group: SidebarNavGroup, pathname: string, role: Role
 export const MOBILE_PRIMARY_NAV_IDS: Record<Role, string[]> = {
   admin: ["dashboard", "academic-setup", "student-management", "finance", "administration"],
   accountant: ["dashboard", "students", "fee-management", "academy-expenses", "chat"],
-  teacher: ["dashboard", "my-classes", "attendance", "chat", "homework"],
+  teacher: ["dashboard", "my-classes", "attendance", "chat", "exams"],
   parent: ["dashboard", "students", "student-attendance", "chat", "announcements"],
   student: ["dashboard", "student-timetable", "exams", "chat", "announcements"],
 };

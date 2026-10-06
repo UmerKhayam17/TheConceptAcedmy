@@ -173,6 +173,162 @@ async function upcomingBirthdays(limit = 8) {
   return scored;
 }
 
+async function feesByClass() {
+  const rows = await AcademyFeeRecord.aggregate([
+    {
+      $lookup: {
+        from: 'students',
+        localField: 'studentId',
+        foreignField: '_id',
+        as: 'student',
+      },
+    },
+    { $unwind: { path: '$student', preserveNullAndEmptyArrays: true } },
+    {
+      $group: {
+        _id: '$student.classId',
+        assessed: { $sum: '$amount' },
+        collected: {
+          $sum: { $cond: [{ $eq: ['$status', 'paid'] }, '$amount', 0] },
+        },
+        outstanding: {
+          $sum: {
+            $cond: [{ $in: ['$status', ['pending', 'overdue']] }, '$amount', 0],
+          },
+        },
+      },
+    },
+    { $sort: { assessed: -1 } },
+    { $limit: 20 },
+  ]);
+  const classIds = rows.map((r) => r._id).filter(Boolean);
+  const classes = await AcademyClass.find({ _id: { $in: classIds } }).select('className').lean();
+  const nameById = Object.fromEntries(classes.map((c) => [String(c._id), c.className]));
+  return rows.map((r) => {
+    const assessed = r.assessed || 0;
+    const collected = r.collected || 0;
+    const outstanding = r.outstanding || 0;
+    return {
+      classId: r._id ? String(r._id) : null,
+      className: r._id ? nameById[String(r._id)] || 'Unknown' : 'Unassigned',
+      assessed,
+      collected,
+      outstanding,
+      pct: assessed > 0 ? Math.round((collected / assessed) * 100) : 0,
+    };
+  });
+}
+
+async function paymentMethodBreakdown() {
+  const rows = await AcademyFeeRecord.aggregate([
+    { $match: { status: 'paid' } },
+    {
+      $group: {
+        _id: { $ifNull: ['$paymentMethod', 'other'] },
+        amount: { $sum: '$amount' },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { amount: -1 } },
+  ]);
+  const labels = {
+    cash: 'Cash',
+    bank_transfer: 'Bank Transfer',
+    online: 'Online',
+    other: 'Other',
+  };
+  return rows.map((r) => ({
+    key: r._id || 'other',
+    name: labels[r._id] || String(r._id || 'Other'),
+    amount: r.amount || 0,
+    count: r.count || 0,
+  }));
+}
+
+async function feeTypeMonthlyTrends(months) {
+  const out = [];
+  for (const m of months) {
+    // eslint-disable-next-line no-await-in-loop
+    const rows = await AcademyFeeRecord.aggregate([
+      { $match: { month: m.month, year: m.year, status: 'paid' } },
+      { $group: { _id: '$feeType', amount: { $sum: '$amount' } } },
+    ]);
+    const byType = Object.fromEntries(rows.map((r) => [r._id, r.amount]));
+    out.push({
+      label: m.label,
+      month: m.month,
+      year: m.year,
+      monthly: byType.monthly || 0,
+      admission: byType.admission || 0,
+      stationery: byType.stationery || 0,
+    });
+  }
+  return out;
+}
+
+async function outstandingAging() {
+  const now = new Date();
+  const unpaid = await AcademyFeeRecord.find({ status: { $in: ['pending', 'overdue'] } })
+    .select('amount dueDate studentId status')
+    .lean();
+  const buckets = [
+    { key: '1-30', label: '1–30 days', min: 1, max: 30, amount: 0, students: new Set() },
+    { key: '31-60', label: '31–60 days', min: 31, max: 60, amount: 0, students: new Set() },
+    { key: '61-90', label: '61–90 days', min: 61, max: 90, amount: 0, students: new Set() },
+    { key: '90+', label: '90+ days', min: 91, max: Infinity, amount: 0, students: new Set() },
+  ];
+  for (const fee of unpaid) {
+    if (!fee.dueDate) continue;
+    const days = Math.floor((now - new Date(fee.dueDate)) / (1000 * 60 * 60 * 24));
+    if (days < 1) continue;
+    const bucket = buckets.find((b) => days >= b.min && days <= b.max);
+    if (!bucket) continue;
+    bucket.amount += fee.amount || 0;
+    if (fee.studentId) bucket.students.add(String(fee.studentId));
+  }
+  return buckets.map((b) => ({
+    label: b.label,
+    amount: b.amount,
+    students: b.students.size,
+  }));
+}
+
+async function studentPaymentStatus() {
+  const rows = await AcademyFeeRecord.aggregate([
+    {
+      $group: {
+        _id: '$studentId',
+        unpaid: {
+          $sum: { $cond: [{ $in: ['$status', ['pending', 'overdue']] }, 1, 0] },
+        },
+        paid: {
+          $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] },
+        },
+        total: { $sum: 1 },
+      },
+    },
+  ]);
+  let fullyPaid = 0;
+  let partiallyPaid = 0;
+  let unpaid = 0;
+  let overdueOnly = 0;
+  for (const r of rows) {
+    if (r.unpaid === 0 && r.paid > 0) fullyPaid += 1;
+    else if (r.unpaid > 0 && r.paid > 0) partiallyPaid += 1;
+    else if (r.unpaid > 0 && r.paid === 0) unpaid += 1;
+  }
+  // Overdue-focused count from unpaid fee records with overdue status
+  const overdueStudents = await AcademyFeeRecord.distinct('studentId', { status: 'overdue' });
+  overdueOnly = overdueStudents.length;
+  const total = fullyPaid + partiallyPaid + unpaid || 1;
+  return [
+    { name: 'Fully Paid', students: fullyPaid, pct: Math.round((fullyPaid / total) * 1000) / 10 },
+    { name: 'Partially Paid', students: partiallyPaid, pct: Math.round((partiallyPaid / total) * 1000) / 10 },
+    { name: 'Unpaid', students: unpaid, pct: Math.round((unpaid / total) * 1000) / 10 },
+    { name: 'Overdue', students: overdueOnly, pct: Math.round((overdueOnly / total) * 1000) / 10 },
+  ];
+}
+
 async function getDashboardOverview({ months = 6 } = {}) {
   const today = todayYmd();
   const { start, end } = dayBounds(today);
@@ -211,6 +367,13 @@ async function getDashboardOverview({ months = 6 } = {}) {
     recentPayments,
     birthdays,
     pendingFeeAdmissions,
+    classFeeCollections,
+    paymentMethods,
+    revenueByFeeType,
+    agingBuckets,
+    paymentStatus,
+    recentExpenses,
+    recentSalaries,
   ] = await Promise.all([
     AcademyStudent.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
     teacherRole
@@ -244,7 +407,7 @@ async function getDashboardOverview({ months = 6 } = {}) {
     expenseByCategory(month, year),
     studentsByClass(),
     monthlyFinanceTrends(window),
-    feeService.getDefaultersSummary({ month, year }),
+    feeService.getDefaultersSummary({}),
     genderDistribution(),
     AcademyFeeRecord.aggregate([
       { $match: { month, year } },
@@ -272,12 +435,28 @@ async function getDashboardOverview({ months = 6 } = {}) {
       .lean(),
     AcademyFeeRecord.find({ status: 'paid', paidAt: { $exists: true } })
       .sort({ paidAt: -1 })
-      .limit(6)
+      .limit(20)
       .populate('studentId', 'studentName studentId')
-      .select('amount paidAt feeType month year studentId voucherNumber')
+      .select('amount paidAt feeType month year studentId receiptNumber paymentMethod')
       .lean(),
     upcomingBirthdays(8),
     AcademyStudent.countDocuments({ status: 'pending_fee' }),
+    feesByClass(),
+    paymentMethodBreakdown(),
+    feeTypeMonthlyTrends(window),
+    outstandingAging(),
+    studentPaymentStatus(),
+    AcademyExpense.find({ status: 'paid' })
+      .sort({ expenseDate: -1 })
+      .limit(15)
+      .select('title amount expenseDate category paymentMethod vendor status')
+      .lean(),
+    AcademySalaryRecord.find({})
+      .sort({ updatedAt: -1 })
+      .limit(15)
+      .populate('staffId', 'name')
+      .select('amount month year status paymentMethod paidAt staffId')
+      .lean(),
   ]);
 
   const studentsByStatus = Object.fromEntries(
@@ -372,6 +551,11 @@ async function getDashboardOverview({ months = 6 } = {}) {
       expensesByCategory: expenseCategories,
       studentsByClass: classBreakdown,
       genderDistribution: gender,
+      feesByClass: classFeeCollections,
+      paymentMethods,
+      revenueByFeeType,
+      agingBuckets,
+      studentPaymentStatus: paymentStatus,
     },
     widgets: {
       upcomingExams: upcomingExams.map((e) => ({
@@ -399,9 +583,30 @@ async function getDashboardOverview({ months = 6 } = {}) {
         feeType: p.feeType,
         month: p.month,
         year: p.year,
-        voucherNumber: p.voucherNumber || '',
+        voucherNumber: p.receiptNumber || '',
+        paymentMethod: p.paymentMethod || 'cash',
         studentName: p.studentId?.studentName || '—',
         studentId: p.studentId?.studentId || '',
+      })),
+      recentExpenses: recentExpenses.map((e) => ({
+        id: String(e._id),
+        title: e.title,
+        amount: e.amount,
+        expenseDate: e.expenseDate,
+        category: e.category || 'other',
+        paymentMethod: e.paymentMethod || 'other',
+        vendor: e.vendor || '',
+        status: e.status,
+      })),
+      recentSalaries: recentSalaries.map((s) => ({
+        id: String(s._id),
+        amount: s.amount,
+        month: s.month,
+        year: s.year,
+        status: s.status,
+        paymentMethod: s.paymentMethod || 'other',
+        paidAt: s.paidAt || null,
+        staffName: s.staffId?.name || 'Staff',
       })),
       recentAnnouncements: recentAnnouncements.map((a) => ({
         id: String(a._id),

@@ -24,6 +24,7 @@ import AssignAssessmentsPanel from "@/components/modules/exams/AssignAssessments
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import CreatedByLine from "@/components/modules/CreatedByLine";
 import { matchesPanelSearch } from "@/lib/panelSearch";
+import { clampMarksInput, validateObtainedVsTotal } from "@/lib/marksValidation";
 
 function classNameOf(exam?: Exam | null) {
   const c = exam?.academyClass;
@@ -148,6 +149,24 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
 
   const handleSaveMarks = () => {
     if (!selectedExamId) return;
+    for (const row of studentRows) {
+      const sid = row.student._id;
+      const enrolled = new Set((row.subjects || []).map((sub) => sub._id));
+      for (const col of markColumns) {
+        if (!enrolled.has(col.id)) continue;
+        const cell = marksDraft[sid]?.[col.id];
+        if (!cell || cell.obtained === "") continue;
+        const err = validateObtainedVsTotal(Number(cell.obtained), col.total);
+        if (err) {
+          toast({
+            title: "Invalid marks",
+            description: `${row.student.studentName} · ${col.label}: ${err}`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    }
     const marks = studentRows
       .map((row) => {
         const sid = row.student._id;
@@ -306,6 +325,10 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                                         <div className="flex items-center justify-center gap-1">
                                           <Input
                                             className="h-7 w-14 text-center text-xs px-1"
+                                            type="number"
+                                            min={0}
+                                            max={col.total}
+                                            step="any"
                                             placeholder="0"
                                             value={cell?.obtained ?? ""}
                                             onChange={(e) =>
@@ -314,7 +337,7 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                                                 [row.student._id]: {
                                                   ...prev[row.student._id],
                                                   [col.id]: {
-                                                    obtained: e.target.value,
+                                                    obtained: clampMarksInput(e.target.value, col.total),
                                                     total: String(col.total),
                                                   },
                                                 },

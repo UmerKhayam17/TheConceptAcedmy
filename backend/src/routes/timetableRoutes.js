@@ -57,6 +57,24 @@ router.delete('/setup/teacher-profiles/:id', canManage, setup.deleteTeacherProfi
 // ─── Setup: Teacher assignments ─────────────────────────────────
 router.get('/setup/teacher-assignments', canView, setup.listTeacherAssignments);
 router.post(
+  '/setup/teacher-assignments/bulk',
+  canManage,
+  validate(schemas.teacherAssignmentBulkBody),
+  setup.bulkSyncTeacherAssignments
+);
+router.put(
+  '/setup/teacher-assignments/subject-teacher',
+  canManage,
+  validate(schemas.subjectTeacherUpsertBody),
+  setup.upsertSubjectTeacher
+);
+router.put(
+  '/setup/teacher-assignments/section-subjects',
+  canManage,
+  validate(schemas.sectionSubjectTeachersBody),
+  setup.syncSectionSubjectTeachers
+);
+router.post(
   '/setup/teacher-assignments',
   canManage,
   validate(schemas.teacherAssignmentBody),

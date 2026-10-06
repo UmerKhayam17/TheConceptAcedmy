@@ -1,15 +1,42 @@
 const catchAsync = require('../../utils/catchAsync');
 const sectionService = require('../../services/academy/academySectionService');
 const rt = require('../../services/realtime/academyRealtime');
+const {
+  resolveTeacherScope,
+  ensureClassInTeacherScope,
+  sectionIdsForClassFromCombos,
+  idStr,
+} = require('../../services/academy/teacherTestScope');
 
 const listByClass = catchAsync(async (req, res) => {
-  const data = await sectionService.listByClass(req.params.classId, { status: req.query.status });
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
+  if (teacherScope) {
+    ensureClassInTeacherScope(teacherScope, req.params.classId);
+  }
+  let data = await sectionService.listByClass(req.params.classId, { status: req.query.status });
+  if (teacherScope) {
+    const allowed = new Set(
+      sectionIdsForClassFromCombos(teacherScope.combos, req.params.classId).map(idStr)
+    );
+    data = data.filter((s) => allowed.has(idStr(s._id)));
+  }
   res.json({ success: true, data });
 });
 
 const listBySession = catchAsync(async (req, res) => {
   const sessionId = req.query.sessionId || undefined;
-  const data = await sectionService.listBySession(sessionId, { status: req.query.status });
+  const teacherScope = await resolveTeacherScope(req, sessionId);
+  let data = await sectionService.listBySession(sessionId, { status: req.query.status });
+  if (teacherScope) {
+    const allowedClassIds = new Set(teacherScope.classIds);
+    const allowedSections = new Set();
+    for (const c of teacherScope.combos) {
+      allowedSections.add(idStr(c.sectionId));
+    }
+    data = data.filter(
+      (s) => allowedClassIds.has(idStr(s.classId?._id || s.classId)) && allowedSections.has(idStr(s._id))
+    );
+  }
   res.json({ success: true, data });
 });
 

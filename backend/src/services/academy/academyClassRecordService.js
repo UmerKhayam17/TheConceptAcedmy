@@ -7,9 +7,22 @@ const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const AcademyClassTest = require('../../models/academy/AcademyClassTest');
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-async function getClassRecord(classId) {
+async function getClassRecord(classId, { omitSensitive = false, allowedSectionIds = null } = {}) {
   const cls = await AcademyClass.findById(classId).populate('createdBy', 'name email').lean();
   if (!cls) throw new ApiError(404, 'Class not found');
+
+  const studentSelect = omitSensitive
+    ? 'studentId studentName fatherName status isFullPackage gender sectionId'
+    : 'studentId studentName fatherName status isFullPackage gender phone';
+
+  const studentQuery = { classId };
+  if (Array.isArray(allowedSectionIds) && allowedSectionIds.length > 0) {
+    studentQuery.$or = [
+      { sectionId: { $in: allowedSectionIds } },
+      { sectionId: null },
+      { sectionId: { $exists: false } },
+    ];
+  }
 
   const [
     subjects,
@@ -23,12 +36,14 @@ async function getClassRecord(classId) {
       .populate('createdBy', 'name email')
       .sort({ subjectName: 1 })
       .lean(),
-    AcademyFeeStructure.find({ classId })
-      .populate('createdBy', 'name email')
-      .sort({ effectiveDate: -1, createdAt: -1 })
-      .lean(),
-    AcademyStudent.find({ classId })
-      .select('studentId studentName fatherName status isFullPackage gender phone')
+    omitSensitive
+      ? Promise.resolve([])
+      : AcademyFeeStructure.find({ classId })
+          .populate('createdBy', 'name email')
+          .sort({ effectiveDate: -1, createdAt: -1 })
+          .lean(),
+    AcademyStudent.find(studentQuery)
+      .select(studentSelect)
       .sort({ studentName: 1 })
       .lean(),
     AcademyClassTest.find({ classId })
@@ -37,11 +52,11 @@ async function getClassRecord(classId) {
       .limit(30)
       .lean(),
     [],
-    AcademyStudent.find({ classId }).distinct('_id'),
+    AcademyStudent.find(studentQuery).distinct('_id'),
   ]);
 
   let feeStats = { recordsCount: 0, totalPaid: 0, totalPending: 0 };
-  if (studentIds.length) {
+  if (!omitSensitive && studentIds.length) {
     const feeRecords = await AcademyFeeRecord.find({ studentId: { $in: studentIds } }).lean();
     feeStats.recordsCount = feeRecords.length;
     feeRecords.forEach((r) => {
@@ -58,8 +73,8 @@ async function getClassRecord(classId) {
   return {
     class: cls,
     subjects,
-    feeStructure: activeFeeStructure,
-    feeStructureHistory: feeStructures,
+    feeStructure: omitSensitive ? null : activeFeeStructure,
+    feeStructureHistory: omitSensitive ? [] : feeStructures,
     students,
     classTests,
     timetable: [],

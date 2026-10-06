@@ -1,8 +1,9 @@
-import { getApiRoot, parseJson, resolveUploadUrl } from "@/lib/api";
+import { parseJson, resolveUploadUrl } from "@/lib/api";
 
 export { resolveUploadUrl };
 import { authedFetch } from "@/lib/auth";
 import type { CreatedByUser } from "@/lib/createdBy";
+import type { AssessmentType } from "./assessmentTaxonomy";
 
 export interface Pagination {
   page: number;
@@ -53,6 +54,25 @@ export interface EnrollmentSubjectLayout {
     pickCount: number;
     subjects: AcademySubject[];
   }[];
+  disciplineId?: string | null;
+  sharedSubjects?: AcademySubject[];
+  streamSubjects?: AcademySubject[];
+}
+
+export interface AcademyDiscipline {
+  _id: string;
+  name: string;
+  code: string;
+  classId: string | { _id: string; className?: string };
+  subjectIds: AcademySubject[] | string[];
+  status: "active" | "inactive";
+  createdAt?: string;
+  createdBy?: CreatedByUser | string;
+}
+
+export interface AcademyDisciplinesListMeta {
+  requiresDiscipline: boolean;
+  suggestsDisciplines: boolean;
 }
 
 export interface AcademySection {
@@ -119,6 +139,7 @@ export interface AcademyStudentRegisterBody {
   gender: string;
   classId: string;
   sectionId: string;
+  disciplineId?: string;
   selectedSubjects: string[];
   isFullPackage: boolean;
   discountAmount?: number;
@@ -147,9 +168,11 @@ export interface AcademyStudentActivateResult {
   credentials: {
     studentId: string;
     rollNumber: string;
-    studentEmail: string;
-    studentPassword: string;
-    parentEmail?: string;
+    parentEmail: string;
+    parentPassword: string;
+    /** @deprecated student portal removed */
+    studentEmail?: string;
+    studentPassword?: string;
   };
 }
 
@@ -181,6 +204,7 @@ export interface AcademyStudent {
   address?: string;
   classId: string | AcademyClass;
   sectionId?: string | AcademySection;
+  disciplineId?: string | AcademyDiscipline | null;
   selectedSubjects: AcademySubject[] | string[];
   isFullPackage: boolean;
   monthlyFee: number;
@@ -213,13 +237,15 @@ export interface AcademyFeeRecord {
   month: number;
   year: number;
   amount: number;
-  feeType: "admission" | "monthly";
+  feeType: "admission" | "monthly" | "stationery";
   status: "pending" | "paid" | "overdue" | "waived";
   dueDate?: string;
   receiptNumber?: string;
   paidAt?: string;
   paymentMethod?: string;
+  paymentSlip?: string;
   notes?: string;
+  components?: { name: string; amount: number; kind?: "tuition" | "admission" | "charge" }[];
   /** Unpaid monthly vouchers for this student, across every month. */
   unpaidMonthCount?: number;
   unpaidFrom?: string;
@@ -254,6 +280,15 @@ export interface AcademyAttendanceRecord {
 export interface AcademyAssessmentRecord {
   _id: string;
   studentId: string;
+  classTestId?:
+  | string
+  | {
+    _id: string;
+    title?: string;
+    seriesLabel?: string;
+    createdBy?: CreatedByUser | string;
+    teacherId?: CreatedByUser | string;
+  };
   subjectId?: AcademySubject | string;
   title: string;
   assessmentType: string;
@@ -262,6 +297,8 @@ export interface AcademyAssessmentRecord {
   obtainedMarks: number;
   remarks?: string;
   testPaperImage?: string;
+  createdBy?: CreatedByUser | string;
+  recordedBy?: CreatedByUser | string;
 }
 
 export interface AcademyStudentRecord {
@@ -377,10 +414,90 @@ export const fetchSubjectsByClass = (classId: string, params?: { status?: string
   return api<AcademySubject[]>(`/classes/${classId}/subjects${q ? `?${q}` : ""}`);
 };
 
-export const fetchEnrollmentSubjects = (classId: string, sectionId?: string) => {
-  const q = sectionId ? `?sectionId=${sectionId}` : "";
-  return api<EnrollmentSubjectLayout>(`/classes/${classId}/enrollment-subjects${q}`);
+export const fetchEnrollmentSubjects = (
+  classId: string,
+  sectionId?: string,
+  disciplineId?: string,
+) => {
+  const qp = new URLSearchParams();
+  if (sectionId) qp.set("sectionId", sectionId);
+  if (disciplineId) qp.set("disciplineId", disciplineId);
+  const q = qp.toString();
+  return api<EnrollmentSubjectLayout>(`/classes/${classId}/enrollment-subjects${q ? `?${q}` : ""}`);
 };
+
+/** Streams across a session, or one class when classId is set. */
+export async function fetchAcademyDisciplines(params?: {
+  sessionId?: string;
+  classId?: string;
+  status?: string;
+}): Promise<{ data: AcademyDiscipline[]; meta: AcademyDisciplinesListMeta | null }> {
+  const qp = new URLSearchParams();
+  if (params?.sessionId) qp.set("sessionId", params.sessionId);
+  if (params?.classId) qp.set("classId", params.classId);
+  if (params?.status) qp.set("status", params.status);
+  const q = qp.toString();
+  const res = await authedFetch(`/student-management/disciplines${q ? `?${q}` : ""}`);
+  const json = await parseJson<{
+    success: boolean;
+    data: AcademyDiscipline[];
+    meta?: AcademyDisciplinesListMeta | null;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(json.message || `Request failed (${res.status})`);
+  return { data: json.data || [], meta: json.meta ?? null };
+}
+
+/** Streams for a class (Medical / Engineering / ICS). Empty for 9th/10th until configured. */
+export const fetchDisciplinesByClass = (classId: string, params?: { status?: string }) => {
+  const q = params?.status ? `?status=${params.status}` : "";
+  return api<AcademyDiscipline[]>(`/classes/${classId}/disciplines${q}`);
+};
+
+/** Full response with requiresDiscipline / suggestsDisciplines meta. */
+export async function fetchDisciplinesByClassWithMeta(
+  classId: string,
+  params?: { status?: string },
+): Promise<{ data: AcademyDiscipline[]; meta: AcademyDisciplinesListMeta }> {
+  const q = params?.status ? `?status=${params.status}` : "";
+  const res = await authedFetch(`/student-management/classes/${classId}/disciplines${q}`);
+  const json = await parseJson<{
+    success: boolean;
+    data: AcademyDiscipline[];
+    meta?: AcademyDisciplinesListMeta;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(json.message || `Request failed (${res.status})`);
+  return {
+    data: json.data || [],
+    meta: json.meta || { requiresDiscipline: false, suggestsDisciplines: false },
+  };
+}
+
+export const createAcademyDiscipline = (body: {
+  name: string;
+  code?: string;
+  classId: string;
+  subjectIds?: string[];
+  status?: "active" | "inactive";
+}) => api<AcademyDiscipline>("/disciplines", { method: "POST", body: JSON.stringify(body) });
+
+export const createStandardDisciplines = (classId: string) =>
+  api<{
+    created: number;
+    skipped: number;
+    linked?: { code: string; count: number }[];
+    suggestsDisciplines: boolean;
+    disciplines: AcademyDiscipline[];
+  }>(`/classes/${classId}/disciplines/defaults`, { method: "POST" });
+
+export const updateAcademyDiscipline = (
+  id: string,
+  body: Partial<Pick<AcademyDiscipline, "name" | "code" | "status">> & { subjectIds?: string[] },
+) => api<AcademyDiscipline>(`/disciplines/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+
+export const deleteAcademyDiscipline = (id: string) =>
+  api<{ deleted: boolean }>(`/disciplines/${id}`, { method: "DELETE" });
 
 /** Derived choice groups from subjects (same choiceGroupName within a class). */
 export const fetchSubjectChoiceGroups = (classId: string) =>
@@ -449,6 +566,14 @@ export const createAcademySubject = (body: {
   pickCount?: number;
 }) => api<AcademySubject>("/subjects", { method: "POST", body: JSON.stringify(body) });
 
+/** Create standard core subjects for a class (English, Maths, Sciences, …). Idempotent. */
+export const createStandardSubjects = (classId: string) =>
+  api<{
+    created: number;
+    skipped: number;
+    subjects: AcademySubject[];
+  }>(`/classes/${classId}/subjects/defaults`, { method: "POST" });
+
 export const updateAcademySubject = (
   id: string,
   body: Partial<AcademySubject> & {
@@ -485,6 +610,56 @@ export const updateFeeStructure = (id: string, body: Partial<AcademyFeeStructure
 
 export const deleteFeeStructure = (id: string) =>
   api<{ deleted: boolean }>(`/fee-structures/${id}`, { method: "DELETE" });
+
+export interface AdditionalChargeRef {
+  _id: string;
+  className?: string;
+  sectionName?: string;
+  studentName?: string;
+  studentId?: string;
+}
+
+export interface AdditionalCharge {
+  _id: string;
+  name: string;
+  amount: number;
+  frequency: "every_month" | "selected_months";
+  months: number[];
+  applicability: "all" | "class" | "students";
+  classIds: AdditionalChargeRef[] | string[];
+  sectionIds: AdditionalChargeRef[] | string[];
+  studentIds: AdditionalChargeRef[] | string[];
+  status: "active" | "inactive";
+}
+
+export const fetchAdditionalCharges = () => api<AdditionalCharge[]>("/additional-charges");
+
+export const createAdditionalCharge = (body: {
+  name: string;
+  amount: number;
+  frequency: "every_month" | "selected_months";
+  months?: number[];
+  applicability: "all" | "class" | "students";
+  classIds?: string[];
+  sectionIds?: string[];
+  studentIds?: string[];
+  status?: "active" | "inactive";
+}) => api<AdditionalCharge>("/additional-charges", { method: "POST", body: JSON.stringify(body) });
+
+export const updateAdditionalCharge = (id: string, body: Partial<{
+  name: string;
+  amount: number;
+  frequency: "every_month" | "selected_months";
+  months: number[];
+  applicability: "all" | "class" | "students";
+  classIds: string[];
+  sectionIds: string[];
+  studentIds: string[];
+  status: "active" | "inactive";
+}>) => api<AdditionalCharge>(`/additional-charges/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+
+export const deleteAdditionalCharge = (id: string) =>
+  api<{ deleted: boolean }>(`/additional-charges/${id}`, { method: "DELETE" });
 
 export const previewFees = (body: {
   classId: string;
@@ -563,6 +738,107 @@ export async function activateAcademyStudent(id: string, body: AcademyStudentAct
   return { student: parsed.data!, credentials: parsed.credentials! };
 }
 
+export type EnrollmentVoucherBody = {
+  classId?: string;
+  disciplineId?: string;
+  selectedSubjects: string[];
+  isFullPackage: boolean;
+  discountAmount?: number;
+  monthlyFeeDiscount?: number;
+  admissionFeeDiscount?: number;
+  studentName?: string;
+  fatherName?: string;
+  phone?: string;
+  gender?: string;
+  paymentDate?: string;
+};
+
+export type EnrollmentVoucherResult = {
+  student: AcademyStudent;
+  voucher: AcademyFeeRecord | null;
+  fees: FeePreview;
+};
+
+export async function prepareEnrollmentVoucher(id: string, body: EnrollmentVoucherBody) {
+  const res = await authedFetch(`/student-management/students/${id}/enrollment-voucher`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: AcademyStudent;
+    voucher?: AcademyFeeRecord | null;
+    fees?: FeePreview;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Could not generate voucher (${res.status})`);
+  return {
+    student: parsed.data!,
+    voucher: parsed.voucher ?? null,
+    fees: parsed.fees!,
+  } satisfies EnrollmentVoucherResult;
+}
+
+export type AssignSectionBody = {
+  sectionId: string;
+  classId?: string;
+  studentName?: string;
+  fatherName?: string;
+  phone?: string;
+  gender?: string;
+  guardianName?: string;
+};
+
+export async function assignSectionAfterPayment(id: string, body: AssignSectionBody) {
+  const res = await authedFetch(`/student-management/students/${id}/assign-section`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: AcademyStudent;
+    credentials?: AcademyStudentActivateResult["credentials"];
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Section assignment failed (${res.status})`);
+  return { student: parsed.data!, credentials: parsed.credentials! };
+}
+
+export type ParentPortalProvisionRow = {
+  studentMongoId: string;
+  studentId: string;
+  studentName: string;
+  parentEmail: string;
+  parentPassword: string;
+  created: boolean;
+};
+
+export type ParentPortalProvisionResult = {
+  total: number;
+  createdCount: number;
+  updatedCount: number;
+  defaultPassword: string;
+  rows: ParentPortalProvisionRow[];
+};
+
+export async function provisionParentPortals(): Promise<ParentPortalProvisionResult> {
+  const res = await authedFetch(`/student-management/students/provision-parent-portals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: ParentPortalProvisionResult;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Provision failed (${res.status})`);
+  if (!parsed.data) throw new Error("Invalid provision response");
+  return parsed.data;
+}
+
 export const updateAcademyStudent = (id: string, body: Record<string, unknown>) =>
   api<AcademyStudent>(`/students/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 
@@ -624,6 +900,24 @@ export interface AcademyFeeSummary {
   totalAmount: number;
   byStatus: { pending: number; paid: number; overdue: number; waived: number };
   activeStudents: number;
+  previous?: {
+    month: number;
+    year: number;
+    totalPaid: number;
+    totalPending: number;
+    recordsCount: number;
+  } | null;
+  trends?: {
+    paid: number[];
+    pending: number[];
+    records: number[];
+  };
+  oldestPending?: {
+    month: number | null;
+    year: number | null;
+    feeType: string;
+    ageMonths: number | null;
+  } | null;
 }
 
 // Fees
@@ -732,6 +1026,25 @@ export type DashboardOverview = {
     expensesByCategory: { category: string; total: number; count: number }[];
     studentsByClass: { classId: string | null; className: string; count: number }[];
     genderDistribution: { name: string; value: number }[];
+    feesByClass?: {
+      classId: string | null;
+      className: string;
+      assessed: number;
+      collected: number;
+      outstanding: number;
+      pct: number;
+    }[];
+    paymentMethods?: { key: string; name: string; amount: number; count: number }[];
+    revenueByFeeType?: {
+      label: string;
+      month: number;
+      year: number;
+      monthly: number;
+      admission: number;
+      stationery: number;
+    }[];
+    agingBuckets?: { label: string; amount: number; students: number }[];
+    studentPaymentStatus?: { name: string; students: number; pct: number }[];
   };
   widgets: {
     upcomingExams: {
@@ -769,8 +1082,29 @@ export type DashboardOverview = {
       month: number;
       year: number;
       voucherNumber: string;
+      paymentMethod?: string;
       studentName: string;
       studentId: string;
+    }[];
+    recentExpenses?: {
+      id: string;
+      title: string;
+      amount: number;
+      expenseDate: string;
+      category: string;
+      paymentMethod: string;
+      vendor: string;
+      status: string;
+    }[];
+    recentSalaries?: {
+      id: string;
+      amount: number;
+      month: number;
+      year: number;
+      status: string;
+      paymentMethod: string;
+      paidAt: string | null;
+      staffName: string;
     }[];
     recentAnnouncements: {
       id: string;
@@ -856,7 +1190,19 @@ export const fetchDiscountReport = async (params?: {
 };
 
 export const generateMonthlyFees = (body: { month: number; year: number; classId?: string }) =>
-  api<{ created: number; skipped: number }>("/fees/generate", {
+  api<{ created: number; skipped: number; repaired?: number }>("/fees/generate", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const addStationeryCharge = (body: {
+  studentId: string;
+  amount: number;
+  month?: number;
+  year?: number;
+  notes?: string;
+}) =>
+  api<AcademyFeeRecord>("/fees/stationery", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -864,8 +1210,39 @@ export const generateMonthlyFees = (body: { month: number; year: number; classId
 export const payAcademyFee = (id: string, body?: { paymentMethod?: string; notes?: string }) =>
   api<AcademyFeeRecord>(`/fees/${id}/pay`, { method: "PATCH", body: JSON.stringify(body || {}) });
 
-export const payAcademyFees = (body: { feeRecordIds: string[]; paymentMethod?: string; notes?: string }) =>
-  api<{ paid: number; total: number }>(`/fees/pay`, { method: "POST", body: JSON.stringify(body) });
+export async function payAcademyFees(body: {
+  feeRecordIds: string[];
+  paymentMethod?: string;
+  notes?: string;
+  paidAt?: string;
+  slip?: File | null;
+}) {
+  const fd = new FormData();
+  fd.append("feeRecordIds", JSON.stringify(body.feeRecordIds));
+  if (body.paymentMethod) fd.append("paymentMethod", body.paymentMethod);
+  if (body.notes) fd.append("notes", body.notes);
+  if (body.paidAt) fd.append("paidAt", body.paidAt);
+  if (body.slip) fd.append("slip", body.slip);
+  const res = await authedFetch(`/student-management/fees/pay`, {
+    method: "POST",
+    body: fd,
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: { paid: number; total: number; records?: AcademyFeeRecord[] };
+    needsSectionAssignment?: boolean;
+    studentId?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Payment failed (${res.status})`);
+  return {
+    paid: parsed.data?.paid ?? 0,
+    total: parsed.data?.total ?? 0,
+    records: parsed.data?.records,
+    needsSectionAssignment: Boolean(parsed.needsSectionAssignment),
+    studentId: parsed.studentId ? String(parsed.studentId) : undefined,
+  };
+}
 
 export type FeeReceiptSize = "a4" | "thermal";
 
@@ -1382,9 +1759,13 @@ export const deleteAssessment = (id: string) =>
 export interface ClassTestEntryRow {
   student: {
     _id: string;
-    studentId: string;
+    studentId?: string;
     studentName: string;
     fatherName?: string;
+    rollNumber?: string;
+    phone?: string;
+    guardianName?: string;
+    sectionName?: string;
   };
   assessment: AcademyAssessmentRecord | null;
 }
@@ -1394,6 +1775,7 @@ export type ClassTestRecurrence = "once" | "daily" | "weekly" | "monthly";
 export interface AcademyClassTest {
   _id: string;
   classId: string | AcademyClass;
+  sectionId?: string | AcademySection;
   subjectId: string | AcademySubject;
   title: string;
   seriesLabel?: string;
@@ -1401,11 +1783,16 @@ export interface AcademyClassTest {
   examDate: string;
   testTime?: string;
   totalMarks: number;
+  syllabus?: string;
   status: "open" | "closed";
   recurrence?: ClassTestRecurrence;
   seriesId?: string;
   occurrenceIndex?: number;
   occurrenceCount?: number;
+  planId?: string;
+  planItemId?: string;
+  assignmentId?: string;
+  teacherId?: CreatedByUser | string;
   createdAt?: string;
   createdBy?: CreatedByUser | string;
 }
@@ -1433,10 +1820,11 @@ export interface ClassTestMarksEntry {
   students: ClassTestEntryRow[];
 }
 
-export function fetchClassTests(classId?: string, seriesId?: string) {
+export function fetchClassTests(classId?: string, seriesId?: string, sessionId?: string) {
   const params = new URLSearchParams();
   if (classId) params.set("classId", classId);
   if (seriesId) params.set("seriesId", seriesId);
+  if (sessionId) params.set("sessionId", sessionId);
   const q = params.toString() ? `?${params.toString()}` : "";
   return api<AcademyClassTest[]>(`/class-tests${q}`);
 }

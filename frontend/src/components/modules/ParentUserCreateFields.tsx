@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,8 +26,27 @@ export type ParentCreateSelection = {
   modulePermissions: Record<string, string[]>;
 };
 
+function sanitizeEmailLocalPart(value: string) {
+  return (
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "")
+      .slice(0, 48) || "student"
+  );
+}
+
+/** Match backend: sohaib.tces2026000002@concept.edu.pk */
+export function buildParentPortalEmail(studentName: string, studentId: string) {
+  const namePart = sanitizeEmailLocalPart(studentName);
+  const idPart = sanitizeEmailLocalPart(studentId);
+  return `${namePart}.${idPart}@concept.edu.pk`;
+}
+
 function studentEmailOf(s: AcademyStudent): string {
-  return String(s.studentEmail || s.guardianEmail || "").trim().toLowerCase();
+  const existing = String(s.guardianEmail || s.studentEmail || "").trim().toLowerCase();
+  if (existing.endsWith("@concept.edu.pk")) return existing;
+  if (s.studentId) return buildParentPortalEmail(s.studentName, s.studentId);
+  return existing;
 }
 
 function studentPhoneOf(s: AcademyStudent): string {
@@ -52,7 +71,7 @@ export function emptyParentCreateSelection(): ParentCreateSelection {
     name: "",
     email: "",
     phone: "",
-    password: "",
+    password: "Concept@1234",
     modulePermissions: { ...PARENT_DEFAULT_MODULE_PERMISSIONS },
   };
 }
@@ -71,7 +90,6 @@ export default function ParentUserCreateFields({
   const [sectionId, setSectionId] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
@@ -164,6 +182,10 @@ export default function ParentUserCreateFields({
       name: s.studentName.trim(),
       email,
       phone,
+      password: value.password || "Concept@1234",
+      modulePermissions: Object.keys(value.modulePermissions || {}).length
+        ? value.modulePermissions
+        : { ...PARENT_DEFAULT_MODULE_PERMISSIONS },
     });
     setSearch(studentLabel(s));
     setPickerOpen(false);
@@ -299,7 +321,7 @@ export default function ParentUserCreateFields({
             <Input value={value.name} readOnly disabled placeholder="Select a student" />
           </div>
           <div>
-            <Label className="mb-1.5 block">Student email</Label>
+            <Label className="mb-1.5 block">Parent portal email</Label>
             <Input value={value.email} readOnly disabled placeholder="Select a student" />
           </div>
           <div>
@@ -309,7 +331,7 @@ export default function ParentUserCreateFields({
         </div>
         {value.studentId && !value.email ? (
           <p className="text-xs text-destructive">
-            This student has no email on file. Add a student or guardian email before creating a parent login.
+            Could not build a portal email. Ensure the student has an official Student ID.
           </p>
         ) : null}
         {selectedStudent || value.studentId ? null : (
@@ -325,22 +347,17 @@ export default function ParentUserCreateFields({
           </Label>
           <div className="relative max-w-md">
             <Input
-              type={showPassword ? "text" : "password"}
+              type="text"
               autoComplete="new-password"
               value={value.password}
               onChange={(e) => patch({ password: e.target.value })}
-              placeholder="Min. 8 characters"
-              className="pr-10"
+              placeholder="Concept@1234"
+              className="font-mono"
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword((p) => !p)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
           </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Password is shown in plain text: <span className="font-medium text-foreground font-mono">Concept@1234</span>
+          </p>
         </div>
       </div>
 

@@ -469,6 +469,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     return all.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
+        (p.fatherName || "").toLowerCase().includes(q) ||
         p.label.toLowerCase().includes(q) ||
         p.aiEmployeeId.toLowerCase().includes(q),
     );
@@ -669,6 +670,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     return enrolledPeople.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
+        (p.fatherName || "").toLowerCase().includes(q) ||
         p.label.toLowerCase().includes(q) ||
         p.aiEmployeeId.toLowerCase().includes(q),
     );
@@ -733,7 +735,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
           </div>
 
           <Input
-            placeholder="Search enrolled people…"
+            placeholder="Search name, father, ID…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -752,6 +754,11 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                     <FaceThumb employeeId={p.aiEmployeeId} enabled={(p.totalImages ?? 0) > 0} />
                     <div className="min-w-0 flex-1">
                       <div className="font-medium text-sm truncate">{p.name}</div>
+                      {p.kind === "student" && p.fatherName ? (
+                        <div className="text-xs font-medium text-foreground/80 truncate">
+                          S/O {p.fatherName}
+                        </div>
+                      ) : null}
                       <div className="text-xs text-muted-foreground truncate">
                         {p.kind} · {p.label} · {p.totalImages ?? 0} photos
                       </div>
@@ -760,6 +767,11 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                   </button>
                   {open && (
                     <div className="px-3 pb-3 space-y-2 border-t bg-muted/20 pt-3">
+                      {p.kind === "student" && p.fatherName ? (
+                        <p className="text-xs text-muted-foreground">
+                          Father: <span className="font-medium text-foreground">{p.fatherName}</span>
+                        </p>
+                      ) : null}
                       <FaceImageGrid employeeId={p.aiEmployeeId} count={p.totalImages ?? 0} />
                       <Button
                         size="sm"
@@ -812,7 +824,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
           <Card className="p-3 sm:p-4 space-y-3">
             <Label>Students & staff</Label>
             <Input
-              placeholder="Search student / staff…"
+              placeholder="Search name, father, ID…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -836,6 +848,9 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                 >
                   <div className="min-w-0">
                     <div className="font-medium truncate">{p.name}</div>
+                    {p.kind === "student" && p.fatherName ? (
+                      <div className="text-xs opacity-80 truncate">S/O {p.fatherName}</div>
+                    ) : null}
                     <div className="text-xs opacity-80 truncate">
                       {p.kind} · {p.label} · {p.totalImages ?? 0}/5
                     </div>
@@ -851,7 +866,13 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
           <Card className="p-3 sm:p-4 space-y-4">
             <div>
               <p className="text-sm font-medium break-words">
-                {selected ? `Enroll: ${selected.name}` : "Select a student or staff member"}
+                {selected
+                  ? `Enroll: ${selected.name}${
+                      selected.kind === "student" && selected.fatherName
+                        ? ` (S/O ${selected.fatherName})`
+                        : ""
+                    }`
+                  : "Select a student or staff member"}
               </p>
               {selected && (
                 <div className="mt-2 space-y-1.5">

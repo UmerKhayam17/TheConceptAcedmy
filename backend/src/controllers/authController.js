@@ -86,6 +86,8 @@ const login = catchAsync(async (req, res) => {
 
   const { accessToken, refreshToken } = issueTokens(user);
   user.refreshToken = hashToken(refreshToken);
+  user.refreshTokenPrev = undefined;
+  user.refreshTokenRotatedAt = new Date();
   user.lastLogin = new Date();
   await user.save();
 
@@ -137,12 +139,50 @@ const refresh = catchAsync(async (req, res) => {
   } catch {
     throw new ApiError(401, 'Invalid refresh token');
   }
-  const user = await User.findById(decoded.sub).select('+refreshToken').populate('role');
-  if (!user || !user.isActive || user.refreshToken !== hashToken(token)) {
+  const user = await User.findById(decoded.sub)
+    .select('+refreshToken +refreshTokenPrev +refreshTokenRotatedAt')
+    .populate('role');
+  if (!user || !user.isActive) {
     throw new ApiError(401, 'Invalid refresh token');
   }
+
+  const presented = hashToken(token);
+  const current = user.refreshToken;
+  const prev = user.refreshTokenPrev;
+  const rotatedAt = user.refreshTokenRotatedAt ? new Date(user.refreshTokenRotatedAt).getTime() : 0;
+  const withinGrace = prev && rotatedAt && Date.now() - rotatedAt < 30_000;
+  const matchesCurrent = current && current === presented;
+  const matchesPrev = withinGrace && prev === presented;
+
+  if (!matchesCurrent && !matchesPrev) {
+    throw new ApiError(401, 'Invalid refresh token');
+  }
+
+  // Concurrent tab reused the previous token within the grace window — return a fresh
+  // pair without rotating again (keeps both tabs in sync).
+  if (matchesPrev && !matchesCurrent) {
+    const { accessToken, refreshToken } = issueTokens(user);
+    user.refreshTokenPrev = user.refreshToken;
+    user.refreshToken = hashToken(refreshToken);
+    user.refreshTokenRotatedAt = new Date();
+    await user.save();
+    setRefreshCookie(res, req, refreshToken);
+    setAccessCookie(res, req, accessToken);
+    const modulePermissions = collectSessionModulePermissions(user);
+    return res.json({
+      success: true,
+      data: {
+        accessToken,
+        expiresIn: process.env.JWT_ACCESS_EXPIRES || '12h',
+        modulePermissions,
+      },
+    });
+  }
+
   const { accessToken, refreshToken } = issueTokens(user);
+  user.refreshTokenPrev = user.refreshToken;
   user.refreshToken = hashToken(refreshToken);
+  user.refreshTokenRotatedAt = new Date();
   await user.save();
   setRefreshCookie(res, req, refreshToken);
   setAccessCookie(res, req, accessToken);
@@ -159,16 +199,19 @@ const refresh = catchAsync(async (req, res) => {
 
 const logout = catchAsync(async (req, res) => {
   const token = req.cookies?.refreshToken;
-  if (req.user) {
-    req.user.refreshToken = undefined;
-    await req.user.save();
-  } else if (token) {
+  const userId = req.user?._id || (() => {
+    if (!token) return null;
     try {
-      const decoded = verifyRefreshToken(token);
-      await User.findByIdAndUpdate(decoded.sub, { $unset: { refreshToken: 1 } });
+      return verifyRefreshToken(token).sub;
     } catch {
-      /* ignore */
+      return null;
     }
+  })();
+
+  if (userId) {
+    await User.findByIdAndUpdate(userId, {
+      $unset: { refreshToken: 1, refreshTokenPrev: 1, refreshTokenRotatedAt: 1 },
+    });
   }
   clearRefreshCookie(res);
   clearAccessCookie(res);
@@ -265,6 +308,8 @@ const verifyOtp = catchAsync(async (req, res) => {
   }
   const { accessToken, refreshToken } = issueTokens(user);
   user.refreshToken = hashToken(refreshToken);
+  user.refreshTokenPrev = undefined;
+  user.refreshTokenRotatedAt = new Date();
   await user.save();
   setRefreshCookie(res, req, refreshToken);
   setAccessCookie(res, req, accessToken);

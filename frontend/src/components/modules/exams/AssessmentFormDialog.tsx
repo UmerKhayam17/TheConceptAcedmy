@@ -24,6 +24,8 @@ import {
   TEST_TYPE_KEYS,
   fetchSubjectsByClass,
 } from "@/lib/studentManagementApi";
+import { clampMarksInput, validateObtainedVsTotal } from "@/lib/marksValidation";
+import { useToast } from "@/hooks/use-toast";
 
 const TYPES = TEST_TYPE_KEYS;
 
@@ -50,6 +52,7 @@ export default function AssessmentFormDialog({
   }) => void;
   loading?: boolean;
 }) {
+  const { toast } = useToast();
   const [subjectId, setSubjectId] = useState("");
   const [title, setTitle] = useState("");
   const [assessmentType, setAssessmentType] = useState<AssessmentType>("weekly");
@@ -57,6 +60,7 @@ export default function AssessmentFormDialog({
   const [obtained, setObtained] = useState("");
   const [total, setTotal] = useState("20");
   const [remarks, setRemarks] = useState("");
+  const [marksError, setMarksError] = useState<string | null>(null);
 
   const { data: subjects = [] } = useQuery({
     queryKey: ["subjects", classId],
@@ -66,6 +70,7 @@ export default function AssessmentFormDialog({
 
   useEffect(() => {
     if (!open) return;
+    setMarksError(null);
     if (initial) {
       const sid =
         typeof initial.subjectId === "object"
@@ -89,11 +94,27 @@ export default function AssessmentFormDialog({
     }
   }, [open, initial]);
 
+  const syncMarksError = (nextObtained: string, nextTotal: string) => {
+    if (nextObtained.trim() === "" || nextTotal.trim() === "") {
+      setMarksError(null);
+      return;
+    }
+    setMarksError(validateObtainedVsTotal(Number(nextObtained), Number(nextTotal)));
+  };
+
   const handleSave = () => {
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      toast({ title: "Title is required", variant: "destructive" });
+      return;
+    }
     const t = Number(total);
     const o = Number(obtained);
-    if (!t || o > t) return;
+    const err = validateObtainedVsTotal(o, t);
+    if (err) {
+      setMarksError(err);
+      toast({ title: "Invalid marks", description: err, variant: "destructive" });
+      return;
+    }
     onSubmit({
       subjectId: subjectId || undefined,
       title: title.trim(),
@@ -104,6 +125,9 @@ export default function AssessmentFormDialog({
       remarks: remarks.trim() || undefined,
     });
   };
+
+  const totalNum = Number(total);
+  const maxObtained = Number.isFinite(totalNum) && totalNum > 0 ? totalNum : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -154,13 +178,44 @@ export default function AssessmentFormDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Obtained</Label>
-              <Input type="number" min={0} value={obtained} onChange={(e) => setObtained(e.target.value)} />
+              <Input
+                type="number"
+                min={0}
+                max={maxObtained}
+                step="any"
+                value={obtained}
+                onChange={(e) => {
+                  const next = maxObtained != null
+                    ? clampMarksInput(e.target.value, maxObtained)
+                    : e.target.value;
+                  setObtained(next);
+                  syncMarksError(next, total);
+                }}
+              />
             </div>
             <div className="space-y-1">
               <Label>Total</Label>
-              <Input type="number" min={1} value={total} onChange={(e) => setTotal(e.target.value)} />
+              <Input
+                type="number"
+                min={1}
+                step="any"
+                value={total}
+                onChange={(e) => {
+                  const nextTotal = e.target.value;
+                  setTotal(nextTotal);
+                  const max = Number(nextTotal);
+                  if (Number.isFinite(max) && max >= 0 && obtained !== "") {
+                    const clamped = clampMarksInput(obtained, max);
+                    setObtained(clamped);
+                    syncMarksError(clamped, nextTotal);
+                  } else {
+                    syncMarksError(obtained, nextTotal);
+                  }
+                }}
+              />
             </div>
           </div>
+          {marksError ? <p className="text-xs text-destructive">{marksError}</p> : null}
           <div className="space-y-1">
             <Label>Remarks</Label>
             <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
@@ -170,7 +225,7 @@ export default function AssessmentFormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="hero" onClick={handleSave} disabled={loading}>
+          <Button variant="hero" onClick={handleSave} disabled={loading || Boolean(marksError)}>
             {loading ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

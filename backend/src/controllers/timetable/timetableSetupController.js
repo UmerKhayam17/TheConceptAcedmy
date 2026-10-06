@@ -83,15 +83,36 @@ const deleteTeacherProfile = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const { roleNameOf } = require('../../utils/parentScope');
+
 // Teacher assignments
 const listTeacherAssignments = catchAsync(async (req, res) => {
-  const data = await teacherAssignmentService.listTeacherAssignments(req.query);
+  const query = { ...req.query };
+  if (roleNameOf(req) === 'teacher') {
+    query.teacherId = String(req.user._id);
+  }
+  const data = await teacherAssignmentService.listTeacherAssignments(query);
   res.json({ success: true, data });
 });
 
 const createTeacherAssignment = catchAsync(async (req, res) => {
   const data = await teacherAssignmentService.createTeacherAssignment(req.body, req.user._id);
   res.status(201).json({ success: true, data });
+});
+
+const bulkSyncTeacherAssignments = catchAsync(async (req, res) => {
+  const data = await teacherAssignmentService.bulkSyncTeacherAssignments(req.body, req.user._id);
+  res.json({ success: true, data });
+});
+
+const upsertSubjectTeacher = catchAsync(async (req, res) => {
+  const data = await teacherAssignmentService.upsertSubjectTeacher(req.body, req.user._id);
+  res.json({ success: true, data });
+});
+
+const syncSectionSubjectTeachers = catchAsync(async (req, res) => {
+  const data = await teacherAssignmentService.syncSectionSubjectTeachers(req.body, req.user._id);
+  res.json({ success: true, data });
 });
 
 const updateTeacherAssignment = catchAsync(async (req, res) => {
@@ -133,6 +154,9 @@ module.exports = {
   deleteTeacherProfile,
   listTeacherAssignments,
   createTeacherAssignment,
+  bulkSyncTeacherAssignments,
+  upsertSubjectTeacher,
+  syncSectionSubjectTeachers,
   updateTeacherAssignment,
   deleteTeacherAssignment,
   getSettings,

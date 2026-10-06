@@ -40,45 +40,52 @@ function pdfLine(doc, text, x, y, { width, align = 'left' } = {}) {
   doc.text(t, drawX, y, { lineBreak: false });
 }
 
-function drawPdfLetterhead(doc, brand, logoPath) {
+function drawPdfLetterhead(doc, brand, logoPath, options = {}) {
   const { width, height } = doc.page;
   const navy = brand.colors.navy;
   const gold = brand.colors.gold;
+  const logoSize = options.logoSize || 48;
+  const logoBox = logoSize + 8;
+  const barH = Math.max(78, logoBox + 22);
 
   doc.save();
-  doc.rect(0, 0, width, 78).fill(navy);
-  doc.rect(0, 78, width, 4).fill(gold);
+  doc.rect(0, 0, width, barH).fill(navy);
+  doc.rect(0, barH, width, 4).fill(gold);
 
   if (logoPath) {
     try {
-      doc.roundedRect(28, 12, 54, 54, 6).fill(brand.colors.white);
-      doc.image(logoPath, 31, 15, { fit: [48, 48] });
+      const logoY = (barH - logoBox) / 2;
+      doc.roundedRect(24, logoY, logoBox, logoBox, 6).fill(brand.colors.white);
+      doc.image(logoPath, 28, logoY + 4, { fit: [logoSize, logoSize] });
     } catch {
       /* skip broken logo */
     }
   }
 
-  const textLeft = logoPath ? 94 : 32;
+  const textLeft = logoPath ? 24 + logoBox + 14 : 32;
   const rightW = 188;
   const rightX = width - 32 - rightW;
+  const textTop = Math.max(16, (barH - 46) / 2);
 
   doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(16);
-  pdfLine(doc, brand.name, textLeft, 18);
+  pdfLine(doc, brand.name, textLeft, textTop);
   doc.fillColor(gold).font('Helvetica-Oblique').fontSize(8);
-  pdfLine(doc, brand.tagline.toUpperCase(), textLeft, 40);
+  pdfLine(doc, brand.tagline.toUpperCase(), textLeft, textTop + 22);
   doc.fillColor('#C5D0DC').font('Helvetica').fontSize(8);
-  pdfLine(doc, brand.legalName, textLeft, 54);
+  pdfLine(doc, brand.legalName, textLeft, textTop + 36);
 
   doc.fillColor(brand.colors.white).font('Helvetica').fontSize(8);
-  pdfLine(doc, brand.address, rightX, 18, { width: rightW, align: 'right' });
-  pdfLine(doc, brand.phones.join('  ·  '), rightX, 32, { width: rightW, align: 'right' });
-  pdfLine(doc, brand.email, rightX, 46, { width: rightW, align: 'right' });
+  pdfLine(doc, brand.address, rightX, textTop, { width: rightW, align: 'right' });
+  pdfLine(doc, brand.phones.join('  ·  '), rightX, textTop + 14, { width: rightW, align: 'right' });
+  pdfLine(doc, brand.email, rightX, textTop + 28, { width: rightW, align: 'right' });
   doc.restore();
 
   doc.save();
   doc.rect(0, height - 28, width, 28).fill(navy);
   doc.rect(0, height - 32, width, 4).fill(gold);
   doc.restore();
+
+  return barH + 4;
 }
 
 function drawPdfFooterText(doc, brand, confidentialLabel, meta, page, pages) {

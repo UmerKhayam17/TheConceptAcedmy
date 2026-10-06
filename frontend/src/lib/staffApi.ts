@@ -100,9 +100,9 @@ export function staffRolesOnly(roles: RoleOption[]): RoleOption[] {
   return roles.filter((r) => allow.has(String(r.name).toLowerCase()));
 }
 
-/** Roles offered on the Users (all) create form. */
+/** Roles offered on the Users (all) create form — student portal logins are not created. */
 export function userCreateRoles(roles: RoleOption[]): RoleOption[] {
-  const allow = new Set(["student", "parent", "teacher", "accountant", "admin"]);
+  const allow = new Set(["parent", "teacher", "accountant", "admin"]);
   return roles.filter((r) => allow.has(String(r.name).toLowerCase()));
 }
 
@@ -166,7 +166,6 @@ export const PARENT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   exam: ["view"],
   timetable: ["view"],
   chat: ["view", "create", "participate"],
-  fee: ["view"],
   announcement: ["view"],
 };
 
@@ -227,6 +226,12 @@ export async function updateStaffUser(
   if (!res.ok) throw new Error(body.message || "Failed to update staff");
   if (!body.data) throw new Error("Invalid response");
   return body.data;
+}
+
+export async function deleteStaffUser(id: string): Promise<void> {
+  const res = await authedFetch(`/users/${id}`, { method: "DELETE" });
+  const body = await parseJson<{ success?: boolean; message?: string }>(res);
+  if (!res.ok) throw new Error(body.message || "Failed to delete user");
 }
 
 export async function patchUserPermissionIds(userId: string, permissionIds: string[]): Promise<UserWithAccess> {

@@ -15,6 +15,14 @@ const {
   linkedStudentIdsForParent,
   assertParentOwnsStudent,
 } = require('../../utils/parentScope');
+const {
+  resolveTeacherScope,
+  ensureClassInTeacherScope,
+  ensureSectionInTeacherScope,
+  assertTeacherCanAccessStudent,
+  sanitizeStudentForTeacher,
+  isTeacherRole,
+} = require('../../services/academy/teacherTestScope');
 
 const list = catchAsync(async (req, res) => {
   const date = req.query.date;
@@ -23,6 +31,7 @@ const list = catchAsync(async (req, res) => {
   }
 
   const isParent = roleNameOf(req) === 'parent';
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
 
   let studentIds;
   if (isParent) {
@@ -33,13 +42,24 @@ const list = catchAsync(async (req, res) => {
     }
   }
 
+  if (teacherScope) {
+    ensureClassInTeacherScope(teacherScope, req.query.classId);
+    ensureSectionInTeacherScope(teacherScope, req.query.classId, req.query.sectionId);
+  }
+
   const data = await attendanceService.listByDate({
     date,
     classId: isParent ? undefined : req.query.classId,
     sectionId: isParent ? undefined : req.query.sectionId,
     sessionId: isParent ? undefined : req.query.sessionId,
     studentIds,
+    scopeFilter: teacherScope?.scopeFilter || null,
   });
+
+  if (teacherScope) {
+    data.students = data.students.map((s) => sanitizeStudentForTeacher(s));
+  }
+
   res.json({ success: true, data });
 });
 
@@ -105,12 +125,19 @@ const exportAttendance = catchAsync(async (req, res) => {
     throw new ApiError(400, 'Export format must be xlsx or pdf');
   }
 
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
+  if (teacherScope) {
+    ensureClassInTeacherScope(teacherScope, req.query.classId);
+    ensureSectionInTeacherScope(teacherScope, req.query.classId, req.query.sectionId);
+  }
+
   const data = await attendanceService.listByDate({
     date,
     classId: req.query.classId,
     sectionId: req.query.sectionId,
     sessionId: req.query.classId ? undefined : req.query.sessionId,
     studentId: req.query.studentId,
+    scopeFilter: teacherScope?.scopeFilter || null,
   });
   const meta = await resolveExportMeta(req, data.summary);
   const records = recordMapFromDay(data);
@@ -128,22 +155,36 @@ const exportAttendance = catchAsync(async (req, res) => {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   );
   res.setHeader('Content-Disposition', `attachment; filename="attendance-${date}.xlsx"`);
-  return res.send(Buffer.from(buffer));
+  return res.send(buffer);
 });
 
 const mark = catchAsync(async (req, res) => {
   if (roleNameOf(req) === 'parent') {
     throw new ApiError(403, 'Parents cannot mark attendance');
   }
-  const data = await attendanceService.markAttendance(req.body, req.user._id);
+
+  const teacher = isTeacherRole(req);
+  const assertStudentAccess = teacher
+    ? async (studentId) => {
+        const student = await AcademyStudent.findById(studentId).select('classId sectionId');
+        if (!student) throw new ApiError(404, 'Student not found');
+        await assertTeacherCanAccessStudent(req.user._id, student, req.query.sessionId || req.body?.sessionId);
+      }
+    : undefined;
+
+  const data = await attendanceService.markAttendance(req.body, req.user._id, {
+    assertStudentAccess,
+  });
   rt.attendanceCrud('updated', req.body?.classId || 'batch');
   res.status(201).json({ success: true, data });
 });
 
 const summary = catchAsync(async (req, res) => {
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
   const data = await attendanceService.getSummary({
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
+    scopeFilter: teacherScope?.scopeFilter || null,
   });
   res.json({ success: true, data });
 });

@@ -92,6 +92,23 @@ function requireAnyPermission(...permissionNames) {
 }
 
 /**
+ * Staff fee-report access, or parent (controllers must scope to linked children).
+ */
+function requireFeeReadAccess() {
+  return (req, res, next) => {
+    if (roleNameOf(req.user) === 'admin') return next();
+    if (String(roleNameOf(req.user) || '').toLowerCase() === 'parent') return next();
+    const allowed = ['view_academy_fee_reports', 'manage_academy_fees'].some((p) =>
+      hasLegacyOrModulePermission(req.user, p)
+    );
+    if (!allowed) {
+      return next(new ApiError(403, 'You do not have permission for this action'));
+    }
+    return next();
+  };
+}
+
+/**
  * Require module-based permission
  * @param {String} moduleName - Module name (e.g., 'exam', 'assignment')
  * @param {String|Array} action - Action(s) to require (e.g., 'view', 'create', or ['view', 'edit'])
@@ -129,6 +146,7 @@ module.exports = {
   requirePermission,
   requireAnyPermission,
   requireModulePermission,
+  requireFeeReadAccess,
   requireFaceImageAccess,
   collectPermissionNames,
   hasLegacyOrModulePermission,

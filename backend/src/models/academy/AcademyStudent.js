@@ -45,6 +45,8 @@ const academyStudentSchema = new mongoose.Schema(
     address: { type: String, trim: true },
     classId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademyClass', required: true, index: true },
     sectionId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademySection', index: true },
+    /** Stream within class (Medical / Engineering / ICS) — only for classes that use disciplines. */
+    disciplineId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademyDiscipline', index: true },
     selectedSubjects: [{ type: mongoose.Schema.Types.ObjectId, ref: 'AcademySubject' }],
     isFullPackage: { type: Boolean, default: false },
     monthlyFee: { type: Number, default: 0, min: 0 },

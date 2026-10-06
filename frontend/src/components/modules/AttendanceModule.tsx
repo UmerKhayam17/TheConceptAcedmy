@@ -25,7 +25,8 @@ import {
   type AttendanceExportFormat,
 } from "@/lib/studentManagementApi";
 import { useAuth } from "@/hooks/useAuth";
-import SessionBar, { useActiveSessionId, useSessionScope } from "@/components/modules/timetable/SessionBar";
+import { useSessionScope } from "@/components/modules/timetable/SessionBar";
+import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import { localTodayYmd } from "@/lib/localDate";
 
 const today = () => localTodayYmd();
@@ -60,8 +61,7 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
   const isParent = user?.role === "parent";
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [sessionId, setSessionId] = useState("");
-  useActiveSessionId(sessionId, setSessionId);
+  const { sessionId } = usePanelSession();
   const { apiSessionId, writable, hasScope } = useSessionScope(sessionId);
 
   const [date, setDate] = useState(today());
@@ -182,7 +182,15 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
     }
     if (!search.trim()) return base;
     return base.filter((s) =>
-      matchesPanelSearch(search, s.studentName, s.studentId, studentRef(s), classLabel(s), sectionLabel(s), s.phone)
+      matchesPanelSearch(
+        search,
+        s.studentName,
+        s.studentId,
+        studentRef(s),
+        classLabel(s),
+        sectionLabel(s),
+        isParent || user?.role === "teacher" ? undefined : s.phone,
+      )
     );
   }, [students, search, isParent, selectedStudentId, studentFilter]);
 
@@ -242,7 +250,6 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
 
   return (
     <div>
-      {!isParent && <SessionBar sessionId={sessionId} onSessionChange={setSessionId} />}
       <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <Card className="p-4">

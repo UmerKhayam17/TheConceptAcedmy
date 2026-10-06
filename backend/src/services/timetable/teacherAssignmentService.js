@@ -48,6 +48,129 @@ async function createTeacherAssignment(body, userId) {
   return TeacherAssignment.create({ ...body, createdBy: userId });
 }
 
+/**
+ * Replace a teacher's subject assignments for a session with the given list.
+ * Creates missing rows and deletes rows no longer selected.
+ */
+async function bulkSyncTeacherAssignments(body, userId) {
+  const { session, teacher, assignments } = body;
+  await assertSessionWritable(session);
+
+  const desiredKeys = new Set(
+    assignments.map((a) => `${String(a.section)}:${String(a.subject)}`)
+  );
+
+  const existing = await TeacherAssignment.find({ session, teacher, isActive: true });
+  const existingByKey = new Map(
+    existing.map((row) => [`${String(row.section)}:${String(row.subject)}`, row])
+  );
+
+  const toCreate = [];
+  for (const a of assignments) {
+    const key = `${String(a.section)}:${String(a.subject)}`;
+    if (!existingByKey.has(key)) {
+      toCreate.push({
+        session,
+        teacher,
+        class: a.class,
+        section: a.section,
+        subject: a.subject,
+        createdBy: userId,
+      });
+    }
+  }
+
+  const toDeleteIds = existing
+    .filter((row) => !desiredKeys.has(`${String(row.section)}:${String(row.subject)}`))
+    .map((row) => row._id);
+
+  if (toDeleteIds.length) {
+    await TeacherAssignment.deleteMany({ _id: { $in: toDeleteIds } });
+  }
+  if (toCreate.length) {
+    try {
+      await TeacherAssignment.insertMany(toCreate, { ordered: false });
+    } catch (err) {
+      // Ignore duplicate-key races; unique index already covers section+subject+teacher
+      if (err?.code !== 11000 && !err?.writeErrors) throw err;
+    }
+  }
+
+  return listTeacherAssignments({ sessionId: session, teacherId: teacher });
+}
+
+/**
+ * Assign exactly one teacher to a subject in a class section.
+ * Clears any previous teachers for that section+subject, or clears when teacher is null/empty.
+ */
+async function upsertSubjectTeacher(body, userId) {
+  const { session, class: classId, section, subject, teacher } = body;
+  await assertSessionWritable(session);
+
+  await TeacherAssignment.deleteMany({ session, section, subject });
+
+  if (!teacher) {
+    return { cleared: true, data: null };
+  }
+
+  const row = await TeacherAssignment.create({
+    session,
+    class: classId,
+    section,
+    subject,
+    teacher,
+    isPrimary: true,
+    priority: 1,
+    createdBy: userId,
+  });
+
+  return {
+    cleared: false,
+    data: await TeacherAssignment.findById(row._id).populate(populateOpts),
+  };
+}
+
+/**
+ * Sync all subject→teacher mappings for one class section.
+ * items[].teacher may be null/empty to leave unassigned.
+ */
+async function syncSectionSubjectTeachers(body, userId) {
+  const { session, class: classId, section, items } = body;
+  await assertSessionWritable(session);
+
+  const subjectIds = items.map((i) => i.subject);
+  if (subjectIds.length) {
+    await TeacherAssignment.deleteMany({
+      session,
+      section,
+      subject: { $in: subjectIds },
+    });
+  }
+
+  const toCreate = items
+    .filter((i) => i.teacher)
+    .map((i) => ({
+      session,
+      class: classId,
+      section,
+      subject: i.subject,
+      teacher: i.teacher,
+      isPrimary: true,
+      priority: 1,
+      createdBy: userId,
+    }));
+
+  if (toCreate.length) {
+    try {
+      await TeacherAssignment.insertMany(toCreate, { ordered: false });
+    } catch (err) {
+      if (err?.code !== 11000 && !err?.writeErrors) throw err;
+    }
+  }
+
+  return listTeacherAssignments({ sessionId: session, sectionId: section });
+}
+
 async function updateTeacherAssignment(id, body) {
   const existing = await TeacherAssignment.findById(id);
   if (!existing) throw new ApiError(404, 'Teacher assignment not found');
@@ -73,6 +196,9 @@ module.exports = {
   listTeacherAssignments,
   getTeacherAssignment,
   createTeacherAssignment,
+  bulkSyncTeacherAssignments,
+  upsertSubjectTeacher,
+  syncSectionSubjectTeachers,
   updateTeacherAssignment,
   deleteTeacherAssignment,
 };

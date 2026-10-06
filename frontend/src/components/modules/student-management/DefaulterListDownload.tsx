@@ -17,10 +17,12 @@ export function DefaulterListDownload({
   exporting,
   onDownload,
   className,
+  label = "Download defaulter list",
 }: {
   exporting: DefaulterReportFormat | null;
   onDownload: (format: DefaulterReportFormat) => void;
   className?: string;
+  label?: string;
 }) {
   return (
     <DropdownMenu>
@@ -28,12 +30,15 @@ export function DefaulterListDownload({
         <Button
           size="sm"
           variant="outline"
-          className={cn("h-9 gap-2 bg-background shadow-sm", className)}
+          className={cn(
+            "h-9 gap-2 bg-background shadow-sm whitespace-normal text-left leading-tight",
+            className,
+          )}
           disabled={Boolean(exporting)}
         >
-          <Download className="h-4 w-4" />
-          {exporting ? "Downloading…" : "Download defaulter list"}
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          <Download className="h-4 w-4 shrink-0" />
+          <span className="min-w-0">{exporting ? "Downloading…" : label}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60 p-1.5 shadow-lg">

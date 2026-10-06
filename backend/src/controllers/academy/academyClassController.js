@@ -2,23 +2,49 @@ const catchAsync = require('../../utils/catchAsync');
 const classService = require('../../services/academy/academyClassService');
 const classRecordService = require('../../services/academy/academyClassRecordService');
 const rt = require('../../services/realtime/academyRealtime');
+const {
+  isTeacherRole,
+  getTeacherScopeCombos,
+  classIdsFromCombos,
+  assertTeacherCanAccessClass,
+  idStr,
+} = require('../../services/academy/teacherTestScope');
 
 const list = catchAsync(async (req, res) => {
-  const data = await classService.listClasses({
+  let data = await classService.listClasses({
     status: req.query.status,
     search: req.query.search,
     sessionId: req.query.sessionId,
   });
+  if (isTeacherRole(req)) {
+    const combos = await getTeacherScopeCombos(req.user._id, req.query.sessionId);
+    const allowed = new Set(classIdsFromCombos(combos).map(idStr));
+    data = data.filter((c) => allowed.has(idStr(c._id)));
+  }
   res.json({ success: true, data });
 });
 
 const getOne = catchAsync(async (req, res) => {
+  if (isTeacherRole(req)) {
+    await assertTeacherCanAccessClass(req.user._id, req.params.id, req.query.sessionId);
+  }
   const data = await classService.getClassById(req.params.id);
   res.json({ success: true, data });
 });
 
 const getRecord = catchAsync(async (req, res) => {
-  const data = await classRecordService.getClassRecord(req.params.id);
+  let allowedSectionIds = null;
+  if (isTeacherRole(req)) {
+    const combos = await assertTeacherCanAccessClass(req.user._id, req.params.id, req.query.sessionId);
+    allowedSectionIds = combos
+      .filter((c) => idStr(c.classId) === idStr(req.params.id))
+      .map((c) => c.sectionId)
+      .filter(Boolean);
+  }
+  const data = await classRecordService.getClassRecord(req.params.id, {
+    omitSensitive: isTeacherRole(req),
+    allowedSectionIds,
+  });
   res.json({ success: true, data });
 });
 

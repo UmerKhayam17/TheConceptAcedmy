@@ -14,7 +14,6 @@ import {
 } from "@/lib/permissions";
 import { Card } from "@/components/ui/card";
 import SEO from "@/components/SEO";
-import ModuleHeader from "@/components/modules/ModuleHeader";
 import { fetchExams } from "@/lib/examApi";
 import { fetchAnnouncements } from "@/lib/announcementApi";
 import {
@@ -48,6 +47,8 @@ const StaffAttendanceModule = lazy(() => import("@/components/modules/StaffAtten
 const StaffDetailPage = lazy(() => import("@/components/modules/staff/StaffDetailPage"));
 const TeacherFeatureModule = lazy(() => import("@/components/modules/TeacherFeatureModule"));
 const AdminDashboard = lazy(() => import("@/components/modules/AdminDashboard"));
+const TeacherDashboard = lazy(() => import("@/components/modules/TeacherDashboard"));
+const FinanceDashboard = lazy(() => import("@/components/modules/FinanceDashboard"));
 
 function ModuleFallback() {
   return (
@@ -86,8 +87,6 @@ const Dashboard = ({
   name: string;
   modulePermissions?: Record<string, string[]>;
 }) => {
-  const cfg = roleMeta[role];
-  const HeaderIcon = cfg.Icon;
   const { perms } = usePermissions();
   const rolePerms = applyBackendModulePermissions(perms[role], modulePermissions, role);
   const items = buildMenu(rolePerms, modulePermissions, role).filter((m) => m.key !== "dashboard");
@@ -199,19 +198,10 @@ const Dashboard = ({
 
   return (
     <section>
-      <div className="bg-[image:var(--gradient-hero)] text-primary-foreground">
-        <div className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex items-center gap-4">
-          <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl bg-accent/20 border border-accent/40 grid place-items-center shrink-0">
-            <HeaderIcon className="h-6 w-6 sm:h-7 sm:w-7 text-accent" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-[10px] sm:text-xs tracking-[0.3em] uppercase text-accent">{cfg.accentLabel}</div>
-            <h1 className="font-display text-2xl sm:text-3xl font-bold leading-tight">{cfg.title}</h1>
-            <p className="text-primary-foreground/80 text-xs sm:text-sm mt-1 truncate">
-              Welcome back, <span className="font-semibold">{name}</span>
-            </p>
-          </div>
-        </div>
+      <div className="px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+        <p className="text-sm text-muted-foreground">
+          Welcome back, <span className="font-semibold text-foreground">{name}</span>
+        </p>
       </div>
 
       <div className="px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-8 sm:space-y-10">
@@ -278,6 +268,14 @@ const Panel = () => {
           <LazyModule>
             <AdminDashboard role={r} name={session.name} />
           </LazyModule>
+        ) : r === "teacher" ? (
+          <LazyModule>
+            <TeacherDashboard
+              role={r}
+              name={session.name}
+              avatarUrl={session.profileImage}
+            />
+          </LazyModule>
         ) : (
           <Dashboard role={r} name={session.name} modulePermissions={session.modulePermissions} />
         )}
@@ -337,6 +335,7 @@ const Panel = () => {
       case "system-config": return <SystemConfigModule caps={caps} section={section} action={action} />;
       case "timetable":     return <TimetableModule caps={caps} section={section} role={r} />;
       case "exams":         return <ExamsModule perm={perm} caps={caps} section={section} action={action} subAction={subAction} />;
+      case "finance-dashboard": return <FinanceDashboard />;
       case "fees":          return <FeesModule perm={perm} caps={caps} />;
       case "salary":        return <SalaryModule perm={perm} caps={caps} />;
       case "expenses":      return <ExpensesModule perm={perm} caps={caps} />;
@@ -364,7 +363,6 @@ const Panel = () => {
   return (
     <>
       <SEO title={`${headerTitle} | ${roleMeta[r].title}`} description={mod.desc} />
-      <ModuleHeader module={mod} role={r} title={headerTitle} icon={configSection?.icon} />
       {renderModule()}
     </>
   );

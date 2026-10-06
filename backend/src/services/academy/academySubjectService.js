@@ -198,6 +198,66 @@ async function deleteSubject(id) {
   return { deleted: true };
 }
 
+/**
+ * Create the standard core subject list for a class (idempotent by name or code).
+ */
+async function createStandardSubjects(classId, userId) {
+  const { DEFAULT_ACADEMY_SUBJECTS, generateSubjectCode } = require('../../config/academyDefaultSubjects');
+  const cls = await AcademyClass.findById(classId);
+  if (!cls) throw new ApiError(404, 'Class not found');
+
+  const existing = await AcademySubject.find({ classId }).select('subjectName subjectCode').lean();
+  const nameSet = new Set(existing.map((s) => String(s.subjectName || '').trim().toLowerCase()));
+  const codeSet = new Set(existing.map((s) => String(s.subjectCode || '').trim().toUpperCase()));
+
+  const created = [];
+  const skipped = [];
+
+  for (const def of DEFAULT_ACADEMY_SUBJECTS) {
+    const subjectName = String(def.subjectName).trim();
+    const nameKey = subjectName.toLowerCase();
+    let subjectCode = generateSubjectCode(subjectName, cls.className);
+
+    if (nameSet.has(nameKey)) {
+      skipped.push(subjectName);
+      continue;
+    }
+
+    // Avoid unique-index collisions if a custom subject already used this code.
+    if (codeSet.has(subjectCode)) {
+      let n = 2;
+      let alt = `${subjectCode}-${n}`;
+      while (codeSet.has(alt) && n < 50) {
+        n += 1;
+        alt = `${subjectCode}-${n}`;
+      }
+      subjectCode = alt;
+    }
+
+    const doc = await AcademySubject.create({
+      subjectName,
+      subjectCode,
+      classId,
+      status: 'active',
+      enrollmentType: 'required',
+      pickCount: 1,
+      createdBy: userId,
+    });
+    created.push(doc);
+    nameSet.add(nameKey);
+    codeSet.add(subjectCode);
+  }
+
+  await syncSubjectCount(classId);
+  const subjects = await listByClass(classId);
+
+  return {
+    created: created.length,
+    skipped: skipped.length,
+    subjects,
+  };
+}
+
 module.exports = {
   listByClass,
   listChoiceGroups,
@@ -205,4 +265,5 @@ module.exports = {
   createBulkChoiceSubjects,
   updateSubject,
   deleteSubject,
+  createStandardSubjects,
 };
