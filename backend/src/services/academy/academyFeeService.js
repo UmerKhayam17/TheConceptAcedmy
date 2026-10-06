@@ -333,6 +333,36 @@ async function buildFeeQuery({ studentId, studentIds, status, month, year, class
   return q;
 }
 
+async function applyFeeRecordSearch(q, search) {
+  const s = String(search || '').trim();
+  if (!s) return q;
+  const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rx = { $regex: escaped, $options: 'i' };
+  const students = await AcademyStudent.find({
+    $or: [
+      { studentName: rx },
+      { fatherName: rx },
+      { studentId: rx },
+      { registrationNumber: rx },
+      { rollNumber: rx },
+      { phone: rx },
+    ],
+  }).select('_id');
+  return {
+    $and: [
+      q,
+      {
+        $or: [
+          { studentId: { $in: students.map((st) => st._id) } },
+          { receiptNumber: rx },
+          { feeType: rx },
+          { notes: rx },
+        ],
+      },
+    ],
+  };
+}
+
 function periodText(month, year, feeType) {
   if (feeType === 'admission') return 'Admission';
   const name = MONTH_NAMES[(Number(month) || 1) - 1] || '';
@@ -466,10 +496,12 @@ async function listFeeRecords({
   classId,
   feeType,
   sessionId,
+  search,
 }) {
   await syncOverdueFees({ studentId, studentIds, status, month, year, classId, feeType, sessionId });
 
-  const q = await buildFeeQuery({ studentId, studentIds, status, month, year, classId, feeType, sessionId });
+  const base = await buildFeeQuery({ studentId, studentIds, status, month, year, classId, feeType, sessionId });
+  const q = await applyFeeRecordSearch(base, search);
 
   const skip = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
   const perPage = Math.min(100, Math.max(1, limit));
@@ -1023,11 +1055,11 @@ async function getFeeSummary({ month, year, classId, studentId, studentIds, sess
     trends,
     oldestPending: oldestPending
       ? {
-          month: oldestPending.month,
-          year: oldestPending.year,
-          feeType: oldestPending.feeType,
-          ageMonths: oldestPendingAgeMonths,
-        }
+        month: oldestPending.month,
+        year: oldestPending.year,
+        feeType: oldestPending.feeType,
+        ageMonths: oldestPendingAgeMonths,
+      }
       : null,
   };
 }

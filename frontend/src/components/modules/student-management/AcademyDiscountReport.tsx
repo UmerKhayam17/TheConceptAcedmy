@@ -10,6 +10,7 @@ import {
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
+import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 
 const DISCOUNT_TYPE_LABELS: Record<DiscountReportRow["discountType"], string> = {
   monthly_only: "Monthly fee only",
@@ -23,6 +24,7 @@ export default function AcademyDiscountReport() {
   const [search, setSearch] = useState("");
   const [classId, setClassId] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const { data: classes = [] } = useQuery({
     queryKey: ["academy-classes-discount-report"],
@@ -31,11 +33,11 @@ export default function AcademyDiscountReport() {
   });
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["academy-discount-report", page, classId, search],
+    queryKey: ["academy-discount-report", page, pageSize, classId, search],
     queryFn: () =>
       fetchDiscountReport({
         page,
-        limit: 20,
+        limit: pageSize,
         classId: classId || undefined,
         search: search.trim() || undefined,
       }),
@@ -215,27 +217,38 @@ export default function AcademyDiscountReport() {
                 </tbody>
               </table>
             </div>
-            {pagination && pagination.pages > 1 ? (
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  Previous
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Page {pagination.page} of {pagination.pages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= pagination.pages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
+            {pagination ? (
+              <div className="flex items-center justify-end gap-3 pt-2 flex-wrap">
+                <PageSizeSelect
+                  value={pageSize}
+                  onChange={(n) => {
+                    setPageSize(n);
+                    setPage(1);
+                  }}
+                />
+                {pagination.pages > 1 ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      Page {pagination.page} of {pagination.pages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= pagination.pages}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </>
+                ) : null}
               </div>
             ) : null}
           </>

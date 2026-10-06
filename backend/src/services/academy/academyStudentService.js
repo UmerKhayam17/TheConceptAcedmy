@@ -510,17 +510,17 @@ function studentsToCsv(rows, { omitSensitive = false } = {}) {
   const header = omitSensitive
     ? ['Student ID', 'Name', 'Father', 'Class', 'Created', 'Status']
     : [
-        'Student ID',
-        'Name',
-        'Father',
-        'Phone',
-        'Class',
-        'Created',
-        'Monthly Fee',
-        'Admission Fee',
-        'Total Fee',
-        'Status',
-      ];
+      'Student ID',
+      'Name',
+      'Father',
+      'Phone',
+      'Class',
+      'Created',
+      'Monthly Fee',
+      'Admission Fee',
+      'Total Fee',
+      'Status',
+    ];
   const lines = [header.join(',')];
   rows.forEach((s) => {
     const className = s.classId?.className || '';

@@ -931,6 +931,7 @@ export const fetchAcademyFees = async (params?: {
   month?: number;
   year?: number;
   sessionId?: string;
+  search?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.page) q.set("page", String(params.page));
@@ -942,6 +943,7 @@ export const fetchAcademyFees = async (params?: {
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
   if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.search) q.set("search", params.search);
   const res = await authedFetch(`/student-management/fees?${q}`);
   const body = await parseJson<{
     success?: boolean;
@@ -1468,6 +1470,7 @@ export const fetchAcademySalaries = async (params?: {
   year?: number;
   roleName?: string;
   staffId?: string;
+  search?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.page) q.set("page", String(params.page));
@@ -1477,6 +1480,7 @@ export const fetchAcademySalaries = async (params?: {
   if (params?.year) q.set("year", String(params.year));
   if (params?.roleName) q.set("roleName", params.roleName);
   if (params?.staffId) q.set("staffId", params.staffId);
+  if (params?.search) q.set("search", params.search);
   const res = await authedFetch(`/student-management/salaries?${q}`);
   const body = await parseJson<{
     success?: boolean;

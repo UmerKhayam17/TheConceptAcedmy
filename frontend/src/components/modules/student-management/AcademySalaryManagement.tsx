@@ -21,8 +21,8 @@ import {
   type AcademySalaryRecord,
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
-import { matchesPanelSearch } from "@/lib/panelSearch";
 import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
+import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 
 function staffFromRecord(rec: AcademySalaryRecord) {
   const s = rec.staffId;
@@ -69,6 +69,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const [statusFilter, setStatusFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState<"" | "teacher" | "accountant">("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
   const [payRecord, setPayRecord] = useState<AcademySalaryRecord | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("bank_transfer");
@@ -85,7 +86,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
 
   useEffect(() => {
     setPage(1);
-  }, [month, year, statusFilter, roleFilter]);
+  }, [month, year, statusFilter, roleFilter, search]);
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["academy-salaries-summary", filterParams],
@@ -93,11 +94,12 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["academy-salaries", page, statusFilter, filterParams],
+    queryKey: ["academy-salaries", page, pageSize, search, statusFilter, filterParams],
     queryFn: () =>
       fetchAcademySalaries({
         page,
-        limit: 20,
+        limit: pageSize,
+        search: search.trim() || undefined,
         status: statusFilter || undefined,
         ...filterParams,
       }),
@@ -142,21 +144,6 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
 
   const records = data?.records ?? [];
   const pagination = data?.pagination;
-
-  const recordsFiltered = useMemo(() => {
-    if (!search.trim()) return records;
-    return records.filter((r) =>
-      matchesPanelSearch(
-        search,
-        staffName(r),
-        staffRole(r),
-        r.voucherNumber,
-        r.status,
-        r.amount,
-        periodLabel(r)
-      )
-    );
-  }, [records, search]);
 
   const canPay = caps.canEdit || caps.canCreate;
   const canGenerate = caps.canCreate || caps.canEdit;
@@ -287,14 +274,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                   </td>
                 </tr>
               )}
-              {!isLoading && records.length > 0 && recordsFiltered.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="p-6 text-center text-muted-foreground">
-                    No records match your search.
-                  </td>
-                </tr>
-              )}
-              {recordsFiltered.map((r) => {
+              {records.map((r) => {
                 const payable = r.status === "pending";
                 return (
                   <tr key={r._id} className="border-b last:border-0 hover:bg-muted/30">
@@ -338,22 +318,33 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             </tbody>
           </table>
         </div>
-        {pagination && pagination.pages > 1 && (
-          <div className="flex justify-center gap-2 p-3 border-t">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Prev
-            </Button>
-            <span className="text-sm self-center">
-              Page {page} / {pagination.pages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= pagination.pages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </Button>
+        {pagination && (
+          <div className="flex justify-center items-center gap-3 p-3 border-t flex-wrap">
+            <PageSizeSelect
+              value={pageSize}
+              onChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+            />
+            {pagination.pages > 1 && (
+              <>
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  Prev
+                </Button>
+                <span className="text-sm self-center">
+                  Page {page} / {pagination.pages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= pagination.pages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </>
+            )}
           </div>
         )}
       </Card>

@@ -51,9 +51,9 @@ import {
 } from "@/lib/studentManagementApi";
 import { resolveUploadUrl } from "@/lib/api";
 import { academyStudentRoutes, type AcademyStudentRoutes } from "@/lib/studentManagementMenus";
-import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
+import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import { cn } from "@/lib/utils";
 import {
   AssignSectionDialog,
@@ -253,6 +253,7 @@ export default function AcademyFeesManagement({
   });
   const [feeTypeFilter, setFeeTypeFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
   const [payRecord, setPayRecord] = useState<AcademyFeeRecord | null>(null);
   const [selectedFeeIds, setSelectedFeeIds] = useState<string[]>([]);
@@ -286,6 +287,10 @@ export default function AcademyFeesManagement({
     setPage(1);
     setClassFilter("");
   }, [month, year, statusFilter, feeTypeFilter, effectiveStudentId, sessionId]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   useEffect(() => {
     if (!isParent) return;
@@ -324,11 +329,12 @@ export default function AcademyFeesManagement({
   });
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["academy-fees", page, effectiveStatusFilter, feeTypeFilter, filterParams],
+    queryKey: ["academy-fees", page, pageSize, search, effectiveStatusFilter, feeTypeFilter, filterParams],
     queryFn: () =>
       fetchAcademyFees({
         page,
-        limit: 20,
+        limit: pageSize,
+        search: search.trim() || undefined,
         status: effectiveStatusFilter || undefined,
         feeType: feeTypeFilter || undefined,
         ...filterParams,
@@ -443,23 +449,6 @@ export default function AcademyFeesManagement({
 
   const records = data?.records ?? [];
   const pagination = data?.pagination;
-
-  const recordsFiltered = useMemo(() => {
-    if (!search.trim()) return records;
-    return records.filter((r) =>
-      matchesPanelSearch(
-        search,
-        studentName(r),
-        studentCode(r),
-        classNameFromRecord(r),
-        r.receiptNumber,
-        r.feeType,
-        r.status,
-        r.amount,
-        periodLabel(r)
-      )
-    );
-  }, [records, search]);
 
   const canPay = !isParent && (caps.canEdit || caps.canCreate);
   const canGenerate = showGenerate && !studentId && !isParent && writable && (caps.canCreate || caps.canEdit);
@@ -724,14 +713,7 @@ export default function AcademyFeesManagement({
                   </td>
                 </tr>
               )}
-              {!isLoading && records.length > 0 && recordsFiltered.length === 0 && (
-                <tr>
-                  <td colSpan={feeTableColSpan} className="p-6 text-center text-muted-foreground">
-                    No records match your filters.
-                  </td>
-                </tr>
-              )}
-              {recordsFiltered.map((r) => {
+              {records.map((r) => {
                 const sid = studentMongoId(r);
                 const detailHref = routes && sid && !isParent ? routes.detail(sid) : null;
                 const payable = isUnpaid(r.status);
@@ -919,22 +901,33 @@ export default function AcademyFeesManagement({
             </tbody>
           </table>
         </div>
-        {pagination && pagination.pages > 1 && (
-          <div className="flex justify-center gap-2 p-3 border-t">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Prev
-            </Button>
-            <span className="text-sm self-center">
-              Page {page} / {pagination.pages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= pagination.pages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </Button>
+        {pagination && (
+          <div className="flex justify-center items-center gap-3 p-3 border-t flex-wrap">
+            <PageSizeSelect
+              value={pageSize}
+              onChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+            />
+            {pagination.pages > 1 && (
+              <>
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  Prev
+                </Button>
+                <span className="text-sm self-center">
+                  Page {page} / {pagination.pages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= pagination.pages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </>
+            )}
           </div>
         )}
       </Card>

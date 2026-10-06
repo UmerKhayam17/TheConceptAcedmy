@@ -44,8 +44,29 @@ async function listSalaryRecords({
   month,
   year,
   roleName,
+  search,
 }) {
-  const q = await buildSalaryQuery({ staffId, status, month, year, roleName });
+  let q = await buildSalaryQuery({ staffId, status, month, year, roleName });
+  const s = String(search || '').trim();
+  if (s) {
+    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rx = { $regex: escaped, $options: 'i' };
+    const users = await User.find({
+      $or: [{ name: rx }, { email: rx }, { phone: rx }],
+    }).select('_id');
+    q = {
+      $and: [
+        q,
+        {
+          $or: [
+            { staffId: { $in: users.map((u) => u._id) } },
+            { voucherNumber: rx },
+            { notes: rx },
+          ],
+        },
+      ],
+    };
+  }
   const skip = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
   const perPage = Math.min(100, Math.max(1, limit));
 

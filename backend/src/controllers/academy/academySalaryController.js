@@ -11,6 +11,7 @@ const list = catchAsync(async (req, res) => {
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
     roleName: req.query.roleName,
+    search: req.query.search,
   });
   res.json({ success: true, data: result.items, pagination: result.pagination });
 });

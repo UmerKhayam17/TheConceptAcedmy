@@ -26,6 +26,7 @@ import {
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { formatPkr } from "./studentDisplayUtils";
+import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 
 const CATEGORIES = Object.keys(EXPENSE_CATEGORY_LABELS) as ExpenseCategory[];
 
@@ -66,6 +67,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<AcademyExpense | null>(null);
@@ -91,11 +93,11 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["academy-expenses", page, statusFilter, search, filterParams],
+    queryKey: ["academy-expenses", page, pageSize, statusFilter, search, filterParams],
     queryFn: () =>
       fetchAcademyExpenses({
         page,
-        limit: 20,
+        limit: pageSize,
         status: statusFilter || undefined,
         search: search.trim() || undefined,
         ...filterParams,
@@ -359,22 +361,33 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
             </tbody>
           </table>
         </div>
-        {pagination && pagination.pages > 1 && (
-          <div className="flex justify-center gap-2 p-3 border-t">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Prev
-            </Button>
-            <span className="text-sm self-center">
-              Page {page} / {pagination.pages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= pagination.pages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </Button>
+        {pagination && (
+          <div className="flex justify-center items-center gap-3 p-3 border-t flex-wrap">
+            <PageSizeSelect
+              value={pageSize}
+              onChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+            />
+            {pagination.pages > 1 && (
+              <>
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  Prev
+                </Button>
+                <span className="text-sm self-center">
+                  Page {page} / {pagination.pages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= pagination.pages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </>
+            )}
           </div>
         )}
       </Card>

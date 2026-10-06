@@ -36,6 +36,7 @@ const list = catchAsync(async (req, res) => {
     classId: isParent ? undefined : req.query.classId,
     feeType: req.query.feeType,
     sessionId: isParent ? undefined : req.query.sessionId,
+    search: req.query.search,
   });
   res.json({ success: true, data: result.items, pagination: result.pagination });
 });
