@@ -254,13 +254,14 @@ export function sortClassesByLevel<T extends { name?: string; className?: string
   );
 }
 
-/** Soft program bucket from class name (School grades vs College 1st/2nd Year). */
+/** Soft program bucket: School = 1–10; College = 11th/12th + 1st/2nd Year. */
 export type AcademicProgramKey = "school" | "college" | "other";
 
 export function academicProgram(raw?: string | null): AcademicProgramKey {
   const weight = classLevelSortWeight(raw);
   if (weight >= 101 && weight <= 102) return "college";
-  if (weight >= 1 && weight <= 12) return "school";
+  if (weight === 11 || weight === 12) return "college";
+  if (weight >= 1 && weight <= 10) return "school";
   return "other";
 }
 

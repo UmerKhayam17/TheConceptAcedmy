@@ -115,12 +115,13 @@ function sortSectionsByName(sections) {
 
 /**
  * Soft academic program bucket from className (no separate Program model).
- * School = grades; College = 1st/2nd Year intermediate; Other = everything else.
+ * School = grades 1–10; College = 11th/12th + 1st/2nd Year; Other = everything else.
  */
 function academicProgram(raw) {
   const weight = classLevelWeight(raw);
   if (weight >= 101 && weight <= 102) return 'college';
-  if (weight >= 1 && weight <= 12) return 'school';
+  if (weight === 11 || weight === 12) return 'college';
+  if (weight >= 1 && weight <= 10) return 'school';
   return 'other';
 }
 
