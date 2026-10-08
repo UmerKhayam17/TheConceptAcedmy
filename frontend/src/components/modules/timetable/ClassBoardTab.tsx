@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { subjectIcon } from "@/lib/subjectTheme";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import type { Weekday } from "@/lib/configApi";
 import {
@@ -167,6 +168,7 @@ function LessonCard({
   const roomLabel = slot.room?.code || slot.room?.name || "—";
   const didDragRef = useRef(false);
   const colorId = entries[0]?.subject?._id || slot.subject?._id || "";
+  const PrimaryIcon = subjectIcon(entries[0]?.subject.name || slot.subject?.name);
 
   return (
     <div
@@ -202,28 +204,31 @@ function LessonCard({
           <GripVertical className="h-3 w-3" />
         </span>
       )}
-      {slot.combinedGroupId && (
+      {(slot.combinedGroupId || isParallel) && (
         <span
-          className="absolute right-1.5 top-1.5 text-emerald-600"
-          title="Shared / combined lesson"
+          className={cn(
+            "absolute bottom-1.5 right-1.5",
+            slot.combinedGroupId ? "text-emerald-600" : "text-violet-600"
+          )}
+          title={slot.combinedGroupId ? "Shared / combined lesson" : "Parallel entry"}
         >
-          <Users className="h-3.5 w-3.5" />
-        </span>
-      )}
-      {isParallel && !slot.combinedGroupId && (
-        <span className="absolute right-1.5 top-1.5 text-violet-600" title="Parallel entry">
-          <Link2 className="h-3 w-3" />
+          {slot.combinedGroupId ? (
+            <Users className="h-3.5 w-3.5" />
+          ) : (
+            <Link2 className="h-3 w-3" />
+          )}
         </span>
       )}
       <div className={cn("min-w-0 overflow-hidden pr-5", draggable && "pl-3.5")}>
-        <div className="font-semibold text-[13px] truncate" title={title}>
-          {title}
+        <div className="inline-flex min-w-0 items-center gap-1.5 font-semibold text-[13px]" title={title}>
+          <PrimaryIcon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+          <span className="truncate">{title}</span>
         </div>
         <div className="mt-0.5 flex min-w-0 items-center gap-1 text-muted-foreground" title={teachers}>
           <User className="h-3 w-3 shrink-0" />
           <span className="truncate">{teachers}</span>
         </div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-1 text-muted-foreground" title={roomLabel}>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1 pr-4 text-muted-foreground" title={roomLabel}>
           <DoorOpen className="h-3 w-3 shrink-0" />
           <span className="truncate">{roomLabel}</span>
         </div>
@@ -366,6 +371,7 @@ export default function ClassBoardTab({
     type Item = {
       id: string;
       title: string;
+      subjectName: string;
       teachers: string;
       periodLabel: string;
       periodOrder: number;
@@ -394,6 +400,7 @@ export default function ClassBoardTab({
           map.set(key, {
             id: key,
             title: entries.map((e) => e.subject.name).join(" / "),
+            subjectName: entries[0]?.subject?.name || "",
             teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
             periodLabel: period?.label || `P${period?.order || ""}`,
             periodOrder: period?.order ?? 999,
@@ -1103,18 +1110,22 @@ export default function ClassBoardTab({
             <div className="space-y-2 px-1">
               {legendSubjects.length > 0 && (
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                  {legendSubjects.map((s) => (
-                    <span key={s.key} className="inline-flex items-center gap-1.5">
-                      <span
-                        className={cn(
-                          "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10",
-                          dotForSubjectName(s.name, subjectColorByKey)
-                        )}
-                        aria-hidden
-                      />
-                      {s.name}
-                    </span>
-                  ))}
+                  {legendSubjects.map((s) => {
+                    const Icon = subjectIcon(s.name);
+                    return (
+                      <span key={s.key} className="inline-flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10",
+                            dotForSubjectName(s.name, subjectColorByKey)
+                          )}
+                          aria-hidden
+                        />
+                        <Icon className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+                        {s.name}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
@@ -1220,25 +1231,34 @@ export default function ClassBoardTab({
               </p>
             ) : (
               <ul className="space-y-2">
-                {upcomingLessons.map((item) => (
-                  <li
-                    key={item.id}
-                    className="rounded-xl border bg-background px-3 py-2.5 text-xs space-y-1"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold truncate">{item.title}</span>
-                      {item.shared ? (
-                        <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0">
-                          Shared
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <p className="text-muted-foreground truncate">{item.sections.join(", ")}</p>
-                    <p className="text-muted-foreground">
-                      {item.periodLabel} · {item.teachers}
-                    </p>
-                  </li>
-                ))}
+                {upcomingLessons.map((item) => {
+                  const Icon = subjectIcon(item.subjectName);
+                  return (
+                    <li
+                      key={item.id}
+                      className={cn(
+                        "rounded-xl border px-3 py-2.5 text-xs space-y-1 shadow-sm",
+                        colorForSubjectName(item.subjectName, subjectColorByKey)
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex min-w-0 items-center gap-1.5 font-semibold">
+                          <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                          <span className="truncate">{item.title}</span>
+                        </span>
+                        {item.shared ? (
+                          <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0 shrink-0">
+                            Shared
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="text-muted-foreground truncate">{item.sections.join(", ")}</p>
+                      <p className="text-muted-foreground">
+                        {item.periodLabel} · {item.teachers}
+                      </p>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Card>

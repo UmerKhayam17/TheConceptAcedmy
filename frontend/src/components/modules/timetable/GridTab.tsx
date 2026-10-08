@@ -66,6 +66,7 @@ import {
   slotMatchesPeriod,
   subjectColorKey,
 } from "./constants";
+import { subjectIcon } from "@/lib/subjectTheme";
 import {
   downloadBuilderGridPdf,
   exportBuilderGridExcel,
@@ -465,6 +466,7 @@ export default function GridTab({
     type Item = {
       id: string;
       title: string;
+      subjectName: string;
       teachers: string;
       periodLabel: string;
       periodOrder: number;
@@ -490,6 +492,7 @@ export default function GridTab({
       map.set(key, {
         id: key,
         title: entries.map((e) => e.subject.name).join(" / "),
+        subjectName: entries[0]?.subject?.name || "",
         teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
         periodLabel: period?.label || `P${period?.order || ""}`,
         periodOrder: period?.order ?? 999,
@@ -521,6 +524,7 @@ export default function GridTab({
         map.set(key, {
           id: key,
           title: entries.map((e) => e.subject.name).join(" / "),
+          subjectName: entries[0]?.subject?.name || "",
           teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
           periodLabel: period?.label || `P${period?.order || ""}`,
           periodOrder: period?.order ?? 999,
@@ -532,7 +536,7 @@ export default function GridTab({
 
     return [...map.values()]
       .sort((a, b) => a.periodOrder - b.periodOrder || a.title.localeCompare(b.title))
-      .slice(0, 3);
+      .slice(0, 5);
   }, [grid?.slots, classBoard, sharedDay, lecturePeriods, selectedClass, selectedSection]);
 
   const getSlot = (day: Weekday, periodId: string) =>
@@ -1181,18 +1185,22 @@ export default function GridTab({
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground px-1">
             {legendSubjects.length > 0 ? (
-              legendSubjects.map((s) => (
-                <span key={s.key} className="inline-flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10",
-                      dotForSubjectName(s.name, subjectColorByKey)
-                    )}
-                    aria-hidden
-                  />
-                  {s.name}
-                </span>
-              ))
+              legendSubjects.map((s) => {
+                const Icon = subjectIcon(s.name);
+                return (
+                  <span key={s.key} className="inline-flex items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10",
+                        dotForSubjectName(s.name, subjectColorByKey)
+                      )}
+                      aria-hidden
+                    />
+                    <Icon className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+                    {s.name}
+                  </span>
+                );
+              })
             ) : (
               <>
                 <span className="inline-flex items-center gap-1.5">
@@ -1273,25 +1281,34 @@ export default function GridTab({
               </p>
             ) : (
               <ul className="space-y-2">
-                {upcomingLessons.map((item) => (
-                  <li
-                    key={item.id}
-                    className="rounded-xl border bg-background px-3 py-2.5 text-xs space-y-1"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold truncate">{item.title}</span>
-                      {item.shared ? (
-                        <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0">
-                          Shared
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <p className="text-muted-foreground truncate">{item.sections.join(", ")}</p>
-                    <p className="text-muted-foreground">
-                      {item.periodLabel} · {item.teachers}
-                    </p>
-                  </li>
-                ))}
+                {upcomingLessons.map((item) => {
+                  const Icon = subjectIcon(item.subjectName);
+                  return (
+                    <li
+                      key={item.id}
+                      className={cn(
+                        "rounded-xl border px-3 py-2.5 text-xs space-y-1 shadow-sm",
+                        colorForSubjectName(item.subjectName, subjectColorByKey)
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex min-w-0 items-center gap-1.5 font-semibold">
+                          <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                          <span className="truncate">{item.title}</span>
+                        </span>
+                        {item.shared ? (
+                          <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0 shrink-0">
+                            Shared
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="text-muted-foreground truncate">{item.sections.join(", ")}</p>
+                      <p className="text-muted-foreground">
+                        {item.periodLabel} · {item.teachers}
+                      </p>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Card>
