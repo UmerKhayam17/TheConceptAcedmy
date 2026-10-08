@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +25,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import type { Weekday } from "@/lib/configApi";
 import {
@@ -57,7 +55,6 @@ import {
   type ScheduleSlot,
 } from "@/lib/timetableApi";
 import type { SchoolSubject } from "@/lib/configApi";
-import { timetableHref } from "@/lib/timetableMenus";
 import {
   DAY_FULL_LABELS,
   DAY_LABELS,
@@ -158,8 +155,6 @@ export default function GridTab({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const navigate = useNavigate();
-  const { user } = useAuth();
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
   const [versionId, setVersionId] = useState("");
@@ -769,15 +764,6 @@ export default function GridTab({
     }
   };
 
-  const openSharedLessonOnBoard = () => {
-    if (!user?.role) return;
-    navigate(timetableHref(user.role, "board"));
-    toast({
-      title: "Class Board",
-      description: "Use Add Shared Lesson on Class Board to place a combined lesson.",
-    });
-  };
-
   if (!sessionId) {
     return null;
   }
@@ -1228,21 +1214,6 @@ export default function GridTab({
         <aside className="space-y-4 xl:sticky xl:top-4">
           <Card className="rounded-2xl border p-4 shadow-sm space-y-2">
             <h3 className="text-sm font-semibold mb-2">Quick Actions</h3>
-            {canManageGrid && (
-              <button
-                type="button"
-                onClick={openSharedLessonOnBoard}
-                className="flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
-              >
-                <Users className="h-4 w-4 mt-0.5 text-primary shrink-0" />
-                <span>
-                  <span className="block text-sm font-medium">Add Shared Lesson</span>
-                  <span className="text-xs text-muted-foreground">
-                    One lesson → multiple sections (combinedGroupId)
-                  </span>
-                </span>
-              </button>
-            )}
             <button
               type="button"
               disabled={!canExportGrid}
