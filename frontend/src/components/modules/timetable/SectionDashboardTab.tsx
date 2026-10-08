@@ -97,13 +97,13 @@ export default function SectionDashboardTab({ sessionId }: { sessionId: string }
   const sheetRows =
     viewMode === "day"
       ? [
-          {
-            key: inspectSectionId || "section",
-            label: inspectRow?.section?.label || "Section",
-            day,
-            slots: slots.filter((s) => s.day === day),
-          },
-        ]
+        {
+          key: inspectSectionId || "section",
+          label: inspectRow?.section?.label || "Section",
+          day,
+          slots: slots.filter((s) => s.day === day),
+        },
+      ]
       : weekRowsFromSlots(slots, dayOptions);
 
   return (

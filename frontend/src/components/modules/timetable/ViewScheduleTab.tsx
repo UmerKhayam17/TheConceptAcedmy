@@ -70,13 +70,13 @@ export default function ViewScheduleTab({ sessionId }: { sessionId: string }) {
   const sheetRows =
     viewMode === "day"
       ? [
-          {
-            key: sectionId || "section",
-            label: sectionLabel,
-            day,
-            slots: slots.filter((s) => s.day === day),
-          },
-        ]
+        {
+          key: sectionId || "section",
+          label: sectionLabel,
+          day,
+          slots: slots.filter((s) => s.day === day),
+        },
+      ]
       : weekRowsFromSlots(slots, dayOptions);
 
   return (

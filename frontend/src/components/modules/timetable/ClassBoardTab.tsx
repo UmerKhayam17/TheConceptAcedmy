@@ -635,9 +635,8 @@ export default function ClassBoardTab({
     ? `Class Board · ${selectedClassName}`
     : "Class Board · All classes";
   const versionLabel = versionMode === "published" ? "Published" : "Draft";
-  const boardSubtitle = `${DAY_FULL_LABELS[day]}${
-    board?.session?.name ? ` · ${board.session.name}` : ""
-  } · ${versionLabel}`;
+  const boardSubtitle = `${DAY_FULL_LABELS[day]}${board?.session?.name ? ` · ${board.session.name}` : ""
+    } · ${versionLabel}`;
   const canExportBoard = sectionRows.length > 0 && lecturePeriods.length > 0;
   /** Edits always write ScheduleSlots (draft preferred); published view is read-focused. */
   const canEditBoard = canManage && versionMode === "draft";

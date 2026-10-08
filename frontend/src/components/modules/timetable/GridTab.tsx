@@ -6,12 +6,19 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle, Check, Copy, Pencil, Plus, Send } from "lucide-react";
+import { AlertCircle, Check, Circle, Copy, LayoutGrid, Link2, Pencil, Plus, Send, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import type { Weekday } from "@/lib/configApi";
-import { fetchClasses, fetchSections, fetchSubjects } from "@/lib/configApi";
+import {
+  classDisplayName,
+  fetchClasses,
+  fetchSections,
+  fetchSubjects,
+  groupClassesByProgram,
+  sortClassesByLevel,
+} from "@/lib/configApi";
 import { fetchUsers } from "@/lib/usersApi";
 import {
   createTimetableVersion,
@@ -135,19 +142,23 @@ export default function GridTab({
   const skipClickRef = useRef(false);
   /** Sync ref so dragOver/drop work before React re-renders after dragStart. */
   const draggingSlotIdRef = useRef<string | null>(null);
+  const autoDraftForSectionRef = useRef<string | null>(null);
 
   useEffect(() => {
     setClassId("");
     setSectionId("");
     setVersionId("");
     setEditingLive(false);
+    autoDraftForSectionRef.current = null;
   }, [sessionId]);
 
-  const { data: classes = [] } = useQuery({
+  const { data: classesRaw = [] } = useQuery({
     queryKey: ["config-classes", sessionId],
     queryFn: () => fetchClasses(sessionId),
     enabled: !!sessionId,
   });
+  const classes = useMemo(() => sortClassesByLevel(classesRaw), [classesRaw]);
+  const classGroups = useMemo(() => groupClassesByProgram(classes), [classes]);
 
   const { data: sections = [] } = useQuery({
     queryKey: ["config-sections", classId, sessionId],
@@ -161,11 +172,34 @@ export default function GridTab({
     enabled: !!sessionId,
   });
 
-  const { data: versions = [] } = useQuery({
+  const {
+    data: versions = [],
+    isFetched: versionsFetched,
+  } = useQuery({
     queryKey: ["timetable-versions", sessionId, sectionId],
     queryFn: () => fetchTimetableVersions({ sessionId, sectionId }),
     enabled: !!sessionId && !!sectionId,
   });
+
+  // Default: first class so the page is not empty.
+  useEffect(() => {
+    if (!classes.length) return;
+    if (!classId || !classes.some((c) => c._id === classId)) {
+      setClassId(classes[0]._id);
+      setSectionId("");
+      setVersionId("");
+    }
+  }, [classes, classId]);
+
+  // Default: first section of the selected class.
+  useEffect(() => {
+    if (!classId || !sections.length) return;
+    if (!sectionId || !sections.some((s) => s._id === sectionId)) {
+      setSectionId(sections[0]._id);
+      setVersionId("");
+      setEditingLive(false);
+    }
+  }, [classId, sections, sectionId]);
 
   const draftVersion = versions.find((v) => v.status === "draft");
   const publishedVersion = versions.find((v) => v.status === "published");
@@ -209,8 +243,29 @@ export default function GridTab({
       qc.invalidateQueries({ queryKey: ["timetable-versions", sessionId, sectionId] });
       toast({ title: "Draft timetable created" });
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      autoDraftForSectionRef.current = null;
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
   });
+
+  // Auto-create a draft so the builder grid is ready by default.
+  useEffect(() => {
+    if (!sectionId || !versionsFetched || !caps.canCreate) return;
+    if (versions.length > 0) return;
+    if (!templates.length) return;
+    if (createVersionMut.isPending) return;
+    if (autoDraftForSectionRef.current === sectionId) return;
+    autoDraftForSectionRef.current = sectionId;
+    createVersionMut.mutate();
+  }, [
+    sectionId,
+    versionsFetched,
+    versions.length,
+    templates.length,
+    caps.canCreate,
+    createVersionMut.isPending,
+  ]);
 
   const saveSlotMut = useMutation({
     mutationFn: () => {
@@ -464,45 +519,128 @@ export default function GridTab({
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      <div className="flex flex-wrap gap-3 items-end">
-        <div className="min-w-[140px]">
-          <Label className="text-xs text-muted-foreground">Class</Label>
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+      <div className="text-xs text-muted-foreground">
+        Timetable <span className="mx-1">›</span>{" "}
+        <span className="text-foreground font-medium">Timetable builder</span>
+      </div>
+
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <LayoutGrid className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="font-display text-xl font-semibold tracking-tight">Timetable builder</h2>
+            <p className="text-sm text-muted-foreground max-w-xl">
+              Periods across the top, days down the side — same sheet look as Class Board. Click a
+              cell to place or edit a lesson.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {sectionId && caps.canCreate && !draftVersion && !publishedVersion && (
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => createVersionMut.mutate()}
+              disabled={createVersionMut.isPending}
+            >
+              <Plus className="h-3.5 w-3.5" /> New draft
+            </Button>
+          )}
+          {activeVersionId && canManageGrid && (
+            <>
+              {isPublished && !editingLive && (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => {
+                    if (publishedVersion?._id) setVersionId(publishedVersion._id);
+                    setEditingLive(true);
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit timetable
+                </Button>
+              )}
+              {isPublished && editingLive && (
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditingLive(false)}>
+                  <Check className="h-3.5 w-3.5" /> Done editing
+                </Button>
+              )}
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => validateMut.mutate()}>
+                <AlertCircle className="h-3.5 w-3.5" /> Validate
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => duplicateMut.mutate()}>
+                <Copy className="h-3.5 w-3.5" /> Duplicate
+              </Button>
+              {canPublishVersion && grid && (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => publishMut.mutate()}
+                  disabled={publishMut.isPending}
+                >
+                  <Send className="h-3.5 w-3.5" /> Publish
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
+        <div className="min-w-[160px]">
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Class</Label>
           <select
-            className="mt-1 w-full h-10 rounded-md border px-3 text-sm"
+            className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
             value={classId}
             onChange={(e) => {
               setClassId(e.target.value);
               setSectionId("");
               setVersionId("");
               setEditingLive(false);
+              autoDraftForSectionRef.current = null;
             }}
           >
             <option value="">Select class</option>
-            {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+            {classGroups.map((g) => (
+              <optgroup key={g.key} label={g.label}>
+                {g.classes.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {classDisplayName(c)}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         </div>
-        <div className="min-w-[120px]">
-          <Label className="text-xs text-muted-foreground">Section</Label>
+        <div className="min-w-[140px]">
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Section</Label>
           <select
-            className="mt-1 w-full h-10 rounded-md border px-3 text-sm"
+            className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
             value={sectionId}
             onChange={(e) => {
               setSectionId(e.target.value);
               setVersionId("");
               setEditingLive(false);
+              autoDraftForSectionRef.current = null;
             }}
             disabled={!classId}
           >
             <option value="">Select section</option>
-            {sections.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
+            {sections.map((s) => (
+              <option key={s._id} value={s._id}>
+                {s.name}
+              </option>
+            ))}
           </select>
         </div>
         {sectionId && versions.length > 0 && (
           <div className="min-w-[180px]">
-            <Label className="text-xs text-muted-foreground">Version</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Version</Label>
             <select
-              className="mt-1 w-full h-10 rounded-md border px-3 text-sm"
+              className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
               value={activeVersionId}
               onChange={(e) => {
                 setVersionId(e.target.value);
@@ -517,51 +655,18 @@ export default function GridTab({
             </select>
           </div>
         )}
-        {sectionId && caps.canCreate && !draftVersion && !publishedVersion && (
-          <Button className="gap-2" onClick={() => createVersionMut.mutate()} disabled={createVersionMut.isPending}>
-            <Plus className="h-4 w-4" /> New draft
-          </Button>
-        )}
-        {activeVersionId && canManageGrid && (
-          <>
-            {isPublished && !editingLive && (
-              <Button
-                className="gap-2"
-                onClick={() => {
-                  if (publishedVersion?._id) setVersionId(publishedVersion._id);
-                  setEditingLive(true);
-                }}
-              >
-                <Pencil className="h-4 w-4" /> Edit this timetable
-              </Button>
-            )}
-            {isPublished && editingLive && (
-              <Button variant="outline" className="gap-2" onClick={() => setEditingLive(false)}>
-                <Check className="h-4 w-4" /> Done editing
-              </Button>
-            )}
-            {!isPublished && activeVersion?.status === "draft" && (
-              <Badge variant="secondary" className="h-10 px-3 text-xs font-normal gap-1.5">
-                <Pencil className="h-3.5 w-3.5" /> Draft — click lessons to edit
-              </Badge>
-            )}
-            <Button variant="outline" className="gap-2" onClick={() => validateMut.mutate()}>
-              <AlertCircle className="h-4 w-4" /> Validate
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={() => duplicateMut.mutate()}>
-              <Copy className="h-4 w-4" /> Duplicate
-            </Button>
-            {canPublishVersion && grid && (
-              <Button className="gap-2" onClick={() => publishMut.mutate()} disabled={publishMut.isPending}>
-                <Send className="h-4 w-4" /> Publish
-              </Button>
-            )}
-          </>
+        {activeVersionId && (
+          <div className="ml-auto flex items-center gap-2">
+            <Badge variant={grid?.version.status === "published" ? "default" : "secondary"}>
+              {classLabel ? classDisplayName(classLabel) : "—"} · {sectionLabel?.name || "—"}
+              {grid ? ` · v${grid.version.version}` : ""}
+            </Badge>
+          </div>
         )}
       </div>
 
       {sectionId && isPublished && !editingLive && canManageGrid && grid && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-amber-900 dark:text-amber-200">
             This timetable is published. Turn on edit mode to change subjects, teachers, or move lessons.
           </p>
@@ -578,147 +683,175 @@ export default function GridTab({
         </div>
       )}
 
-      {sectionId && grid && (
-        <>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-semibold text-primary">
-              {classLabel?.name} — {sectionLabel?.name}
-            </h2>
-            <Badge variant={grid.version.status === "published" ? "default" : "secondary"}>
-              v{grid.version.version} · {grid.version.status}
-            </Badge>
-            {isPublished && !editingLive && canManageGrid && (
-              <span className="text-xs text-muted-foreground">
-                Published — click Edit timetable to change lessons
-              </span>
-            )}
-            {canEditGrid && (
-              <span className="text-xs text-muted-foreground">
-                Drag a lesson to move it · click the pencil to edit details
-              </span>
-            )}
-            {canEditGrid && isPublished && (
-              <span className="text-xs text-amber-700 dark:text-amber-400">Editing live timetable</span>
-            )}
-          </div>
+      {sectionId && !grid && (isLoading || createVersionMut.isPending) && (
+        <p className="text-sm text-muted-foreground">Loading timetable grid…</p>
+      )}
 
-          <Card className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left p-3 w-28">Time</th>
-                  {workingDays.map((d) => (
-                    <th key={d} className="text-left p-3">{DAY_LABELS[d]}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {lecturePeriods.map((period) => (
-                  <tr key={period._id} className="border-t">
-                    <td className="p-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                      {period.startTime}
-                      <br />
-                      {period.endTime}
-                    </td>
-                    {workingDays.map((day) => {
-                      const slot = getSlot(day, period._id);
-                      const isDropTarget =
-                        dropOver?.day === day && dropOver?.periodId === period._id;
-                      const isDragActive = Boolean(draggingSlotId || draggingSlotIdRef.current);
-                      return (
-                        <td
-                          key={day}
-                          className={cn(
-                            "p-2 align-top min-w-[100px] min-h-[64px] transition-colors",
-                            canEditGrid && "hover:bg-muted/40",
-                            isDropTarget && "bg-accent/15 ring-2 ring-inset ring-accent/50",
-                            moveSlotMut.isPending && "pointer-events-none opacity-60"
-                          )}
-                          onClick={() => handleCellClick(day, period)}
-                          onDragEnter={(e) => {
-                            if (!canEditGrid) return;
-                            if (!draggingSlotIdRef.current && !draggingSlotId) return;
-                            e.preventDefault();
-                            setDropOver({ day, periodId: period._id });
-                          }}
-                          onDragOver={(e) => {
-                            if (!canEditGrid) return;
-                            // Accept drops even before React state catches up from dragStart
-                            if (!draggingSlotIdRef.current && !draggingSlotId) {
-                              const types = Array.from(e.dataTransfer.types || []);
-                              if (
-                                !types.includes("application/timetable-slot-id") &&
-                                !types.includes("text/plain")
-                              ) {
-                                return;
-                              }
-                            }
-                            e.preventDefault();
-                            e.dataTransfer.dropEffect = "move";
-                            setDropOver({ day, periodId: period._id });
-                          }}
-                          onDragLeave={(e) => {
-                            // Ignore leave events that bubble from children
-                            const related = e.relatedTarget as Node | null;
-                            if (related && e.currentTarget.contains(related)) return;
-                            setDropOver((prev) =>
-                              prev?.day === day && prev?.periodId === period._id ? null : prev
-                            );
-                          }}
-                          onDrop={(e) => handleDrop(e, day, period._id)}
-                        >
-                          {slot ? (
-                            <TimetableSlotCard
-                              slot={slot}
-                              draggable={canEditGrid && !slot.locked}
-                              isDragging={draggingSlotId === slot._id}
-                              isDropTarget={isDropTarget && draggingSlotId !== slot._id}
-                              onEdit={
-                                canEditGrid
-                                  ? () => {
-                                      skipClickRef.current = true;
-                                      openCell(day, period);
-                                    }
-                                  : undefined
-                              }
-                              onDragStart={(e) => beginSlotDrag(e, slot._id)}
-                              onDragEnd={endSlotDrag}
-                              onDragOver={(e) => {
-                                if (!canEditGrid) return;
+      {sectionId && !templates.length && versionsFetched && versions.length === 0 && (
+        <Card className="rounded-2xl border p-8 text-sm text-muted-foreground shadow-sm">
+          Create an academy time configuration (periods) in System Config first.
+        </Card>
+      )}
+
+      {sectionId && grid && (
+        <div className="space-y-4">
+          {canEditGrid && (
+            <p className="text-xs text-muted-foreground px-1">
+              Drag a lesson to move it · click a cell to place or edit
+              {isPublished ? " · editing live timetable" : ""}
+            </p>
+          )}
+
+          <Card className="overflow-hidden rounded-2xl border shadow-sm">
+            <div className="w-full overflow-hidden">
+              <table className="w-full table-fixed text-sm border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-muted/50">
+                    <th className="w-[120px] border-b px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Day
+                    </th>
+                    {lecturePeriods.map((p) => (
+                      <th
+                        key={p._id}
+                        className="border-b px-1.5 py-3 text-center font-semibold overflow-hidden"
+                      >
+                        <div className="text-sm truncate">{p.label || `P${p.order}`}</div>
+                        <div className="text-[11px] font-normal text-muted-foreground truncate">
+                          {p.startTime} – {p.endTime}
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {workingDays.map((day) => (
+                    <tr key={day} className="align-top">
+                      <td className="w-[120px] border-b bg-primary/5 px-3 py-3 font-semibold overflow-hidden">
+                        <div className="truncate">{DAY_FULL_LABELS[day]}</div>
+                        <div className="mt-0.5 text-[11px] font-normal text-muted-foreground">
+                          {DAY_LABELS[day]}
+                        </div>
+                      </td>
+                      {lecturePeriods.map((period) => {
+                        const slot = getSlot(day, period._id);
+                        const isDropTarget =
+                          dropOver?.day === day && dropOver?.periodId === period._id;
+                        const isDragActive = Boolean(draggingSlotId || draggingSlotIdRef.current);
+                        return (
+                          <td
+                            key={period._id}
+                            className={cn(
+                              "border-b p-1.5 align-top overflow-hidden",
+                              moveSlotMut.isPending && "pointer-events-none opacity-60"
+                            )}
+                            onClick={() => handleCellClick(day, period)}
+                            onDragEnter={(e) => {
+                              if (!canEditGrid) return;
+                              if (!draggingSlotIdRef.current && !draggingSlotId) return;
+                              e.preventDefault();
+                              setDropOver({ day, periodId: period._id });
+                            }}
+                            onDragOver={(e) => {
+                              if (!canEditGrid) return;
+                              if (!draggingSlotIdRef.current && !draggingSlotId) {
+                                const types = Array.from(e.dataTransfer.types || []);
                                 if (
-                                  !draggingSlotIdRef.current &&
-                                  !draggingSlotId &&
-                                  !Array.from(e.dataTransfer.types || []).length
+                                  !types.includes("application/timetable-slot-id") &&
+                                  !types.includes("text/plain")
                                 ) {
                                   return;
                                 }
-                                e.preventDefault();
-                                e.stopPropagation();
-                                e.dataTransfer.dropEffect = "move";
-                                setDropOver({ day, periodId: period._id });
-                              }}
-                              onDrop={(e) => handleDrop(e, day, period._id)}
-                            />
-                          ) : (
-                            <span
-                              className={cn(
-                                "block min-h-[52px] text-muted-foreground",
-                                isDragActive && canEditGrid && "rounded border border-dashed border-muted-foreground/30",
-                                isDropTarget && "font-medium text-accent border-accent/50"
-                              )}
-                            >
-                              {isDropTarget ? "Drop here" : "—"}
-                            </span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                              }
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              setDropOver({ day, periodId: period._id });
+                            }}
+                            onDragLeave={(e) => {
+                              const related = e.relatedTarget as Node | null;
+                              if (related && e.currentTarget.contains(related)) return;
+                              setDropOver((prev) =>
+                                prev?.day === day && prev?.periodId === period._id ? null : prev
+                              );
+                            }}
+                            onDrop={(e) => handleDrop(e, day, period._id)}
+                          >
+                            {slot ? (
+                              <TimetableSlotCard
+                                slot={slot}
+                                draggable={canEditGrid && !slot.locked}
+                                isDragging={draggingSlotId === slot._id}
+                                isDropTarget={isDropTarget && draggingSlotId !== slot._id}
+                                onEdit={
+                                  canEditGrid
+                                    ? () => {
+                                        skipClickRef.current = true;
+                                        openCell(day, period);
+                                      }
+                                    : undefined
+                                }
+                                onDragStart={(e) => beginSlotDrag(e, slot._id)}
+                                onDragEnd={endSlotDrag}
+                                onDragOver={(e) => {
+                                  if (!canEditGrid) return;
+                                  if (
+                                    !draggingSlotIdRef.current &&
+                                    !draggingSlotId &&
+                                    !Array.from(e.dataTransfer.types || []).length
+                                  ) {
+                                    return;
+                                  }
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  e.dataTransfer.dropEffect = "move";
+                                  setDropOver({ day, periodId: period._id });
+                                }}
+                                onDrop={(e) => handleDrop(e, day, period._id)}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                className={cn(
+                                  "flex w-full min-w-0 min-h-[72px] items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground transition-colors",
+                                  canEditGrid && "hover:border-primary/40 hover:bg-primary/5",
+                                  isDropTarget &&
+                                    isDragActive &&
+                                    "border-primary bg-primary/5 ring-2 ring-primary/30"
+                                )}
+                                disabled={!canEditGrid}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCellClick(day, period);
+                                }}
+                              >
+                                {canEditGrid
+                                  ? isDropTarget && isDragActive
+                                    ? "Drop"
+                                    : "+"
+                                  : "—"}
+                              </button>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
-        </>
+
+          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground px-1">
+            <span className="inline-flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5 text-emerald-600" /> Shared / Combined Lesson
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Link2 className="h-3.5 w-3.5 text-violet-600" /> Parallel Entry (Bio/Comp)
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Circle className="h-3.5 w-3.5" /> Normal Lesson
+            </span>
+          </div>
+        </div>
       )}
 
       <Dialog open={!!slotDialog} onOpenChange={(o) => !o && setSlotDialog(null)}>

@@ -1,10 +1,10 @@
 import { useRef } from "react";
-import { GripVertical, Pencil } from "lucide-react";
+import { DoorOpen, GripVertical, Link2, User, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { subjectIcon } from "@/lib/subjectTheme";
 import { scheduleSlotEntries, type ScheduleSlot } from "@/lib/timetableApi";
 import { subjectColor } from "./constants";
 
+/** Lesson cell for Timetable Builder — Class Board visual style. */
 export default function TimetableSlotCard({
   slot,
   draggable,
@@ -24,14 +24,14 @@ export default function TimetableSlotCard({
   onDragEnd: () => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
-  /** Opens the subject/teacher edit dialog for this lesson. */
   onEdit?: () => void;
 }) {
   const entries = scheduleSlotEntries(slot);
-  const isChoice = entries.length > 1;
   const title = entries.map((e) => e.subject.name).join(" / ");
+  const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ");
+  const isParallel = entries.length > 1;
+  const roomLabel = slot.room?.code || slot.room?.name;
   const didDragRef = useRef(false);
-  const PrimaryIcon = subjectIcon(entries[0]?.subject.name || slot.subject?.name);
 
   return (
     <div
@@ -52,61 +52,50 @@ export default function TimetableSlotCard({
       }}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={cn(
-        "group relative rounded-md border p-2 select-none",
-        subjectColor(slot.subject._id),
-        draggable && "cursor-grab active:cursor-grabbing",
-        isDragging && "opacity-40 ring-2 ring-primary/40",
-        isDropTarget && "ring-2 ring-accent/60"
-      )}
       onClick={(e) => {
         if (!onEdit || didDragRef.current) return;
         e.stopPropagation();
         onEdit();
       }}
+      className={cn(
+        "relative w-full min-w-0 overflow-hidden rounded-xl border px-2.5 py-2 text-left text-xs leading-snug select-none shadow-sm transition-shadow",
+        subjectColor(slot.subject._id),
+        draggable && "cursor-grab active:cursor-grabbing hover:shadow-md",
+        isDragging && "opacity-40 ring-2 ring-primary/40",
+        isDropTarget && "ring-2 ring-primary/50"
+      )}
     >
-      <div className="flex items-start gap-1">
-        {draggable && (
-          <span title="Drag to move" className="mt-0.5 shrink-0 opacity-50 group-hover:opacity-90" aria-hidden>
-            <GripVertical className="h-3.5 w-3.5" />
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold text-sm leading-snug inline-flex items-center gap-1.5 min-w-0">
-            <PrimaryIcon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-            <span className="truncate">{title}</span>
-          </div>
-          {isChoice ? (
-            <div className="mt-1 space-y-0.5">
-              {entries.map((e) => {
-                const Icon = subjectIcon(e.subject.name);
-                return (
-                  <div key={e.subject._id} className="text-xs opacity-80 inline-flex items-center gap-1">
-                    <Icon className="h-3 w-3 shrink-0" aria-hidden />
-                    {e.subject.name}: {e.teacher.name}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-xs opacity-80">{slot.teacher.name}</div>
-          )}
+      {draggable && (
+        <span className="absolute left-1 top-1.5 opacity-40" aria-hidden>
+          <GripVertical className="h-3 w-3" />
+        </span>
+      )}
+      {slot.combinedGroupId && (
+        <span
+          className="absolute right-1.5 top-1.5 text-emerald-600"
+          title="Shared / combined lesson"
+        >
+          <Users className="h-3.5 w-3.5" />
+        </span>
+      )}
+      <div className={cn("min-w-0 overflow-hidden pr-5", draggable && "pl-3.5")}>
+        <div className="font-semibold text-[13px] truncate" title={title}>
+          {title}
         </div>
-        {onEdit && (
-          <button
-            type="button"
-            title="Edit lesson"
-            className="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10"
-            draggable={false}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit();
-            }}
-          >
-            <Pencil className="h-3.5 w-3.5" aria-hidden />
-            <span className="sr-only">Edit lesson</span>
-          </button>
+        <div className="mt-1 flex min-w-0 items-center gap-1 text-muted-foreground" title={teachers}>
+          <User className="h-3 w-3 shrink-0" />
+          <span className="truncate">{teachers}</span>
+        </div>
+        {roomLabel && (
+          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-muted-foreground">
+            <DoorOpen className="h-3 w-3 shrink-0" />
+            <span className="truncate">{roomLabel}</span>
+          </div>
+        )}
+        {isParallel && (
+          <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-violet-600">
+            <Link2 className="h-3 w-3" /> Parallel
+          </div>
         )}
       </div>
     </div>
