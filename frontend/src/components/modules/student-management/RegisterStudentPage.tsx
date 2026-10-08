@@ -508,6 +508,10 @@ export default function RegisterStudentPage({
       qc.invalidateQueries({ queryKey: ["academy-students"] });
       qc.invalidateQueries({ queryKey: ["academy-student", studentId] });
       qc.invalidateQueries({ queryKey: ["academy-student-record", studentId] });
+      qc.invalidateQueries({ queryKey: ["academy-fees"] });
+      qc.invalidateQueries({ queryKey: ["academy-fees-summary"] });
+      qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
+      qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
       if (creds) {
         setCredentials(creds);
         toast({

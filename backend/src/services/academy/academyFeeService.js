@@ -235,6 +235,124 @@ function splitEnrollmentAmounts(fees) {
  * monthly fee + admission fee − discounts.
  * Later months are created by generateMonthlyFees as monthly − monthly discount.
  */
+/**
+ * Recalculate unpaid challans after a student fee profile change.
+ * Same composition as generateMonthlyFees / enrollment vouchers:
+ * monthlyBillAmount → charges → (admission on admission vouchers) → total.
+ *
+ * PAID / WAIVED → never touched
+ * PENDING / OVERDUE → amount + components updated together
+ * Stationery → left alone (manual charge)
+ *
+ * Partial credit: if prior amount was reduced below the old components total
+ * (staff recorded a remaining balance), keep that credit against the revised bill.
+ */
+async function syncUnpaidChallansForStudent(student) {
+  if (!student?._id) return { updated: 0, skipped: 0 };
+
+  const unpaid = await AcademyFeeRecord.find({
+    studentId: student._id,
+    status: { $in: ['pending', 'overdue'] },
+    feeType: { $in: ['monthly', 'admission'] },
+  });
+
+  if (!unpaid.length) return { updated: 0, skipped: 0 };
+
+  const charges = await listActiveCharges();
+  let updated = 0;
+  let skipped = 0;
+
+  for (const record of unpaid) {
+    const bill = reviseBillForFeeRecord(student, record, charges);
+    if (!bill || bill.amount < 0) {
+      skipped += 1;
+      continue;
+    }
+
+    const oldAmount = roundMoney(Number(record.amount) || 0);
+    const oldComponentsTotal = roundMoney(
+      (Array.isArray(record.components) ? record.components : []).reduce(
+        (sum, line) => sum + (Number(line.amount) || 0),
+        0
+      )
+    );
+    // Amount below components total ⇒ remaining after a prior partial settlement.
+    const alreadyPaid =
+      oldComponentsTotal > oldAmount + 0.009
+        ? roundMoney(oldComponentsTotal - oldAmount)
+        : 0;
+    const nextAmount = roundMoney(Math.max(0, bill.amount - alreadyPaid));
+
+    const amountChanged = Math.abs(nextAmount - oldAmount) > 0.009;
+    const componentsChanged = !componentsEqual(record.components, bill.components);
+    if (!amountChanged && !componentsChanged) {
+      skipped += 1;
+      continue;
+    }
+
+    record.amount = nextAmount;
+    record.components = bill.components;
+    if (alreadyPaid > 0) {
+      const creditNote = `Revised bill ₨${bill.amount.toLocaleString()}; credit ₨${alreadyPaid.toLocaleString()} for prior partial payment.`;
+      const notes = String(record.notes || '');
+      if (!notes.includes('Revised bill')) {
+        record.notes = [notes.trim(), creditNote].filter(Boolean).join(' · ');
+      }
+    }
+    await record.save();
+    updated += 1;
+  }
+
+  return { updated, skipped };
+}
+
+function reviseBillForFeeRecord(student, record, charges) {
+  if (record.feeType === 'monthly') {
+    return composeMonthlyComponents(
+      student,
+      record.month,
+      charges,
+      monthlyBillAmount(student)
+    );
+  }
+
+  if (record.feeType === 'admission') {
+    const { admissionAmount, monthlyAmount } = splitEnrollmentAmounts({
+      monthlyFee: student.monthlyFee,
+      admissionFee: student.admissionFee,
+      monthlyFeeDiscount: student.monthlyFeeDiscount,
+      admissionFeeDiscount: student.admissionFeeDiscount,
+      discountAmount: student.discountAmount,
+    });
+    const tuitionBill = composeMonthlyComponents(student, record.month, charges, monthlyAmount);
+    const components = [...tuitionBill.components];
+    if (admissionAmount > 0) {
+      components.push({
+        name: 'Admission',
+        amount: roundMoney(admissionAmount),
+        kind: 'admission',
+      });
+    }
+    const amount = roundMoney(components.reduce((sum, line) => sum + line.amount, 0));
+    return { amount, components };
+  }
+
+  return null;
+}
+
+function componentsEqual(a, b) {
+  const norm = (list) =>
+    (Array.isArray(list) ? list : [])
+      .map((line) => ({
+        name: String(line?.name || '').trim(),
+        amount: roundMoney(Number(line?.amount) || 0),
+        kind: String(line?.kind || ''),
+        chargeId: line?.chargeId ? String(line.chargeId) : '',
+      }))
+      .sort((x, y) => `${x.kind}:${x.name}`.localeCompare(`${y.kind}:${y.name}`));
+  return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
+}
+
 async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new Date(), replacePending = false } = {}) {
   const month = asOf.getMonth() + 1;
   const year = asOf.getFullYear();
@@ -260,7 +378,8 @@ async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new D
       return [existingAdm];
     }
     if (replacePending && ['pending', 'overdue'].includes(existingAdm.status)) {
-      existingAdm.amount = Math.max(0, admissionAmount + monthlyAmount);
+      existingAdm.amount = totalDue;
+      existingAdm.components = components;
       existingAdm.dueDate = dueDate;
       existingAdm.notes = 'First month: monthly fee + admission fee (after discounts)';
       existingAdm.recordedBy = userId;
@@ -1451,6 +1570,7 @@ module.exports = {
   addStationeryCharge,
   generateMonthlyFees,
   createEnrollmentFeeVouchers,
+  syncUnpaidChallansForStudent,
   monthlyBillAmount,
   recordPayment,
   recordPayments,

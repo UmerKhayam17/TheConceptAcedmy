@@ -13,7 +13,10 @@ const {
   getByClass,
   calculateFeesWithDiscount,
 } = require('./academyFeeStructureService');
-const { createEnrollmentFeeVouchers } = require('./academyFeeService');
+const {
+  createEnrollmentFeeVouchers,
+  syncUnpaidChallansForStudent,
+} = require('./academyFeeService');
 const { validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
 const { resolveEnrollmentDiscipline } = require('./academyDisciplineService');
 const { generateAcademyRollNumber, generateTemporaryRollNumber } = require('../../utils/academyRollNumber');
@@ -405,6 +408,12 @@ async function updateStudent(id, payload) {
   }
 
   await student.save();
+
+  // Keep Fee Management challans aligned with the recalculated student fee profile.
+  if (needsFeeRecalc && student.status === 'active') {
+    await syncUnpaidChallansForStudent(student);
+  }
+
   return student.populate([
     { path: 'classId', select: 'className' },
     { path: 'disciplineId', select: 'name code' },
