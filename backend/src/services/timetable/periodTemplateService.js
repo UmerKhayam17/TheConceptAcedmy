@@ -106,6 +106,51 @@ function generatePeriodSlots({ academyStartTime, academyEndTime, periodDurationM
   return slots;
 }
 
+function validateSlots(slots) {
+  if (!Array.isArray(slots) || !slots.length) {
+    throw new ApiError(400, 'At least one period slot is required');
+  }
+  return slots.map((slot, index) => {
+    const label = String(slot.label || '').trim() || `Period ${index + 1}`;
+    const startTime = String(slot.startTime || '').trim();
+    const endTime = String(slot.endTime || '').trim();
+    const startMinutes = parseTimeToMinutes(startTime);
+    const endMinutes = parseTimeToMinutes(endTime);
+    if (endMinutes <= startMinutes) {
+      throw new ApiError(400, `"${label}" end time must be later than its start time`);
+    }
+    const out = {
+      order: Number(slot.order) > 0 ? Number(slot.order) : index + 1,
+      label,
+      startTime,
+      endTime,
+      type: slot.type === 'break' || slot.type === 'assembly' || slot.type === 'prayer' ? slot.type : 'lecture',
+    };
+    if (slot._id) out._id = slot._id;
+    return out;
+  });
+}
+
+/** Keep existing subdocument ids when regenerating so schedule periodId refs stay valid. */
+function mergeGeneratedSlots(existingSlots = [], generatedSlots = []) {
+  const used = new Set();
+  return generatedSlots.map((slot, index) => {
+    const prevSameIndex = existingSlots[index];
+    if (prevSameIndex?._id && prevSameIndex.type === slot.type && !used.has(String(prevSameIndex._id))) {
+      used.add(String(prevSameIndex._id));
+      return { ...slot, _id: prevSameIndex._id };
+    }
+    const byLabel = existingSlots.find(
+      (e) => e?._id && e.label === slot.label && e.type === slot.type && !used.has(String(e._id))
+    );
+    if (byLabel) {
+      used.add(String(byLabel._id));
+      return { ...slot, _id: byLabel._id };
+    }
+    return slot;
+  });
+}
+
 async function listPeriodTemplates({ sessionId, isActive }) {
   const q = {};
   if (sessionId) q.session = sessionId;
@@ -156,16 +201,19 @@ async function updatePeriodTemplate(id, body) {
     body.academyEndTime !== undefined ||
     body.periodDurationMinutes !== undefined ||
     body.breaks !== undefined;
+  const hasExplicitSlots = Array.isArray(body.slots) && body.slots.length > 0;
 
-  if (hasConfigFields) {
-    payload.slots = generatePeriodSlots({
+  // Prefer manually edited period times when provided; otherwise regenerate from academy hours.
+  if (hasExplicitSlots) {
+    payload.slots = validateSlots(body.slots);
+  } else if (hasConfigFields) {
+    const generated = generatePeriodSlots({
       academyStartTime: body.academyStartTime ?? existing.academyStartTime,
       academyEndTime: body.academyEndTime ?? existing.academyEndTime,
       periodDurationMinutes: body.periodDurationMinutes ?? existing.periodDurationMinutes,
       breaks: body.breaks ?? existing.breaks,
     });
-  } else if (Array.isArray(body.slots) && body.slots.length) {
-    payload.slots = body.slots;
+    payload.slots = mergeGeneratedSlots(existing.slots || [], generated);
   }
 
   const tpl = await PeriodTemplate.findByIdAndUpdate(id, payload, { new: true, runValidators: true });

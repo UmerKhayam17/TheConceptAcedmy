@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
@@ -13,9 +13,8 @@ import {
   deletePeriodTemplate,
   fetchPeriodTemplates,
   updatePeriodTemplate,
-  type PeriodTemplate,
+  type PeriodSlot,
 } from "@/lib/timetableApi";
-import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
 
 const QK = (sid: string) => ["timetable-periods", sid] as const;
@@ -25,6 +24,15 @@ interface AcademyBreak {
   startTime: string;
   endTime: string;
 }
+
+type EditableSlot = {
+  _id?: string;
+  order: number;
+  label: string;
+  startTime: string;
+  endTime: string;
+  type: "lecture" | "break" | "assembly" | "prayer";
+};
 
 function parseTimeToMinutes(value: string) {
   const match = value.match(/^([0-1]\d|2[0-3]):([0-5]\d)$/);
@@ -43,7 +51,7 @@ function generatePeriods(
   endTime: string,
   duration: number,
   breaks: AcademyBreak[]
-) {
+): EditableSlot[] {
   const startMinutes = parseTimeToMinutes(startTime);
   const endMinutes = parseTimeToMinutes(endTime);
   if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) return [];
@@ -54,16 +62,17 @@ function generatePeriods(
       endMinutes: parseTimeToMinutes(br.endTime),
     }))
     .filter((br) => br.startMinutes !== null && br.endMinutes !== null)
-    .sort((a, b) => a.startMinutes - b.startMinutes);
+    .sort((a, b) => (a.startMinutes as number) - (b.startMinutes as number));
 
   let cursor = startMinutes;
   let period = 1;
-  const slots: Array<{ label: string; startTime: string; endTime: string; type: "lecture" | "break" }> = [];
+  const slots: EditableSlot[] = [];
 
   const addLectureSegment = (segmentEnd: number) => {
     if (segmentEnd <= cursor) return;
     while (cursor + duration <= segmentEnd) {
       slots.push({
+        order: slots.length + 1,
         label: `Period ${period}`,
         startTime: formatMinutesToTime(cursor),
         endTime: formatMinutesToTime(cursor + duration),
@@ -74,6 +83,7 @@ function generatePeriods(
     }
     if (cursor < segmentEnd) {
       slots.push({
+        order: slots.length + 1,
         label: `Period ${period}`,
         startTime: formatMinutesToTime(cursor),
         endTime: formatMinutesToTime(segmentEnd),
@@ -85,25 +95,58 @@ function generatePeriods(
   };
 
   for (const br of validatedBreaks) {
-    if (br.startMinutes > cursor) {
-      addLectureSegment(br.startMinutes);
+    if ((br.startMinutes as number) > cursor) {
+      addLectureSegment(br.startMinutes as number);
     }
     slots.push({
+      order: slots.length + 1,
       label: br.breakName,
-      startTime: formatMinutesToTime(br.startMinutes),
-      endTime: formatMinutesToTime(br.endMinutes),
+      startTime: formatMinutesToTime(br.startMinutes as number),
+      endTime: formatMinutesToTime(br.endMinutes as number),
       type: "break",
     });
-    cursor = br.endMinutes;
+    cursor = br.endMinutes as number;
   }
 
   addLectureSegment(endMinutes);
   return slots;
 }
 
+function slotsFromTemplate(slots: PeriodSlot[]): EditableSlot[] {
+  return slots.map((s, i) => ({
+    _id: s._id,
+    order: s.order || i + 1,
+    label: s.label,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    type: s.type,
+  }));
+}
+
+/** Keep existing ids when regenerating so timetable period refs stay valid. */
+function mergeSlotIds(existing: EditableSlot[], generated: EditableSlot[]): EditableSlot[] {
+  const used = new Set<string>();
+  return generated.map((slot, index) => {
+    const prev = existing[index];
+    if (prev?._id && prev.type === slot.type && !used.has(prev._id)) {
+      used.add(prev._id);
+      return { ...slot, _id: prev._id };
+    }
+    const byLabel = existing.find(
+      (e) => e._id && e.label === slot.label && e.type === slot.type && !used.has(e._id)
+    );
+    if (byLabel?._id) {
+      used.add(byLabel._id);
+      return { ...slot, _id: byLabel._id };
+    }
+    return slot;
+  });
+}
+
 export default function PeriodsTab({ sessionId, caps }: { sessionId: string; caps: ModuleActionCaps }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const canSave = caps.canCreate || caps.canEdit;
   const { data: templates = [], isLoading } = useQuery({
     queryKey: QK(sessionId),
     queryFn: () => fetchPeriodTemplates(sessionId),
@@ -120,31 +163,44 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
     academyEndTime: "",
     periodDurationMinutes: 40,
     breaks: [] as AcademyBreak[],
+    slots: [] as EditableSlot[],
   });
-
-  const previewPeriods = useMemo(
-    () =>
-      generatePeriods(
-        form.academyStartTime,
-        form.academyEndTime,
-        form.periodDurationMinutes,
-        form.breaks
-      ),
-    [form]
-  );
 
   useEffect(() => {
     if (!activeTemplate) {
-      setForm({ academyStartTime: "", academyEndTime: "", periodDurationMinutes: 40, breaks: [] });
+      setForm({ academyStartTime: "", academyEndTime: "", periodDurationMinutes: 40, breaks: [], slots: [] });
       return;
     }
+    const savedSlots = slotsFromTemplate(activeTemplate.slots || []);
     setForm({
       academyStartTime: activeTemplate.academyStartTime,
       academyEndTime: activeTemplate.academyEndTime,
       periodDurationMinutes: activeTemplate.periodDurationMinutes,
       breaks: activeTemplate.breaks ?? [],
+      slots:
+        savedSlots.length > 0
+          ? savedSlots
+          : generatePeriods(
+              activeTemplate.academyStartTime,
+              activeTemplate.academyEndTime,
+              activeTemplate.periodDurationMinutes,
+              activeTemplate.breaks ?? []
+            ),
     });
   }, [activeTemplate]);
+
+  const regenerateSlots = () => {
+    const generated = generatePeriods(
+      form.academyStartTime,
+      form.academyEndTime,
+      form.periodDurationMinutes,
+      form.breaks
+    );
+    setForm((f) => ({
+      ...f,
+      slots: mergeSlotIds(f.slots, generated),
+    }));
+  };
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -173,10 +229,20 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
         academyEndTime: form.academyEndTime,
         periodDurationMinutes: form.periodDurationMinutes,
         breaks: form.breaks,
+        slots: form.slots.map((s, i) => ({
+          ...(s._id ? { _id: s._id } : {}),
+          order: i + 1,
+          label: s.label,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          type: s.type,
+        })) as PeriodSlot[],
       });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK(sessionId) });
+      qc.invalidateQueries({ queryKey: ["timetable-grid"] });
+      qc.invalidateQueries({ queryKey: ["class-board"] });
       toast({ title: "Academy time configuration updated" });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -191,7 +257,7 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const { search, setSearch, filtered: templatesFiltered } = usePanelListSearch(templates, (t) => [
+  const { filtered: templatesFiltered } = usePanelListSearch(templates, (t) => [
     t.name || "",
     t.academyStartTime,
     t.academyEndTime,
@@ -207,14 +273,32 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
     return null;
   });
 
+  const slotErrors = form.slots.map((slot) => {
+    const start = parseTimeToMinutes(slot.startTime);
+    const end = parseTimeToMinutes(slot.endTime);
+    if (start === null || end === null) return "Invalid time";
+    if (end <= start) return "End must be after start";
+    return null;
+  });
+
   const hasErrors =
     !form.academyStartTime ||
     !form.academyEndTime ||
     !form.periodDurationMinutes ||
     parseTimeToMinutes(form.academyStartTime) === null ||
     parseTimeToMinutes(form.academyEndTime) === null ||
-    parseTimeToMinutes(form.academyEndTime) <= parseTimeToMinutes(form.academyStartTime) ||
-    form.breaks.some((_, index) => breakErrors[index] !== null);
+    (parseTimeToMinutes(form.academyEndTime) as number) <=
+      (parseTimeToMinutes(form.academyStartTime) as number) ||
+    form.breaks.some((_, index) => breakErrors[index] !== null) ||
+    (activeTemplate ? form.slots.length === 0 || slotErrors.some((e) => e !== null) : false);
+
+  const updateSlot = (index: number, patch: Partial<EditableSlot>) => {
+    setForm((f) => {
+      const next = [...f.slots];
+      next[index] = { ...next[index], ...patch };
+      return { ...f, slots: next };
+    });
+  };
 
   if (!sessionId) return null;
 
@@ -224,7 +308,8 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
         <div>
           <h1 className="text-2xl font-semibold text-primary">Academy Time Configuration</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Define academy hours, default subject duration, and breaks. The system will generate teaching periods automatically.
+            Define academy hours and breaks to generate periods, then edit any period&apos;s start and end
+            time as needed.
           </p>
         </div>
         {activeTemplate && caps.canDelete && (
@@ -357,48 +442,141 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
             <Textarea
               readOnly
               value={
-                "Academy time configuration generates lecture periods automatically, skipping break intervals. Update the values above to regenerate the schedule."
+                "Periods are generated from academy hours by default. Edit any period time in the table, then save. Use Regenerate to rebuild periods from the settings above."
               }
             />
           </div>
 
-          {caps.canCreate && (
-            <Button
-              onClick={() => (activeTemplate ? updateMut.mutate() : createMut.mutate())}
-              disabled={hasErrors || createMut.isPending || updateMut.isPending}
-            >
-              {activeTemplate ? "Update configuration" : "Save configuration"}
-            </Button>
+          {canSave && (
+            <div className="flex flex-wrap gap-2">
+              {activeTemplate && (
+                <Button type="button" variant="outline" onClick={regenerateSlots}>
+                  <RefreshCw className="h-4 w-4 mr-1.5" />
+                  Regenerate periods
+                </Button>
+              )}
+              <Button
+                onClick={() => {
+                  if (activeTemplate) {
+                    updateMut.mutate();
+                    return;
+                  }
+                  // First save: generate then create
+                  const generated = generatePeriods(
+                    form.academyStartTime,
+                    form.academyEndTime,
+                    form.periodDurationMinutes,
+                    form.breaks
+                  );
+                  if (!generated.length) {
+                    toast({
+                      title: "Invalid configuration",
+                      description: "Check academy hours and duration.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  setForm((f) => ({ ...f, slots: generated }));
+                  createMut.mutate();
+                }}
+                disabled={hasErrors || createMut.isPending || updateMut.isPending}
+              >
+                {activeTemplate ? "Update configuration" : "Save configuration"}
+              </Button>
+            </div>
           )}
         </div>
 
         <div className="space-y-4">
           <div>
-            <h2 className="text-base font-semibold text-primary">Generated periods preview</h2>
-            <p className="text-sm text-muted-foreground">Review the automatically generated lecture and break periods.</p>
+            <h2 className="text-base font-semibold text-primary">Periods</h2>
+            <p className="text-sm text-muted-foreground">
+              {activeTemplate
+                ? "Edit start/end times for any period, then update the configuration."
+                : "Save the configuration first to generate periods, then you can edit times."}
+            </p>
           </div>
           <Card className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/20 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2">Period</th>
-                  <th className="px-3 py-2">Time</th>
+                  <th className="px-3 py-2">Start</th>
+                  <th className="px-3 py-2">End</th>
                   <th className="px-3 py-2">Type</th>
                 </tr>
               </thead>
               <tbody>
-                {previewPeriods.map((p, index) => (
-                  <tr
-                    key={`${p.label}-${index}`}
-                    className={p.type === "break" ? "bg-muted/10" : ""}
-                  >
-                    <td className="px-3 py-2 font-medium">{p.label}</td>
-                    <td className="px-3 py-2 font-mono text-xs">
-                      {p.startTime} – {p.endTime}
-                    </td>
-                    <td className="px-3 py-2 text-sm text-muted-foreground capitalize">{p.type}</td>
-                  </tr>
-                ))}
+                {(form.slots.length
+                  ? form.slots
+                  : generatePeriods(
+                      form.academyStartTime,
+                      form.academyEndTime,
+                      form.periodDurationMinutes,
+                      form.breaks
+                    )
+                ).map((p, index) => {
+                  const editable = Boolean(activeTemplate && form.slots.length);
+                  const err = editable ? slotErrors[index] : null;
+                  return (
+                    <tr key={p._id || `${p.label}-${index}`} className={p.type === "break" ? "bg-muted/10" : ""}>
+                      <td className="px-3 py-2 align-top">
+                        {editable ? (
+                          <Input
+                            className="h-8 text-sm font-medium"
+                            value={p.label}
+                            onChange={(e) => updateSlot(index, { label: e.target.value })}
+                          />
+                        ) : (
+                          <span className="font-medium">{p.label}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        {editable ? (
+                          <Input
+                            type="time"
+                            className="h-8 font-mono text-xs"
+                            value={p.startTime}
+                            onChange={(e) => updateSlot(index, { startTime: e.target.value })}
+                          />
+                        ) : (
+                          <span className="font-mono text-xs">{p.startTime}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        {editable ? (
+                          <div>
+                            <Input
+                              type="time"
+                              className="h-8 font-mono text-xs"
+                              value={p.endTime}
+                              onChange={(e) => updateSlot(index, { endTime: e.target.value })}
+                            />
+                            {err && <p className="text-[11px] text-destructive mt-1">{err}</p>}
+                          </div>
+                        ) : (
+                          <span className="font-mono text-xs">{p.endTime}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-muted-foreground capitalize align-top pt-3">
+                        {p.type}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!form.slots.length &&
+                  !generatePeriods(
+                    form.academyStartTime,
+                    form.academyEndTime,
+                    form.periodDurationMinutes,
+                    form.breaks
+                  ).length && (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+                        Set academy hours to preview periods.
+                      </td>
+                    </tr>
+                  )}
               </tbody>
             </table>
           </Card>
@@ -425,30 +603,24 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
                       {template.academyStartTime} – {template.academyEndTime}, {template.periodDurationMinutes} min
                     </p>
                   </div>
-                  {template.isDefault && <span className="rounded-full bg-accent/10 px-2 py-1 text-xs text-accent">Default</span>}
+                  {template.isDefault && (
+                    <span className="rounded-full bg-accent/10 px-2 py-1 text-xs text-accent">Default</span>
+                  )}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="font-semibold">Breaks</p>
-                    {template.breaks.length ? (
-                      <ul className="space-y-1 mt-2">
-                        {template.breaks.map((br, index) => (
-                          <li key={index} className="flex items-center gap-2">
-                            <span className="font-medium">{br.breakName}</span>
-                            <span className="text-muted-foreground">{br.startTime}–{br.endTime}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-muted-foreground mt-2">No breaks configured.</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-semibold">Preview</p>
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      {template.slots.length} generated periods including breaks.
-                    </div>
-                  </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {template.slots.map((s) => (
+                        <tr key={s._id} className="border-t">
+                          <td className="py-1.5 pr-3 font-medium">{s.label}</td>
+                          <td className="py-1.5 font-mono text-muted-foreground">
+                            {s.startTime} – {s.endTime}
+                          </td>
+                          <td className="py-1.5 pl-3 capitalize text-muted-foreground">{s.type}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </Card>
             ))}
@@ -458,6 +630,3 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
     </div>
   );
 }
-
-
-
