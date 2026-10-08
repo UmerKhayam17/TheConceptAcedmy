@@ -62,9 +62,12 @@ import {
   DAY_FULL_LABELS,
   DAY_LABELS,
   FULL_WEEK_DAYS,
+  assignUniqueSubjectColors,
+  colorForSubjectName,
+  dotForSubjectName,
   normalizeWorkingDays,
   slotMatchesPeriod,
-  subjectColorDot,
+  subjectColorKey,
 } from "./constants";
 import {
   downloadBuilderGridPdf,
@@ -201,6 +204,14 @@ export default function GridTab({
   });
   const classes = useMemo(() => sortClassesByLevel(classesRaw), [classesRaw]);
   const classGroups = useMemo(() => groupClassesByProgram(classes), [classes]);
+
+  /** Full subject catalog — shared with Class Board for identical colors. */
+  const { data: allSubjectsRaw = [] } = useQuery({
+    queryKey: ["config-subjects", "all"],
+    queryFn: () => fetchSubjects(),
+    enabled: !!sessionId,
+    staleTime: 60_000,
+  });
 
   const { data: sections = [] } = useQuery({
     queryKey: ["config-sections", classId, sessionId],
@@ -535,19 +546,38 @@ export default function GridTab({
   const legendSubjects = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of subjects) {
-      if (s._id && s.name) map.set(String(s._id), s.name);
+      const name = s.name?.trim();
+      if (!name) continue;
+      const key = subjectColorKey(name);
+      if (!map.has(key)) map.set(key, name);
     }
     for (const slot of grid?.slots || []) {
       for (const e of scheduleSlotEntries(slot)) {
-        const id = e.subject?._id ? String(e.subject._id) : "";
         const name = e.subject?.name?.trim();
-        if (id && name) map.set(id, name);
+        if (!name) continue;
+        const key = subjectColorKey(name);
+        if (!map.has(key)) map.set(key, name);
       }
     }
     return [...map.entries()]
-      .map(([id, name]) => ({ id, name }))
+      .map(([key, name]) => ({ key, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [subjects, grid?.slots]);
+
+  /** School-wide unique colors — same mapping as Class Board. */
+  const subjectColorByKey = useMemo(() => {
+    const classIds = new Set(classes.map((c) => c._id));
+    const names: string[] = [];
+    for (const s of allSubjectsRaw) {
+      const cid = typeof s.class === "object" ? s.class?._id : s.class;
+      if (classIds.size && cid && !classIds.has(String(cid))) continue;
+      if (s.name?.trim()) names.push(s.name);
+    }
+    if (!names.length) {
+      for (const s of legendSubjects) names.push(s.name);
+    }
+    return assignUniqueSubjectColors(names);
+  }, [allSubjectsRaw, classes, legendSubjects]);
 
   const subjectOptions = useMemo(() => buildSlotSubjectOptions(subjects), [subjects]);
 
@@ -1095,6 +1125,12 @@ export default function GridTab({
                             {slot ? (
                               <TimetableSlotCard
                                 slot={slot}
+                                colorClass={colorForSubjectName(
+                                  scheduleSlotEntries(slot)[0]?.subject?.name ||
+                                    slot.subject?.name ||
+                                    "",
+                                  subjectColorByKey
+                                )}
                                 draggable={canEditGrid && !slot.locked}
                                 isDragging={draggingSlotId === slot._id}
                                 isDropTarget={isDropTarget && draggingSlotId !== slot._id}
@@ -1160,11 +1196,11 @@ export default function GridTab({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground px-1">
             {legendSubjects.length > 0 ? (
               legendSubjects.map((s) => (
-                <span key={s.id} className="inline-flex items-center gap-1.5">
+                <span key={s.key} className="inline-flex items-center gap-1.5">
                   <span
                     className={cn(
                       "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10",
-                      subjectColorDot(s.id)
+                      dotForSubjectName(s.name, subjectColorByKey)
                     )}
                     aria-hidden
                   />

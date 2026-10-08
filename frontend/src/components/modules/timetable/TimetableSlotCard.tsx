@@ -7,6 +7,7 @@ import { subjectColor } from "./constants";
 /** Fixed-height lesson cell for Timetable Builder — Class Board visual style. */
 export default function TimetableSlotCard({
   slot,
+  colorClass,
   draggable,
   isDragging,
   isDropTarget,
@@ -17,6 +18,7 @@ export default function TimetableSlotCard({
   onEdit,
 }: {
   slot: ScheduleSlot;
+  colorClass?: string;
   draggable: boolean;
   isDragging: boolean;
   isDropTarget?: boolean;
@@ -60,7 +62,7 @@ export default function TimetableSlotCard({
       }}
       className={cn(
         "relative flex h-[72px] w-full min-w-0 flex-col justify-center overflow-hidden rounded-xl border px-2.5 py-1.5 text-left text-xs leading-snug select-none shadow-sm transition-shadow",
-        subjectColor(colorId),
+        colorClass || subjectColor(colorId),
         draggable && "cursor-grab active:cursor-grabbing hover:shadow-md",
         isDragging && "opacity-40 ring-2 ring-primary/40",
         isDropTarget && "ring-2 ring-primary/50"
