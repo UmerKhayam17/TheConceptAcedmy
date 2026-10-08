@@ -211,6 +211,49 @@ const substitutionBody = Joi.object({
   substituteTeacherId: objectId.required(),
 });
 
+const classBoardQuery = Joi.object({
+  sessionId: objectId.required(),
+  classId: objectId.allow('', null),
+  day: Joi.string().valid(...WEEKDAYS).required(),
+});
+
+const sharedLessonBody = Joi.object({
+  sessionId: objectId.required(),
+  classId: objectId.required(),
+  day: Joi.string().valid(...WEEKDAYS).required(),
+  days: Joi.array().items(Joi.string().valid(...WEEKDAYS)).min(1).max(7),
+  applyToFullWeek: Joi.boolean(),
+  periodId: objectId.required(),
+  sectionIds: Joi.array().items(objectId).min(1).max(40).required(),
+  subject: objectId,
+  teacher: objectId,
+  entries: Joi.array()
+    .items(
+      Joi.object({
+        subject: objectId.required(),
+        teacher: objectId.required(),
+      })
+    )
+    .min(1)
+    .max(10),
+  room: objectId.allow(null),
+  combinedGroupId: objectId.allow(null),
+})
+  .xor('entries', 'subject')
+  .and('subject', 'teacher');
+
+const publishClassDraftsBody = Joi.object({
+  sessionId: objectId.required(),
+  classId: objectId.allow('', null),
+});
+
+const classBoardMoveBody = Joi.object({
+  slotId: objectId.required(),
+  toSectionId: objectId.required(),
+  toPeriodId: objectId.required(),
+  day: Joi.string().valid(...WEEKDAYS).required(),
+});
+
 const sessionBodyExtended = Joi.object({
   name: Joi.string().required(),
   startDate: Joi.date().required(),
@@ -237,5 +280,9 @@ module.exports = {
   scheduleSlotBody,
   scheduleSlotMove,
   substitutionBody,
+  classBoardQuery,
+  sharedLessonBody,
+  publishClassDraftsBody,
+  classBoardMoveBody,
   sessionBodyExtended,
 };

@@ -1,0 +1,1227 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Circle,
+  DoorOpen,
+  FileSpreadsheet,
+  GripVertical,
+  LayoutGrid,
+  Link2,
+  Plus,
+  Printer,
+  Send,
+  Trash2,
+  User,
+  Users,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import type { ModuleActionCaps } from "@/lib/permissions";
+import type { Weekday } from "@/lib/configApi";
+import {
+  classDisplayName,
+  classSectionBoardLabel,
+  compareClassLevels,
+  fetchClasses,
+  fetchSubjects,
+  sortClassesByLevel,
+  type SchoolSubject,
+} from "@/lib/configApi";
+import { fetchUsers } from "@/lib/usersApi";
+import {
+  deleteCombinedGroup,
+  deleteScheduleSlot,
+  fetchClassBoard,
+  fetchRooms,
+  fetchTeacherProfiles,
+  moveClassBoardLesson,
+  publishClassDrafts,
+  scheduleSlotEntries,
+  upsertSharedLesson,
+  type PeriodSlot,
+  type ScheduleSlot,
+} from "@/lib/timetableApi";
+import {
+  DAY_FULL_LABELS,
+  DAY_ORDER,
+  FULL_WEEK_DAYS,
+  normalizeWorkingDays,
+  slotMatchesPeriod,
+  subjectColor,
+} from "./constants";
+import { exportClassBoardExcel, printClassBoard } from "./classBoardExport";
+
+type DayApplyMode = "single" | "fullWeek" | "custom";
+type BoardViewMode = "week" | "day";
+
+type SlotSubjectOption =
+  | { key: string; kind: "single"; label: string; subjectIds: [string] }
+  | { key: string; kind: "choice"; label: string; groupName: string; subjectIds: string[] };
+
+function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[] {
+  const byGroup = new Map<string, SchoolSubject[]>();
+  const singles: SchoolSubject[] = [];
+
+  for (const s of subjects) {
+    const groupName = s.choiceGroupName?.trim();
+    if (s.enrollmentType === "choice" && groupName) {
+      const key = groupName.toLowerCase();
+      if (!byGroup.has(key)) byGroup.set(key, []);
+      byGroup.get(key)!.push(s);
+    } else {
+      singles.push(s);
+    }
+  }
+
+  const options: SlotSubjectOption[] = [];
+  for (const group of byGroup.values()) {
+    const sorted = [...group].sort((a, b) => a.name.localeCompare(b.name));
+    if (sorted.length >= 2) {
+      const groupName = sorted[0].choiceGroupName!.trim();
+      options.push({
+        key: `choice:${groupName.toLowerCase()}`,
+        kind: "choice",
+        groupName,
+        subjectIds: sorted.map((s) => s._id),
+        label: sorted.map((s) => s.name).join(" / "),
+      });
+    } else {
+      singles.push(...sorted);
+    }
+  }
+  for (const s of singles) {
+    options.push({
+      key: s._id,
+      kind: "single",
+      subjectIds: [s._id],
+      label: s.name,
+    });
+  }
+  return options.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function optionKeyForSlot(slot: ScheduleSlot | undefined, options: SlotSubjectOption[]): string {
+  if (!slot) return "";
+  const entryIds = scheduleSlotEntries(slot).map((e) => e.subject._id);
+  if (entryIds.length > 1) {
+    const match = options.find(
+      (o) =>
+        o.kind === "choice" &&
+        o.subjectIds.length === entryIds.length &&
+        o.subjectIds.every((id) => entryIds.includes(id))
+    );
+    if (match) return match.key;
+  }
+  return (
+    options.find((o) => o.kind === "single" && o.subjectIds[0] === slot.subject._id)?.key ||
+    slot.subject._id
+  );
+}
+
+function LessonCard({
+  slot,
+  periodLabel,
+  draggable,
+  isDragging,
+  isDropTarget,
+  onDragStart,
+  onDragEnd,
+  onEdit,
+}: {
+  slot: ScheduleSlot;
+  periodLabel?: string;
+  draggable: boolean;
+  isDragging: boolean;
+  isDropTarget?: boolean;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+  onEdit: () => void;
+}) {
+  const entries = scheduleSlotEntries(slot);
+  const title = entries.map((e) => e.subject.name).join(" / ");
+  const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ");
+  const isParallel = entries.length > 1;
+  const roomLabel = slot.room?.code || slot.room?.name;
+  const didDragRef = useRef(false);
+
+  return (
+    <div
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) {
+          e.preventDefault();
+          return;
+        }
+        didDragRef.current = true;
+        onDragStart(e);
+      }}
+      onDragEnd={() => {
+        onDragEnd();
+        window.setTimeout(() => {
+          didDragRef.current = false;
+        }, 80);
+      }}
+      onClick={() => {
+        if (didDragRef.current) return;
+        onEdit();
+      }}
+      className={cn(
+        "relative rounded-xl border px-2.5 py-2 text-left text-xs leading-snug select-none shadow-sm transition-shadow",
+        subjectColor(slot.subject._id),
+        draggable && "cursor-grab active:cursor-grabbing hover:shadow-md",
+        isDragging && "opacity-40 ring-2 ring-primary/40",
+        isDropTarget && "ring-2 ring-primary/50"
+      )}
+    >
+      {draggable && (
+        <span className="absolute left-1 top-1.5 opacity-40" aria-hidden>
+          <GripVertical className="h-3 w-3" />
+        </span>
+      )}
+      {slot.combinedGroupId && (
+        <span
+          className="absolute right-1.5 top-1.5 text-emerald-600"
+          title="Shared / combined lesson"
+        >
+          <Users className="h-3.5 w-3.5" />
+        </span>
+      )}
+      <div className={cn("pr-5", draggable && "pl-3.5")}>
+        <div className="font-semibold text-[13px] truncate" title={title}>
+          {title}
+        </div>
+        <div className="mt-1 flex items-center gap-1 text-muted-foreground truncate" title={teachers}>
+          <User className="h-3 w-3 shrink-0" />
+          <span className="truncate">{teachers}</span>
+        </div>
+        {roomLabel && (
+          <div className="mt-0.5 flex items-center gap-1 text-muted-foreground truncate">
+            <DoorOpen className="h-3 w-3 shrink-0" />
+            <span className="truncate">{roomLabel}</span>
+          </div>
+        )}
+        {isParallel && (
+          <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-violet-600">
+            <Link2 className="h-3 w-3" /> Parallel
+          </div>
+        )}
+        {periodLabel && (
+          <div className="sr-only">{periodLabel}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function ClassBoardTab({
+  sessionId,
+  caps,
+}: {
+  sessionId: string;
+  caps: ModuleActionCaps;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const canManage = caps.canEdit || caps.canCreate;
+
+  const [classId, setClassId] = useState("");
+  const [day, setDay] = useState<Weekday>("monday");
+  const [viewMode, setViewMode] = useState<BoardViewMode>("week");
+  const [dialog, setDialog] = useState<{
+    period: PeriodSlot;
+    sectionId: string;
+    classId: string;
+    existing?: ScheduleSlot;
+  } | null>(null);
+  const [form, setForm] = useState<{
+    optionKey: string;
+    teachersBySubject: Record<string, string>;
+    roomId: string;
+    sectionIds: string[];
+    dayApplyMode: DayApplyMode;
+    selectedDays: Weekday[];
+  }>({
+    optionKey: "",
+    teachersBySubject: {},
+    roomId: "",
+    sectionIds: [],
+    dayApplyMode: "single",
+    selectedDays: [],
+  });
+  const [draggingSlotId, setDraggingSlotId] = useState<string | null>(null);
+  const [dropOver, setDropOver] = useState<{ sectionId: string; periodId: string } | null>(null);
+  const draggingSlotIdRef = useRef<string | null>(null);
+  const skipClickRef = useRef(false);
+
+  useEffect(() => {
+    setClassId("");
+    setDay("monday");
+    setDialog(null);
+    setDraggingSlotId(null);
+    setDropOver(null);
+  }, [sessionId]);
+
+  const { data: classesRaw = [] } = useQuery({
+    queryKey: ["config-classes", sessionId],
+    queryFn: () => fetchClasses(sessionId),
+    enabled: !!sessionId,
+  });
+  const classes = useMemo(() => sortClassesByLevel(classesRaw), [classesRaw]);
+
+  const { data: board, isLoading } = useQuery({
+    queryKey: ["class-board", sessionId, classId || "all", day],
+    queryFn: () =>
+      fetchClassBoard({
+        sessionId,
+        day,
+        ...(classId ? { classId } : {}),
+      }),
+    enabled: !!sessionId,
+  });
+
+  const dialogClassId = dialog?.classId || classId;
+  const { data: subjects = [] } = useQuery({
+    queryKey: ["config-subjects", dialogClassId],
+    queryFn: () => fetchSubjects(dialogClassId),
+    enabled: !!dialogClassId,
+  });
+
+  const { data: teacherProfiles = [] } = useQuery({
+    queryKey: ["timetable-teacher-profiles", sessionId],
+    queryFn: () => fetchTeacherProfiles(sessionId),
+    enabled: !!sessionId,
+  });
+
+  const { data: rooms = [] } = useQuery({
+    queryKey: ["timetable-rooms", sessionId],
+    queryFn: () => fetchRooms(sessionId),
+    enabled: !!sessionId && canManage,
+  });
+
+  const { data: users = [] } = useQuery({
+    queryKey: ["users"],
+    queryFn: fetchUsers,
+    enabled: canManage,
+  });
+
+  const subjectOptions = useMemo(() => buildSlotSubjectOptions(subjects), [subjects]);
+  const workingDays = normalizeWorkingDays(board?.session.workingDays);
+  const lecturePeriods = (board?.periods || []).filter((p) => p.type === "lecture");
+  const sectionRows = useMemo(() => {
+    const rows = board?.sections || [];
+    return [...rows].sort((a, b) => {
+      const la = classSectionBoardLabel(a.class?.name, a.section.name, a.section.label);
+      const lb = classSectionBoardLabel(b.class?.name, b.section.name, b.section.label);
+      return compareClassLevels(la, lb);
+    });
+  }, [board?.sections]);
+
+  const teachers = useMemo(() => {
+    const fromProfiles = teacherProfiles
+      .filter((p) => p.isActive && p.user)
+      .map((p) => ({ _id: p.user._id, name: p.user.name }));
+    if (fromProfiles.length) return fromProfiles;
+    return users
+      .filter((u) => {
+        const role = typeof u.role === "object" ? u.role?.name : "";
+        return u.isActive && (role === "teacher" || role === "admin");
+      })
+      .map((u) => ({ _id: u._id, name: u.name }));
+  }, [teacherProfiles, users]);
+
+  const sharedLessons = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        title: string;
+        teachers: string;
+        periodLabel: string;
+        sections: string[];
+      }
+    >();
+    for (const row of sectionRows) {
+      for (const slot of row.slots) {
+        if (!slot.combinedGroupId) continue;
+        const key = String(slot.combinedGroupId);
+        const entries = scheduleSlotEntries(slot);
+        const period = lecturePeriods.find((p) => slotMatchesPeriod(slot, p._id));
+        const existing = map.get(key);
+        const sectionLabel = classSectionBoardLabel(
+          row.class?.name,
+          row.section.name,
+          row.section.label
+        );
+        if (existing) {
+          if (!existing.sections.includes(sectionLabel)) existing.sections.push(sectionLabel);
+        } else {
+          map.set(key, {
+            id: key,
+            title: entries.map((e) => e.subject.name).join(" / "),
+            teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
+            periodLabel: period?.label || `P${period?.order || ""}`,
+            sections: [sectionLabel],
+          });
+        }
+      }
+    }
+    return [...map.values()];
+  }, [sectionRows, lecturePeriods]);
+
+  const openCell = (
+    period: PeriodSlot,
+    sectionId: string,
+    rowClassId: string,
+    existing?: ScheduleSlot
+  ) => {
+    if (!canManage) return;
+    if (!rowClassId) {
+      toast({
+        title: "Select a class filter or ensure sections have a class",
+        variant: "destructive",
+      });
+      return;
+    }
+    const sameClassRows = sectionRows.filter(
+      (row) => String(row.class?._id || classId) === String(rowClassId)
+    );
+    const sharedSectionIds = existing?.combinedGroupId
+      ? sameClassRows
+        .filter((row) =>
+          row.slots.some(
+            (s) =>
+              String(s.combinedGroupId || "") === String(existing.combinedGroupId) &&
+              slotMatchesPeriod(s, period._id)
+          )
+        )
+        .map((r) => r.section._id)
+      : [sectionId];
+
+    const teachersBySubject: Record<string, string> = {};
+    if (existing) {
+      for (const e of scheduleSlotEntries(existing)) {
+        teachersBySubject[e.subject._id] = e.teacher._id;
+      }
+    }
+
+    setForm({
+      optionKey: "",
+      teachersBySubject,
+      roomId: existing?.room?._id || "",
+      sectionIds: sharedSectionIds,
+      dayApplyMode: "single",
+      selectedDays: [day],
+    });
+    setDialog({ period, sectionId, classId: rowClassId, existing });
+  };
+
+  useEffect(() => {
+    if (!dialog?.existing || !subjectOptions.length) return;
+    setForm((f) => ({
+      ...f,
+      optionKey: optionKeyForSlot(dialog.existing, subjectOptions) || f.optionKey,
+    }));
+  }, [dialog?.existing, subjectOptions]);
+
+  const openSharedLessonBuilder = () => {
+    if (!canManage) return;
+    const targetClassId = classId || classes[0]?._id || "";
+    if (!targetClassId) {
+      toast({ title: "Create a class first", variant: "destructive" });
+      return;
+    }
+    const period = lecturePeriods[0];
+    if (!period) {
+      toast({
+        title: "No periods",
+        description: "Configure academy periods in System Config first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const sameClassRows = sectionRows.filter(
+      (row) => String(row.class?._id || classId) === String(targetClassId)
+    );
+    const firstSection = sameClassRows[0]?.section._id;
+    if (!firstSection) {
+      toast({ title: "No sections for this class", variant: "destructive" });
+      return;
+    }
+    setForm({
+      optionKey: "",
+      teachersBySubject: {},
+      roomId: "",
+      sectionIds: sameClassRows.map((r) => r.section._id),
+      dayApplyMode: "single",
+      selectedDays: [day],
+    });
+    setDialog({ period, sectionId: firstSection, classId: targetClassId });
+  };
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      if (!dialog) throw new Error("No cell selected");
+      if (!dialog.classId) throw new Error("Class is required");
+      const option = subjectOptions.find((o) => o.key === form.optionKey);
+      if (!option) throw new Error("Select a subject");
+      const entries = option.subjectIds.map((subjectId) => {
+        const teacher = form.teachersBySubject[subjectId];
+        if (!teacher) throw new Error("Select a teacher for each subject");
+        return { subject: subjectId, teacher };
+      });
+      const sectionIds = form.sectionIds.length ? form.sectionIds : [dialog.sectionId];
+      const payload: Parameters<typeof upsertSharedLesson>[0] = {
+        sessionId,
+        classId: dialog.classId,
+        day,
+        periodId: dialog.period._id,
+        sectionIds,
+        entries,
+        room: form.roomId || null,
+        combinedGroupId: dialog.existing?.combinedGroupId || undefined,
+      };
+      if (form.dayApplyMode === "fullWeek") payload.applyToFullWeek = true;
+      else if (form.dayApplyMode === "custom") {
+        const days = [...(form.selectedDays.length ? form.selectedDays : [day])];
+        if (!days.includes(day)) days.push(day);
+        payload.days = days;
+      }
+      return upsertSharedLesson(payload);
+    },
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["class-board", sessionId] });
+      qc.invalidateQueries({ queryKey: ["timetable-grid"] });
+      qc.invalidateQueries({ queryKey: ["section-schedule", sessionId] });
+      qc.invalidateQueries({ queryKey: ["my-teacher-schedule", sessionId] });
+      setDialog(null);
+      toast({
+        title: result.combinedGroupId ? "Shared lesson saved" : "Lesson saved",
+        description: `${result.sectionCount} section(s) · ${result.days.length} day(s)`,
+      });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Could not save", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async () => {
+      if (!dialog?.existing) throw new Error("Nothing to delete");
+      if (dialog.existing.combinedGroupId && form.sectionIds.length > 1) {
+        return deleteCombinedGroup(dialog.existing.combinedGroupId);
+      }
+      return deleteScheduleSlot(dialog.existing._id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["class-board", sessionId] });
+      qc.invalidateQueries({ queryKey: ["timetable-grid"] });
+      setDialog(null);
+      toast({ title: "Lesson removed" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const publishMut = useMutation({
+    mutationFn: () =>
+      publishClassDrafts({
+        sessionId,
+        ...(classId ? { classId } : {}),
+      }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["class-board", sessionId] });
+      qc.invalidateQueries({ queryKey: ["timetable-versions"] });
+      toast({
+        title: "Publish complete",
+        description:
+          r.failed.length > 0
+            ? `${r.published} published, ${r.failed.length} failed`
+            : `${r.published} draft(s) published`,
+        variant: r.failed.length ? "destructive" : "default",
+      });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Publish failed", description: e.message, variant: "destructive" }),
+  });
+
+  const moveMut = useMutation({
+    mutationFn: (payload: {
+      slotId: string;
+      toSectionId: string;
+      toPeriodId: string;
+      day: Weekday;
+    }) => moveClassBoardLesson(payload),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["class-board", sessionId] });
+      qc.invalidateQueries({ queryKey: ["timetable-grid"] });
+      qc.invalidateQueries({ queryKey: ["section-schedule", sessionId] });
+      qc.invalidateQueries({ queryKey: ["my-teacher-schedule", sessionId] });
+      toast({
+        title: result.shared
+          ? "Shared lesson moved"
+          : result.swapped
+            ? "Lessons swapped"
+            : "Lesson moved",
+      });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Could not move lesson", description: e.message, variant: "destructive" }),
+  });
+
+  const beginSlotDrag = (e: React.DragEvent, slotId: string) => {
+    draggingSlotIdRef.current = slotId;
+    setDraggingSlotId(slotId);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", slotId);
+    skipClickRef.current = true;
+  };
+
+  const endSlotDrag = () => {
+    draggingSlotIdRef.current = null;
+    setDraggingSlotId(null);
+    setDropOver(null);
+    window.setTimeout(() => {
+      skipClickRef.current = false;
+    }, 100);
+  };
+
+  const handleDropOnCell = (sectionId: string, periodId: string) => {
+    const slotId = draggingSlotIdRef.current || draggingSlotId;
+    if (!slotId || !canManage) return;
+    endSlotDrag();
+    moveMut.mutate({ slotId, toSectionId: sectionId, toPeriodId: periodId, day });
+  };
+
+  const openCellSafe = (
+    period: PeriodSlot,
+    sectionId: string,
+    rowClassId: string,
+    existing?: ScheduleSlot
+  ) => {
+    if (skipClickRef.current || draggingSlotIdRef.current) return;
+    openCell(period, sectionId, rowClassId, existing);
+  };
+
+  const selectedOption = subjectOptions.find((o) => o.key === form.optionKey);
+  const draftCount = sectionRows.filter((r) => r.version?.status === "draft").length;
+  const isDragActive = Boolean(draggingSlotId || draggingSlotIdRef.current);
+  const dialogSectionRows = dialog
+    ? sectionRows.filter((row) => String(row.class?._id || classId) === String(dialog.classId))
+    : [];
+  const dayOptions = workingDays.length ? workingDays : DAY_ORDER;
+  const selectedClass = classes.find((c) => c._id === classId);
+  const selectedClassName = selectedClass ? classDisplayName(selectedClass) : undefined;
+  const boardTitle = selectedClassName
+    ? `Class Board · ${selectedClassName}`
+    : "Class Board · All classes";
+  const boardSubtitle = `${DAY_FULL_LABELS[day]}${
+    board?.session?.name ? ` · ${board.session.name}` : ""
+  }`;
+  const canExportBoard = sectionRows.length > 0 && lecturePeriods.length > 0;
+
+  const handlePrintBoard = () => {
+    try {
+      printClassBoard({
+        title: boardTitle,
+        subtitle: boardSubtitle,
+        rows: sectionRows,
+        periods: lecturePeriods,
+        className: selectedClassName || "All classes",
+        dayLabel: DAY_FULL_LABELS[day],
+        sessionName: board?.session?.name,
+      });
+    } catch (e) {
+      toast({
+        title: "Could not print",
+        description: e instanceof Error ? e.message : "Print failed",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExportExcel = () => {
+    try {
+      exportClassBoardExcel({
+        className: selectedClassName,
+        dayLabel: DAY_FULL_LABELS[day],
+        rows: sectionRows,
+        periods: lecturePeriods,
+      });
+      toast({ title: "Excel downloaded", description: boardSubtitle });
+    } catch (e) {
+      toast({
+        title: "Could not export",
+        description: e instanceof Error ? e.message : "Export failed",
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+      <div className="text-xs text-muted-foreground">
+        Timetable <span className="mx-1">›</span>{" "}
+        <span className="text-foreground font-medium">Class Board</span>
+      </div>
+
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <LayoutGrid className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="font-display text-xl font-semibold tracking-tight">Class Board</h2>
+            <p className="text-sm text-muted-foreground max-w-xl">
+              View and manage the timetable for all sections of a class at once.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {canManage && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!draftCount || publishMut.isPending}
+              onClick={() => publishMut.mutate()}
+            >
+              <Send className="h-3.5 w-3.5 mr-1.5" />
+              Publish{draftCount ? ` (${draftCount})` : ""}
+            </Button>
+          )}
+          {canManage && (
+            <Button size="sm" onClick={openSharedLessonBuilder}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
+              Add Shared Lesson
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
+        <div className="min-w-[140px]">
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Class</Label>
+          <select
+            className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
+            value={classId}
+            onChange={(e) => setClassId(e.target.value)}
+          >
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={c._id} value={c._id}>
+                {classDisplayName(c)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-[160px]">
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Day</Label>
+          <select
+            className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
+            value={day}
+            onChange={(e) => setDay(e.target.value as Weekday)}
+          >
+            {dayOptions.map((d) => (
+              <option key={d} value={d}>
+                {DAY_FULL_LABELS[d]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="ml-auto flex rounded-full border bg-muted/40 p-1">
+          <button
+            type="button"
+            className={cn(
+              "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+              viewMode === "week"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+            onClick={() => setViewMode("week")}
+          >
+            Week View
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+              viewMode === "day"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+            onClick={() => setViewMode("day")}
+          >
+            Day View
+          </button>
+        </div>
+      </div>
+
+      {viewMode === "week" && (
+        <div className="flex flex-wrap gap-1.5">
+          {dayOptions.map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setDay(d)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                day === d
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              )}
+            >
+              {DAY_FULL_LABELS[d].slice(0, 3)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isLoading && <p className="text-sm text-muted-foreground">Loading class board…</p>}
+
+      {board && (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="space-y-4 min-w-0">
+            <Card className="overflow-hidden rounded-2xl border shadow-sm">
+              {sectionRows.length === 0 ? (
+                <p className="p-8 text-sm text-muted-foreground">No sections found for this filter.</p>
+              ) : lecturePeriods.length === 0 ? (
+                <p className="p-8 text-sm text-muted-foreground">
+                  Create an academy time configuration (periods) in System Config first.
+                </p>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="w-full min-w-[860px] text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-muted/50">
+                        <th className="sticky left-0 z-10 bg-slate-50 dark:bg-muted/50 border-b px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground min-w-[100px]">
+                          Section
+                        </th>
+                        {lecturePeriods.map((p) => (
+                          <th
+                            key={p._id}
+                            className="border-b px-2 py-3 text-center font-semibold min-w-[120px]"
+                          >
+                            <div className="text-sm">{p.label || `P${p.order}`}</div>
+                            <div className="text-[11px] font-normal text-muted-foreground">
+                              {p.startTime} – {p.endTime}
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sectionRows.map((row) => {
+                        const rowClassId = row.class?._id || classId;
+                        const rowLabel = classSectionBoardLabel(
+                          row.class?.name,
+                          row.section.name,
+                          row.section.label
+                        );
+                        return (
+                          <tr key={row.section._id} className="align-top">
+                            <td className="sticky left-0 z-10 border-b bg-primary/5 px-3 py-3 font-semibold whitespace-nowrap">
+                              <div>{rowLabel}</div>
+                              {row.version && (
+                                <Badge variant="outline" className="mt-1 text-[10px] h-5 font-normal">
+                                  {row.version.status} · v{row.version.version}
+                                </Badge>
+                              )}
+                            </td>
+                            {lecturePeriods.map((period) => {
+                              const slot = row.slots.find((s) => slotMatchesPeriod(s, period._id));
+                              const isDropTarget =
+                                dropOver?.sectionId === row.section._id &&
+                                dropOver?.periodId === period._id &&
+                                draggingSlotId !== slot?._id;
+                              return (
+                                <td
+                                  key={period._id}
+                                  className={cn(
+                                    "border-b p-1.5 align-top",
+                                    moveMut.isPending && "pointer-events-none opacity-60"
+                                  )}
+                                  onDragEnter={(e) => {
+                                    e.preventDefault();
+                                    if (!canManage || (!draggingSlotIdRef.current && !draggingSlotId))
+                                      return;
+                                    setDropOver({
+                                      sectionId: row.section._id,
+                                      periodId: period._id,
+                                    });
+                                  }}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = "move";
+                                    if (!canManage || (!draggingSlotIdRef.current && !draggingSlotId))
+                                      return;
+                                    setDropOver({
+                                      sectionId: row.section._id,
+                                      periodId: period._id,
+                                    });
+                                  }}
+                                  onDragLeave={(e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                      setDropOver((cur) =>
+                                        cur?.sectionId === row.section._id &&
+                                          cur?.periodId === period._id
+                                          ? null
+                                          : cur
+                                      );
+                                    }
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    handleDropOnCell(row.section._id, period._id);
+                                  }}
+                                >
+                                  {slot ? (
+                                    <LessonCard
+                                      slot={slot}
+                                      periodLabel={period.label}
+                                      draggable={canManage}
+                                      isDragging={draggingSlotId === slot._id}
+                                      isDropTarget={isDropTarget && isDragActive}
+                                      onDragStart={(e) => beginSlotDrag(e, slot._id)}
+                                      onDragEnd={endSlotDrag}
+                                      onEdit={() =>
+                                        openCellSafe(period, row.section._id, rowClassId, slot)
+                                      }
+                                    />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className={cn(
+                                        "flex w-full min-h-[72px] items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground transition-colors",
+                                        canManage && "hover:border-primary/40 hover:bg-primary/5",
+                                        isDropTarget &&
+                                        isDragActive &&
+                                        "border-primary bg-primary/5 ring-2 ring-primary/30"
+                                      )}
+                                      disabled={!canManage}
+                                      onClick={() =>
+                                        openCellSafe(period, row.section._id, rowClassId)
+                                      }
+                                    >
+                                      {canManage
+                                        ? isDropTarget && isDragActive
+                                          ? "Drop"
+                                          : "+"
+                                        : "—"}
+                                    </button>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
+            <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground px-1">
+              <span className="inline-flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 text-emerald-600" /> Shared / Combined Lesson
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Link2 className="h-3.5 w-3.5 text-violet-600" /> Parallel Entry (Bio/Comp)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Circle className="h-3.5 w-3.5" /> Normal Lesson
+              </span>
+            </div>
+
+          </div>
+
+          <aside className="space-y-4">
+            <Card className="rounded-2xl border p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h3 className="text-sm font-semibold">Upcoming Shared Lessons</h3>
+                <span className="text-[11px] text-muted-foreground">{DAY_FULL_LABELS[day]}</span>
+              </div>
+              {sharedLessons.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">
+                  No shared lessons on this day yet.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {sharedLessons.slice(0, 6).map((item) => (
+                    <li
+                      key={item.id}
+                      className="rounded-xl border bg-background px-3 py-2.5 text-xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold truncate">{item.title}</span>
+                        <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0">
+                          Shared
+                        </Badge>
+                      </div>
+                      <p className="text-muted-foreground truncate">{item.sections.join(", ")}</p>
+                      <p className="text-muted-foreground">
+                        {item.periodLabel} · {item.teachers}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+
+            <Card className="rounded-2xl border p-4 shadow-sm space-y-2">
+              <h3 className="text-sm font-semibold mb-2">Quick Actions</h3>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={openSharedLessonBuilder}
+                  className="flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
+                >
+                  <Users className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                  <span>
+                    <span className="block text-sm font-medium">Add Shared Lesson</span>
+                    <span className="text-xs text-muted-foreground">Apply to multiple sections</span>
+                  </span>
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!canExportBoard}
+                onClick={handlePrintBoard}
+                className="flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left hover:bg-muted/40 transition-colors disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Printer className="h-4 w-4 mt-0.5 text-slate-600 shrink-0" />
+                <span>
+                  <span className="block text-sm font-medium">Print Class Timetable</span>
+                  <span className="text-xs text-muted-foreground">Download / Print PDF</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled={!canExportBoard}
+                onClick={handleExportExcel}
+                className="flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left hover:bg-muted/40 transition-colors disabled:pointer-events-none disabled:opacity-50"
+              >
+                <FileSpreadsheet className="h-4 w-4 mt-0.5 text-emerald-700 shrink-0" />
+                <span>
+                  <span className="block text-sm font-medium">Export to Excel</span>
+                  <span className="text-xs text-muted-foreground">Get timetable in Excel format</span>
+                </span>
+              </button>
+            </Card>
+          </aside>
+        </div>
+      )}
+
+      <Dialog open={Boolean(dialog)} onOpenChange={(o) => !o && setDialog(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {dialog?.existing ? "Edit lesson" : "Place lesson"} · {dialog?.period.label}
+            </DialogTitle>
+          </DialogHeader>
+          {dialog && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                {DAY_FULL_LABELS[day]} · {dialog.period.startTime}–{dialog.period.endTime}
+              </p>
+
+              {lecturePeriods.length > 1 && (
+                <div className="space-y-1.5">
+                  <Label>Period</Label>
+                  <select
+                    className="w-full h-9 rounded-md border px-2"
+                    value={dialog.period._id}
+                    onChange={(e) => {
+                      const period = lecturePeriods.find((p) => p._id === e.target.value);
+                      if (period) setDialog((d) => (d ? { ...d, period } : d));
+                    }}
+                  >
+                    {lecturePeriods.map((p) => (
+                      <option key={p._id} value={p._id}>
+                        {p.label || `P${p.order}`} ({p.startTime}–{p.endTime})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label>Subject</Label>
+                <select
+                  className="w-full h-9 rounded-md border px-2"
+                  value={form.optionKey}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, optionKey: e.target.value, teachersBySubject: {} }))
+                  }
+                >
+                  <option value="">Select subject</option>
+                  {subjectOptions.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedOption?.subjectIds.map((sid) => {
+                const subj = subjects.find((s) => s._id === sid);
+                return (
+                  <div key={sid} className="space-y-1.5">
+                    <Label>
+                      Teacher{selectedOption.kind === "choice" ? ` · ${subj?.name || ""}` : ""}
+                    </Label>
+                    <select
+                      className="w-full h-9 rounded-md border px-2"
+                      value={form.teachersBySubject[sid] || ""}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          teachersBySubject: { ...f.teachersBySubject, [sid]: e.target.value },
+                        }))
+                      }
+                    >
+                      <option value="">Select teacher</option>
+                      {teachers.map((t) => (
+                        <option key={t._id} value={t._id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+
+              <div className="space-y-1.5">
+                <Label>Room (optional)</Label>
+                <select
+                  className="w-full h-9 rounded-md border px-2"
+                  value={form.roomId}
+                  onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
+                >
+                  <option value="">No room</option>
+                  {rooms.map((r) => (
+                    <option key={r._id} value={r._id}>
+                      {r.code || r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2 rounded-md border p-3">
+                <Label className="flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" />
+                  Apply to sections
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Select more than one for a shared lesson (same teacher allowed at the same time).
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {dialogSectionRows.map((row) => {
+                    const checked = form.sectionIds.includes(row.section._id);
+                    const label = classSectionBoardLabel(
+                      row.class?.name,
+                      row.section.name,
+                      row.section.label
+                    );
+                    return (
+                      <label key={row.section._id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            setForm((f) => {
+                              const next = new Set(f.sectionIds);
+                              if (v) next.add(row.section._id);
+                              else next.delete(row.section._id);
+                              if (!next.size) next.add(dialog.sectionId);
+                              return { ...f, sectionIds: [...next] };
+                            });
+                          }}
+                        />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-md border p-3">
+                <Label>Also apply to days</Label>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      ["single", "This day only"],
+                      ["fullWeek", "Mon–Fri"],
+                      ["custom", "Custom"],
+                    ] as const
+                  ).map(([mode, label]) => (
+                    <Button
+                      key={mode}
+                      type="button"
+                      size="sm"
+                      variant={form.dayApplyMode === mode ? "default" : "outline"}
+                      onClick={() => setForm((f) => ({ ...f, dayApplyMode: mode }))}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                {form.dayApplyMode === "custom" && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {FULL_WEEK_DAYS.map((d) => (
+                      <label key={d} className="flex items-center gap-1.5 text-xs">
+                        <Checkbox
+                          checked={form.selectedDays.includes(d)}
+                          onCheckedChange={(v) => {
+                            setForm((f) => {
+                              const next = new Set(f.selectedDays);
+                              if (v) next.add(d);
+                              else next.delete(d);
+                              return { ...f, selectedDays: [...next] as Weekday[] };
+                            });
+                          }}
+                        />
+                        {DAY_FULL_LABELS[d].slice(0, 3)}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            {dialog?.existing && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="mr-auto"
+                disabled={deleteMut.isPending}
+                onClick={() => deleteMut.mutate()}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                {dialog.existing.combinedGroupId && form.sectionIds.length > 1
+                  ? "Remove shared"
+                  : "Remove"}
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={() => setDialog(null)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
+              {saveMut.isPending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

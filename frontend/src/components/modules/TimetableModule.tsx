@@ -11,6 +11,7 @@ import {
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import GridTab from "@/components/modules/timetable/GridTab";
+import ClassBoardTab from "@/components/modules/timetable/ClassBoardTab";
 import MyScheduleTab from "@/components/modules/timetable/MyScheduleTab";
 import ViewScheduleTab from "@/components/modules/timetable/ViewScheduleTab";
 
@@ -49,8 +50,19 @@ const TimetableModule = ({
           {section === "builder" && canManage && <GridTab sessionId={sessionId} caps={caps} />}
           {section === "builder" && !canManage && (
             <p className="px-4 sm:px-6 lg:px-8 py-8 text-sm text-muted-foreground">
-              Timetable builder is available on the active session only. Switch to the active session to edit, or open View schedule to browse this session.
+              Timetable builder is available on the active session only. Switch to the active session to edit, or open Class board / Section view to browse this session.
             </p>
+          )}
+          {section === "board" && (
+            <ClassBoardTab
+              sessionId={sessionId}
+              caps={{
+                ...caps,
+                canCreate: canManage ? caps.canCreate : false,
+                canEdit: canManage ? caps.canEdit : false,
+                canDelete: canManage ? caps.canDelete : false,
+              }}
+            />
           )}
           {section === "view" && <ViewScheduleTab sessionId={sessionId} />}
           {section === "mine" && (isTeacher || caps.canEdit || caps.canCreate) && (

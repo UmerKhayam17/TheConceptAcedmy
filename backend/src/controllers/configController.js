@@ -160,12 +160,15 @@ const patchSession = catchAsync(async (req, res) => {
 const listClasses = catchAsync(async (req, res) => {
   const { sessionId } = req.query;
   const q = sessionId ? { sessionId } : {};
-  const classes = await AcademyClass.find(q).sort({ className: 1 });
+  const { sortClassesByLevel, sortSectionsByName } = require('../utils/classLevelSort');
+  const classesRaw = await AcademyClass.find(q);
+  const classes = sortClassesByLevel(classesRaw);
   const classIds = classes.map((c) => c._id);
-  const [sections, subjects] = await Promise.all([
-    AcademySection.find({ classId: { $in: classIds } }).sort({ sectionName: 1 }),
+  const [sectionsRaw, subjects] = await Promise.all([
+    AcademySection.find({ classId: { $in: classIds } }),
     AcademySubject.find({ classId: { $in: classIds }, status: 'active' }).sort({ subjectName: 1 }),
   ]);
+  const sections = sortSectionsByName(sectionsRaw);
 
   const sectionsByClass = new Map();
   const subjectsByClass = new Map();

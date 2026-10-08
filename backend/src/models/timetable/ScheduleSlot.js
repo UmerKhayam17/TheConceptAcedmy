@@ -31,6 +31,11 @@ const scheduleSlotSchema = new mongoose.Schema(
      */
     parallelEntries: { type: [parallelEntrySchema], default: [] },
     room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', default: null },
+    /**
+     * Shared / combined lesson across multiple sections (same day + period + teachers).
+     * Slots with the same combinedGroupId waive teacher/room conflicts with each other.
+     */
+    combinedGroupId: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
     isSubstitute: { type: Boolean, default: false },
     substituteForTeacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     source: { type: String, enum: SLOT_SOURCES, default: 'manual' },
@@ -45,5 +50,6 @@ scheduleSlotSchema.index({ timetableVersion: 1, day: 1, periodId: 1 }, { unique:
 scheduleSlotSchema.index({ session: 1, day: 1, periodId: 1, teacher: 1 });
 scheduleSlotSchema.index({ session: 1, day: 1, periodId: 1, 'parallelEntries.teacher': 1 });
 scheduleSlotSchema.index({ session: 1, day: 1, periodId: 1, room: 1 });
+scheduleSlotSchema.index({ combinedGroupId: 1, day: 1, periodId: 1 });
 
 module.exports = mongoose.model('ScheduleSlot', scheduleSlotSchema);

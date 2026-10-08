@@ -1,6 +1,7 @@
 const catchAsync = require('../../utils/catchAsync');
 const timetableVersionService = require('../../services/timetable/timetableVersionService');
 const scheduleSlotService = require('../../services/timetable/scheduleSlotService');
+const classBoardService = require('../../services/timetable/classBoardService');
 const { validateVersion } = require('../../services/timetable/timetableConflictService');
 
 // Versions
@@ -113,6 +114,35 @@ const createSubstitution = catchAsync(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+const getClassBoard = catchAsync(async (req, res) => {
+  const data = await classBoardService.getClassBoard({
+    sessionId: req.query.sessionId,
+    classId: req.query.classId,
+    day: req.query.day,
+  });
+  res.json({ success: true, data });
+});
+
+const upsertSharedLesson = catchAsync(async (req, res) => {
+  const data = await classBoardService.upsertSharedLesson(req.body, req.user._id);
+  res.status(201).json({ success: true, data });
+});
+
+const deleteCombinedGroup = catchAsync(async (req, res) => {
+  const data = await classBoardService.deleteCombinedGroup(req.params.combinedGroupId);
+  res.json({ success: true, data });
+});
+
+const publishClassDrafts = catchAsync(async (req, res) => {
+  const data = await classBoardService.publishClassDrafts(req.body, req.user._id);
+  res.json({ success: true, data });
+});
+
+const moveClassBoardLesson = catchAsync(async (req, res) => {
+  const data = await classBoardService.moveClassBoardLesson(req.body, req.user._id);
+  res.json({ success: true, data });
+});
+
 module.exports = {
   listVersions,
   getVersion,
@@ -132,4 +162,9 @@ module.exports = {
   roomSchedule,
   sectionSchedule,
   createSubstitution,
+  getClassBoard,
+  upsertSharedLesson,
+  deleteCombinedGroup,
+  publishClassDrafts,
+  moveClassBoardLesson,
 };

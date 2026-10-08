@@ -122,6 +122,8 @@ export interface ScheduleSlot {
   room?: { _id: string; name: string; code: string } | null;
   class?: { _id: string; name: string };
   section?: { _id: string; name: string };
+  /** Shared lesson across sections — same id waives teacher/room conflicts. */
+  combinedGroupId?: string | null;
   locked?: boolean;
   source?: string;
   /** Present on teacher "My schedule" responses. */
@@ -129,6 +131,23 @@ export interface ScheduleSlot {
   endTime?: string;
   periodLabel?: string;
   periodOrder?: number | null;
+}
+
+export interface ClassBoardSectionRow {
+  class?: { _id: string; name: string };
+  section: { _id: string; name: string; label?: string };
+  version: { _id: string; status: string; version: number } | null;
+  slots: ScheduleSlot[];
+}
+
+export interface ClassBoard {
+  session: { _id: string; name: string; workingDays?: Weekday[] };
+  class: { _id: string; name: string } | null;
+  day: Weekday;
+  periods: PeriodSlot[];
+  periodTemplateId: string | null;
+  sections: ClassBoardSectionRow[];
+  slots: ScheduleSlot[];
 }
 
 export function scheduleSlotEntries(slot: ScheduleSlot): ScheduleSlotEntry[] {
@@ -344,4 +363,54 @@ export const fetchSectionSchedule = async (sessionId: string, sectionId: string)
 export const fetchMyTeacherSchedule = (sessionId: string, teacherId?: string) =>
   api<{ slots: ScheduleSlot[]; versions: TimetableVersion[] }>(
     `/me/teacher?sessionId=${sessionId}${teacherId ? `&teacherId=${teacherId}` : ""}`
+  );
+
+export const fetchClassBoard = (params: { sessionId: string; classId?: string; day: Weekday }) => {
+  const q = new URLSearchParams({
+    sessionId: params.sessionId,
+    day: params.day,
+  });
+  if (params.classId) q.set("classId", params.classId);
+  return api<ClassBoard>(`/class-board?${q}`);
+};
+
+export const upsertSharedLesson = (body: {
+  sessionId: string;
+  classId: string;
+  day: Weekday;
+  days?: Weekday[];
+  applyToFullWeek?: boolean;
+  periodId: string;
+  sectionIds: string[];
+  subject?: string;
+  teacher?: string;
+  entries?: { subject: string; teacher: string }[];
+  room?: string | null;
+  combinedGroupId?: string | null;
+}) =>
+  api<{
+    combinedGroupId: string | null;
+    days: Weekday[];
+    sectionCount: number;
+    slots: ScheduleSlot[];
+  }>("/class-board/shared-lesson", { method: "POST", body: JSON.stringify(body) });
+
+export const deleteCombinedGroup = (combinedGroupId: string) =>
+  api<{ deleted: number }>(`/class-board/combined/${combinedGroupId}`, { method: "DELETE" });
+
+export const publishClassDrafts = (body: { sessionId: string; classId?: string }) =>
+  api<{ published: number; failed: { versionId: string; sectionId: string; message: string }[] }>(
+    "/class-board/publish",
+    { method: "POST", body: JSON.stringify(body) }
+  );
+
+export const moveClassBoardLesson = (body: {
+  slotId: string;
+  toSectionId: string;
+  toPeriodId: string;
+  day: Weekday;
+}) =>
+  api<{ moved: number; shared: boolean; swapped?: boolean; slots: ScheduleSlot[] }>(
+    "/class-board/move",
+    { method: "POST", body: JSON.stringify(body) }
   );

@@ -1,9 +1,9 @@
 import type { ComponentType } from "react";
-import { Calendar, CalendarDays, LayoutGrid } from "lucide-react";
+import { Calendar, CalendarDays, LayoutGrid, Table2 } from "lucide-react";
 import type { Role } from "./auth";
 import type { ModuleActionCaps } from "./permissions";
 
-export type TimetableSection = "builder" | "view" | "mine";
+export type TimetableSection = "builder" | "board" | "view" | "mine";
 
 export type TimetableSectionItem = {
   key: TimetableSection;
@@ -13,7 +13,8 @@ export type TimetableSectionItem = {
 
 const SECTION_META: Record<TimetableSection, Omit<TimetableSectionItem, "key">> = {
   builder: { label: "Timetable builder", icon: LayoutGrid },
-  view: { label: "Class view", icon: CalendarDays },
+  board: { label: "Class board", icon: Table2 },
+  view: { label: "Section view", icon: CalendarDays },
   mine: { label: "My schedule", icon: Calendar },
 };
 
@@ -33,12 +34,18 @@ export function getTimetableSections(opts: {
   if (isTeacher && !canManage) {
     return [
       { key: "mine", ...SECTION_META.mine },
-      { key: "view", ...SECTION_META.view, label: "Class timetable" },
+      { key: "board", ...SECTION_META.board },
+      { key: "view", ...SECTION_META.view, label: "Section timetable" },
     ];
   }
 
   const sections: TimetableSectionItem[] = [];
-  if (canManage) sections.push({ key: "builder", ...SECTION_META.builder });
+  if (canManage) {
+    sections.push({ key: "builder", ...SECTION_META.builder });
+    sections.push({ key: "board", ...SECTION_META.board });
+  } else {
+    sections.push({ key: "board", ...SECTION_META.board });
+  }
   sections.push({ key: "view", ...SECTION_META.view });
   if (isTeacher || canManage) sections.push({ key: "mine", ...SECTION_META.mine });
   return sections;

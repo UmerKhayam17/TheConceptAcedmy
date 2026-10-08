@@ -116,12 +116,142 @@ export interface SchoolSubject {
   pickCount?: number;
 }
 
+/** Ordinal suffix: 1→st, 2→nd, 3→rd, else th (11–13 → th). */
+function ordinalSuffix(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return "th";
+  switch (n % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+/**
+ * Friendly class labels for academy display / print:
+ * 9 → 9th, 10 → 10th, 1 → 1st Year, 2 → 2nd Year.
+ * Preserves section suffixes (e.g. 9-A1 → 9th-A1).
+ */
+export function formatClassLevelLabel(raw?: string | null): string {
+  const input = String(raw || "").trim();
+  if (!input) return "";
+
+  const lower = input.toLowerCase().replace(/\s+/g, " ");
+
+  // Already / mostly "1st year" / "2nd year"
+  const yearOnly = lower.match(/^(1st|first|1)\s*year$/i);
+  if (yearOnly) return "1st Year";
+  const year2Only = lower.match(/^(2nd|second|2)\s*year$/i);
+  if (year2Only) return "2nd Year";
+
+  // "1st year-A1" / "1st Year A1"
+  const yearWithSection = input.match(/^(1st|first|1)\s*year\s*([-–—/\s]+)(.+)$/i);
+  if (yearWithSection) return `1st Year-${yearWithSection[3].trim()}`;
+  const year2WithSection = input.match(/^(2nd|second|2)\s*year\s*([-–—/\s]+)(.+)$/i);
+  if (year2WithSection) return `2nd Year-${year2WithSection[3].trim()}`;
+
+  // Bare 1 / 2 → intermediate years (academy)
+  if (/^(1|1st)$/i.test(input)) return "1st Year";
+  if (/^(2|2nd)$/i.test(input)) return "2nd Year";
+
+  // "1-A1" / "2-A1" → "1st Year-A1"
+  const bareYearSection = input.match(/^([12])\s*([-–—/])\s*(.+)$/);
+  if (bareYearSection) {
+    const year = bareYearSection[1] === "1" ? "1st Year" : "2nd Year";
+    return `${year}-${bareYearSection[3].trim()}`;
+  }
+
+  // Leading grade number: 9, 9th, 9-A1, 10th A1, Class 9, etc.
+  const grade = input.match(/^(?:class\s*)?(\d{1,2})(?:st|nd|rd|th)?\s*([-–—/\s]*)(.*)$/i);
+  if (grade) {
+    const n = Number(grade[1]);
+    if (n >= 1 && n <= 12) {
+      // 1–2 with no section already handled; with empty rest treat as year
+      if ((n === 1 || n === 2) && !String(grade[3] || "").trim()) {
+        return n === 1 ? "1st Year" : "2nd Year";
+      }
+      const ord = `${n}${ordinalSuffix(n)}`;
+      const rest = String(grade[3] || "").trim();
+      if (!rest) return ord;
+      const sep = grade[2] && /[-–—/]/.test(grade[2]) ? "-" : grade[2]?.trim() ? " " : "-";
+      return `${ord}${sep}${rest}`;
+    }
+  }
+
+  return input;
+}
+
 export function classDisplayName(c: { name?: string; className?: string } | null | undefined): string {
-  return c?.name || c?.className || "—";
+  const raw = c?.name || c?.className || "";
+  return formatClassLevelLabel(raw) || "—";
 }
 
 export function sectionDisplayName(s: { name?: string; sectionName?: string } | null | undefined): string {
   return s?.name || s?.sectionName || "—";
+}
+
+/** Class board / print row label: "9th-A1", "1st Year-A1". */
+export function classSectionBoardLabel(
+  className?: string | null,
+  sectionName?: string | null,
+  existingLabel?: string | null
+): string {
+  if (existingLabel?.trim()) return formatClassLevelLabel(existingLabel);
+  const cls = formatClassLevelLabel(className);
+  const sec = String(sectionName || "").trim();
+  if (cls && sec) return formatClassLevelLabel(`${cls}-${sec}`);
+  return cls || sec || "—";
+}
+
+/** Sort weight: 9→9, 10→10, 1st Year→101, 2nd Year→102. */
+export function classLevelSortWeight(raw?: string | null): number {
+  const label = formatClassLevelLabel(raw);
+  if (/^1st\s*year/i.test(label)) return 101;
+  if (/^2nd\s*year/i.test(label)) return 102;
+  const m = label.match(/^(\d{1,2})/);
+  if (m) {
+    const n = Number(m[1]);
+    if (n === 1 || n === 2) return 100 + n;
+    return n;
+  }
+  return 999;
+}
+
+function sectionSuffixFromLabel(raw?: string | null): string {
+  const label = formatClassLevelLabel(raw);
+  const year = label.match(/^(?:1st Year|2nd Year)-(.+)$/i);
+  if (year) return year[1].trim();
+  const g = label.match(/^\d{1,2}(?:st|nd|rd|th)?[-–—/\s]+(.+)$/i);
+  if (g) return g[1].trim();
+  return "";
+}
+
+export function compareClassLevels(a?: string | null, b?: string | null): number {
+  const wa = classLevelSortWeight(a);
+  const wb = classLevelSortWeight(b);
+  if (wa !== wb) return wa - wb;
+  const sa = sectionSuffixFromLabel(a);
+  const sb = sectionSuffixFromLabel(b);
+  if (sa || sb) {
+    const sec = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: "base" });
+    if (sec !== 0) return sec;
+  }
+  return String(a || "").localeCompare(String(b || ""), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+/** Sort class list for filters / dropdowns: 9th → 10th → 1st Year → 2nd Year. */
+export function sortClassesByLevel<T extends { name?: string; className?: string }>(classes: T[]): T[] {
+  return [...classes].sort((a, b) =>
+    compareClassLevels(a.name || a.className || "", b.name || b.className || "")
+  );
 }
 
 export function subjectDisplayName(s: { name?: string; subjectName?: string; code?: string; subjectCode?: string } | null | undefined): string {
@@ -263,9 +393,10 @@ export const shiftSessionConfiguration = (targetSessionId: string, body: Session
     body: JSON.stringify(body),
   });
 
-export const fetchClasses = (sessionId?: string) => {
+export const fetchClasses = async (sessionId?: string) => {
   const q = sessionId ? `?sessionId=${sessionId}` : "";
-  return api<SchoolClass[]>(`/classes${q}`);
+  const classes = await api<SchoolClass[]>(`/classes${q}`);
+  return sortClassesByLevel(classes);
 };
 
 export const createClass = (body: { name: string; session: string; classTeacher?: string; order?: number }) =>

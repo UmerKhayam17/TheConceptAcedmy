@@ -153,6 +153,7 @@ async function upsertSlot(timetableVersionId, body, { excludeSlotId, userId } = 
     teacher: primary.teacher,
     parallelEntries,
     room: body.room || null,
+    combinedGroupId: body.combinedGroupId || null,
     source: body.source || 'manual',
     locked: body.locked ?? false,
     isSubstitute: body.isSubstitute ?? false,
@@ -216,6 +217,7 @@ async function upsertSlot(timetableVersionId, body, { excludeSlotId, userId } = 
         roomId: basePayload.room,
         sectionId,
         excludeSlotId: excludeId,
+        combinedGroupId: basePayload.combinedGroupId,
       });
       if (!validation.valid) {
         validation.errors.forEach((e) => {
@@ -323,6 +325,7 @@ async function moveSlot(slotId, body) {
       room: slot.room,
       source: slot.source,
       locked: slot.locked,
+      combinedGroupId: slot.combinedGroupId || null,
     });
 
     const swapped = await upsertSlot(versionId, {
@@ -332,6 +335,7 @@ async function moveSlot(slotId, body) {
       room: targetExisting.room,
       source: targetExisting.source,
       locked: targetExisting.locked,
+      combinedGroupId: targetExisting.combinedGroupId || null,
     });
 
     return swapped;
@@ -361,6 +365,7 @@ async function moveSlot(slotId, body) {
       room: body.room !== undefined ? body.room : slot.room,
       source: slot.source,
       locked: slot.locked,
+      combinedGroupId: slot.combinedGroupId || null,
     },
     { excludeSlotId: slotId }
   );

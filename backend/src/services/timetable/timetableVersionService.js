@@ -114,6 +114,7 @@ async function duplicateVersion(id, userId) {
           teacher: e.teacher,
         })),
         room: s.room,
+        combinedGroupId: s.combinedGroupId || null,
         source: s.source,
         locked: s.locked,
       }))

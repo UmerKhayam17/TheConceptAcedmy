@@ -27,6 +27,24 @@ async function isValidTimetableTeacher(teacherId) {
  * Validate a single slot or full timetable version.
  * @returns {{ valid: boolean, errors: object[], warnings: object[] }}
  */
+function buildExcludeIdQuery(excludeSlotId, excludeSlotIds) {
+  const ids = [];
+  if (excludeSlotId) ids.push(excludeSlotId);
+  if (Array.isArray(excludeSlotIds)) {
+    for (const id of excludeSlotIds) {
+      if (id) ids.push(id);
+    }
+  }
+  if (!ids.length) return {};
+  const unique = [...new Set(ids.map((id) => String(id)))];
+  return unique.length === 1 ? { _id: { $ne: unique[0] } } : { _id: { $nin: unique } };
+}
+
+function isSameCombinedGroup(slot, combinedGroupId) {
+  if (!combinedGroupId || !slot?.combinedGroupId) return false;
+  return String(slot.combinedGroupId) === String(combinedGroupId);
+}
+
 async function validateSlot({
   sessionId,
   timetableVersionId,
@@ -37,6 +55,8 @@ async function validateSlot({
   roomId,
   sectionId,
   excludeSlotId,
+  excludeSlotIds,
+  combinedGroupId,
   strict = false,
 }) {
   const errors = [];
@@ -62,8 +82,10 @@ async function validateSlot({
   const settings = await TimetableSettings.findOne({ session: sessionId });
   const checkCrossVersion = settings?.conflictCheckOnDraft !== false;
 
-  const baseQuery = { cancelled: { $ne: true } };
-  if (excludeSlotId) baseQuery._id = { $ne: excludeSlotId };
+  const baseQuery = {
+    cancelled: { $ne: true },
+    ...buildExcludeIdQuery(excludeSlotId, excludeSlotIds),
+  };
 
   // R1: Teacher conflict (published + optionally draft across session)
   const teacherConflictQuery = {
@@ -73,24 +95,26 @@ async function validateSlot({
     periodId,
     $or: [{ teacher: teacherId }, { 'parallelEntries.teacher': teacherId }],
   };
+  let crossVersionIds = null;
   if (checkCrossVersion) {
-    const publishedVersions = await TimetableVersion.find({
+    const otherVersions = await TimetableVersion.find({
       session: sessionId,
-      status: 'published',
+      status: { $in: ['draft', 'published'] },
       _id: { $ne: timetableVersionId },
     }).select('_id');
-    const versionIds = [timetableVersionId, ...publishedVersions.map((v) => v._id)];
-    teacherConflictQuery.timetableVersion = { $in: versionIds };
+    crossVersionIds = [timetableVersionId, ...otherVersions.map((v) => v._id)];
+    teacherConflictQuery.timetableVersion = { $in: crossVersionIds };
   } else {
     teacherConflictQuery.timetableVersion = timetableVersionId;
   }
 
-  const teacherConflict = await ScheduleSlot.findOne(teacherConflictQuery);
-  if (teacherConflict) {
+  const teacherConflicts = await ScheduleSlot.find(teacherConflictQuery).select('_id combinedGroupId');
+  const blockingTeacher = teacherConflicts.find((s) => !isSameCombinedGroup(s, combinedGroupId));
+  if (blockingTeacher) {
     errors.push({
       code: 'TEACHER_CONFLICT',
       message: 'Teacher is already assigned at this day and period',
-      slotId: teacherConflict._id,
+      slotId: blockingTeacher._id,
     });
   }
 
@@ -117,24 +141,18 @@ async function validateSlot({
       periodId,
       room: roomId,
     };
-    if (checkCrossVersion) {
-      const publishedVersions = await TimetableVersion.find({
-        session: sessionId,
-        status: 'published',
-        _id: { $ne: timetableVersionId },
-      }).select('_id');
-      roomConflictQuery.timetableVersion = {
-        $in: [timetableVersionId, ...publishedVersions.map((v) => v._id)],
-      };
+    if (checkCrossVersion && crossVersionIds) {
+      roomConflictQuery.timetableVersion = { $in: crossVersionIds };
     } else {
       roomConflictQuery.timetableVersion = timetableVersionId;
     }
-    const roomConflict = await ScheduleSlot.findOne(roomConflictQuery);
-    if (roomConflict) {
+    const roomConflicts = await ScheduleSlot.find(roomConflictQuery).select('_id combinedGroupId');
+    const blockingRoom = roomConflicts.find((s) => !isSameCombinedGroup(s, combinedGroupId));
+    if (blockingRoom) {
       errors.push({
         code: 'ROOM_CONFLICT',
         message: 'Room is already assigned at this day and period',
-        slotId: roomConflict._id,
+        slotId: blockingRoom._id,
       });
     }
   }
@@ -231,6 +249,7 @@ async function validateVersion(timetableVersionId, { forPublish = false } = {}) 
         roomId: slot.room,
         sectionId: version.section,
         excludeSlotId: slot._id,
+        combinedGroupId: slot.combinedGroupId || null,
         strict: forPublish,
       });
       result.errors.forEach((e) =>

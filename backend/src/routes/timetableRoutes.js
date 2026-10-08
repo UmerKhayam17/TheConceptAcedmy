@@ -125,6 +125,28 @@ router.patch(
 );
 router.delete('/slots/:slotId', canManage, tt.deleteSlot);
 
+// ─── Class board (sections × periods) ───────────────────────────
+router.get('/class-board', canView, validate(schemas.classBoardQuery, 'query'), tt.getClassBoard);
+router.post(
+  '/class-board/shared-lesson',
+  canManage,
+  validate(schemas.sharedLessonBody),
+  tt.upsertSharedLesson
+);
+router.delete('/class-board/combined/:combinedGroupId', canManage, tt.deleteCombinedGroup);
+router.post(
+  '/class-board/publish',
+  canPublish,
+  validate(schemas.publishClassDraftsBody),
+  tt.publishClassDrafts
+);
+router.post(
+  '/class-board/move',
+  canManage,
+  validate(schemas.classBoardMoveBody),
+  tt.moveClassBoardLesson
+);
+
 // ─── Role-based views ───────────────────────────────────────────
 router.get(
   '/me/teacher',
