@@ -54,10 +54,30 @@ export const SUBJECT_COLORS = [
   "bg-cyan-500/15 text-cyan-800 border-cyan-200",
 ];
 
-export function subjectColor(id: string) {
+/** Legend dots — same order/hash as SUBJECT_COLORS (full class names for Tailwind). */
+export const SUBJECT_DOT_COLORS = [
+  "bg-blue-500",
+  "bg-emerald-500",
+  "bg-amber-500",
+  "bg-violet-500",
+  "bg-rose-500",
+  "bg-cyan-500",
+];
+
+function subjectColorIndex(id: string) {
   let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h + id.charCodeAt(i)) % SUBJECT_COLORS.length;
-  return SUBJECT_COLORS[h];
+  const key = String(id || "");
+  for (let i = 0; i < key.length; i++) h = (h + key.charCodeAt(i)) % SUBJECT_COLORS.length;
+  return h;
+}
+
+export function subjectColor(id: string) {
+  return SUBJECT_COLORS[subjectColorIndex(id)];
+}
+
+/** Solid legend dot matching the card color for this subject id. */
+export function subjectColorDot(id: string) {
+  return SUBJECT_DOT_COLORS[subjectColorIndex(id)] || "bg-slate-400";
 }
 
 /** Compare schedule slot period to template period (ObjectId vs string safe). */

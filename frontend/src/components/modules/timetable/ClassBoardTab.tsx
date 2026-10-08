@@ -158,8 +158,9 @@ function LessonCard({
   const title = entries.map((e) => e.subject.name).join(" / ");
   const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ");
   const isParallel = entries.length > 1;
-  const roomLabel = slot.room?.code || slot.room?.name;
+  const roomLabel = slot.room?.code || slot.room?.name || "—";
   const didDragRef = useRef(false);
+  const colorId = entries[0]?.subject?._id || slot.subject?._id || "";
 
   return (
     <div
@@ -183,8 +184,8 @@ function LessonCard({
         onEdit();
       }}
       className={cn(
-        "relative w-full min-w-0 overflow-hidden rounded-xl border px-2.5 py-2 text-left text-xs leading-snug select-none shadow-sm transition-shadow",
-        subjectColor(slot.subject._id),
+        "relative flex h-[72px] w-full min-w-0 flex-col justify-center overflow-hidden rounded-xl border px-2.5 py-1.5 text-left text-xs leading-snug select-none shadow-sm transition-shadow",
+        subjectColor(colorId),
         draggable && "cursor-grab active:cursor-grabbing hover:shadow-md",
         isDragging && "opacity-40 ring-2 ring-primary/40",
         isDropTarget && "ring-2 ring-primary/50"
@@ -203,28 +204,24 @@ function LessonCard({
           <Users className="h-3.5 w-3.5" />
         </span>
       )}
+      {isParallel && !slot.combinedGroupId && (
+        <span className="absolute right-1.5 top-1.5 text-violet-600" title="Parallel entry">
+          <Link2 className="h-3 w-3" />
+        </span>
+      )}
       <div className={cn("min-w-0 overflow-hidden pr-5", draggable && "pl-3.5")}>
         <div className="font-semibold text-[13px] truncate" title={title}>
           {title}
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1 text-muted-foreground" title={teachers}>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1 text-muted-foreground" title={teachers}>
           <User className="h-3 w-3 shrink-0" />
           <span className="truncate">{teachers}</span>
         </div>
-        {roomLabel && (
-          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-muted-foreground">
-            <DoorOpen className="h-3 w-3 shrink-0" />
-            <span className="truncate">{roomLabel}</span>
-          </div>
-        )}
-        {isParallel && (
-          <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-violet-600">
-            <Link2 className="h-3 w-3" /> Parallel
-          </div>
-        )}
-        {periodLabel && (
-          <div className="sr-only">{periodLabel}</div>
-        )}
+        <div className="mt-0.5 flex min-w-0 items-center gap-1 text-muted-foreground" title={roomLabel}>
+          <DoorOpen className="h-3 w-3 shrink-0" />
+          <span className="truncate">{roomLabel}</span>
+        </div>
+        {periodLabel && <div className="sr-only">{periodLabel}</div>}
       </div>
     </div>
   );
@@ -351,29 +348,32 @@ export default function ClassBoardTab({
       .map((u) => ({ _id: u._id, name: u.name }));
   }, [teacherProfiles, users]);
 
-  const sharedLessons = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        id: string;
-        title: string;
-        teachers: string;
-        periodLabel: string;
-        sections: string[];
-      }
-    >();
+  const upcomingLessons = useMemo(() => {
+    type Item = {
+      id: string;
+      title: string;
+      teachers: string;
+      periodLabel: string;
+      periodOrder: number;
+      sections: string[];
+      shared: boolean;
+      classKey: string;
+    };
+    const map = new Map<string, Item>();
     for (const row of sectionRows) {
+      const classKey = String(row.class?._id || row.class?.name || "");
       for (const slot of row.slots) {
-        if (!slot.combinedGroupId) continue;
-        const key = String(slot.combinedGroupId);
         const entries = scheduleSlotEntries(slot);
+        if (!entries.length) continue;
         const period = lecturePeriods.find((p) => slotMatchesPeriod(slot, p._id));
-        const existing = map.get(key);
         const sectionLabel = classSectionBoardLabel(
           row.class?.name,
           row.section.name,
           row.section.label
         );
+        const shared = Boolean(slot.combinedGroupId);
+        const key = shared ? `shared:${slot.combinedGroupId}` : `slot:${slot._id}`;
+        const existing = map.get(key);
         if (existing) {
           if (!existing.sections.includes(sectionLabel)) existing.sections.push(sectionLabel);
         } else {
@@ -382,13 +382,37 @@ export default function ClassBoardTab({
             title: entries.map((e) => e.subject.name).join(" / "),
             teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
             periodLabel: period?.label || `P${period?.order || ""}`,
+            periodOrder: period?.order ?? 999,
             sections: [sectionLabel],
+            shared,
+            classKey,
           });
         }
       }
     }
-    return [...map.values()];
-  }, [sectionRows, lecturePeriods]);
+    const sorted = [...map.values()].sort(
+      (a, b) => a.periodOrder - b.periodOrder || a.title.localeCompare(b.title)
+    );
+    const max = 3;
+    // When viewing all classes, surface one lesson per class first so 10th / 1st / 2nd Year appear
+    if (!classId && sorted.length > max) {
+      const picked: Item[] = [];
+      const seen = new Set<string>();
+      for (const item of sorted) {
+        if (picked.length >= max) break;
+        if (seen.has(item.classKey)) continue;
+        seen.add(item.classKey);
+        picked.push(item);
+      }
+      for (const item of sorted) {
+        if (picked.length >= max) break;
+        if (picked.includes(item)) continue;
+        picked.push(item);
+      }
+      return picked.sort((a, b) => a.periodOrder - b.periodOrder);
+    }
+    return sorted.slice(0, max);
+  }, [sectionRows, lecturePeriods, classId]);
 
   const openCell = (
     period: PeriodSlot,
@@ -985,7 +1009,7 @@ export default function ClassBoardTab({
                                     <button
                                       type="button"
                                       className={cn(
-                                        "flex w-full min-w-0 min-h-[72px] items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground transition-colors",
+                                        "flex h-[72px] w-full min-w-0 items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground transition-colors",
                                         canEditBoard && "hover:border-primary/40 hover:bg-primary/5",
                                         isDropTarget &&
                                         isDragActive &&
@@ -1116,25 +1140,27 @@ export default function ClassBoardTab({
 
           <Card className="rounded-2xl border p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <h3 className="text-sm font-semibold">Upcoming Shared Lessons</h3>
+              <h3 className="text-sm font-semibold">Upcoming Lessons</h3>
               <span className="text-[11px] text-muted-foreground">{DAY_FULL_LABELS[day]}</span>
             </div>
-            {sharedLessons.length === 0 ? (
+            {upcomingLessons.length === 0 ? (
               <p className="text-xs text-muted-foreground py-2">
-                No shared lessons on this day yet.
+                No lessons on this day yet.
               </p>
             ) : (
               <ul className="space-y-2">
-                {sharedLessons.slice(0, 3).map((item) => (
+                {upcomingLessons.map((item) => (
                   <li
                     key={item.id}
                     className="rounded-xl border bg-background px-3 py-2.5 text-xs space-y-1"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold truncate">{item.title}</span>
-                      <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0">
-                        Shared
-                      </Badge>
+                      {item.shared ? (
+                        <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0">
+                          Shared
+                        </Badge>
+                      ) : null}
                     </div>
                     <p className="text-muted-foreground truncate">{item.sections.join(", ")}</p>
                     <p className="text-muted-foreground">

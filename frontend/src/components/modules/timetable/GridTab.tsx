@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,13 +7,31 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle, Check, Circle, Copy, LayoutGrid, Link2, Pencil, Plus, Send, Users } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Circle,
+  Copy,
+  FileDown,
+  FileSpreadsheet,
+  LayoutGrid,
+  Link2,
+  Pencil,
+  Plus,
+  Printer,
+  Send,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import type { Weekday } from "@/lib/configApi";
 import {
   classDisplayName,
+  classSectionBoardLabel,
   fetchClasses,
   fetchSections,
   fetchSubjects,
@@ -24,6 +43,7 @@ import {
   createTimetableVersion,
   deleteScheduleSlot,
   duplicateTimetableVersion,
+  fetchClassBoard,
   fetchPeriodTemplates,
   fetchTeacherProfiles,
   fetchTimetableGrid,
@@ -37,15 +57,29 @@ import {
   type ScheduleSlot,
 } from "@/lib/timetableApi";
 import type { SchoolSubject } from "@/lib/configApi";
+import { timetableHref } from "@/lib/timetableMenus";
 import {
   DAY_FULL_LABELS,
   DAY_LABELS,
   FULL_WEEK_DAYS,
   normalizeWorkingDays,
   slotMatchesPeriod,
+  subjectColorDot,
 } from "./constants";
+import {
+  downloadBuilderGridPdf,
+  exportBuilderGridExcel,
+  printBuilderGrid,
+} from "./builderExport";
+import {
+  addDays,
+  formatWeekRange,
+  startOfWeekMonday,
+  weekDates,
+} from "./my-schedule/dateUtils";
 import TimetableSlotCard from "./TimetableSlotCard";
 
+type BoardViewMode = "week" | "day";
 type DayApplyMode = "single" | "fullWeek" | "custom";
 type SlotSubjectOption =
   | { key: string; kind: "single"; label: string; subjectIds: [string] }
@@ -121,9 +155,14 @@ export default function GridTab({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
   const [versionId, setVersionId] = useState("");
+  const [viewMode, setViewMode] = useState<BoardViewMode>("week");
+  const [focusDay, setFocusDay] = useState<Weekday>("monday");
+  const [weekStart, setWeekStart] = useState(() => startOfWeekMonday(new Date()));
   const [slotDialog, setSlotDialog] = useState<{
     day: Weekday;
     period: PeriodSlot;
@@ -149,6 +188,9 @@ export default function GridTab({
     setSectionId("");
     setVersionId("");
     setEditingLive(false);
+    setViewMode("week");
+    setFocusDay("monday");
+    setWeekStart(startOfWeekMonday(new Date()));
     autoDraftForSectionRef.current = null;
   }, [sessionId]);
 
@@ -377,9 +419,135 @@ export default function GridTab({
 
   const workingDays = normalizeWorkingDays(grid?.workingDays);
   const lecturePeriods = (grid?.periods || []).filter((p) => p.type === "lecture");
+  const displayDays = viewMode === "day" ? [focusDay] : workingDays;
+  const sharedDay =
+    viewMode === "day" ? focusDay : workingDays[0] || focusDay;
+  const selectedSection = sections.find((s) => s._id === sectionId);
+  const selectedClass = classes.find((c) => c._id === classId);
+
+  const dayDateMap = useMemo(() => {
+    const days = workingDays.length ? workingDays : FULL_WEEK_DAYS;
+    const entries = weekDates(weekStart, days);
+    return new Map(entries.map((e) => [e.day, e.date] as const));
+  }, [weekStart, workingDays]);
+
+  const formatDayDate = (day: Weekday) => {
+    const d = dayDateMap.get(day);
+    if (!d) return DAY_LABELS[day];
+    return d.toLocaleDateString("en", { month: "short", day: "numeric" });
+  };
+
+  useEffect(() => {
+    if (workingDays.length && !workingDays.includes(focusDay)) {
+      setFocusDay(workingDays[0]);
+    }
+  }, [workingDays, focusDay]);
+
+  const { data: classBoard } = useQuery({
+    queryKey: ["class-board", sessionId, classId || "all", sharedDay, "draft"],
+    queryFn: () =>
+      fetchClassBoard({
+        sessionId,
+        classId: classId || undefined,
+        day: sharedDay,
+        versionMode: "draft",
+      }),
+    enabled: !!sessionId && !!classId,
+  });
+
+  const upcomingLessons = useMemo(() => {
+    type Item = {
+      id: string;
+      title: string;
+      teachers: string;
+      periodLabel: string;
+      periodOrder: number;
+      sections: string[];
+      shared: boolean;
+    };
+    const map = new Map<string, Item>();
+    const boardSectionLabel = classSectionBoardLabel(
+      selectedClass?.name || selectedClass?.className,
+      selectedSection?.name,
+      undefined
+    );
+
+    // Current section lessons for the focused / shared day
+    for (const slot of grid?.slots || []) {
+      if (slot.day !== sharedDay) continue;
+      const entries = scheduleSlotEntries(slot);
+      if (!entries.length) continue;
+      const period = lecturePeriods.find((p) => slotMatchesPeriod(slot, p._id));
+      const shared = Boolean(slot.combinedGroupId);
+      const key = shared ? `shared:${slot.combinedGroupId}` : `slot:${slot._id}`;
+      if (map.has(key)) continue;
+      map.set(key, {
+        id: key,
+        title: entries.map((e) => e.subject.name).join(" / "),
+        teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
+        periodLabel: period?.label || `P${period?.order || ""}`,
+        periodOrder: period?.order ?? 999,
+        sections: [boardSectionLabel || "Section"],
+        shared,
+      });
+    }
+
+    // Enrich shared groups with sibling section labels from class board
+    const rows = classBoard?.sections || [];
+    const boardPeriods = (classBoard?.periods || []).filter((p) => p.type === "lecture");
+    for (const row of rows) {
+      for (const slot of row.slots) {
+        if (!slot.combinedGroupId) continue;
+        const key = `shared:${slot.combinedGroupId}`;
+        const label = classSectionBoardLabel(
+          row.class?.name,
+          row.section.name,
+          row.section.label
+        );
+        const existing = map.get(key);
+        if (existing) {
+          if (!existing.sections.includes(label)) existing.sections.push(label);
+          continue;
+        }
+        const entries = scheduleSlotEntries(slot);
+        if (!entries.length) continue;
+        const period = boardPeriods.find((p) => slotMatchesPeriod(slot, p._id));
+        map.set(key, {
+          id: key,
+          title: entries.map((e) => e.subject.name).join(" / "),
+          teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
+          periodLabel: period?.label || `P${period?.order || ""}`,
+          periodOrder: period?.order ?? 999,
+          sections: [label],
+          shared: true,
+        });
+      }
+    }
+
+    return [...map.values()]
+      .sort((a, b) => a.periodOrder - b.periodOrder || a.title.localeCompare(b.title))
+      .slice(0, 3);
+  }, [grid?.slots, classBoard, sharedDay, lecturePeriods, selectedClass, selectedSection]);
 
   const getSlot = (day: Weekday, periodId: string) =>
     grid?.slots.find((s) => s.day === day && slotMatchesPeriod(s, periodId));
+
+  const legendSubjects = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of subjects) {
+      if (s._id && s.name) map.set(String(s._id), s.name);
+    }
+    for (const slot of grid?.slots || []) {
+      for (const e of scheduleSlotEntries(slot)) {
+        const id = e.subject?._id ? String(e.subject._id) : "";
+        const name = e.subject?.name?.trim();
+        if (id && name) map.set(id, name);
+      }
+    }
+    return [...map.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [subjects, grid?.slots]);
 
   const subjectOptions = useMemo(() => buildSlotSubjectOptions(subjects), [subjects]);
 
@@ -511,8 +679,74 @@ export default function GridTab({
     (selectedOption?.subjectIds.every((id) => form.teachersBySubject[id]) ?? false) &&
     (form.dayApplyMode !== "custom" || form.selectedDays.length > 0);
 
-  const sectionLabel = sections.find((s) => s._id === sectionId);
-  const classLabel = classes.find((c) => c._id === classId);
+  const sectionLabel = selectedSection;
+  const classLabel = selectedClass;
+
+  const boardTitle = `${classLabel ? classDisplayName(classLabel) : "Class"} — ${
+    sectionLabel?.name || "Section"
+  }`;
+  const boardSubtitle =
+    viewMode === "day"
+      ? `${DAY_FULL_LABELS[focusDay]} · ${grid?.version.status || "draft"}`
+      : `Weekly timetable · ${grid?.version.status || "draft"}`;
+
+  const exportOpts = () => ({
+    title: boardTitle,
+    subtitle: boardSubtitle,
+    days: displayDays,
+    periods: lecturePeriods,
+    slots: grid?.slots || [],
+    getSlot,
+  });
+
+  const canExportGrid = Boolean(grid && lecturePeriods.length && displayDays.length);
+
+  const handlePrint = () => {
+    try {
+      printBuilderGrid(exportOpts());
+    } catch (e) {
+      toast({
+        title: "Could not print",
+        description: e instanceof Error ? e.message : "Print failed",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      await downloadBuilderGridPdf(exportOpts());
+      toast({ title: "PDF downloaded", description: boardSubtitle });
+    } catch (e) {
+      toast({
+        title: "Could not download PDF",
+        description: e instanceof Error ? e.message : "PDF failed",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExportExcel = () => {
+    try {
+      exportBuilderGridExcel(exportOpts());
+      toast({ title: "Excel downloaded", description: boardSubtitle });
+    } catch (e) {
+      toast({
+        title: "Could not export",
+        description: e instanceof Error ? e.message : "Export failed",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const openSharedLessonOnBoard = () => {
+    if (!user?.role) return;
+    navigate(timetableHref(user.role, "board"));
+    toast({
+      title: "Class Board",
+      description: "Use Add Shared Lesson on Class Board to place a combined lesson.",
+    });
+  };
 
   if (!sessionId) {
     return null;
@@ -531,10 +765,12 @@ export default function GridTab({
             <LayoutGrid className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="font-display text-xl font-semibold tracking-tight">Timetable builder</h2>
-            <p className="text-sm text-muted-foreground max-w-xl">
-              Periods across the top, days down the side — same sheet look as Class Board. Click a
-              cell to place or edit a lesson.
+            <h2 className="font-display text-xl font-semibold tracking-tight text-primary">
+              Timetable Builder
+            </h2>
+            <p className="text-sm text-muted-foreground max-w-2xl">
+              Plan and manage the timetable by selecting class, section and version. Click on any
+              cell to add or edit a lesson.
             </p>
           </div>
         </div>
@@ -589,112 +825,193 @@ export default function GridTab({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
-        <div className="min-w-[160px]">
-          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Class</Label>
-          <select
-            className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
-            value={classId}
-            onChange={(e) => {
-              setClassId(e.target.value);
-              setSectionId("");
-              setVersionId("");
-              setEditingLive(false);
-              autoDraftForSectionRef.current = null;
-            }}
-          >
-            <option value="">Select class</option>
-            {classGroups.map((g) => (
-              <optgroup key={g.key} label={g.label}>
-                {g.classes.map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {classDisplayName(c)}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
+        <div className="space-y-4 min-w-0">
+          <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
+            <div className="min-w-[160px]">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Class</Label>
+              <select
+                className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
+                value={classId}
+                onChange={(e) => {
+                  setClassId(e.target.value);
+                  setSectionId("");
+                  setVersionId("");
+                  setEditingLive(false);
+                  autoDraftForSectionRef.current = null;
+                }}
+              >
+                <option value="">Select class</option>
+                {classGroups.map((g) => (
+                  <optgroup key={g.key} label={g.label}>
+                    {g.classes.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {classDisplayName(c)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-[140px]">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Section</Label>
+              <select
+                className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
+                value={sectionId}
+                onChange={(e) => {
+                  setSectionId(e.target.value);
+                  setVersionId("");
+                  setEditingLive(false);
+                  autoDraftForSectionRef.current = null;
+                }}
+                disabled={!classId}
+              >
+                <option value="">Select section</option>
+                {sections.map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.name}
                   </option>
                 ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[140px]">
-          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Section</Label>
-          <select
-            className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
-            value={sectionId}
-            onChange={(e) => {
-              setSectionId(e.target.value);
-              setVersionId("");
-              setEditingLive(false);
-              autoDraftForSectionRef.current = null;
-            }}
-            disabled={!classId}
-          >
-            <option value="">Select section</option>
-            {sections.map((s) => (
-              <option key={s._id} value={s._id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {sectionId && versions.length > 0 && (
-          <div className="min-w-[180px]">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Version</Label>
-            <select
-              className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
-              value={activeVersionId}
-              onChange={(e) => {
-                setVersionId(e.target.value);
-                setEditingLive(false);
-              }}
-            >
-              {versions.map((v) => (
-                <option key={v._id} value={v._id}>
-                  v{v.version} · {v.status}
-                </option>
+              </select>
+            </div>
+            {sectionId && versions.length > 0 && (
+              <div className="min-w-[180px]">
+                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Version</Label>
+                <select
+                  className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
+                  value={activeVersionId}
+                  onChange={(e) => {
+                    setVersionId(e.target.value);
+                    setEditingLive(false);
+                  }}
+                >
+                  {versions.map((v) => (
+                    <option key={v._id} value={v._id}>
+                      v{v.version} · {v.status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {activeVersionId && (
+              <Badge variant={grid?.version.status === "published" ? "default" : "secondary"}>
+                {classLabel ? classDisplayName(classLabel) : "—"} · {sectionLabel?.name || "—"}
+                {grid ? ` · v${grid.version.version}` : ""}
+              </Badge>
+            )}
+            {sectionId && (
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 rounded-full border bg-background px-1 py-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => setWeekStart((w) => addDays(w, -7))}
+                    aria-label="Previous week"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="min-w-[9.5rem] text-center text-xs font-medium tabular-nums">
+                    {formatWeekRange(weekStart, workingDays.length || 6)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => setWeekStart((w) => addDays(w, 7))}
+                    aria-label="Next week"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex rounded-full border bg-muted/40 p-1">
+                  <button
+                    type="button"
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                      viewMode === "week"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setViewMode("week")}
+                  >
+                    Week View
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                      viewMode === "day"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setViewMode("day")}
+                  >
+                    Day View
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {viewMode === "day" && sectionId && (
+            <div className="flex flex-wrap gap-1.5">
+              {workingDays.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setFocusDay(d)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                    focusDay === d
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  {DAY_FULL_LABELS[d].slice(0, 3)} · {formatDayDate(d)}
+                </button>
               ))}
-            </select>
-          </div>
-        )}
-        {activeVersionId && (
-          <div className="ml-auto flex items-center gap-2">
-            <Badge variant={grid?.version.status === "published" ? "default" : "secondary"}>
-              {classLabel ? classDisplayName(classLabel) : "—"} · {sectionLabel?.name || "—"}
-              {grid ? ` · v${grid.version.version}` : ""}
-            </Badge>
-          </div>
-        )}
-      </div>
+            </div>
+          )}
 
-      {sectionId && isPublished && !editingLive && canManageGrid && grid && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-amber-900 dark:text-amber-200">
-            This timetable is published. Turn on edit mode to change subjects, teachers, or move lessons.
-          </p>
-          <Button
-            size="sm"
-            className="gap-2 shrink-0"
-            onClick={() => {
-              if (publishedVersion?._id) setVersionId(publishedVersion._id);
-              setEditingLive(true);
-            }}
-          >
-            <Pencil className="h-4 w-4" /> Edit this timetable
-          </Button>
-        </div>
-      )}
+          {sectionId && isPublished && !editingLive && canManageGrid && grid && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-amber-900 dark:text-amber-200">
+                This timetable is published. Turn on edit mode to change subjects, teachers, or move lessons.
+              </p>
+              <Button
+                size="sm"
+                className="gap-2 shrink-0"
+                onClick={() => {
+                  if (publishedVersion?._id) setVersionId(publishedVersion._id);
+                  setEditingLive(true);
+                }}
+              >
+                <Pencil className="h-4 w-4" /> Edit this timetable
+              </Button>
+            </div>
+          )}
 
-      {sectionId && !grid && (isLoading || createVersionMut.isPending) && (
-        <p className="text-sm text-muted-foreground">Loading timetable grid…</p>
-      )}
+          {sectionId && !grid && (isLoading || createVersionMut.isPending) && (
+            <p className="text-sm text-muted-foreground">Loading timetable grid…</p>
+          )}
 
-      {sectionId && !templates.length && versionsFetched && versions.length === 0 && (
-        <Card className="rounded-2xl border p-8 text-sm text-muted-foreground shadow-sm">
-          Create an academy time configuration (periods) in System Config first.
-        </Card>
-      )}
+          {!sectionId && (
+            <Card className="rounded-2xl border p-8 text-sm text-muted-foreground shadow-sm">
+              Select a class and section to open the timetable grid.
+            </Card>
+          )}
 
-      {sectionId && grid && (
-        <div className="space-y-4">
+          {sectionId && !templates.length && versionsFetched && versions.length === 0 && (
+            <Card className="rounded-2xl border p-8 text-sm text-muted-foreground shadow-sm">
+              Create an academy time configuration (periods) in System Config first.
+            </Card>
+          )}
+
+          {sectionId && grid && (
+            <>
           {canEditGrid && (
             <p className="text-xs text-muted-foreground px-1">
               Drag a lesson to move it · click a cell to place or edit
@@ -724,12 +1041,12 @@ export default function GridTab({
                   </tr>
                 </thead>
                 <tbody>
-                  {workingDays.map((day) => (
+                  {displayDays.map((day) => (
                     <tr key={day} className="align-top">
                       <td className="w-[120px] border-b bg-primary/5 px-3 py-3 font-semibold overflow-hidden">
                         <div className="truncate">{DAY_FULL_LABELS[day]}</div>
                         <div className="mt-0.5 text-[11px] font-normal text-muted-foreground">
-                          {DAY_LABELS[day]}
+                          {formatDayDate(day)}
                         </div>
                       </td>
                       {lecturePeriods.map((period) => {
@@ -811,7 +1128,7 @@ export default function GridTab({
                               <button
                                 type="button"
                                 className={cn(
-                                  "flex w-full min-w-0 min-h-[72px] items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground transition-colors",
+                                  "flex h-[72px] w-full min-w-0 items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground transition-colors",
                                   canEditGrid && "hover:border-primary/40 hover:bg-primary/5",
                                   isDropTarget &&
                                     isDragActive &&
@@ -840,19 +1157,139 @@ export default function GridTab({
             </div>
           </Card>
 
-          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground px-1">
-            <span className="inline-flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5 text-emerald-600" /> Shared / Combined Lesson
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Link2 className="h-3.5 w-3.5 text-violet-600" /> Parallel Entry (Bio/Comp)
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Circle className="h-3.5 w-3.5" /> Normal Lesson
-            </span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground px-1">
+            {legendSubjects.length > 0 ? (
+              legendSubjects.map((s) => (
+                <span key={s.id} className="inline-flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10",
+                      subjectColorDot(s.id)
+                    )}
+                    aria-hidden
+                  />
+                  {s.name}
+                </span>
+              ))
+            ) : (
+              <>
+                <span className="inline-flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-emerald-600" /> Shared / Combined
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Link2 className="h-3.5 w-3.5 text-violet-600" /> Parallel
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Circle className="h-3.5 w-3.5" /> Normal
+                </span>
+              </>
+            )}
           </div>
+            </>
+          )}
         </div>
-      )}
+
+        <aside className="space-y-4 xl:sticky xl:top-4">
+          <Card className="rounded-2xl border p-4 shadow-sm space-y-2">
+            <h3 className="text-sm font-semibold mb-2">Quick Actions</h3>
+            {canManageGrid && (
+              <button
+                type="button"
+                onClick={openSharedLessonOnBoard}
+                className="flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
+              >
+                <Users className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                <span>
+                  <span className="block text-sm font-medium">Add Shared Lesson</span>
+                  <span className="text-xs text-muted-foreground">
+                    One lesson → multiple sections (combinedGroupId)
+                  </span>
+                </span>
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={!canExportGrid}
+              onClick={handlePrint}
+              className="flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left hover:bg-muted/40 transition-colors disabled:pointer-events-none disabled:opacity-50"
+            >
+              <Printer className="h-4 w-4 mt-0.5 text-slate-600 shrink-0" />
+              <span>
+                <span className="block text-sm font-medium">Print Class Sheet</span>
+                <span className="text-xs text-muted-foreground">
+                  Section printable sheet
+                  {grid?.version.status === "draft" ? " (draft)" : ""}
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={!canExportGrid}
+              onClick={() => void handleDownloadPdf()}
+              className="flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left hover:bg-muted/40 transition-colors disabled:pointer-events-none disabled:opacity-50"
+            >
+              <FileDown className="h-4 w-4 mt-0.5 text-rose-600 shrink-0" />
+              <span>
+                <span className="block text-sm font-medium">Download PDF</span>
+                <span className="text-xs text-muted-foreground">
+                  Academy sheet as a .pdf file
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={!canExportGrid}
+              onClick={handleExportExcel}
+              className="flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left hover:bg-muted/40 transition-colors disabled:pointer-events-none disabled:opacity-50"
+            >
+              <FileSpreadsheet className="h-4 w-4 mt-0.5 text-emerald-700 shrink-0" />
+              <span>
+                <span className="block text-sm font-medium">Export to Excel</span>
+                <span className="text-xs text-muted-foreground">
+                  Same timetable sheet data
+                </span>
+              </span>
+            </button>
+          </Card>
+
+          <Card className="rounded-2xl border p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-sm font-semibold">Upcoming Lessons</h3>
+              <span className="text-[11px] text-muted-foreground">
+                {selectedClass ? classDisplayName(selectedClass) : "Class"} ·{" "}
+                {DAY_FULL_LABELS[sharedDay]}
+              </span>
+            </div>
+            {upcomingLessons.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">
+                No lessons for this class on this day yet.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {upcomingLessons.map((item) => (
+                  <li
+                    key={item.id}
+                    className="rounded-xl border bg-background px-3 py-2.5 text-xs space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold truncate">{item.title}</span>
+                      {item.shared ? (
+                        <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 border-0">
+                          Shared
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="text-muted-foreground truncate">{item.sections.join(", ")}</p>
+                    <p className="text-muted-foreground">
+                      {item.periodLabel} · {item.teachers}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </aside>
+      </div>
 
       <Dialog open={!!slotDialog} onOpenChange={(o) => !o && setSlotDialog(null)}>
         <DialogContent>
