@@ -215,6 +215,8 @@ const classBoardQuery = Joi.object({
   sessionId: objectId.required(),
   classId: objectId.allow('', null),
   day: Joi.string().valid(...WEEKDAYS).required(),
+  /** draft = prefer draft for review; published = official sheet only */
+  versionMode: Joi.string().valid('draft', 'published').default('draft'),
 });
 
 const sharedLessonBody = Joi.object({
@@ -254,6 +256,26 @@ const classBoardMoveBody = Joi.object({
   day: Joi.string().valid(...WEEKDAYS).required(),
 });
 
+/** Auto Generate All Timetables (scheduling engine → draft ScheduleSlots). */
+const autoGenerateAllBody = Joi.object({
+  sessionId: objectId.required(),
+  classIds: Joi.array().items(objectId).max(40),
+  defaultWeeklyPeriods: Joi.number().integer().min(1).max(14).default(4),
+  balanceSubjects: Joi.boolean().default(true),
+  preventTeacherConflicts: Joi.boolean().default(true),
+  preventRoomConflicts: Joi.boolean().default(true),
+  applyParallel: Joi.boolean().default(true),
+  allowSharedLessons: Joi.boolean().default(false),
+  replaceUnlocked: Joi.boolean().default(true),
+  propagateAssignments: Joi.boolean().default(true),
+});
+
+const sectionDashboardQuery = Joi.object({
+  sessionId: objectId.required(),
+  classId: objectId.allow('', null),
+  program: Joi.string().valid('all', 'school', 'college', 'other').default('all'),
+});
+
 const sessionBodyExtended = Joi.object({
   name: Joi.string().required(),
   startDate: Joi.date().required(),
@@ -284,5 +306,7 @@ module.exports = {
   sharedLessonBody,
   publishClassDraftsBody,
   classBoardMoveBody,
+  autoGenerateAllBody,
+  sectionDashboardQuery,
   sessionBodyExtended,
 };

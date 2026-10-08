@@ -254,6 +254,35 @@ export function sortClassesByLevel<T extends { name?: string; className?: string
   );
 }
 
+/** Soft program bucket from class name (School grades vs College 1st/2nd Year). */
+export type AcademicProgramKey = "school" | "college" | "other";
+
+export function academicProgram(raw?: string | null): AcademicProgramKey {
+  const weight = classLevelSortWeight(raw);
+  if (weight >= 101 && weight <= 102) return "college";
+  if (weight >= 1 && weight <= 12) return "school";
+  return "other";
+}
+
+export function academicProgramLabel(program: AcademicProgramKey): string {
+  if (program === "college") return "College / Intermediate";
+  if (program === "school") return "School";
+  return "Other programs";
+}
+
+/** Group classes for optgroup dropdowns: School → College → Other. */
+export function groupClassesByProgram<T extends { name?: string; className?: string; _id: string }>(
+  classes: T[]
+): { key: AcademicProgramKey; label: string; classes: T[] }[] {
+  const buckets: Record<AcademicProgramKey, T[]> = { school: [], college: [], other: [] };
+  for (const c of sortClassesByLevel(classes)) {
+    buckets[academicProgram(c.name || c.className)].push(c);
+  }
+  return (["school", "college", "other"] as AcademicProgramKey[])
+    .filter((k) => buckets[k].length)
+    .map((k) => ({ key: k, label: academicProgramLabel(k), classes: buckets[k] }));
+}
+
 export function subjectDisplayName(s: { name?: string; subjectName?: string; code?: string; subjectCode?: string } | null | undefined): string {
   return s?.name || s?.subjectName || "—";
 }

@@ -1,27 +1,45 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { fetchClasses, fetchSections } from "@/lib/configApi";
-import { fetchSectionSchedule, scheduleSlotEntries } from "@/lib/timetableApi";
 import { Badge } from "@/components/ui/badge";
-import { DAY_LABELS, normalizeWorkingDays, slotMatchesPeriod, subjectColor } from "./constants";
+import {
+  classDisplayName,
+  classSectionBoardLabel,
+  fetchClasses,
+  fetchSections,
+  groupClassesByProgram,
+  sortClassesByLevel,
+} from "@/lib/configApi";
+import { fetchSectionSchedule } from "@/lib/timetableApi";
+import { cn } from "@/lib/utils";
 import type { Weekday } from "@/lib/configApi";
+import { DAY_FULL_LABELS, DAY_ORDER, normalizeWorkingDays } from "./constants";
+import AcademyPeriodSheet, { weekRowsFromSlots } from "./AcademyPeriodSheet";
 
+type SheetViewMode = "week" | "day";
+
+/** Section timetable — same Class Board period-sheet design. */
 export default function ViewScheduleTab({ sessionId }: { sessionId: string }) {
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
+  const [viewMode, setViewMode] = useState<SheetViewMode>("week");
+  const [day, setDay] = useState<Weekday>("monday");
 
   useEffect(() => {
     setClassId("");
     setSectionId("");
+    setViewMode("week");
+    setDay("monday");
   }, [sessionId]);
 
-  const { data: classes = [] } = useQuery({
+  const { data: classesRaw = [] } = useQuery({
     queryKey: ["config-classes", sessionId],
     queryFn: () => fetchClasses(sessionId),
     enabled: !!sessionId,
   });
+  const classes = useMemo(() => sortClassesByLevel(classesRaw), [classesRaw]);
+  const classGroups = useMemo(() => groupClassesByProgram(classes), [classes]);
 
   const { data: sections = [] } = useQuery({
     queryKey: ["config-sections", classId, sessionId],
@@ -37,106 +55,165 @@ export default function ViewScheduleTab({ sessionId }: { sessionId: string }) {
 
   if (!sessionId) return null;
 
-  const workingDays = normalizeWorkingDays(grid?.workingDays);
-  const lecturePeriods = (grid?.periods || []).filter((p) => p.type === "lecture");
+  const selectedClass = classes.find((c) => c._id === classId);
+  const selectedSection = sections.find((s) => s._id === sectionId);
+  const sectionLabel = classSectionBoardLabel(
+    selectedClass?.name || selectedClass?.className,
+    selectedSection?.name || selectedSection?.sectionName,
+  );
 
-  const getSlot = (day: Weekday, periodId: string) =>
-    grid?.slots.find((s) => s.day === day && slotMatchesPeriod(s, periodId));
+  const workingDays = normalizeWorkingDays(grid?.workingDays);
+  const dayOptions = workingDays.length ? workingDays : DAY_ORDER;
+  const lecturePeriods = (grid?.periods || []).filter((p) => p.type === "lecture");
+  const slots = grid?.slots || [];
+
+  const sheetRows =
+    viewMode === "day"
+      ? [
+          {
+            key: sectionId || "section",
+            label: sectionLabel,
+            day,
+            slots: slots.filter((s) => s.day === day),
+          },
+        ]
+      : weekRowsFromSlots(slots, dayOptions);
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      <div className="flex flex-wrap gap-3">
-        <div className="min-w-[140px]">
-          <Label className="text-xs text-muted-foreground">Class</Label>
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+      <div className="text-xs text-muted-foreground">
+        Timetable <span className="mx-1">›</span>{" "}
+        <span className="text-foreground font-medium">Section timetable</span>
+      </div>
+
+      <div>
+        <h2 className="font-display text-xl font-semibold tracking-tight">Section timetable</h2>
+        <p className="text-sm text-muted-foreground max-w-xl">
+          Published schedule in the same Class Board layout — periods across the top.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
+        <div className="min-w-[160px]">
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Class</Label>
           <select
-            className="mt-1 w-full h-10 rounded-md border px-3 text-sm"
+            className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
             value={classId}
-            onChange={(e) => { setClassId(e.target.value); setSectionId(""); }}
+            onChange={(e) => {
+              setClassId(e.target.value);
+              setSectionId("");
+            }}
           >
             <option value="">Select class</option>
-            {classes.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+            {classGroups.map((g) => (
+              <optgroup key={g.key} label={g.label}>
+                {g.classes.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {classDisplayName(c)}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         </div>
-        <div className="min-w-[120px]">
-          <Label className="text-xs text-muted-foreground">Section</Label>
+        <div className="min-w-[140px]">
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Section</Label>
           <select
-            className="mt-1 w-full h-10 rounded-md border px-3 text-sm"
+            className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
             value={sectionId}
             onChange={(e) => setSectionId(e.target.value)}
             disabled={!classId}
           >
             <option value="">Select section</option>
-            {sections.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
+            {sections.map((s) => (
+              <option key={s._id} value={s._id}>
+                {s.name || s.sectionName}
+              </option>
+            ))}
           </select>
         </div>
+        {sectionId && (
+          <div className="ml-auto flex rounded-full border bg-muted/40 p-1">
+            <button
+              type="button"
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                viewMode === "week"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setViewMode("week")}
+            >
+              Week View
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                viewMode === "day"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setViewMode("day")}
+            >
+              Day View
+            </button>
+          </div>
+        )}
       </div>
 
+      {viewMode === "day" && sectionId && (
+        <div className="flex flex-wrap gap-1.5">
+          {dayOptions.map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setDay(d)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                day === d
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              )}
+            >
+              {DAY_FULL_LABELS[d].slice(0, 3)}
+            </button>
+          ))}
+        </div>
+      )}
+
       {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-      {grid && (
+
+      {!sectionId && (
+        <Card className="rounded-2xl border p-8 text-sm text-muted-foreground shadow-sm">
+          Select a class and section to view the timetable sheet.
+        </Card>
+      )}
+
+      {sectionId && grid === null && !isLoading && (
+        <Card className="rounded-2xl border p-8 text-sm text-muted-foreground shadow-sm">
+          No published timetable for this section yet.
+        </Card>
+      )}
+
+      {sectionId && grid && (
         <>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <Badge variant="default">Published · v{grid.version.version}</Badge>
             {grid.slots.length === 0 && (
-              <span className="text-muted-foreground">Published, but no lessons in the grid yet.</span>
+              <span className="text-muted-foreground">Published, but no lessons yet.</span>
             )}
           </div>
-          <Card className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left p-3">Time</th>
-                  {workingDays.map((d) => (
-                    <th key={d} className="text-left p-3">{DAY_LABELS[d]}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {lecturePeriods.map((period) => (
-                  <tr key={period._id} className="border-t">
-                    <td className="p-3 font-mono text-xs text-muted-foreground">
-                      {period.startTime}–{period.endTime}
-                    </td>
-                    {workingDays.map((day) => {
-                      const slot = getSlot(day, period._id);
-                      return (
-                        <td key={day} className="p-2">
-                          {slot ? (
-                            (() => {
-                              const entries = scheduleSlotEntries(slot);
-                              return (
-                                <div className={`rounded-md border p-2 ${subjectColor(slot.subject._id)}`}>
-                                  <div className="font-semibold">
-                                    {entries.map((e) => e.subject.name).join(" / ")}
-                                  </div>
-                                  {entries.length > 1 ? (
-                                    <div className="mt-1 space-y-0.5">
-                                      {entries.map((e) => (
-                                        <div key={e.subject._id} className="text-xs opacity-80">
-                                          {e.subject.name}: {e.teacher.name}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <div className="text-xs opacity-80">{slot.teacher.name}</div>
-                                  )}
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <Card className="overflow-hidden rounded-2xl border shadow-sm">
+            <AcademyPeriodSheet
+              periods={lecturePeriods}
+              rows={sheetRows}
+              firstColumnHeader={viewMode === "day" ? "Section" : "Day"}
+              emptyMessage="No lessons in the published timetable."
+            />
           </Card>
         </>
       )}
     </div>
   );
 }
-
-

@@ -20,6 +20,19 @@ type CellData = {
   parallel: boolean;
 };
 
+export type ClassBoardPrintOpts = {
+  title: string;
+  subtitle: string;
+  rows: ClassBoardExportRow[];
+  periods: PeriodSlot[];
+  className?: string;
+  dayLabel?: string;
+  sessionName?: string;
+  effectiveDate?: string;
+  /** When true, print sheet is labeled DRAFT (review before publish). */
+  isDraft?: boolean;
+};
+
 function sectionLabel(row: ClassBoardExportRow): string {
   return classSectionBoardLabel(row.class?.name, row.section.name, row.section.label);
 }
@@ -88,28 +101,16 @@ function renderPrintCell(cell: CellData | null): string {
   </td>`;
 }
 
-/**
- * Print layout matched to academy timetable sheet:
- * centered title, Class | Period columns, subject + full teacher name.
- */
-export function printClassBoard(opts: {
-  title: string;
-  subtitle: string;
-  rows: ClassBoardExportRow[];
-  periods: PeriodSlot[];
-  className?: string;
-  dayLabel?: string;
-  sessionName?: string;
-  effectiveDate?: string;
-}): void {
-  const { rows, periods, dayLabel, sessionName, effectiveDate } = opts;
+function buildClassBoardPrintHtml(opts: ClassBoardPrintOpts): { html: string; documentTitle: string } {
+  const { rows, periods, dayLabel, sessionName, effectiveDate, isDraft, className } = opts;
   if (!rows.length || !periods.length) {
-    throw new Error("Nothing to print — load a class board first.");
+    throw new Error("Nothing to export — load a class board first.");
   }
 
   const matrix = buildMatrix(rows, periods);
   const dateLabel = effectiveDate || formatEffectiveDate();
   const line2Parts = ["Timetable"];
+  if (isDraft) line2Parts.push("DRAFT");
   if (dayLabel) line2Parts.push(dayLabel);
   if (sessionName) line2Parts.push(sessionName);
   line2Parts.push(`Effective Date: ${dateLabel}`);
@@ -137,11 +138,13 @@ export function printClassBoard(opts: {
     )
     .join("");
 
+  const documentTitle = fileStem(className, dayLabel || "week");
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Class Timetable</title>
+  <title>${escapeHtml(documentTitle)}</title>
   <style>
     @page { size: A4 landscape; margin: 10mm; }
     * { box-sizing: border-box; }
@@ -188,7 +191,8 @@ export function printClassBoard(opts: {
       border: 1px solid #000;
     }
     thead th:first-child {
-      width: 72px;
+      width: 120px;
+      min-width: 120px;
       font-size: 13px;
     }
     .period-name { line-height: 1.2; }
@@ -204,9 +208,11 @@ export function printClassBoard(opts: {
       font-size: 13px;
       text-align: center;
       vertical-align: middle;
-      padding: 10px 6px;
+      padding: 10px 12px;
       border: 1px solid #000;
       white-space: nowrap;
+      width: 120px;
+      min-width: 120px;
     }
     tbody td {
       background: #fff;
@@ -252,7 +258,10 @@ export function printClassBoard(opts: {
 </body>
 </html>`;
 
-  // Blob URL so the print footer is not the panel page URL / separator line.
+  return { html, documentTitle };
+}
+
+function openPrintFrame(html: string): void {
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
 
@@ -282,14 +291,79 @@ export function printClassBoard(opts: {
   iframe.src = url;
 }
 
+/**
+ * Print layout matched to academy timetable sheet:
+ * centered title, Class | Period columns, subject + full teacher name.
+ */
+export function printClassBoard(opts: ClassBoardPrintOpts): void {
+  const { html } = buildClassBoardPrintHtml(opts);
+  openPrintFrame(html);
+}
+
+/**
+ * Download a real PDF file of the academy Class Board sheet (landscape A4).
+ */
+export async function downloadClassBoardPdf(opts: ClassBoardPrintOpts): Promise<void> {
+  const { html, documentTitle } = buildClassBoardPrintHtml(opts);
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+  ]);
+
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:1400px;height:900px;border:0;opacity:0;pointer-events:none;";
+  document.body.appendChild(iframe);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      iframe.onload = () => resolve();
+      iframe.onerror = () => reject(new Error("Failed to load PDF preview"));
+      iframe.src = url;
+    });
+
+    const doc = iframe.contentDocument;
+    const target = doc?.body;
+    if (!target) throw new Error("PDF preview body missing");
+
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      logging: false,
+      windowWidth: 1400,
+    });
+    const img = canvas.toDataURL("image/png");
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 8;
+    const maxW = pageW - margin * 2;
+    const maxH = pageH - margin * 2;
+    const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
+    const drawW = canvas.width * ratio;
+    const drawH = canvas.height * ratio;
+    const x = (pageW - drawW) / 2;
+    pdf.addImage(img, "PNG", x, margin, drawW, drawH);
+    pdf.save(`${documentTitle}.pdf`);
+  } finally {
+    iframe.remove();
+    URL.revokeObjectURL(url);
+  }
+}
+
 /** Downloads Class Board as an Excel-compatible .xls (HTML table). */
 export function exportClassBoardExcel(opts: {
   className?: string;
   dayLabel: string;
   rows: ClassBoardExportRow[];
   periods: PeriodSlot[];
+  versionMode?: "draft" | "published";
 }): void {
-  const { className, dayLabel, rows, periods } = opts;
+  const { className, dayLabel, rows, periods, versionMode } = opts;
   if (!rows.length || !periods.length) {
     throw new Error("Nothing to export — load a class board first.");
   }
@@ -302,7 +376,14 @@ export function exportClassBoardExcel(opts: {
       return `${name} (${p.startTime} - ${p.endTime})`;
     }),
   ];
+  const modeNote =
+    versionMode === "published"
+      ? "Published (official)"
+      : versionMode === "draft"
+        ? "Draft (auto-generated from section timetables)"
+        : "Auto-generated from section timetables";
   const tableRows = [
+    `<tr><td colspan="${head.length}">${escapeHtml(modeNote)}</td></tr>`,
     `<tr>${head.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr>`,
     ...matrix.map(
       (row) =>
@@ -325,7 +406,8 @@ export function exportClassBoardExcel(opts: {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${fileStem(className, dayLabel)}.xls`;
+  const modeSuffix = versionMode ? `-${versionMode}` : "";
+  a.download = `${fileStem(className, dayLabel)}${modeSuffix}.xls`;
   a.click();
   URL.revokeObjectURL(url);
 }

@@ -275,7 +275,7 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
     items: [
       {
         id: "class-view",
-        label: "Class View",
+        label: "Section Dashboard",
         icon: CalendarDays,
         moduleKey: "timetable",
         href: (role) => timetableHref(role, "view"),
@@ -500,7 +500,7 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
       },
       {
         id: "class-view",
-        label: "Class View",
+        label: "Section Dashboard",
         icon: CalendarDays,
         moduleKey: "timetable",
         href: (role) => timetableHref(role, "view"),

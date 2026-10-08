@@ -14,7 +14,7 @@ export type TimetableSectionItem = {
 const SECTION_META: Record<TimetableSection, Omit<TimetableSectionItem, "key">> = {
   builder: { label: "Timetable builder", icon: LayoutGrid },
   board: { label: "Class board", icon: Table2 },
-  view: { label: "Section view", icon: CalendarDays },
+  view: { label: "Section dashboard", icon: CalendarDays },
   mine: { label: "My schedule", icon: Calendar },
 };
 
@@ -35,7 +35,7 @@ export function getTimetableSections(opts: {
     return [
       { key: "mine", ...SECTION_META.mine },
       { key: "board", ...SECTION_META.board },
-      { key: "view", ...SECTION_META.view, label: "Section timetable" },
+      { key: "view", ...SECTION_META.view, label: "Section dashboard" },
     ];
   }
 

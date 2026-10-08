@@ -113,10 +113,29 @@ function sortSectionsByName(sections) {
   );
 }
 
+/**
+ * Soft academic program bucket from className (no separate Program model).
+ * School = grades; College = 1st/2nd Year intermediate; Other = everything else.
+ */
+function academicProgram(raw) {
+  const weight = classLevelWeight(raw);
+  if (weight >= 101 && weight <= 102) return 'college';
+  if (weight >= 1 && weight <= 12) return 'school';
+  return 'other';
+}
+
+function academicProgramLabel(program) {
+  if (program === 'college') return 'College / Intermediate';
+  if (program === 'school') return 'School';
+  return 'Other programs';
+}
+
 module.exports = {
   formatClassLevelLabel,
   classLevelWeight,
   compareClassNames,
   sortClassesByLevel,
   sortSectionsByName,
+  academicProgram,
+  academicProgramLabel,
 };

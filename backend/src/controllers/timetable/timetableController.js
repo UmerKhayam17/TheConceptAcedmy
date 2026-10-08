@@ -2,6 +2,8 @@ const catchAsync = require('../../utils/catchAsync');
 const timetableVersionService = require('../../services/timetable/timetableVersionService');
 const scheduleSlotService = require('../../services/timetable/scheduleSlotService');
 const classBoardService = require('../../services/timetable/classBoardService');
+const autoGenerateAllService = require('../../services/timetable/autoGenerateAllService');
+const sectionDashboardService = require('../../services/timetable/sectionDashboardService');
 const { validateVersion } = require('../../services/timetable/timetableConflictService');
 
 // Versions
@@ -119,6 +121,7 @@ const getClassBoard = catchAsync(async (req, res) => {
     sessionId: req.query.sessionId,
     classId: req.query.classId,
     day: req.query.day,
+    versionMode: req.query.versionMode,
   });
   res.json({ success: true, data });
 });
@@ -140,6 +143,20 @@ const publishClassDrafts = catchAsync(async (req, res) => {
 
 const moveClassBoardLesson = catchAsync(async (req, res) => {
   const data = await classBoardService.moveClassBoardLesson(req.body, req.user._id);
+  res.json({ success: true, data });
+});
+
+const autoGenerateAll = catchAsync(async (req, res) => {
+  const data = await autoGenerateAllService.autoGenerateAll(req.body, req.user._id);
+  res.status(201).json({ success: true, data });
+});
+
+const getSectionDashboard = catchAsync(async (req, res) => {
+  const data = await sectionDashboardService.getSectionDashboard({
+    sessionId: req.query.sessionId,
+    classId: req.query.classId,
+    program: req.query.program,
+  });
   res.json({ success: true, data });
 });
 
@@ -167,4 +184,6 @@ module.exports = {
   deleteCombinedGroup,
   publishClassDrafts,
   moveClassBoardLesson,
+  autoGenerateAll,
+  getSectionDashboard,
 };

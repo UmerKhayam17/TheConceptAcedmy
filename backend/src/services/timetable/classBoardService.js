@@ -11,7 +11,13 @@ const { validateSlot } = require('./timetableConflictService');
 const { assertSessionWritable } = require('../session/sessionGuard');
 const { createVersion, publishVersion } = require('./timetableVersionService');
 const { moveSlot, upsertSlot } = require('./scheduleSlotService');
-const { sortClassesByLevel, sortSectionsByName } = require('../../utils/classLevelSort');
+const {
+  sortClassesByLevel,
+  sortSectionsByName,
+  formatClassLevelLabel,
+  academicProgram,
+  academicProgramLabel,
+} = require('../../utils/classLevelSort');
 
 function slotEntriesPlain(slotDoc) {
   const primary = { subject: slotDoc.subject, teacher: slotDoc.teacher };
@@ -124,12 +130,29 @@ async function ensureEditableVersion({ sessionId, classId, sectionId, periodTemp
 }
 
 /**
- * Class board: sections × periods for one weekday.
- * Omit classId to include every class in the session.
+ * Pick which TimetableVersion feeds the Class Board projection.
+ * - draft: prefer draft (fallback published) — review before publish
+ * - published: official published only
  */
-async function getClassBoard({ sessionId, classId, day }) {
+function pickVersionForMode(versions, versionMode) {
+  const draft = versions.find((v) => v.status === 'draft');
+  const published = versions.find((v) => v.status === 'published');
+  if (versionMode === 'published') return published || null;
+  return draft || published || null;
+}
+
+/**
+ * Class board: auto-generated sections × periods sheet for one weekday.
+ * Reads ScheduleSlot data only — never a separate ClassSheet table.
+ * Omit classId to include every class in the session.
+ *
+ * @param {object} opts
+ * @param {'draft'|'published'} [opts.versionMode='draft']
+ */
+async function getClassBoard({ sessionId, classId, day, versionMode = 'draft' }) {
   if (!sessionId) throw new ApiError(400, 'sessionId is required');
   if (!day || !WEEKDAYS.includes(day)) throw new ApiError(400, 'Valid day is required');
+  const mode = versionMode === 'published' ? 'published' : 'draft';
 
   const session = await Session.findById(sessionId).select('name workingDays');
   if (!session) throw new ApiError(404, 'Session not found');
@@ -160,9 +183,7 @@ async function getClassBoard({ sessionId, classId, day }) {
         status: { $in: ['draft', 'published'] },
       }).sort({ status: 1, version: -1 });
 
-      const draft = versions.find((v) => v.status === 'draft');
-      const published = versions.find((v) => v.status === 'published');
-      const active = draft || published || null;
+      const active = pickVersionForMode(versions, mode);
 
       let slots = [];
       if (active) {
@@ -194,14 +215,80 @@ async function getClassBoard({ sessionId, classId, day }) {
   }
 
   const single = classId && classes[0] ? classes[0] : null;
+
+  // Academic hierarchy tree from Student Management (Session → Class → Section)
+  const structureMap = new Map();
+  for (const row of sectionRows) {
+    const cname = row.class?.name || '';
+    const prog = academicProgram(cname);
+    if (!structureMap.has(prog)) {
+      structureMap.set(prog, {
+        key: prog,
+        label: academicProgramLabel(prog),
+        classes: new Map(),
+      });
+    }
+    const bucket = structureMap.get(prog);
+    const cid = String(row.class._id);
+    if (!bucket.classes.has(cid)) {
+      bucket.classes.set(cid, {
+        _id: row.class._id,
+        name: cname,
+        label: formatClassLevelLabel(cname) || cname,
+        sections: [],
+      });
+    }
+    bucket.classes.get(cid).sections.push({
+      _id: row.section._id,
+      name: row.section.name,
+      label: row.section.label,
+    });
+  }
+  // Also include classes that have zero sections so 1st/2nd Year empty classes are visible
+  for (const klass of classes) {
+    const cname = klass.className || klass.name || '';
+    const prog = academicProgram(cname);
+    const cid = String(klass._id);
+    if (!structureMap.has(prog)) {
+      structureMap.set(prog, {
+        key: prog,
+        label: academicProgramLabel(prog),
+        classes: new Map(),
+      });
+    }
+    const bucket = structureMap.get(prog);
+    if (!bucket.classes.has(cid)) {
+      bucket.classes.set(cid, {
+        _id: klass._id,
+        name: cname,
+        label: formatClassLevelLabel(cname) || cname,
+        sections: [],
+      });
+    }
+  }
+
+  const programOrder = ['school', 'college', 'other'];
+  const structure = programOrder
+    .filter((k) => structureMap.has(k))
+    .map((k) => {
+      const bucket = structureMap.get(k);
+      return {
+        key: bucket.key,
+        label: bucket.label,
+        classes: [...bucket.classes.values()],
+      };
+    });
+
   return {
     session: { _id: session._id, name: session.name, workingDays: session.workingDays },
     class: single ? { _id: single._id, name: single.className || single.name } : null,
     day,
+    versionMode: mode,
     periods: template?.slots || [],
     periodTemplateId: template?._id || null,
     sections: sectionRows,
     slots: allSlots,
+    structure,
   };
 }
 

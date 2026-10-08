@@ -140,14 +140,32 @@ export interface ClassBoardSectionRow {
   slots: ScheduleSlot[];
 }
 
+/** draft = prefer draft for review; published = official sheet only */
+export type ClassBoardVersionMode = "draft" | "published";
+
+export interface ClassBoardStructureClass {
+  _id: string;
+  name: string;
+  label: string;
+  sections: { _id: string; name: string; label?: string }[];
+}
+
+export interface ClassBoardStructureProgram {
+  key: string;
+  label: string;
+  classes: ClassBoardStructureClass[];
+}
+
 export interface ClassBoard {
   session: { _id: string; name: string; workingDays?: Weekday[] };
   class: { _id: string; name: string } | null;
   day: Weekday;
+  versionMode?: ClassBoardVersionMode;
   periods: PeriodSlot[];
   periodTemplateId: string | null;
   sections: ClassBoardSectionRow[];
   slots: ScheduleSlot[];
+  structure?: ClassBoardStructureProgram[];
 }
 
 export function scheduleSlotEntries(slot: ScheduleSlot): ScheduleSlotEntry[] {
@@ -365,10 +383,16 @@ export const fetchMyTeacherSchedule = (sessionId: string, teacherId?: string) =>
     `/me/teacher?sessionId=${sessionId}${teacherId ? `&teacherId=${teacherId}` : ""}`
   );
 
-export const fetchClassBoard = (params: { sessionId: string; classId?: string; day: Weekday }) => {
+export const fetchClassBoard = (params: {
+  sessionId: string;
+  classId?: string;
+  day: Weekday;
+  versionMode?: ClassBoardVersionMode;
+}) => {
   const q = new URLSearchParams({
     sessionId: params.sessionId,
     day: params.day,
+    versionMode: params.versionMode || "draft",
   });
   if (params.classId) q.set("classId", params.classId);
   return api<ClassBoard>(`/class-board?${q}`);
@@ -414,3 +438,120 @@ export const moveClassBoardLesson = (body: {
     "/class-board/move",
     { method: "POST", body: JSON.stringify(body) }
   );
+
+export interface AutoGenerateOptions {
+  sessionId: string;
+  classIds?: string[];
+  defaultWeeklyPeriods?: number;
+  balanceSubjects?: boolean;
+  preventTeacherConflicts?: boolean;
+  preventRoomConflicts?: boolean;
+  applyParallel?: boolean;
+  allowSharedLessons?: boolean;
+  replaceUnlocked?: boolean;
+  /** Copy teacher assignments from a filled section to sibling sections missing them */
+  propagateAssignments?: boolean;
+}
+
+export interface AutoGenerateResult {
+  jobId: string;
+  engine: string;
+  session: { _id: string; name: string };
+  versionMode: string;
+  summary: {
+    lessonsPlaced: number;
+    sharedLessons: number;
+    parallelLessons: number;
+    conflicts: number;
+    unplaced: number;
+    score: number;
+    sectionsProcessed: number;
+    classesProcessed: number;
+    skipped?: number;
+    assignmentsPropagated?: number;
+  };
+  classes: {
+    classId: string;
+    className: string;
+    classLabel?: string;
+    program?: string;
+    programLabel?: string;
+    placed: number;
+    unplaced: number;
+    shared: number;
+    parallel: number;
+  }[];
+  skipped?: {
+    classId: string;
+    classLabel: string;
+    program?: string;
+    sectionLabel: string;
+    reasons: string[];
+  }[];
+  unplaced: {
+    label: string;
+    kind: string;
+    classId: string;
+    sectionIds: string[];
+    weeklyPeriods: number;
+    remaining: number;
+  }[];
+  options: Record<string, unknown>;
+}
+
+/** Scheduling engine: fills draft ScheduleSlots for selected classes. */
+export const autoGenerateAllTimetables = (body: AutoGenerateOptions) =>
+  api<AutoGenerateResult>("/generate", { method: "POST", body: JSON.stringify(body) });
+
+export interface SectionDashboardRow {
+  program: string;
+  programLabel: string;
+  class: { _id: string; name: string; label: string };
+  section: { _id: string; name: string; label: string } | null;
+  students: number;
+  teachersAssigned: number;
+  subjectsOnClass: number;
+  subjectsAssigned: number;
+  weeklyLessons: number;
+  capacityPerWeek: number;
+  dayFill: Record<string, number>;
+  lecturePeriodsPerDay: number;
+  timetableStatus: "none" | "draft" | "published";
+  version: {
+    _id: string;
+    status: string;
+    version: number;
+    generationMeta?: { engine?: string; score?: number; unplacedCount?: number } | null;
+  } | null;
+  readiness: string[];
+  readyForGenerate: boolean;
+}
+
+export interface SectionDashboard {
+  session: { _id: string; name: string; workingDays?: Weekday[] };
+  periodsPerDay: number;
+  capacityPerWeek: number;
+  programs: { key: string; label: string; classes: number; sections: number }[];
+  sections: SectionDashboardRow[];
+  summary: {
+    classes: number;
+    sections: number;
+    readyForGenerate: number;
+    withDraft: number;
+    withPublished: number;
+    missingAssignments: number;
+  };
+}
+
+export const fetchSectionDashboard = (params: {
+  sessionId: string;
+  classId?: string;
+  program?: "all" | "school" | "college" | "other";
+}) => {
+  const q = new URLSearchParams({
+    sessionId: params.sessionId,
+    program: params.program || "all",
+  });
+  if (params.classId) q.set("classId", params.classId);
+  return api<SectionDashboard>(`/section-dashboard?${q}`);
+};

@@ -378,11 +378,11 @@ async function dropLegacyDuplicateCollections() {
     ['academysalaryrecords', 'salaryrecords'],
   ];
 
+  // Do NOT drop `subjectrequirements` — that is the live SubjectRequirement collection.
   const dropOnly = [
     'feevouchers',
     'timetables',
     'academyclasstimetables',
-    'subjectrequirements',
   ];
 
   const existing = await db.listCollections().toArray();

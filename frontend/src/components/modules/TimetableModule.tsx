@@ -13,7 +13,7 @@ import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import GridTab from "@/components/modules/timetable/GridTab";
 import ClassBoardTab from "@/components/modules/timetable/ClassBoardTab";
 import MyScheduleTab from "@/components/modules/timetable/MyScheduleTab";
-import ViewScheduleTab from "@/components/modules/timetable/ViewScheduleTab";
+import SectionDashboardTab from "@/components/modules/timetable/SectionDashboardTab";
 
 const TimetableModule = ({
   caps,
@@ -64,7 +64,7 @@ const TimetableModule = ({
               }}
             />
           )}
-          {section === "view" && <ViewScheduleTab sessionId={sessionId} />}
+          {section === "view" && <SectionDashboardTab sessionId={sessionId} />}
           {section === "mine" && (isTeacher || caps.canEdit || caps.canCreate) && (
             <MyScheduleTab sessionId={sessionId} />
           )}

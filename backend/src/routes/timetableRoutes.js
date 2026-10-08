@@ -125,6 +125,22 @@ router.patch(
 );
 router.delete('/slots/:slotId', canManage, tt.deleteSlot);
 
+// ─── Auto Generate All Timetables (scheduler → draft slots) ─────
+router.post(
+  '/generate',
+  canManage,
+  validate(schemas.autoGenerateAllBody),
+  tt.autoGenerateAll
+);
+
+// ─── Section Dashboard (all classes incl. 1st/2nd Year) ─────────
+router.get(
+  '/section-dashboard',
+  canView,
+  validate(schemas.sectionDashboardQuery, 'query'),
+  tt.getSectionDashboard
+);
+
 // ─── Class board (sections × periods) ───────────────────────────
 router.get('/class-board', canView, validate(schemas.classBoardQuery, 'query'), tt.getClassBoard);
 router.post(
