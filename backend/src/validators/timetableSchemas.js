@@ -82,6 +82,7 @@ const teacherProfileBody = Joi.object({
 
 const teacherProfilePatch = teacherProfileBody
   .fork(['user', 'session'], (s) => s.optional())
+  .prefs({ noDefaults: true })
   .min(1);
 
 const teacherAssignmentBody = Joi.object({

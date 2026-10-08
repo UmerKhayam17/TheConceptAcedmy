@@ -66,6 +66,7 @@ export interface TeacherProfile {
   maxLecturesPerDay: number;
   maxLecturesPerWeek: number;
   availability: { day: Weekday; periodIds: string[] }[];
+  preferredRooms?: { _id: string; name: string; code?: string }[];
   isActive: boolean;
 }
 
@@ -233,15 +234,21 @@ export const deletePeriodTemplate = (id: string) =>
 export const fetchTeacherProfiles = (sessionId: string) =>
   api<TeacherProfile[]>(`/setup/teacher-profiles?sessionId=${sessionId}`);
 
-export const createTeacherProfile = (body: {
-  user: string;
-  session: string;
+export type TeacherProfileInput = {
+  user?: string;
+  session?: string;
   subjects?: string[];
   maxLecturesPerDay?: number;
   maxLecturesPerWeek?: number;
-}) => api<TeacherProfile>("/setup/teacher-profiles", { method: "POST", body: JSON.stringify(body) });
+  availability?: { day: Weekday; periodIds: string[] }[];
+  preferredRooms?: string[];
+  isActive?: boolean;
+};
 
-export const updateTeacherProfile = (id: string, body: Partial<TeacherProfile>) =>
+export const createTeacherProfile = (body: TeacherProfileInput & { user: string; session: string }) =>
+  api<TeacherProfile>("/setup/teacher-profiles", { method: "POST", body: JSON.stringify(body) });
+
+export const updateTeacherProfile = (id: string, body: TeacherProfileInput) =>
   api<TeacherProfile>(`/setup/teacher-profiles/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 
 export const deleteTeacherProfile = (id: string) =>

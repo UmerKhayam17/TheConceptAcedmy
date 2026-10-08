@@ -14,13 +14,57 @@ function findPeriodInTemplate(template, periodId) {
   return template.slots.find((s) => String(s._id) === String(periodId)) || null;
 }
 
-/** Any active teacher/admin may be placed on the grid (no per-section assignment required). */
+/** Staff login must be an active teacher or admin. The session roster is the teacher profile. */
 async function isValidTimetableTeacher(teacherId) {
   if (!teacherId) return false;
   const user = await User.findById(teacherId).populate('role', 'name').select('isActive role');
   if (!user?.isActive) return false;
   const roleName = user.role?.name;
   return roleName === 'teacher' || roleName === 'admin';
+}
+
+function excludeIdList(excludeSlotId, excludeSlotIds) {
+  const ids = [];
+  if (excludeSlotId) ids.push(String(excludeSlotId));
+  if (Array.isArray(excludeSlotIds)) {
+    for (const id of excludeSlotIds) {
+      if (id) ids.push(String(id));
+    }
+  }
+  return [...new Set(ids)];
+}
+
+/** One teacher period counts once, even when a shared lesson writes a slot per section. */
+async function countTeacherPeriods(sessionId, teacherId, { day, excludeSlotIds, combinedGroupId } = {}) {
+  const query = {
+    session: sessionId,
+    cancelled: { $ne: true },
+    $or: [{ teacher: teacherId }, { 'parallelEntries.teacher': teacherId }],
+  };
+  if (day) query.day = day;
+  const slots = await ScheduleSlot.find(query).select('_id day periodId combinedGroupId').lean();
+  const skip = new Set(excludeSlotIds || []);
+  const keys = new Set();
+  for (const slot of slots) {
+    if (skip.has(String(slot._id))) continue;
+    if (
+      combinedGroupId &&
+      slot.combinedGroupId &&
+      String(slot.combinedGroupId) === String(combinedGroupId)
+    ) {
+      continue;
+    }
+    keys.add(`${slot.day}|${String(slot.periodId)}`);
+  }
+  return keys.size;
+}
+
+/** Empty availability means every school period. A saved grid lists only the periods they can teach. */
+function teacherCanTeachPeriod(profile, day, periodId) {
+  if (!profile?.availability?.length) return true;
+  const dayAvail = profile.availability.find((row) => row.day === day);
+  if (!dayAvail?.periodIds?.length) return false;
+  return dayAvail.periodIds.some((id) => String(id) === String(periodId));
 }
 
 /**
@@ -57,7 +101,6 @@ async function validateSlot({
   excludeSlotId,
   excludeSlotIds,
   combinedGroupId,
-  strict = false,
 }) {
   const errors = [];
   const warnings = [];
@@ -157,51 +200,56 @@ async function validateSlot({
     }
   }
 
-  // R7: Teacher availability
+  // R8: Active staff login, then a profile on this session's roster
   const profile = await TeacherProfile.findOne({ user: teacherId, session: sessionId, isActive: true });
-  if (profile?.availability?.length) {
-    const dayAvail = profile.availability.find((a) => a.day === day);
-    if (dayAvail && dayAvail.periodIds?.length && !dayAvail.periodIds.some((id) => String(id) === String(periodId))) {
-      const entry = {
-        code: 'TEACHER_UNAVAILABLE',
-        message: 'Teacher is not available at this period',
-      };
-      if (strict) errors.push(entry);
-      else warnings.push(entry);
-    }
-  }
-
-  // R8: Teacher must be an active staff member (not tied to a single section/class)
   const validTeacher = await isValidTimetableTeacher(teacherId);
   if (!validTeacher) {
     errors.push({
       code: 'INVALID_TEACHER',
       message: 'Selected user is not an active teacher',
     });
-  } else if (profile?.subjects?.length && subjectId) {
-    const teachesSubject = profile.subjects.some((s) => String(s._id || s) === String(subjectId));
-    if (!teachesSubject) {
-      warnings.push({
-        code: 'SUBJECT_NOT_ON_PROFILE',
-        message: 'This subject is not listed on the teacher profile (allowed for multi-section teaching)',
-      });
-    }
+  } else if (!profile) {
+    errors.push({
+      code: 'NO_TEACHER_PROFILE',
+      message: 'This teacher has no profile for the current session. Add them under System Config → Teachers.',
+    });
   }
 
-  // R4: Daily teacher limit
-  if (profile?.maxLecturesPerDay) {
-    const dayCount = await ScheduleSlot.countDocuments({
-      timetableVersion: timetableVersionId,
-      day,
-      cancelled: { $ne: true },
-      $or: [{ teacher: teacherId }, { 'parallelEntries.teacher': teacherId }],
-      ...(excludeSlotId ? { _id: { $ne: excludeSlotId } } : {}),
+  // R7: Availability saved on the profile (empty = all school periods)
+  if (profile && !teacherCanTeachPeriod(profile, day, periodId)) {
+    errors.push({
+      code: 'TEACHER_UNAVAILABLE',
+      message: 'Teacher is not available at this period',
     });
-    if (dayCount >= profile.maxLecturesPerDay) {
-      errors.push({
-        code: 'TEACHER_DAILY_LIMIT',
-        message: `Teacher exceeds max ${profile.maxLecturesPerDay} lectures per day`,
+  }
+
+  // R4: Daily and weekly limits apply across every class in the session
+  if (profile?.maxLecturesPerDay || profile?.maxLecturesPerWeek) {
+    const excludeIds = excludeIdList(excludeSlotId, excludeSlotIds);
+    if (profile.maxLecturesPerDay) {
+      const dayCount = await countTeacherPeriods(sessionId, teacherId, {
+        day,
+        excludeSlotIds: excludeIds,
+        combinedGroupId,
       });
+      if (dayCount >= profile.maxLecturesPerDay) {
+        errors.push({
+          code: 'TEACHER_DAILY_LIMIT',
+          message: `Teacher exceeds max ${profile.maxLecturesPerDay} lectures per day`,
+        });
+      }
+    }
+    if (profile.maxLecturesPerWeek) {
+      const weekCount = await countTeacherPeriods(sessionId, teacherId, {
+        excludeSlotIds: excludeIds,
+        combinedGroupId,
+      });
+      if (weekCount >= profile.maxLecturesPerWeek) {
+        errors.push({
+          code: 'TEACHER_WEEKLY_LIMIT',
+          message: `Teacher exceeds max ${profile.maxLecturesPerWeek} lectures per week`,
+        });
+      }
     }
   }
 

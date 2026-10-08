@@ -36,7 +36,6 @@ import {
   groupClassesByProgram,
   sortClassesByLevel,
 } from "@/lib/configApi";
-import { fetchUsers } from "@/lib/usersApi";
 import {
   createTimetableVersion,
   deleteScheduleSlot,
@@ -66,6 +65,7 @@ import {
   slotMatchesPeriod,
   subjectColorKey,
 } from "./constants";
+import { orderRosterForSubject } from "./teacherRoster";
 import { subjectIcon } from "@/lib/subjectTheme";
 import {
   downloadBuilderGridPdf,
@@ -273,8 +273,6 @@ export default function GridTab({
     queryFn: () => fetchTeacherProfiles(sessionId),
     enabled: !!sessionId,
   });
-
-  const { data: users = [] } = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
 
   const createVersionMut = useMutation({
     mutationFn: () => {
@@ -582,37 +580,12 @@ export default function GridTab({
 
   const selectedOption = subjectOptions.find((o) => o.key === form.optionKey);
 
-  const panelTeachers = useMemo(
-    () =>
-      users
-        .filter((u) => {
-          const rn = typeof u.role === "object" && u.role?.name ? u.role.name : "";
-          return rn === "teacher" || rn === "admin";
-        })
-        .map((u) => ({ _id: u._id, name: u.name })),
-    [users]
-  );
-
-  /** All teachers — same pool for every class/section (multi-section teaching). */
-  const teachersForSubject = (subjectId: string) => {
-    if (!subjectId) return panelTeachers;
-    const seen = new Set<string>();
-    const suggested: { _id: string; name: string }[] = [];
-    const add = (t?: { _id: string; name: string } | null) => {
-      if (!t?._id || seen.has(t._id)) return;
-      seen.add(t._id);
-      suggested.push({ _id: t._id, name: t.name });
-    };
-
-    add(subjects.find((s) => s._id === subjectId)?.teacher);
-    for (const profile of teacherProfiles) {
-      if (profile.subjects?.some((s) => s._id === subjectId)) {
-        add(profile.user);
-      }
-    }
-    const rest = panelTeachers.filter((t) => !seen.has(t._id));
-    return [...suggested, ...rest];
-  };
+  /** Session roster only. Teachers who can teach this subject are listed first. */
+  const teachersForSubject = (subjectId: string) =>
+    orderRosterForSubject(
+      teacherProfiles,
+      subjects.find((s) => s._id === subjectId),
+    );
 
   const defaultTeacherForSubject = (subjectId: string, existing?: ScheduleSlot) => {
     if (existing) {
@@ -1385,6 +1358,11 @@ export default function GridTab({
                         </option>
                       ))}
                     </select>
+                    {teacherProfiles.length === 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Add this person under System Config → Teachers for the current session.
+                      </p>
+                    )}
                   </div>
                 );
               })}

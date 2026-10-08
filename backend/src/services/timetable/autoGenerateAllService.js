@@ -259,6 +259,7 @@ function createOccupancy() {
     section: new Map(), // sectionId -> Set(day|period)
     room: new Map(), // roomId -> Set(day|period)
     teacherDayCount: new Map(), // teacherId|day -> number
+    teacherWeekCount: new Map(), // teacherId -> number of distinct periods
     sectionSubjectDay: new Map(), // sectionId|subjectId|day -> [periodIndexes]
   };
 }
@@ -267,9 +268,12 @@ function markBusy(occ, { teachers, sectionIds, roomId, day, periodId, subjectIds
   const key = busyKey(day, periodId);
   for (const t of teachers) {
     if (!occ.teacher.has(t)) occ.teacher.set(t, new Set());
-    occ.teacher.get(t).add(key);
+    const periods = occ.teacher.get(t);
+    if (periods.has(key)) continue;
+    periods.add(key);
     const dk = `${t}|${day}`;
     occ.teacherDayCount.set(dk, (occ.teacherDayCount.get(dk) || 0) + 1);
+    occ.teacherWeekCount.set(t, (occ.teacherWeekCount.get(t) || 0) + 1);
   }
   for (const sid of sectionIds) {
     if (!occ.section.has(sid)) occ.section.set(sid, new Set());
@@ -306,6 +310,7 @@ function canPlace(occ, opts) {
     subjectIds,
     periodIdx,
     maxTeacherPerDay,
+    maxTeacherPerWeek = 999,
     maxConsecutive,
     preventTeacherConflicts,
     preventRoomConflicts,
@@ -329,6 +334,8 @@ function canPlace(occ, opts) {
       if (occ.teacher.get(t)?.has(key)) return false;
       const dayCount = occ.teacherDayCount.get(`${t}|${day}`) || 0;
       if (dayCount >= maxTeacherPerDay) return false;
+      const weekCount = occ.teacherWeekCount.get(t) || 0;
+      if (weekCount >= maxTeacherPerWeek) return false;
     }
   }
 
@@ -432,6 +439,29 @@ function pickRoom(rooms, classId, autoAssignRooms) {
   if (home) return String(home._id);
   const classroom = rooms.find((r) => r.type === 'classroom');
   return classroom ? String(classroom._id) : String(rooms[0]._id);
+}
+
+function roomIsFree(occ, roomId, day, periodId) {
+  if (!roomId) return false;
+  return !occ.room.get(String(roomId))?.has(busyKey(day, periodId));
+}
+
+/** Preferred rooms on the teacher profile, then the class room, then any classroom. */
+function pickRoomForPlacement(rooms, classId, autoAssignRooms, teachers, profileByTeacher, occ, day, periodId) {
+  if (!autoAssignRooms || !rooms.length) return null;
+  const known = new Set(rooms.map((room) => String(room._id)));
+  const candidates = [];
+  for (const teacherId of teachers) {
+    const prefs = profileByTeacher.get(String(teacherId))?.preferredRooms || [];
+    for (const pref of prefs) {
+      const id = String(pref?._id || pref);
+      if (known.has(id)) candidates.push(id);
+    }
+  }
+  const fallback = pickRoom(rooms, classId, true);
+  if (fallback) candidates.push(String(fallback));
+  const unique = [...new Set(candidates)];
+  return unique.find((id) => roomIsFree(occ, id, day, periodId)) || unique[0] || null;
 }
 
 function seedOccupancyFromSlots(occ, slots, periods) {
@@ -571,7 +601,7 @@ async function autoGenerateAll(body, userId) {
   const profiles = await TeacherProfile.find({
     session: sessionId,
     isActive: { $ne: false },
-  }).select('user maxLecturesPerDay availability');
+  }).select('user maxLecturesPerDay maxLecturesPerWeek availability preferredRooms');
 
   const profileByTeacher = new Map();
   for (const p of profiles) {
@@ -774,37 +804,56 @@ async function autoGenerateAll(body, userId) {
     };
   });
 
+  const teacherLimits = (teachers) => {
+    const days = teachers.map((t) => profileByTeacher.get(String(t))?.maxLecturesPerDay || maxTeacherPerDayDefault);
+    const weeks = teachers
+      .map((t) => profileByTeacher.get(String(t))?.maxLecturesPerWeek)
+      .filter((n) => Number(n) > 0);
+    return {
+      maxTeacherPerDay: days.length ? Math.min(...days) : maxTeacherPerDayDefault,
+      maxTeacherPerWeek: weeks.length ? Math.min(...weeks) : 999,
+    };
+  };
+
   const teacherAvailable = (teachers, day, periodId) => {
     for (const t of teachers) {
-      const profile = profileByTeacher.get(t);
+      const profile = profileByTeacher.get(String(t));
       if (!profile?.availability?.length) continue;
       const dayAvail = profile.availability.find((a) => a.day === day);
-      if (dayAvail?.periodIds?.length) {
-        const allowed = dayAvail.periodIds.map(String);
-        if (!allowed.includes(String(periodId))) return false;
-      }
+      if (!dayAvail?.periodIds?.length) return false;
+      const allowed = dayAvail.periodIds.map(String);
+      if (!allowed.includes(String(periodId))) return false;
     }
     return true;
   };
 
+  const roomFor = (teachers, classId, day, periodId) =>
+    pickRoomForPlacement(
+      rooms,
+      classId,
+      autoAssignRooms,
+      teachers,
+      profileByTeacher,
+      occ,
+      day,
+      periodId
+    );
+
   const writePlacement = async (job, day, period) => {
     const periodIdx = periodIndex(lecturePeriods, period._id);
-    const maxForTeachers = Math.min(
-      ...job.teachers.map((t) => {
-        const p = profileByTeacher.get(t);
-        return p?.maxLecturesPerDay || maxTeacherPerDayDefault;
-      })
-    );
+    const limits = teacherLimits(job.teachers);
+    const roomId = roomFor(job.teachers, job.classId, day, period._id);
     if (!teacherAvailable(job.teachers, day, period._id)) return false;
     const ok = canPlace(occ, {
       teachers: job.teachers,
       sectionIds: job.sectionIds,
-      roomId: job.roomId,
+      roomId,
       day,
       periodId: String(period._id),
       subjectIds: job.subjectIds,
       periodIdx,
-      maxTeacherPerDay: maxForTeachers,
+      maxTeacherPerDay: limits.maxTeacherPerDay,
+      maxTeacherPerWeek: limits.maxTeacherPerWeek,
       maxConsecutive: balanceSubjects ? 1 : maxConsecutive,
       preventTeacherConflicts,
       preventRoomConflicts,
@@ -834,7 +883,7 @@ async function autoGenerateAll(body, userId) {
           subject: job.primary.subject,
           teacher: job.primary.teacher,
           parallelEntries: job.parallelEntries,
-          room: job.roomId,
+          room: roomId,
           combinedGroupId: job.combinedGroupId,
           source: 'auto',
           locked: false,
@@ -855,7 +904,7 @@ async function autoGenerateAll(body, userId) {
     markBusy(occ, {
       teachers: job.teachers,
       sectionIds: job.sectionIds,
-      roomId: job.roomId,
+      roomId,
       day,
       periodId: String(period._id),
       subjectIds: job.subjectIds,
@@ -900,23 +949,19 @@ async function autoGenerateAll(body, userId) {
         const score = periodReuse - need * 10 + Math.random();
         if (score >= bestScore) continue;
 
-        const maxForTeachers = Math.min(
-          ...job.teachers.map((t) => {
-            const p = profileByTeacher.get(t);
-            return p?.maxLecturesPerDay || maxTeacherPerDayDefault;
-          })
-        );
+        const limits = teacherLimits(job.teachers);
         if (!teacherAvailable(job.teachers, day, period._id)) continue;
         if (
           !canPlace(occ, {
             teachers: job.teachers,
             sectionIds: job.sectionIds,
-            roomId: job.roomId,
+            roomId: roomFor(job.teachers, job.classId, day, period._id),
             day,
             periodId: String(period._id),
             subjectIds: job.subjectIds,
             periodIdx,
-            maxTeacherPerDay: maxForTeachers,
+            maxTeacherPerDay: limits.maxTeacherPerDay,
+            maxTeacherPerWeek: limits.maxTeacherPerWeek,
             maxConsecutive: balanceSubjects ? 1 : maxConsecutive,
             preventTeacherConflicts,
             preventRoomConflicts,

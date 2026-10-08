@@ -29,11 +29,12 @@ import {
   subjectDisplayName,
   type SchoolSubject,
 } from "@/lib/configApi";
-import { fetchUsers } from "@/lib/usersApi";
 import {
   fetchTeacherAssignments,
+  fetchTeacherProfiles,
   syncSectionSubjectTeachers,
 } from "@/lib/timetableApi";
+import { orderRosterForSubject, rosterTeachers } from "./teacherRoster";
 import { systemConfigHref } from "@/lib/systemConfigMenus";
 import { studentManagementHref } from "@/lib/studentManagementMenus";
 import { moduleHref } from "@/lib/panelMenus";
@@ -199,7 +200,11 @@ export default function AssignmentsTab({
     enabled: !!classId,
   });
 
-  const { data: users = [] } = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
+  const { data: teacherProfiles = [] } = useQuery({
+    queryKey: ["timetable-teacher-profiles", sessionId],
+    queryFn: () => fetchTeacherProfiles(sessionId),
+    enabled: !!sessionId,
+  });
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["timetable-assignments", sessionId],
@@ -207,16 +212,7 @@ export default function AssignmentsTab({
     enabled: !!sessionId,
   });
 
-  const teachers = useMemo(
-    () =>
-      users
-        .filter((u) => {
-          const rn = typeof u.role === "object" && u.role?.name ? u.role.name : "";
-          return rn === "teacher" || rn === "admin";
-        })
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [users],
-  );
+  const teachers = useMemo(() => rosterTeachers(teacherProfiles), [teacherProfiles]);
 
   useEffect(() => {
     setClassId("");
@@ -417,8 +413,8 @@ export default function AssignmentsTab({
           <div className="min-w-0">
             <h2 className="text-lg font-bold tracking-tight text-slate-900">Assign Subject Teachers</h2>
             <p className="mt-1 text-sm leading-snug text-slate-600 whitespace-pre-line">
-              {`Assign a teacher to each subject, switch class or section freely — changes stay until you save.
-Teacher load updates as you assign.`}
+              {`Assign a session teacher to each subject. The same teacher can teach many subjects and sections.
+Add someone under Teachers if they are missing from the list.`}
             </p>
           </div>
         </div>
@@ -668,7 +664,13 @@ Teacher load updates as you assign.`}
                   {filteredSubjects.map((sub, idx) => {
                     const teacherId = draft[sub._id] || "";
                     const unassigned = !teacherId;
-                    const teacher = teachers.find((t) => t._id === teacherId);
+                    const rosterOptions = orderRosterForSubject(teacherProfiles, sub);
+                    const assignedName = rows.find((r) => r.teacher?._id === teacherId)?.teacher?.name;
+                    const teacherOptions =
+                      teacherId && !rosterOptions.some((t) => t._id === teacherId)
+                        ? [...rosterOptions, { _id: teacherId, name: assignedName || "Current teacher" }]
+                        : rosterOptions;
+                    const teacher = teacherOptions.find((t) => t._id === teacherId);
                     return (
                       <tr
                         key={sub._id}
@@ -710,7 +712,7 @@ Teacher load updates as you assign.`}
                               onChange={(e) => setTeacher(sub._id, e.target.value)}
                             >
                               <option value="">Select teacher…</option>
-                              {teachers.map((t) => (
+                              {teacherOptions.map((t) => (
                                 <option key={t._id} value={t._id}>
                                   {t.name}
                                 </option>
@@ -761,7 +763,9 @@ Teacher load updates as you assign.`}
               <h3 className="text-sm font-semibold text-slate-900">Teacher Workload</h3>
             </div>
             {teachers.length === 0 ? (
-              <p className="text-sm text-slate-400 py-2">No teachers found.</p>
+              <p className="text-sm text-slate-400 py-2">
+                No teachers on this session yet. Add a teacher profile first.
+              </p>
             ) : (
               <ul className="space-y-3.5">
                 {(teachersWithLoad.length ? teachersWithLoad : teacherLoad.slice(0, 8)).map(

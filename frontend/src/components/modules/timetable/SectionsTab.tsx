@@ -17,7 +17,8 @@ import {
   patchSection,
   type SchoolSection,
 } from "@/lib/configApi";
-import { fetchUsers } from "@/lib/usersApi";
+import { fetchTeacherProfiles } from "@/lib/timetableApi";
+import { rosterTeachers } from "./teacherRoster";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
 
@@ -62,12 +63,17 @@ export default function SectionsTab({
     enabled: !!sessionId,
   });
 
-  const { data: users = [] } = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
-
-  const staffTeachers = users.filter((u) => {
-    const rn = typeof u.role === "object" && u.role?.name ? u.role.name : "";
-    return rn === "teacher" || rn === "admin";
+  const { data: teacherProfiles = [] } = useQuery({
+    queryKey: ["timetable-teacher-profiles", sessionId],
+    queryFn: () => fetchTeacherProfiles(sessionId),
+    enabled: !!sessionId,
   });
+
+  const roster = rosterTeachers(teacherProfiles);
+  const staffTeachers =
+    form.teacherId && !roster.some((t) => t._id === form.teacherId) && edit?.teacher
+      ? [...roster, { _id: edit.teacher._id, name: edit.teacher.name }]
+      : roster;
 
   const sectionsQueryKey = viewAll
     ? ["config-sections", "session", sessionId]
@@ -353,6 +359,11 @@ export default function SectionsTab({
                   </option>
                 ))}
               </select>
+              {staffTeachers.length === 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Add a teacher profile for this session first.
+                </p>
+              )}
             </div>
             <div>
               <Label>Max students</Label>
