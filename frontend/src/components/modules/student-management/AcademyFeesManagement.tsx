@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   Loader2,
+  Pencil,
   Printer,
   Receipt,
   Search,
@@ -46,6 +47,7 @@ import {
   payAcademyFees,
   printFeeChallan,
   printFeeReceipt,
+  updateAcademyFee,
   type AcademyFeeRecord,
   type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
@@ -256,7 +258,9 @@ export default function AcademyFeesManagement({
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
   const [payRecord, setPayRecord] = useState<AcademyFeeRecord | null>(null);
+  const [payModalMode, setPayModalMode] = useState<"pay" | "edit">("pay");
   const [selectedFeeIds, setSelectedFeeIds] = useState<string[]>([]);
+  const [amountOverrides, setAmountOverrides] = useState<Record<string, string>>({});
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayInputValue);
@@ -392,23 +396,84 @@ export default function AcademyFeesManagement({
 
   useEffect(() => {
     if (!payRecord || !payHistory) return;
-    const ids = unpaidForPay.map((r) => r._id);
-    setSelectedFeeIds(ids.length ? ids : [payRecord._id]);
-  }, [payRecord, payHistory, unpaidForPay]);
+    // Paid edit uses the voucher itself — don't replace with unpaid months.
+    if (payModalMode === "edit" && payRecord.status === "paid") {
+      setSelectedFeeIds([payRecord._id]);
+      setAmountOverrides({ [payRecord._id]: String(payRecord.amount ?? "") });
+      return;
+    }
+    // Default to the clicked voucher only — user can check more months if needed.
+    const clickedUnpaid = unpaidForPay.some((r) => r._id === payRecord._id);
+    setSelectedFeeIds(
+      clickedUnpaid
+        ? [payRecord._id]
+        : unpaidForPay[0]
+          ? [unpaidForPay[0]._id]
+          : [payRecord._id]
+    );
+    const amounts: Record<string, string> = {};
+    for (const fee of unpaidForPay) {
+      amounts[fee._id] = String(fee.amount ?? "");
+    }
+    setAmountOverrides(amounts);
+  }, [payRecord, payHistory, unpaidForPay, payModalMode]);
+
+  const feeAmount = (fee: AcademyFeeRecord) => {
+    const raw = amountOverrides[fee._id];
+    if (raw === undefined || raw === "") return Number(fee.amount) || 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : Number(fee.amount) || 0;
+  };
 
   const selectedUnpaid = unpaidForPay.filter((r) => selectedFeeIds.includes(r._id));
-  const selectedTotal = selectedUnpaid.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const selectedTotal = selectedUnpaid.reduce((sum, r) => sum + feeAmount(r), 0);
+
+  const editingPaid = payModalMode === "edit" && payRecord?.status === "paid";
 
   const payMut = useMutation({
-    mutationFn: () =>
-      payAcademyFees({
+    mutationFn: async () => {
+      if (!payRecord) throw new Error("No fee selected");
+
+      // Edit a paid voucher — update details only (do not re-pay).
+      if (payModalMode === "edit" && payRecord.status === "paid") {
+        const nextAmount = Number(amountOverrides[payRecord._id] ?? payRecord.amount);
+        if (!Number.isFinite(nextAmount) || nextAmount < 0) {
+          throw new Error("Amount cannot be negative");
+        }
+        const updated = await updateAcademyFee(payRecord._id, {
+          amount: nextAmount,
+          notes: paymentNotes.trim(),
+          paymentMethod,
+          paidAt: paymentDate,
+          slip: paymentSlip,
+        });
+        return {
+          paid: 1,
+          total: Number(updated.amount) || nextAmount,
+          needsSectionAssignment: false,
+          studentId: undefined as string | undefined,
+        };
+      }
+
+      if (payModalMode === "edit") {
+        for (const fee of selectedUnpaid) {
+          const nextAmount = feeAmount(fee);
+          if (nextAmount < 0) throw new Error("Amount cannot be negative");
+          if (nextAmount !== Number(fee.amount)) {
+            await updateAcademyFee(fee._id, { amount: nextAmount, notes: paymentNotes.trim() });
+          }
+        }
+      }
+      return payAcademyFees({
         feeRecordIds: selectedFeeIds,
         paymentMethod,
         notes: paymentNotes.trim() || undefined,
         paidAt: paymentDate,
         slip: paymentSlip,
-      }),
+      });
+    },
     onSuccess: (result) => {
+      const wasEdit = payModalMode === "edit";
       qc.invalidateQueries({ queryKey: ["academy-fees"] });
       qc.invalidateQueries({ queryKey: ["academy-fees-summary"] });
       qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
@@ -416,12 +481,14 @@ export default function AcademyFeesManagement({
       qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
       setPayRecord(null);
       setSelectedFeeIds([]);
+      setAmountOverrides({});
+      setPayModalMode("pay");
       setPaymentNotes("");
       setPaymentDate(todayInputValue());
       setPaymentSlip(null);
       setSlipInputKey((key) => key + 1);
       toast({
-        title: "Payment recorded",
+        title: wasEdit ? "Fee updated" : "Payment recorded",
         description: `${result.paid} month${result.paid === 1 ? "" : "s"} · ${formatPkr(result.total)}`,
       });
       if (result.needsSectionAssignment && result.studentId) {
@@ -447,12 +514,37 @@ export default function AcademyFeesManagement({
       toast({ title: "Could not print", description: e.message, variant: "destructive" }),
   });
 
+  const openPayModal = (r: AcademyFeeRecord, mode: "pay" | "edit" = "pay") => {
+    if (!writable) {
+      toast({
+        title: "Read-only session",
+        description: "Switch to the active session to update fees.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPayModalMode(mode);
+    setPayRecord(r);
+    setPaymentMethod(r.paymentMethod || "cash");
+    setPaymentNotes(r.notes || "");
+    setPaymentDate(
+      r.paidAt ? String(r.paidAt).slice(0, 10) : todayInputValue()
+    );
+    setPaymentSlip(null);
+    setAmountOverrides(
+      mode === "edit" && r.status === "paid" ? { [r._id]: String(r.amount ?? "") } : {}
+    );
+    setSelectedFeeIds(mode === "edit" && r.status === "paid" ? [r._id] : []);
+    setSlipInputKey((key) => key + 1);
+  };
+
   const records = data?.records ?? [];
   const pagination = data?.pagination;
 
   const canPay = !isParent && (caps.canEdit || caps.canCreate);
+  const canEditFee = !isParent && writable && (caps.canEdit || caps.canCreate);
   const canGenerate = showGenerate && !studentId && !isParent && writable && (caps.canCreate || caps.canEdit);
-  const feeTableColSpan = childScoped ? (isParent ? 7 : 8) : 10;
+  const feeTableColSpan = childScoped ? (isParent ? 8 : 9) : 11;
 
   const downloadMonthWise = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
@@ -683,8 +775,9 @@ export default function AcademyFeesManagement({
                 <th className="text-left p-2.5 font-medium">Amount</th>
                 <th className="text-left p-2.5 font-medium">Status</th>
                 <th className="text-left p-2.5 font-medium">Slip</th>
+                <th className="text-left p-2.5 font-medium whitespace-nowrap">Payment date</th>
                 {!isParent && <th className="text-left p-2.5 font-medium">Pending months</th>}
-                <th className="text-right p-2.5 font-medium">Action</th>
+                <th className="text-right p-2.5 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -777,6 +870,11 @@ export default function AcademyFeesManagement({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
+                    <td className="p-2.5 whitespace-nowrap text-muted-foreground">
+                      {r.status === "paid" && r.paidAt
+                        ? new Date(r.paidAt).toLocaleDateString()
+                        : "—"}
+                    </td>
                     {!isParent && (
                       <td className="p-2.5">
                         {(r.unpaidMonthCount || 0) > 0 ? (
@@ -794,104 +892,102 @@ export default function AcademyFeesManagement({
                       </td>
                     )}
                     <td className="p-2.5 text-right">
-                      <div className="inline-flex flex-col items-stretch sm:flex-row sm:items-center sm:justify-end gap-1.5 min-w-[7.5rem] sm:min-w-0">
+                      <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
                         {payable && canPay && (
                           <Button
                             size="sm"
                             variant="hero"
-                            className="w-full sm:w-auto"
+                            className="shrink-0"
                             disabled={payMut.isPending}
-                            onClick={() => {
-                              setPayRecord(r);
-                              setPaymentMethod("cash");
-                              setPaymentNotes("");
-                              setPaymentDate(todayInputValue());
-                              setPaymentSlip(null);
-                              setSlipInputKey((key) => key + 1);
-                            }}
+                            onClick={() => openPayModal(r, "pay")}
                           >
                             Record payment
                           </Button>
                         )}
+                        {canEditFee && (payable || r.status === "paid") && (
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8 shrink-0"
+                            aria-label="Edit fee"
+                            title="Edit fee"
+                            onClick={() => openPayModal(r, "edit")}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
                         {(payable || r.status === "paid") && (
-                          <div className="inline-flex items-center justify-end gap-1.5">
-                            {r.status === "paid" && r.paidAt && (
-                              <span className="text-xs text-muted-foreground hidden sm:inline">
-                                {new Date(r.paidAt).toLocaleDateString()}
-                              </span>
-                            )}
-                            {payable && sid ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-8 w-8 shrink-0"
-                                    disabled={printing}
-                                    aria-label="Print challan"
-                                    title="Print challan"
-                                  >
-                                    {printing ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Printer className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    className="gap-2"
-                                    onClick={() => printMut.mutate({ studentId: sid, size: "a4" })}
-                                  >
-                                    <FileText className="h-4 w-4" />
-                                    A4
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    className="gap-2"
-                                    onClick={() => printMut.mutate({ studentId: sid, size: "thermal" })}
-                                  >
-                                    <Receipt className="h-4 w-4" />
-                                    Thermal
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            ) : (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-8 w-8 shrink-0"
-                                    disabled={printing}
-                                    aria-label="Print receipt"
-                                    title="Print receipt"
-                                  >
-                                    {printing ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Printer className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    className="gap-2"
-                                    onClick={() => printMut.mutate({ id: r._id, size: "a4" })}
-                                  >
-                                    <FileText className="h-4 w-4" />
-                                    A4
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    className="gap-2"
-                                    onClick={() => printMut.mutate({ id: r._id, size: "thermal" })}
-                                  >
-                                    <Receipt className="h-4 w-4" />
-                                    Thermal
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                          </div>
+                          payable && sid ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-8 w-8 shrink-0"
+                                  disabled={printing}
+                                  aria-label="Print challan"
+                                  title="Print challan"
+                                >
+                                  {printing ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Printer className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={() => printMut.mutate({ studentId: sid, size: "a4" })}
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  A4
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={() => printMut.mutate({ studentId: sid, size: "thermal" })}
+                                >
+                                  <Receipt className="h-4 w-4" />
+                                  Thermal
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-8 w-8 shrink-0"
+                                  disabled={printing}
+                                  aria-label="Print receipt"
+                                  title="Print receipt"
+                                >
+                                  {printing ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Printer className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={() => printMut.mutate({ id: r._id, size: "a4" })}
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  A4
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={() => printMut.mutate({ id: r._id, size: "thermal" })}
+                                >
+                                  <Receipt className="h-4 w-4" />
+                                  Thermal
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )
                         )}
                       </div>
                     </td>
@@ -938,12 +1034,14 @@ export default function AcademyFeesManagement({
           if (!o) {
             setPayRecord(null);
             setSelectedFeeIds([]);
+            setAmountOverrides({});
+            setPayModalMode("pay");
           }
         }}
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Record payment</DialogTitle>
+            <DialogTitle>{payModalMode === "edit" ? "Edit fee payment" : "Record payment"}</DialogTitle>
           </DialogHeader>
           {payRecord && (
             <div className="space-y-3 text-sm">
@@ -953,49 +1051,106 @@ export default function AcademyFeesManagement({
               </p>
               <div className="rounded-md border">
                 <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
-                  Unpaid months
+                  {editingPaid
+                    ? "Paid fee"
+                    : payModalMode === "edit"
+                      ? "Fee months (edit amount & select)"
+                      : "Unpaid months"}
                 </div>
-                {payHistoryLoading && (
-                  <p className="px-3 py-4 text-muted-foreground">Loading remaining fees…</p>
-                )}
-                {!payHistoryLoading && unpaidForPay.length === 0 && (
-                  <p className="px-3 py-4 text-muted-foreground">No unpaid months left.</p>
-                )}
-                {!payHistoryLoading && unpaidForPay.length > 0 && (
-                  <ul className="max-h-52 overflow-y-auto divide-y">
-                    {unpaidForPay.map((fee) => {
-                      const checked = selectedFeeIds.includes(fee._id);
-                      return (
-                        <li key={fee._id}>
-                          <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4"
-                              checked={checked}
-                              onChange={() =>
-                                setSelectedFeeIds((current) =>
-                                  checked ? current.filter((id) => id !== fee._id) : [...current, fee._id]
-                                )
-                              }
-                            />
-                            <span className="flex-1">
-                              <span className="font-medium">{periodLabel(fee)}</span>
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                {feeTypeLabel(fee.feeType)} · {fee.status}
-                              </span>
-                            </span>
-                            <span className="font-semibold">{formatPkr(fee.amount)}</span>
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                {editingPaid && payRecord ? (
+                  <div className="flex items-center gap-3 px-3 py-2">
+                    <span className="flex-1 min-w-0">
+                      <span className="font-medium">{periodLabel(payRecord)}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {feeTypeLabel(payRecord.feeType)} · paid
+                      </span>
+                    </span>
+                    <Input
+                      type="number"
+                      min={0}
+                      className="h-8 w-28 text-right tabular-nums"
+                      value={amountOverrides[payRecord._id] ?? String(payRecord.amount ?? "")}
+                      onChange={(e) =>
+                        setAmountOverrides((prev) => ({
+                          ...prev,
+                          [payRecord._id]: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                ) : (
+                  <>
+                    {payHistoryLoading && (
+                      <p className="px-3 py-4 text-muted-foreground">Loading remaining fees…</p>
+                    )}
+                    {!payHistoryLoading && unpaidForPay.length === 0 && (
+                      <p className="px-3 py-4 text-muted-foreground">No unpaid months left.</p>
+                    )}
+                    {!payHistoryLoading && unpaidForPay.length > 0 && (
+                      <ul className="max-h-52 overflow-y-auto divide-y">
+                        {unpaidForPay.map((fee) => {
+                          const checked = selectedFeeIds.includes(fee._id);
+                          return (
+                            <li key={fee._id}>
+                              <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 shrink-0"
+                                  checked={checked}
+                                  onChange={() =>
+                                    setSelectedFeeIds((current) =>
+                                      checked
+                                        ? current.filter((id) => id !== fee._id)
+                                        : [...current, fee._id]
+                                    )
+                                  }
+                                />
+                                <span className="flex-1 min-w-0">
+                                  <span className="font-medium">{periodLabel(fee)}</span>
+                                  <span className="ml-2 text-xs text-muted-foreground">
+                                    {feeTypeLabel(fee.feeType)} · {fee.status}
+                                  </span>
+                                </span>
+                                {payModalMode === "edit" ? (
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    className="h-8 w-28 text-right tabular-nums"
+                                    value={amountOverrides[fee._id] ?? String(fee.amount ?? "")}
+                                    onClick={(e) => e.preventDefault()}
+                                    onChange={(e) =>
+                                      setAmountOverrides((prev) => ({
+                                        ...prev,
+                                        [fee._id]: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                ) : (
+                                  <span className="font-semibold tabular-nums">
+                                    {formatPkr(fee.amount)}
+                                  </span>
+                                )}
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </>
                 )}
                 <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/30">
                   <span className="text-muted-foreground">
-                    {selectedUnpaid.length} item{selectedUnpaid.length === 1 ? "" : "s"} selected
+                    {editingPaid
+                      ? "1 item"
+                      : `${selectedUnpaid.length} item${selectedUnpaid.length === 1 ? "" : "s"} selected`}
                   </span>
-                  <span className="font-semibold">{formatPkr(selectedTotal)}</span>
+                  <span className="font-semibold">
+                    {formatPkr(
+                      editingPaid && payRecord
+                        ? Number(amountOverrides[payRecord._id] ?? payRecord.amount) || 0
+                        : selectedTotal
+                    )}
+                  </span>
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1066,10 +1221,20 @@ export default function AcademyFeesManagement({
             </Button>
             <Button
               variant="hero"
-              disabled={payMut.isPending || selectedFeeIds.length === 0 || !paymentDate}
+              disabled={
+                payMut.isPending ||
+                !paymentDate ||
+                (editingPaid
+                  ? amountOverrides[payRecord?._id || ""] === ""
+                  : selectedFeeIds.length === 0)
+              }
               onClick={() => payMut.mutate()}
             >
-              Confirm payment
+              {payMut.isPending
+                ? "Saving…"
+                : payModalMode === "edit"
+                  ? "Save changes"
+                  : "Confirm payment"}
             </Button>
           </DialogFooter>
         </DialogContent>

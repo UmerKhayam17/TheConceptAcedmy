@@ -477,6 +477,13 @@ router.patch(
   validate(schemas.academyFeePay),
   feeCtrl.pay
 );
+router.patch(
+  '/fees/:id',
+  requirePermission('manage_academy_fees'),
+  uploadPaymentSlip.single('slip'),
+  validate(schemas.academyFeePatch),
+  feeCtrl.update
+);
 router.get(
   '/fees/student/:studentId',
   requireFeeReadAccess(),

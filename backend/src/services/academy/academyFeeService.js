@@ -485,6 +485,80 @@ async function getFeeRecordById(id) {
   return record;
 }
 
+/**
+ * Edit a fee voucher.
+ * Paid: amount, notes, paymentMethod, paidAt, payment slip.
+ * Unpaid (pending/overdue): amount, notes, dueDate, status (pending|overdue|waived).
+ */
+async function updateFeeRecord(id, payload = {}, slipFile) {
+  const record = await AcademyFeeRecord.findById(id);
+  if (!record) throw new ApiError(404, 'Fee record not found');
+
+  const isPaid = record.status === 'paid';
+  const isWaived = record.status === 'waived';
+
+  if (isWaived) {
+    throw new ApiError(400, 'Waived fees cannot be edited');
+  }
+
+  if (payload.amount !== undefined) {
+    const amount = Number(payload.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new ApiError(400, 'Amount must be a non-negative number');
+    }
+    record.amount = amount;
+    if (Array.isArray(record.components) && record.components.length > 0) {
+      record.components = [
+        {
+          name: record.feeType === 'admission' ? 'Admission' : record.feeType === 'stationery' ? 'Stationery' : 'Tuition',
+          amount,
+          kind: record.feeType === 'admission' ? 'admission' : 'tuition',
+        },
+      ];
+    }
+  }
+
+  if (payload.notes !== undefined) {
+    record.notes = String(payload.notes || '').trim();
+  }
+
+  if (isPaid) {
+    if (payload.paymentMethod !== undefined) {
+      const method = String(payload.paymentMethod || 'cash');
+      if (!['cash', 'bank_transfer', 'online', 'other'].includes(method)) {
+        throw new ApiError(400, 'Invalid payment method');
+      }
+      record.paymentMethod = method;
+    }
+    if (payload.paidAt !== undefined && payload.paidAt !== null && payload.paidAt !== '') {
+      record.paidAt = resolvePaidAt(payload.paidAt);
+    }
+    const slipPath = savePaymentSlip(slipFile);
+    if (slipPath) record.paymentSlip = slipPath;
+  } else {
+    if (payload.dueDate !== undefined) {
+      if (payload.dueDate === null || payload.dueDate === '') {
+        record.dueDate = undefined;
+      } else {
+        const d = new Date(payload.dueDate);
+        if (Number.isNaN(d.getTime())) throw new ApiError(400, 'Invalid due date');
+        record.dueDate = d;
+      }
+    }
+
+    if (payload.status !== undefined) {
+      const next = String(payload.status);
+      if (!['pending', 'overdue', 'waived'].includes(next)) {
+        throw new ApiError(400, 'Status must be pending, overdue, or waived');
+      }
+      record.status = next;
+    }
+  }
+
+  await record.save();
+  return getFeeRecordById(record._id);
+}
+
 async function listFeeRecords({
   page = 1,
   limit = 20,
@@ -1372,6 +1446,7 @@ async function exportFeeDefaultersMonthWise({ classId, month, year, search, sess
 module.exports = {
   listFeeRecords,
   getFeeRecordById,
+  updateFeeRecord,
   listUnpaidForChallan,
   addStationeryCharge,
   generateMonthlyFees,

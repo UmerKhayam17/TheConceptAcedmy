@@ -115,6 +115,12 @@ const challan = catchAsync(async (req, res) => {
   res.send(buffer);
 });
 
+const update = catchAsync(async (req, res) => {
+  const data = await feeService.updateFeeRecord(req.params.id, req.body, req.file);
+  rt.feeCrud('updated', req.params.id);
+  res.json({ success: true, data });
+});
+
 const pay = catchAsync(async (req, res) => {
   const result = await feeService.recordPayment(req.params.id, req.body, req.user._id, req.file);
   rt.feeCrud('updated', req.params.id);
@@ -230,6 +236,7 @@ module.exports = {
   list,
   generate,
   addStationery,
+  update,
   pay,
   payMany,
   receipt,

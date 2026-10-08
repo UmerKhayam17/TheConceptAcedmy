@@ -1212,6 +1212,40 @@ export const addStationeryCharge = (body: {
 export const payAcademyFee = (id: string, body?: { paymentMethod?: string; notes?: string }) =>
   api<AcademyFeeRecord>(`/fees/${id}/pay`, { method: "PATCH", body: JSON.stringify(body || {}) });
 
+export async function updateAcademyFee(
+  id: string,
+  body: {
+    amount?: number;
+    notes?: string;
+    dueDate?: string | null;
+    status?: "pending" | "overdue" | "waived";
+    paymentMethod?: string;
+    paidAt?: string;
+    slip?: File | null;
+  }
+) {
+  const fd = new FormData();
+  if (body.amount !== undefined) fd.append("amount", String(body.amount));
+  if (body.notes !== undefined) fd.append("notes", body.notes);
+  if (body.dueDate !== undefined) fd.append("dueDate", body.dueDate ?? "");
+  if (body.status !== undefined) fd.append("status", body.status);
+  if (body.paymentMethod !== undefined) fd.append("paymentMethod", body.paymentMethod);
+  if (body.paidAt !== undefined) fd.append("paidAt", body.paidAt);
+  if (body.slip) fd.append("slip", body.slip);
+  const res = await authedFetch(`/student-management/fees/${id}`, {
+    method: "PATCH",
+    body: fd,
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: AcademyFeeRecord;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Update failed (${res.status})`);
+  if (!parsed.data) throw new Error("Update failed");
+  return parsed.data;
+}
+
 export async function payAcademyFees(body: {
   feeRecordIds: string[];
   paymentMethod?: string;

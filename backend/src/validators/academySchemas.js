@@ -363,6 +363,18 @@ const academyFeeStationery = Joi.object({
   notes: Joi.string().allow('').trim().max(500).optional(),
 });
 
+const academyFeePatch = Joi.object({
+  amount: Joi.number().min(0).max(1_000_000),
+  notes: Joi.string().allow('').trim().max(500),
+  dueDate: Joi.alternatives().try(
+    Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+    Joi.valid(null, '')
+  ),
+  status: Joi.string().valid('pending', 'overdue', 'waived'),
+  paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other'),
+  paidAt: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+}).min(1);
+
 const feeDefaultersQuery = Joi.object({
   page: Joi.number().integer().min(1),
   limit: Joi.number().integer().min(1).max(100),
@@ -589,6 +601,7 @@ module.exports = {
   academyFeePayMany,
   academyFeeGenerate,
   academyFeeStationery,
+  academyFeePatch,
   feeDefaultersQuery,
   academySalaryPay,
   academySalaryGenerate,
