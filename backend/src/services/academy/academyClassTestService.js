@@ -157,8 +157,11 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
   const subjectId = test.subjectId?._id || test.subjectId;
   // Award list / marks: only students enrolled in this subject (full package or selectedSubjects)
   const studentsRaw = await AcademyStudent.find(studentQ)
-    .select('studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects')
+    .select(
+      'studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects disciplineId'
+    )
     .populate('sectionId', 'sectionName')
+    .populate('disciplineId', 'name code')
     .sort({ studentName: 1 })
     .lean();
   const students = subjectId
@@ -196,6 +199,14 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
           typeof student.sectionId === 'object' && student.sectionId
             ? student.sectionId.sectionName
             : undefined,
+        disciplineName:
+          typeof student.disciplineId === 'object' && student.disciplineId
+            ? student.disciplineId.name
+            : undefined,
+        disciplineId:
+          typeof student.disciplineId === 'object' && student.disciplineId
+            ? student.disciplineId._id
+            : student.disciplineId || undefined,
       },
       assessment: byStudent[String(student._id)] || null,
     })),

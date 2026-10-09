@@ -41,6 +41,32 @@ function sortStudents(students) {
   });
 }
 
+function disciplineNameOf(student) {
+  if (!student) return '';
+  if (student.disciplineName) return String(student.disciplineName).trim();
+  const d = student.disciplineId;
+  if (typeof d === 'object' && d) return String(d.name || '').trim();
+  return '';
+}
+
+/** Unique discipline names on a roster (for award-list header). */
+function disciplineLabelFromStudents(students) {
+  const names = [
+    ...new Set(
+      (students || [])
+        .map((s) => disciplineNameOf(s))
+        .filter(Boolean)
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+  if (!names.length) return '';
+  if (names.length <= 3) return names.join(', ');
+  return `${names.slice(0, 3).join(', ')} +${names.length - 3}`;
+}
+
+function buildProgramLabel(className, sectionName, disciplineLabel) {
+  return [className, sectionName, disciplineLabel].filter(Boolean).join(' - ') || '—';
+}
+
 /** Truncate so text never wraps or bleeds into the next cell. */
 function fitText(doc, text, maxWidth) {
   let t = String(text ?? '');
@@ -72,7 +98,16 @@ function drawField(doc, label, value, x, y, totalWidth, fontSize = 9) {
 }
 
 function drawHeaderBlock(doc, meta, margin, contentW, logoPath) {
-  const { campus, programLabel, subjectName, totalMarks, testTypeLabel, testNumber, testDate } = meta;
+  const {
+    campus,
+    programLabel,
+    disciplineLabel,
+    subjectName,
+    totalMarks,
+    testTypeLabel,
+    testNumber,
+    testDate,
+  } = meta;
   let y = margin;
 
   const titleGap = 12;
@@ -119,12 +154,10 @@ function drawHeaderBlock(doc, meta, margin, contentW, logoPath) {
   doc.restore();
   doc.rect(margin, y, contentW, barH).strokeColor(LINE).lineWidth(0.8).stroke();
   doc.font('Helvetica-Bold').fontSize(9).fillColor('#000');
-  doc.text(
-    fitText(doc, `Program/Class/Section : ${programLabel}`, contentW - 12),
-    margin + 6,
-    y + 5,
-    { lineBreak: false }
-  );
+  const programText = disciplineLabel
+    ? `Program/Class/Section/Discipline : ${programLabel}`
+    : `Program/Class/Section : ${programLabel}`;
+  doc.text(fitText(doc, programText, contentW - 12), margin + 6, y + 5, { lineBreak: false });
   y += barH + 10;
 
   const rowGap = 16;
@@ -138,6 +171,11 @@ function drawHeaderBlock(doc, meta, margin, contentW, logoPath) {
   drawField(doc, 'Total Marks: ', totalMarks, midX, y, midW);
   drawField(doc, 'Pass Marks: ', '', rightX, y, rightW);
   y += rowGap;
+
+  if (disciplineLabel) {
+    drawField(doc, 'Discipline: ', disciplineLabel, margin, y, contentW);
+    y += rowGap;
+  }
 
   const half = (contentW - 12) / 2;
   drawField(doc, "Examiner's Name: ", '', margin, y, half);
@@ -159,7 +197,9 @@ function drawHeaderBlock(doc, meta, margin, contentW, logoPath) {
   return y;
 }
 
+/** Base header height; +16 when a Discipline row is printed. */
 const HEADER_BLOCK_H = LOGO_SIZE + 8 + 18 + 10 + 16 * 3 + 2 + 8;
+const HEADER_DISCIPLINE_EXTRA = 16;
 
 function drawFooterBlock(doc, studentCount, margin, contentW, pageH) {
   const footerH = 78;
@@ -216,9 +256,14 @@ function buildPdfFromSheets(sheets) {
       const rowH = 16;
       const headerH = 17;
       const footerReserve = 84;
-      const tableTop = margin + HEADER_BLOCK_H;
-      const usableH = pageH - tableTop - footerReserve - margin;
-      const maxRowsPerCol = Math.max(1, Math.floor((usableH - headerH) / rowH));
+
+      function rowsPerColumn(meta) {
+        const headerBlock =
+          HEADER_BLOCK_H + (meta?.disciplineLabel ? HEADER_DISCIPLINE_EXTRA : 0);
+        const tableTop = margin + headerBlock;
+        const usableH = pageH - tableTop - footerReserve - margin;
+        return Math.max(1, Math.floor((usableH - headerH) / rowH));
+      }
 
       function buildCols(tableW, dual) {
         const cols = [
@@ -291,6 +336,7 @@ function buildPdfFromSheets(sheets) {
       for (const sheet of sheets) {
         const students = sortStudents(sheet.students || []);
         const meta = { ...sheet.meta, campus: sheet.meta.campus || campus };
+        const maxRowsPerCol = rowsPerColumn(meta);
         const useTwoColumns = students.length > maxRowsPerCol;
         const perPage = useTwoColumns ? maxRowsPerCol * 2 : maxRowsPerCol;
         const pages = Math.max(1, Math.ceil(students.length / perPage) || 1);
@@ -353,7 +399,8 @@ async function renderAwardListPdf(testId, actor, sessionId) {
     typeof test.sectionId === 'object' && test.sectionId ? test.sectionId.sectionName : '';
   const subjectName =
     typeof test.subjectId === 'object' && test.subjectId ? test.subjectId.subjectName : '';
-  const programLabel = [className, sectionName].filter(Boolean).join(' - ') || '—';
+  const disciplineLabel = disciplineLabelFromStudents(students);
+  const programLabel = buildProgramLabel(className, sectionName, disciplineLabel);
   const testTypeLabel = assessmentTypeLabel(test.assessmentType) || 'Test';
   const testNumber =
     test.occurrenceIndex != null && test.occurrenceIndex !== ''
@@ -365,6 +412,7 @@ async function renderAwardListPdf(testId, actor, sessionId) {
       meta: {
         campus: ACADEMY_BRAND.name,
         programLabel,
+        disciplineLabel,
         subjectName,
         totalMarks: test.totalMarks != null ? String(test.totalMarks) : '',
         testTypeLabel,
@@ -379,9 +427,17 @@ async function renderAwardListPdf(testId, actor, sessionId) {
 async function loadExamStudents(exam) {
   const studentQ = { classId: exam.academyClass, status: 'active' };
   if (exam.sectionId) studentQ.sectionId = exam.sectionId;
-  return AcademyStudent.find(studentQ)
-    .select('studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects')
+  const rows = await AcademyStudent.find(studentQ)
+    .select(
+      'studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects disciplineId'
+    )
+    .populate('disciplineId', 'name code')
     .lean();
+  return rows.map((s) => ({
+    ...s,
+    disciplineName:
+      typeof s.disciplineId === 'object' && s.disciplineId ? s.disciplineId.name : undefined,
+  }));
 }
 
 function studentsForSubject(allStudents, subjectRef) {
@@ -412,7 +468,6 @@ async function renderExamAwardListPdf(examId, subjectId) {
     const sec = await AcademySection.findById(exam.sectionId).select('sectionName').lean();
     sectionName = sec?.sectionName || '';
   }
-  const programLabel = [className, sectionName].filter(Boolean).join(' - ') || '—';
   const testTypeLabel = exam.type || 'Exam';
   const allStudents = await loadExamStudents(exam);
 
@@ -440,17 +495,21 @@ async function renderExamAwardListPdf(examId, subjectId) {
   const sheets = papers.map((p, index) => {
     const subjectName =
       typeof p.subject === 'object' && p.subject ? p.subject.subjectName : '';
+    const students = studentsForSubject(allStudents, p.subject);
+    const disciplineLabel = disciplineLabelFromStudents(students);
+    const programLabel = buildProgramLabel(className, sectionName, disciplineLabel);
     return {
       meta: {
         campus: ACADEMY_BRAND.name,
         programLabel,
+        disciplineLabel,
         subjectName,
         totalMarks: p.totalMarks != null ? String(p.totalMarks) : '',
         testTypeLabel,
         testNumber: String(index + 1),
         testDate: formatDate(p.date || exam.startDate),
       },
-      students: studentsForSubject(allStudents, p.subject),
+      students,
     };
   });
 
