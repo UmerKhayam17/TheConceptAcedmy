@@ -254,6 +254,19 @@ export const updateTeacherProfile = (id: string, body: TeacherProfileInput) =>
 export const deleteTeacherProfile = (id: string) =>
   api<{ deleted: boolean }>(`/setup/teacher-profiles/${id}`, { method: "DELETE" });
 
+export type SyncAllTeacherProfilesResult = {
+  created: number;
+  skipped: number;
+  totalStaffTeachers: number;
+  totalProfiles: number;
+};
+
+export const syncAllTeacherProfiles = (sessionId: string) =>
+  api<SyncAllTeacherProfilesResult>("/setup/teacher-profiles/sync-all", {
+    method: "POST",
+    body: JSON.stringify({ session: sessionId }),
+  });
+
 // Assignments
 export const fetchTeacherAssignments = (params: {
   sessionId: string;

@@ -1,6 +1,7 @@
 const TeacherAssignment = require('../../models/timetable/TeacherAssignment');
 const ApiError = require('../../utils/ApiError');
 const { assertSessionWritable } = require('../session/sessionGuard');
+const { assertTeacherOnSessionRoster } = require('./teacherProfileService');
 
 function academyClassTransform(doc) {
   if (!doc) return doc;
@@ -45,6 +46,7 @@ async function getTeacherAssignment(id) {
 
 async function createTeacherAssignment(body, userId) {
   await assertSessionWritable(body.session);
+  await assertTeacherOnSessionRoster(body.session, body.teacher);
   return TeacherAssignment.create({ ...body, createdBy: userId });
 }
 
@@ -55,6 +57,7 @@ async function createTeacherAssignment(body, userId) {
 async function bulkSyncTeacherAssignments(body, userId) {
   const { session, teacher, assignments } = body;
   await assertSessionWritable(session);
+  await assertTeacherOnSessionRoster(session, teacher);
 
   const desiredKeys = new Set(
     assignments.map((a) => `${String(a.section)}:${String(a.subject)}`)
@@ -113,6 +116,8 @@ async function upsertSubjectTeacher(body, userId) {
     return { cleared: true, data: null };
   }
 
+  await assertTeacherOnSessionRoster(session, teacher);
+
   const row = await TeacherAssignment.create({
     session,
     class: classId,
@@ -160,6 +165,11 @@ async function syncSectionSubjectTeachers(body, userId) {
       createdBy: userId,
     }));
 
+  for (const row of toCreate) {
+    // eslint-disable-next-line no-await-in-loop
+    await assertTeacherOnSessionRoster(session, row.teacher);
+  }
+
   if (toCreate.length) {
     try {
       await TeacherAssignment.insertMany(toCreate, { ordered: false });
@@ -175,6 +185,9 @@ async function updateTeacherAssignment(id, body) {
   const existing = await TeacherAssignment.findById(id);
   if (!existing) throw new ApiError(404, 'Teacher assignment not found');
   await assertSessionWritable(existing.session);
+  if (body.teacher) {
+    await assertTeacherOnSessionRoster(existing.session, body.teacher);
+  }
   const row = await TeacherAssignment.findByIdAndUpdate(id, body, {
     new: true,
     runValidators: true,

@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
-import { fetchUsers } from "@/lib/usersApi";
+import { fetchStaffUsers } from "@/lib/staffApi";
 import { fetchSessions, type Weekday } from "@/lib/configApi";
 import {
   createTeacherProfile,
@@ -17,6 +17,7 @@ import {
   fetchPeriodTemplates,
   fetchRooms,
   fetchTeacherProfiles,
+  syncAllTeacherProfiles,
   updateTeacherProfile,
   type TeacherProfile,
   type TeacherProfileInput,
@@ -54,7 +55,10 @@ export default function TeacherProfilesTab({ sessionId, caps }: { sessionId: str
     enabled: !!sessionId,
   });
 
-  const { data: users = [] } = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
+  const { data: staffUsers = [] } = useQuery({
+    queryKey: ["users-module-list", "staff"],
+    queryFn: fetchStaffUsers,
+  });
   const { data: sessions = [] } = useQuery({ queryKey: ["sessions"], queryFn: () => fetchSessions() });
   const { data: templates = [] } = useQuery({
     queryKey: ["timetable-period-templates", sessionId],
@@ -87,8 +91,12 @@ export default function TeacherProfilesTab({ sessionId, caps }: { sessionId: str
 
   const profileUserIds = useMemo(() => new Set(profiles.map((p) => p.user?._id).filter(Boolean)), [profiles]);
 
-  const staffTeachers = users.filter((u) => {
-    const roleName = typeof u.role === "object" && u.role?.name ? u.role.name : "";
+  /** Staff teacher accounts not yet on this session roster (for manual add only). */
+  const teachersPendingProfile = staffUsers.filter((u) => {
+    const roleName =
+      typeof u.role === "object" && u.role?.name
+        ? u.role.name
+        : String(u.role || "").toLowerCase();
     return u.isActive !== false && roleName === "teacher" && !profileUserIds.has(u._id);
   });
 
@@ -172,6 +180,22 @@ export default function TeacherProfilesTab({ sessionId, caps }: { sessionId: str
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const syncMut = useMutation({
+    mutationFn: () => syncAllTeacherProfiles(sessionId),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: QK(sessionId) });
+      qc.invalidateQueries({ queryKey: ["timetable-teacher-profiles", sessionId] });
+      toast({
+        title: "Teachers synced",
+        description:
+          result.created > 0
+            ? `Added ${result.created} teacher profile${result.created === 1 ? "" : "s"} for this session.`
+            : "Every active teaching staff member already has a profile for this session.",
+      });
+    },
+    onError: (e: Error) => toast({ title: "Sync failed", description: e.message, variant: "destructive" }),
+  });
+
   const { search, setSearch, filtered: profilesFiltered } = usePanelListSearch(profiles, (p) => [
     p.user.name,
     p.user.email,
@@ -187,15 +211,29 @@ export default function TeacherProfilesTab({ sessionId, caps }: { sessionId: str
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
       <p className="text-sm text-muted-foreground max-w-3xl">
-        One profile per teacher for this session. It stores scheduling rules only: daily and weekly limits, available periods, and preferred rooms. Assign every class and subject under Subject Teachers. The same person can teach many subjects.
+        Session teachers appear here after sync or manual add. Timetable, subject teachers, and class teachers use this roster — not the general staff list. Sync pulls every active teaching staff account into this session with default scheduling limits.
       </p>
-      <div className="flex flex-wrap items-center gap-2 justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <PanelSearchBar value={search} onChange={setSearch} placeholder="Search teacher name or email…" className="max-w-md" />
-        {caps.canCreate && (
-          <Button className="gap-2 shrink-0" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add teacher profile
-          </Button>
-        )}
+        <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row">
+          {caps.canCreate && (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full justify-center gap-2 sm:h-9 sm:w-auto"
+              disabled={syncMut.isPending}
+              onClick={() => syncMut.mutate()}
+            >
+              <RefreshCw className={`h-4 w-4 shrink-0 ${syncMut.isPending ? "animate-spin" : ""}`} />
+              {syncMut.isPending ? "Syncing…" : "Sync all teachers"}
+            </Button>
+          )}
+          {caps.canCreate && (
+            <Button className="h-10 w-full justify-center gap-2 shrink-0 sm:h-9 sm:w-auto" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add teacher profile
+            </Button>
+          )}
+        </div>
       </div>
       <Card className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -262,7 +300,7 @@ export default function TeacherProfilesTab({ sessionId, caps }: { sessionId: str
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label>Staff teacher</Label>
+              <Label>Teacher</Label>
               {editing ? (
                 <p className="mt-1 text-sm font-medium">{editing.user.name}</p>
               ) : (
@@ -271,15 +309,15 @@ export default function TeacherProfilesTab({ sessionId, caps }: { sessionId: str
                   value={userId}
                   onChange={(e) => setUserId(e.target.value)}
                 >
-                  <option value="">Select a teacher account</option>
-                  {staffTeachers.map((t) => (
+                  <option value="">Select teaching staff to add</option>
+                  {teachersPendingProfile.map((t) => (
                     <option key={t._id} value={t._id}>{t.name} ({t.email})</option>
                   ))}
                 </select>
               )}
-              {!editing && staffTeachers.length === 0 && (
+              {!editing && teachersPendingProfile.length === 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Create a teacher login in Staff first. Accountants are not added here.
+                  All active teaching staff are on this session roster, or none exist in Staff yet. Use Sync all teachers to add missing profiles.
                 </p>
               )}
             </div>

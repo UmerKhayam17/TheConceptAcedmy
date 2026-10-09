@@ -70,7 +70,7 @@ export default function SectionsTab({
   });
 
   const roster = rosterTeachers(teacherProfiles);
-  const staffTeachers =
+  const sectionTeacherOptions =
     form.teacherId && !roster.some((t) => t._id === form.teacherId) && edit?.teacher
       ? [...roster, { _id: edit.teacher._id, name: edit.teacher.name }]
       : roster;
@@ -353,15 +353,15 @@ export default function SectionsTab({
                 onChange={(e) => setForm((f) => ({ ...f, teacherId: e.target.value }))}
               >
                 <option value="">None</option>
-                {staffTeachers.map((t) => (
+                {sectionTeacherOptions.map((t) => (
                   <option key={t._id} value={t._id}>
                     {t.name}
                   </option>
                 ))}
               </select>
-              {staffTeachers.length === 0 && (
+              {sectionTeacherOptions.length === 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Add a teacher profile for this session first.
+                  Sync teachers for this session under System Config → Teachers.
                 </p>
               )}
             </div>

@@ -39,6 +39,12 @@ router.delete('/setup/period-templates/:id', canManage, setup.deletePeriodTempla
 
 // ─── Setup: Teacher profiles ────────────────────────────────────
 router.get('/setup/teacher-profiles', canView, setup.listTeacherProfiles);
+router.post(
+  '/setup/teacher-profiles/sync-all',
+  canManage,
+  validate(schemas.teacherProfileSyncAllBody),
+  setup.syncAllTeacherProfiles
+);
 router.get('/setup/teacher-profiles/:id', canView, setup.getTeacherProfile);
 router.post(
   '/setup/teacher-profiles',

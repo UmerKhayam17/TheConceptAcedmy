@@ -83,6 +83,14 @@ const deleteTeacherProfile = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const syncAllTeacherProfiles = catchAsync(async (req, res) => {
+  const data = await teacherProfileService.syncAllTeacherProfilesFromStaff(
+    { sessionId: req.body.session },
+    req.user._id
+  );
+  res.json({ success: true, data });
+});
+
 const { roleNameOf } = require('../../utils/parentScope');
 
 // Teacher assignments
@@ -152,6 +160,7 @@ module.exports = {
   createTeacherProfile,
   updateTeacherProfile,
   deleteTeacherProfile,
+  syncAllTeacherProfiles,
   listTeacherAssignments,
   createTeacherAssignment,
   bulkSyncTeacherAssignments,

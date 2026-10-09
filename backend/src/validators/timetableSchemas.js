@@ -85,6 +85,10 @@ const teacherProfilePatch = teacherProfileBody
   .prefs({ noDefaults: true })
   .min(1);
 
+const teacherProfileSyncAllBody = Joi.object({
+  session: objectId.required(),
+});
+
 const teacherAssignmentBody = Joi.object({
   session: objectId.required(),
   class: objectId.required(),
@@ -293,6 +297,7 @@ module.exports = {
   periodTemplatePatch,
   teacherProfileBody,
   teacherProfilePatch,
+  teacherProfileSyncAllBody,
   teacherAssignmentBody,
   teacherAssignmentPatch,
   teacherAssignmentBulkBody,
