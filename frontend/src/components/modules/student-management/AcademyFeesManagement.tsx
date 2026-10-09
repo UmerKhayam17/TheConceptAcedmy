@@ -139,6 +139,10 @@ function studentName(rec: AcademyFeeRecord) {
   return studentFromRecord(rec)?.studentName ?? "—";
 }
 
+function fatherName(rec: AcademyFeeRecord) {
+  return studentFromRecord(rec)?.fatherName?.trim() || "—";
+}
+
 function studentCode(rec: AcademyFeeRecord) {
   return studentFromRecord(rec)?.studentId ?? "";
 }
@@ -193,11 +197,11 @@ function PaymentSlipThumb({ path, onOpen }: { path: string; onOpen: () => void }
       <button
         type="button"
         onClick={onOpen}
-        className="inline-flex h-16 w-[4.5rem] flex-col items-center justify-center gap-0.5 rounded-md border border-[#D6E4F7] bg-[#F4F8FF] text-[#10244A]"
+        className="group inline-flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-border bg-muted/40 text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 sm:h-16 sm:w-[4.75rem]"
         title="View payment slip"
       >
-        <FileText className="h-5 w-5" />
-        <span className="text-[10px] font-semibold">PDF</span>
+        <FileText className="h-5 w-5 text-primary" />
+        <span className="text-[10px] font-semibold tracking-wide">PDF</span>
       </button>
     );
   }
@@ -205,10 +209,20 @@ function PaymentSlipThumb({ path, onOpen }: { path: string; onOpen: () => void }
     <button
       type="button"
       onClick={onOpen}
-      className="inline-block overflow-hidden rounded-md border border-[#D6E4F7] bg-white"
+      className="group relative inline-flex h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border bg-muted/30 shadow-sm transition-colors hover:border-primary/40 sm:h-16 sm:w-[4.75rem]"
       title="View payment slip"
     >
-      <img src={src} alt="Payment slip" className="h-16 w-20 object-cover" />
+      <img
+        src={src}
+        alt="Payment slip"
+        className="h-full w-full object-cover"
+        loading="lazy"
+      />
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/35">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/95 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+          <Eye className="h-3.5 w-3.5 text-foreground" />
+        </span>
+      </span>
     </button>
   );
 }
@@ -776,7 +790,15 @@ export default function AcademyFeesManagement({
   const canPay = !isParent && (caps.canEdit || caps.canCreate);
   const canEditFee = !isParent && writable && (caps.canEdit || caps.canCreate);
   const canGenerate = showGenerate && !studentId && !isParent && writable && (caps.canCreate || caps.canEdit);
-  const feeTableColSpan = childScoped ? (isParent ? 8 : 9) : 11;
+  /** Slip number / slip / payment date only when viewing paid fees. */
+  const showPaidPaymentCols = isParent || effectiveStatusFilter === "paid";
+  /** Pending months only for unpaid / mixed views — not when filtering to paid. */
+  const showPendingMonthsCol = !isParent && effectiveStatusFilter !== "paid";
+  const feeTableColSpan =
+    6 + // receipt, period, type, amount, status, actions
+    (childScoped ? 0 : 3) + // student, father, class
+    (showPaidPaymentCols ? 3 : 0) +
+    (showPendingMonthsCol ? 1 : 0);
 
   const downloadMonthWise = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
@@ -927,35 +949,37 @@ export default function AcademyFeesManagement({
           </div>
 
           {!isParent && (canGenerate || caps.canView || caps.canEdit || caps.canCreate) && (
-            <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
+            <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border pt-3 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
               {!studentId && (caps.canEdit || caps.canCreate) && writable && (
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-9 gap-1.5 whitespace-nowrap rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground"
+                  className="h-10 w-full justify-center gap-1.5 rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground sm:h-9 sm:w-auto sm:whitespace-nowrap"
                   onClick={() => setEnrollmentWizardOpen(true)}
                 >
-                  <Receipt className="h-4 w-4 text-primary" />
+                  <Receipt className="h-4 w-4 shrink-0 text-primary" />
                   Enrollment voucher
                 </Button>
               )}
               {canGenerate && (
                 <Button
-                  className="h-9 gap-1.5 whitespace-nowrap rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  className="h-10 w-full justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-9 sm:w-auto sm:whitespace-nowrap"
                   disabled={genMut.isPending}
                   onClick={() => genMut.mutate()}
                 >
-                  <Download className="h-4 w-4" />
+                  <Download className="h-4 w-4 shrink-0" />
                   {genMut.isPending ? "Generating…" : "Generate Report"}
                 </Button>
               )}
               {!studentId && caps.canView && (
-                <DefaulterListDownload
-                  className="h-9 whitespace-nowrap rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground"
-                  label="Download Defaulter List"
-                  exporting={exportingMonthWise}
-                  onDownload={(format) => void downloadMonthWise(format)}
-                />
+                <div className="w-full sm:w-auto">
+                  <DefaulterListDownload
+                    className="h-10 w-full justify-between rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground sm:h-9 sm:w-auto sm:justify-center sm:whitespace-nowrap"
+                    label="Download Defaulter List"
+                    exporting={exportingMonthWise}
+                    onDownload={(format) => void downloadMonthWise(format)}
+                  />
+                </div>
               )}
             </div>
           )}
@@ -1000,16 +1024,28 @@ export default function AcademyFeesManagement({
                 <th className="text-left p-2.5 font-medium">Receipt</th>
                 {!childScoped && <th className="text-left p-2.5 font-medium">Student</th>}
                 {!childScoped && (
+                  <th className="text-left p-2.5 font-medium hidden sm:table-cell">Father</th>
+                )}
+                {!childScoped && (
                   <th className="text-left p-2.5 font-medium hidden md:table-cell">Class</th>
                 )}
                 <th className="text-left p-2.5 font-medium">Period</th>
                 <th className="text-left p-2.5 font-medium">Type</th>
                 <th className="text-left p-2.5 font-medium">Amount</th>
                 <th className="text-left p-2.5 font-medium">Status</th>
-                <th className="text-left p-2.5 font-medium">Slip</th>
-                <th className="text-left p-2.5 font-medium whitespace-nowrap">Payment date</th>
-                {!isParent && <th className="text-left p-2.5 font-medium">Pending months</th>}
-                <th className="text-right p-2.5 font-medium">Actions</th>
+                {showPaidPaymentCols && (
+                  <th className="text-left p-2.5 font-semibold whitespace-nowrap text-foreground">Slip number</th>
+                )}
+                {showPaidPaymentCols && (
+                  <th className="text-left p-2.5 font-medium whitespace-nowrap min-w-[4.5rem] sm:min-w-[5.5rem]">Slip</th>
+                )}
+                {showPaidPaymentCols && (
+                  <th className="text-left p-2.5 font-medium whitespace-nowrap">Payment date</th>
+                )}
+                {showPendingMonthsCol && (
+                  <th className="text-left p-2.5 font-medium">Pending months</th>
+                )}
+                <th className="text-right p-2.5 font-medium whitespace-nowrap min-w-[5.5rem]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1075,6 +1111,9 @@ export default function AcademyFeesManagement({
                       </td>
                     )}
                     {!childScoped && (
+                      <td className="p-2.5 hidden sm:table-cell">{fatherName(r)}</td>
+                    )}
+                    {!childScoped && (
                       <td className="p-2.5 hidden md:table-cell">{classNameFromRecord(r)}</td>
                     )}
                     <td className="p-2.5">{periodLabel(r)}</td>
@@ -1095,36 +1134,46 @@ export default function AcademyFeesManagement({
                     <td className="p-2.5">
                       <StatusPill status={r.status} />
                     </td>
-                    <td className="p-2.5">
-                      {r.status === "paid" && (r.paymentSlip || r.paymentSlipNumber) ? (
-                        <div className="space-y-1">
-                          {r.paymentSlipNumber ? (
-                            <div className="font-mono text-xs">{r.paymentSlipNumber}</div>
-                          ) : null}
-                          {r.paymentSlip ? (
-                            <PaymentSlipThumb
-                              path={r.paymentSlip}
-                              onOpen={() =>
-                                setSlipPreview({
-                                  src: resolveUploadUrl(r.paymentSlip!),
-                                  isPdf: isPdfSlip(r.paymentSlip!),
-                                })
-                              }
-                            />
-                          ) : null}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="p-2.5 whitespace-nowrap text-muted-foreground">
-                      {r.status === "paid" && r.paidAt
-                        ? new Date(r.paidAt).toLocaleDateString()
-                        : "—"}
-                    </td>
-                    {!isParent && (
+                    {showPaidPaymentCols && (
+                      <td className="p-2.5 whitespace-nowrap">
+                        {r.status === "paid" && r.paymentSlipNumber ? (
+                          <span className="font-mono text-base font-bold tracking-wide text-primary sm:text-lg">
+                            {r.paymentSlipNumber}
+                          </span>
+                        ) : r.status === "paid" ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : null}
+                      </td>
+                    )}
+                    {showPaidPaymentCols && (
+                      <td className="p-2.5 align-middle">
+                        {r.status === "paid" && r.paymentSlip ? (
+                          <PaymentSlipThumb
+                            path={r.paymentSlip}
+                            onOpen={() =>
+                              setSlipPreview({
+                                src: resolveUploadUrl(r.paymentSlip!),
+                                isPdf: isPdfSlip(r.paymentSlip!),
+                              })
+                            }
+                          />
+                        ) : r.status === "paid" ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : null}
+                      </td>
+                    )}
+                    {showPaidPaymentCols && (
+                      <td className="p-2.5 whitespace-nowrap text-muted-foreground">
+                        {r.status === "paid" && r.paidAt
+                          ? new Date(r.paidAt).toLocaleDateString()
+                          : r.status === "paid"
+                            ? "—"
+                            : null}
+                      </td>
+                    )}
+                    {showPendingMonthsCol && (
                       <td className="p-2.5">
-                        {(r.unpaidMonthCount || 0) > 0 ? (
+                        {r.status === "paid" ? null : (r.unpaidMonthCount || 0) > 0 ? (
                           <div>
                             <p className="font-semibold">
                               {r.unpaidMonthCount} month{r.unpaidMonthCount === 1 ? "" : "s"}
@@ -1138,8 +1187,8 @@ export default function AcademyFeesManagement({
                         )}
                       </td>
                     )}
-                    <td className="p-2.5 text-right">
-                      <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                    <td className="p-2.5 text-right whitespace-nowrap">
+                      <div className="inline-flex flex-nowrap items-center justify-end gap-1.5">
                         {payable && canPay && (
                           <Button
                             size="sm"
@@ -1425,16 +1474,24 @@ export default function AcademyFeesManagement({
                     <option value="other">Other</option>
                   </select>
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="payment-slip-number">Payment slip number</Label>
-                <Input
-                  id="payment-slip-number"
-                  value={paymentSlipNumber}
-                  onChange={(e) => setPaymentSlipNumber(e.target.value)}
-                  placeholder="Bank / cash slip number"
-                  maxLength={100}
-                />
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor="payment-slip-number">Payment slip number</Label>
+                  <Input
+                    id="payment-slip-number"
+                    value={paymentSlipNumber}
+                    onChange={(e) => setPaymentSlipNumber(e.target.value)}
+                    placeholder="Bank / cash slip number"
+                    maxLength={100}
+                  />
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  <Label>Notes (optional)</Label>
+                  <Input
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    placeholder="Reference or remarks"
+                  />
+                </div>
               </div>
               <PaymentSlipUploadBox
                 file={paymentSlip}
@@ -1458,14 +1515,6 @@ export default function AcademyFeesManagement({
                   })
                 }
               />
-              <div className="space-y-1.5">
-                <Label>Notes (optional)</Label>
-                <Input
-                  value={paymentNotes}
-                  onChange={(e) => setPaymentNotes(e.target.value)}
-                  placeholder="Reference or remarks"
-                />
-              </div>
             </div>
           )}
           <DialogFooter>
