@@ -1540,6 +1540,152 @@ async function loadUnpaidMonthlyFees({ classId, month, year, search, sessionId }
   return records;
 }
 
+function paidFeePeriodLabel(record) {
+  if (record.feeType === 'admission') return 'Admission';
+  const name = MONTH_NAMES[(Number(record.month) || 1) - 1] || '';
+  return `${name} ${record.year || ''}`.trim();
+}
+
+function paidFeeTypeLabel(feeType) {
+  if (feeType === 'admission') return 'Admission';
+  if (feeType === 'stationery') return 'Stationery';
+  return 'Monthly';
+}
+
+function paymentMethodExportLabel(method) {
+  const map = {
+    cash: 'Cash',
+    bank_transfer: 'Bank transfer',
+    online: 'Online',
+    other: 'Other',
+  };
+  return map[method] || method || '';
+}
+
+async function loadPaidFees({ classId, month, year, search, sessionId, feeType }) {
+  const base = await buildFeeQuery({
+    classId,
+    month,
+    year,
+    sessionId,
+    status: 'paid',
+    feeType,
+  });
+  const q = await applyFeeRecordSearch(base, search);
+  const records = await AcademyFeeRecord.find(q)
+    .populate({
+      path: 'studentId',
+      select: 'studentId registrationNumber studentName fatherName phone classId status',
+      populate: { path: 'classId', select: 'className' },
+    })
+    .sort({ paidAt: -1, year: -1, month: -1 })
+    .lean();
+  return records.filter((r) => r.studentId && r.studentId.status === 'active');
+}
+
+function buildPaidCollectionReport(records) {
+  const rows = records.map((record, index) => {
+    const student = record.studentId;
+    return {
+      serial: index + 1,
+      receiptNumber: record.receiptNumber || '',
+      studentId: student?.studentId || student?.registrationNumber || '',
+      studentName: student?.studentName || '',
+      fatherName: student?.fatherName || '',
+      className: student?.classId?.className || '',
+      period: paidFeePeriodLabel(record),
+      feeType: paidFeeTypeLabel(record.feeType),
+      amount: Number(record.amount) || 0,
+      paidAt: record.paidAt ? new Date(record.paidAt).toISOString().slice(0, 10) : '',
+      paymentMethod: paymentMethodExportLabel(record.paymentMethod),
+      slipNumber: record.paymentSlipNumber || '',
+      notes: record.notes || '',
+    };
+  });
+
+  if (rows.length) {
+    const total = rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    rows.push({
+      _isTotal: true,
+      serial: '',
+      receiptNumber: '',
+      studentId: '',
+      studentName: 'Total',
+      fatherName: '',
+      className: '',
+      period: '',
+      feeType: '',
+      amount: total,
+      paidAt: '',
+      paymentMethod: '',
+      slipNumber: '',
+      notes: '',
+    });
+  }
+
+  // Keep total pdfWidth ≤ ~778 (A4 landscape inner width) so columns don't clip.
+  const columns = [
+    { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 24, align: 'center' },
+    { key: 'receiptNumber', header: 'Receipt', excelWidth: 18, pdfWidth: 62, wrap: true },
+    { key: 'studentId', header: 'Student ID', excelWidth: 22, pdfWidth: 88 },
+    { key: 'studentName', header: 'Student', excelWidth: 24, pdfWidth: 105, wrap: true },
+    { key: 'fatherName', header: 'Father', excelWidth: 22, pdfWidth: 100, wrap: true },
+    { key: 'className', header: 'Class', excelWidth: 12, pdfWidth: 36 },
+    { key: 'period', header: 'Period', excelWidth: 14, pdfWidth: 58, wrap: true },
+    { key: 'feeType', header: 'Type', excelWidth: 11, pdfWidth: 40 },
+    { key: 'amount', header: 'Amount', excelWidth: 12, pdfWidth: 46, align: 'right', numFmt: '#,##0' },
+    { key: 'paidAt', header: 'Payment date', excelWidth: 14, pdfWidth: 62 },
+    { key: 'paymentMethod', header: 'Method', excelWidth: 12, pdfWidth: 36 },
+    { key: 'slipNumber', header: 'Slip no.', excelWidth: 14, pdfWidth: 52 },
+    { key: 'notes', header: 'Notes', excelWidth: 32, pdfWidth: 68, wrap: true },
+  ];
+
+  return { columns, rows };
+}
+
+function paidFeesToCsv(records) {
+  const { columns, rows } = buildPaidCollectionReport(records);
+  const header = columns.map((c) => c.header);
+  const body = rows.map((row) => columns.map((col) => row[col.key]));
+  return [header, ...body].map((r) => r.map(escapeCsvCell).join(',')).join('\n');
+}
+
+async function exportPaidFees({ classId, month, year, search, sessionId, feeType }) {
+  const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType });
+  return paidFeesToCsv(records);
+}
+
+async function exportPaidFeesReport({ classId, month, year, search, sessionId, feeType, format }) {
+  const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType });
+  const { columns, rows } = buildPaidCollectionReport(records);
+  const title = 'Paid fee collection report';
+  const filterBits = [];
+  if (month && year) filterBits.push(`${MONTH_NAMES[Number(month) - 1]} ${year}`);
+  else if (year) filterBits.push(String(year));
+  else filterBits.push('All paid vouchers');
+  if (feeType) filterBits.push(paidFeeTypeLabel(feeType));
+  const voucherCount = rows.length ? rows.length - 1 : 0;
+  const meta = {
+    filterLine: filterBits.join(' · '),
+    countLabel: `${voucherCount} paid voucher${voucherCount === 1 ? '' : 's'}`,
+    generatedAt: new Date(),
+  };
+  const payload = {
+    title,
+    sheetName: 'Paid fees',
+    confidentialLabel: 'Paid fee collection',
+    subject: 'Paid student fees',
+    columns,
+    rows,
+    meta,
+    emptyMessage: 'No paid fees for the selected filters.',
+  };
+  if (String(format).toLowerCase() === 'pdf') {
+    return renderBrandedPdf(payload);
+  }
+  return renderBrandedExcel(payload);
+}
+
 async function exportFeeDefaultersMonthWise({ classId, month, year, search, sessionId, format }) {
   const records = await loadUnpaidMonthlyFees({ classId, month, year, search, sessionId });
   const { columns, rows } = buildDefaulterReport(records);
@@ -1588,5 +1734,7 @@ module.exports = {
   getDefaultersSummary,
   exportFeeDefaulters,
   exportFeeDefaultersMonthWise,
+  exportPaidFees,
+  exportPaidFeesReport,
   receiptNumber,
 };

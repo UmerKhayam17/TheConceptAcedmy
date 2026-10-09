@@ -1473,6 +1473,45 @@ export const exportFeeDefaultersMonthWise = async (
   return res.blob();
 };
 
+export type PaidFeeExportParams = {
+  classId?: string;
+  month?: number;
+  year?: number;
+  search?: string;
+  sessionId?: string;
+  feeType?: "admission" | "monthly" | "stationery";
+};
+
+export const exportPaidFeesCsv = async (params?: PaidFeeExportParams) => {
+  const q = new URLSearchParams();
+  if (params?.classId) q.set("classId", params.classId);
+  if (params?.month) q.set("month", String(params.month));
+  if (params?.year) q.set("year", String(params.year));
+  if (params?.search) q.set("search", params.search);
+  if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.feeType) q.set("feeType", params.feeType);
+  const res = await authedFetch(`/student-management/fees/paid/export?${q}`, { method: "GET" });
+  if (!res.ok) throw new Error("Export failed");
+  return res.blob();
+};
+
+export const exportPaidFeesReport = async (
+  params?: PaidFeeExportParams,
+  format: DefaulterReportFormat = "xlsx"
+) => {
+  const q = new URLSearchParams();
+  q.set("format", format);
+  if (params?.classId) q.set("classId", params.classId);
+  if (params?.month) q.set("month", String(params.month));
+  if (params?.year) q.set("year", String(params.year));
+  if (params?.search) q.set("search", params.search);
+  if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.feeType) q.set("feeType", params.feeType);
+  const res = await authedFetch(`/student-management/fees/paid/export-report?${q}`, { method: "GET" });
+  if (!res.ok) throw new Error("Export failed");
+  return res.blob();
+};
+
 // Teacher / staff salary
 export interface AcademySalaryRecord {
   _id: string;

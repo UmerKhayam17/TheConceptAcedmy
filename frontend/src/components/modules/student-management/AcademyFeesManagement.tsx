@@ -45,6 +45,7 @@ import {
   fetchAcademyStudents,
   fetchStudentFeeHistory,
   exportFeeDefaultersMonthWise,
+  exportPaidFeesReport,
   type DefaulterReportFormat,
   generateMonthlyFees,
   payAcademyFees,
@@ -462,6 +463,10 @@ export default function AcademyFeesManagement({
   routes: routesProp,
   showGenerate = true,
   showFilters = true,
+  /** Hide enrollment / generate / defaulter download action row */
+  showBulkActions = true,
+  /** Lock status filter (e.g. "paid" for the Paid tab) */
+  lockedStatus,
   sessionId = "",
 }: {
   caps: ModuleActionCaps;
@@ -470,6 +475,8 @@ export default function AcademyFeesManagement({
   routes?: AcademyStudentRoutes;
   showGenerate?: boolean;
   showFilters?: boolean;
+  showBulkActions?: boolean;
+  lockedStatus?: "" | "paid" | "pending" | "overdue" | "waived";
   /** Academic session scope from SessionBar (ignored for parents / student detail). */
   sessionId?: string;
 }) {
@@ -481,11 +488,14 @@ export default function AcademyFeesManagement({
     routesProp ?? (user?.role ? academyStudentRoutes(user.role, "records") : null);
   const { apiSessionId, writable, hasScope } = useSessionScope(sessionId || "");
   const scopeEnabled = isParent || Boolean(studentId) || hasScope;
+  const paidOnlyView = lockedStatus === "paid";
 
   const now = new Date();
-  const [month, setMonth] = useState(String(now.getMonth() + 1));
-  const [year, setYear] = useState(String(now.getFullYear()));
-  const [statusFilter, setStatusFilter] = useState(() => (user?.role === "parent" ? "paid" : ""));
+  const [month, setMonth] = useState(() => (paidOnlyView ? "" : String(now.getMonth() + 1)));
+  const [year, setYear] = useState(() => (paidOnlyView ? "" : String(now.getFullYear())));
+  const [statusFilter, setStatusFilter] = useState(() =>
+    lockedStatus || (user?.role === "parent" ? "paid" : "")
+  );
   const [classFilter, setClassFilter] = useState("");
   const [selectedParentStudentId, setSelectedParentStudentId] = useState<string>(() => {
     try {
@@ -510,6 +520,7 @@ export default function AcademyFeesManagement({
   const [slipInputKey, setSlipInputKey] = useState(0);
   const [slipPreview, setSlipPreview] = useState<SlipPreviewState | null>(null);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
+  const [exportingPaidReport, setExportingPaidReport] = useState<DefaulterReportFormat | null>(null);
   const [enrollmentWizardOpen, setEnrollmentWizardOpen] = useState(false);
   const [assignSectionStudentId, setAssignSectionStudentId] = useState<string | null>(null);
 
@@ -520,14 +531,18 @@ export default function AcademyFeesManagement({
 
   const filterParams = useMemo(
     () => ({
-      month: effectiveStudentId ? undefined : Number(month),
-      year: effectiveStudentId ? undefined : Number(year),
+      month: effectiveStudentId ? undefined : month ? Number(month) : undefined,
+      year: effectiveStudentId ? undefined : year ? Number(year) : undefined,
       classId: effectiveStudentId || isParent ? undefined : classFilter || undefined,
       studentId: effectiveStudentId,
       sessionId: effectiveStudentId || isParent ? undefined : apiSessionId,
     }),
     [month, year, classFilter, effectiveStudentId, isParent, apiSessionId]
   );
+
+  useEffect(() => {
+    if (lockedStatus) setStatusFilter(lockedStatus);
+  }, [lockedStatus]);
 
   useEffect(() => {
     setPage(1);
@@ -800,6 +815,40 @@ export default function AcademyFeesManagement({
     (showPaidPaymentCols ? 3 : 0) +
     (showPendingMonthsCol ? 1 : 0);
 
+  const paidExportParams = useMemo(
+    () => ({
+      month: month ? Number(month) : undefined,
+      year: year ? Number(year) : undefined,
+      classId: classFilter || undefined,
+      feeType: feeTypeFilter || undefined,
+      search: search.trim() || undefined,
+      sessionId: apiSessionId,
+    }),
+    [month, year, classFilter, feeTypeFilter, search, apiSessionId]
+  );
+
+  const downloadPaidReport = async (format: DefaulterReportFormat) => {
+    setExportingPaidReport(format);
+    try {
+      const blob = await exportPaidFeesReport(paidExportParams, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = format === "pdf" ? "paid-fees.pdf" : "paid-fees.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+    } catch (e) {
+      toast({
+        title: "Export failed",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setExportingPaidReport(null);
+    }
+  };
+
   const downloadMonthWise = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
     try {
@@ -875,15 +924,17 @@ export default function AcademyFeesManagement({
                     onChange={setMonth}
                     leadingIcon={<CalendarDays className="h-3.5 w-3.5" />}
                   >
+                    {paidOnlyView ? <option value="">All months</option> : null}
                     {MONTH_NAMES.map((name, idx) => (
                       <option key={name} value={String(idx + 1)}>
-                        {name} {year}
+                        {name} {year || now.getFullYear()}
                       </option>
                     ))}
                   </FeeFilterSelect>
                 </FeeFilterField>
                 <FeeFilterField label="Year">
                   <FeeFilterSelect value={year} onChange={setYear}>
+                    {paidOnlyView ? <option value="">All years</option> : null}
                     {Array.from({ length: 6 }, (_, i) => {
                       const y = String(Number(now.getFullYear()) - 2 + i);
                       return (
@@ -904,15 +955,17 @@ export default function AcademyFeesManagement({
                     ))}
                   </FeeFilterSelect>
                 </FeeFilterField>
-                <FeeFilterField label="Status">
-                  <FeeFilterSelect value={statusFilter} onChange={setStatusFilter}>
-                    <option value="">All</option>
-                    <option value="pending">Pending</option>
-                    <option value="paid">Paid</option>
-                    <option value="overdue">Overdue</option>
-                    <option value="waived">Waived</option>
-                  </FeeFilterSelect>
-                </FeeFilterField>
+                {!lockedStatus && (
+                  <FeeFilterField label="Status">
+                    <FeeFilterSelect value={statusFilter} onChange={setStatusFilter}>
+                      <option value="">All</option>
+                      <option value="pending">Pending</option>
+                      <option value="paid">Paid</option>
+                      <option value="overdue">Overdue</option>
+                      <option value="waived">Waived</option>
+                    </FeeFilterSelect>
+                  </FeeFilterField>
+                )}
                 <FeeFilterField label="Type">
                   <FeeFilterSelect value={feeTypeFilter} onChange={setFeeTypeFilter}>
                     <option value="">All types</option>
@@ -948,9 +1001,23 @@ export default function AcademyFeesManagement({
             </div>
           </div>
 
-          {!isParent && (canGenerate || caps.canView || caps.canEdit || caps.canCreate) && (
+          {!isParent &&
+            ((showBulkActions &&
+              (canGenerate || caps.canView || caps.canEdit || caps.canCreate)) ||
+              (paidOnlyView && caps.canView)) && (
             <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border pt-3 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
-              {!studentId && (caps.canEdit || caps.canCreate) && writable && (
+              {paidOnlyView && caps.canView && (
+                <div className="w-full sm:w-auto">
+                  <DefaulterListDownload
+                    variant="default"
+                    className="h-10 w-full justify-between rounded-md px-3 text-sm font-medium sm:h-9 sm:w-auto sm:justify-center sm:whitespace-nowrap"
+                    label="Download paid report"
+                    exporting={exportingPaidReport}
+                    onDownload={(format) => void downloadPaidReport(format)}
+                  />
+                </div>
+              )}
+              {showBulkActions && !studentId && (caps.canEdit || caps.canCreate) && writable && (
                 <Button
                   type="button"
                   variant="outline"
@@ -961,7 +1028,7 @@ export default function AcademyFeesManagement({
                   Enrollment voucher
                 </Button>
               )}
-              {canGenerate && (
+              {showBulkActions && canGenerate && (
                 <Button
                   className="h-10 w-full justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-9 sm:w-auto sm:whitespace-nowrap"
                   disabled={genMut.isPending}
@@ -971,7 +1038,7 @@ export default function AcademyFeesManagement({
                   {genMut.isPending ? "Generating…" : "Generate Report"}
                 </Button>
               )}
-              {!studentId && caps.canView && (
+              {showBulkActions && !studentId && caps.canView && (
                 <div className="w-full sm:w-auto">
                   <DefaulterListDownload
                     className="h-10 w-full justify-between rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground sm:h-9 sm:w-auto sm:justify-center sm:whitespace-nowrap"
@@ -1070,7 +1137,9 @@ export default function AcademyFeesManagement({
                       ? "No fee records for this child yet."
                       : studentId
                         ? "No fee records for this student yet."
-                        : "No fee records for this period. Generate monthly fees or register students."}
+                        : paidOnlyView
+                          ? "No paid fees for the selected filters."
+                          : "No fee records for this period. Generate monthly fees or register students."}
                   </td>
                 </tr>
               )}

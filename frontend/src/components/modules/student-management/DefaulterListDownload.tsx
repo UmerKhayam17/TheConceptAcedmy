@@ -18,27 +18,33 @@ export function DefaulterListDownload({
   onDownload,
   className,
   label = "Download defaulter list",
+  variant = "outline",
 }: {
   exporting: DefaulterReportFormat | null;
   onDownload: (format: DefaulterReportFormat) => void;
   className?: string;
   label?: string;
+  variant?: "outline" | "default";
 }) {
+  const isPrimary = variant === "default";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           size="sm"
-          variant="outline"
+          variant={variant}
           className={cn(
-            "h-9 gap-2 bg-background shadow-sm whitespace-normal text-left leading-tight",
+            "h-9 gap-2 shadow-sm whitespace-normal text-left leading-tight",
+            !isPrimary && "bg-background",
+            isPrimary &&
+              "border-0 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
             className,
           )}
           disabled={Boolean(exporting)}
         >
           <Download className="h-4 w-4 shrink-0" />
           <span className="min-w-0">{exporting ? "Downloading…" : label}</span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+          <ChevronDown className={cn("h-3.5 w-3.5 shrink-0", isPrimary ? "opacity-90" : "opacity-70")} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60 p-1.5 shadow-lg">

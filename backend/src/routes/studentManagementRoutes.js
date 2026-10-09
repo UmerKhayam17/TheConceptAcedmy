@@ -437,6 +437,18 @@ router.get(
   feeCtrl.defaulters
 );
 router.get(
+  '/fees/paid/export',
+  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  validate(schemas.feePaidExportQuery),
+  feeCtrl.exportPaidFees
+);
+router.get(
+  '/fees/paid/export-report',
+  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  validate(schemas.feePaidExportQuery),
+  feeCtrl.exportPaidFeesReport
+);
+router.get(
   '/fees',
   requireFeeReadAccess(),
   feeCtrl.list

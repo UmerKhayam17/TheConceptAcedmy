@@ -232,6 +232,43 @@ const exportDefaultersMonthWise = catchAsync(async (req, res) => {
   res.send(Buffer.from(buffer));
 });
 
+function paidExportQuery(req) {
+  return {
+    classId: req.query.classId,
+    month: req.query.month ? Number(req.query.month) : undefined,
+    year: req.query.year ? Number(req.query.year) : undefined,
+    search: req.query.search,
+    sessionId: req.query.sessionId,
+    feeType: req.query.feeType,
+  };
+}
+
+const exportPaidFees = catchAsync(async (req, res) => {
+  const csv = await feeService.exportPaidFees(paidExportQuery(req));
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="paid-fees.csv"');
+  res.send(csv);
+});
+
+const exportPaidFeesReport = catchAsync(async (req, res) => {
+  const format = String(req.query.format || 'xlsx').toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
+  const buffer = await feeService.exportPaidFeesReport({
+    ...paidExportQuery(req),
+    format,
+  });
+  if (format === 'pdf') {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="paid-fees.pdf"');
+  } else {
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', 'attachment; filename="paid-fees.xlsx"');
+  }
+  res.send(Buffer.from(buffer));
+});
+
 module.exports = {
   list,
   generate,
@@ -247,4 +284,6 @@ module.exports = {
   defaultersSummary,
   exportDefaulters,
   exportDefaultersMonthWise,
+  exportPaidFees,
+  exportPaidFeesReport,
 };

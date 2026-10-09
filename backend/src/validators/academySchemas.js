@@ -387,6 +387,15 @@ const feeDefaultersQuery = Joi.object({
   search: Joi.string().trim().max(200).allow(''),
 });
 
+const feePaidExportQuery = Joi.object({
+  classId: objectId,
+  month: Joi.number().integer().min(1).max(12),
+  year: Joi.number().integer().min(2000).max(2100),
+  search: Joi.string().trim().max(200).allow(''),
+  feeType: Joi.string().valid('admission', 'monthly', 'stationery'),
+  format: Joi.string().valid('xlsx', 'pdf'),
+});
+
 const academySalaryPay = Joi.object({
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').optional(),
   notes: Joi.string().allow('').trim(),
@@ -606,6 +615,7 @@ module.exports = {
   academyFeeStationery,
   academyFeePatch,
   feeDefaultersQuery,
+  feePaidExportQuery,
   academySalaryPay,
   academySalaryGenerate,
   academyExpenseBody,
