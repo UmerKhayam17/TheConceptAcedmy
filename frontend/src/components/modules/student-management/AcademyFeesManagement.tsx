@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   ChevronDown,
   Download,
+  Eye,
   FileText,
+  ImageIcon,
   Loader2,
   Pencil,
   Printer,
   Receipt,
   Search,
+  Upload,
   X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -171,6 +174,18 @@ function isPdfSlip(path: string) {
   return /\.pdf$/i.test(path.split("?")[0] || "");
 }
 
+function isPdfFile(file: File) {
+  return file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+type SlipPreviewState = { src: string; isPdf: boolean };
+
 function PaymentSlipThumb({ path, onOpen }: { path: string; onOpen: () => void }) {
   const src = resolveUploadUrl(path);
   if (isPdfSlip(path)) {
@@ -195,6 +210,218 @@ function PaymentSlipThumb({ path, onOpen }: { path: string; onOpen: () => void }
     >
       <img src={src} alt="Payment slip" className="h-16 w-20 object-cover" />
     </button>
+  );
+}
+
+function PaymentSlipUploadBox({
+  file,
+  existingPath,
+  inputKey,
+  onFileChange,
+  onClear,
+  onPreview,
+  onTooLarge,
+}: {
+  file: File | null;
+  existingPath?: string | null;
+  inputKey: number;
+  onFileChange: (file: File | null) => void;
+  onClear: () => void;
+  onPreview: (preview: SlipPreviewState) => void;
+  onTooLarge: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const localPreviewUrl = useMemo(
+    () => (file ? URL.createObjectURL(file) : null),
+    [file]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
+    };
+  }, [localPreviewUrl]);
+
+  const takeFile = (next: File | null) => {
+    if (!next) {
+      onFileChange(null);
+      return;
+    }
+    const okType =
+      next.type.startsWith("image/") ||
+      next.type === "application/pdf" ||
+      /\.(jpe?g|png|webp|gif|pdf)$/i.test(next.name);
+    if (!okType) {
+      onFileChange(null);
+      return;
+    }
+    if (next.size > 5 * 1024 * 1024) {
+      onFileChange(null);
+      onTooLarge();
+      return;
+    }
+    onFileChange(next);
+  };
+
+  const showingLocal = Boolean(file && localPreviewUrl);
+  const showingExisting = !showingLocal && Boolean(existingPath);
+  const previewSrc = showingLocal
+    ? localPreviewUrl!
+    : showingExisting
+      ? resolveUploadUrl(existingPath!)
+      : null;
+  const previewIsPdf = showingLocal
+    ? isPdfFile(file!)
+    : showingExisting
+      ? isPdfSlip(existingPath!)
+      : false;
+
+  return (
+    <div className="min-w-0 max-w-full space-y-1.5">
+      <Label htmlFor="payment-slip">Payment slip</Label>
+      <input
+        ref={inputRef}
+        id="payment-slip"
+        key={inputKey}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.pdf"
+        className="sr-only"
+        onChange={(e) => {
+          takeFile(e.target.files?.[0] || null);
+          e.target.value = "";
+        }}
+      />
+
+      {previewSrc ? (
+        <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-muted/20">
+          <div className="relative flex max-h-44 min-h-[8rem] min-w-0 items-center justify-center overflow-hidden bg-[linear-gradient(45deg,#f3f4f6_25%,transparent_25%),linear-gradient(-45deg,#f3f4f6_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f3f4f6_75%),linear-gradient(-45deg,transparent_75%,#f3f4f6_75%)] bg-[length:16px_16px] bg-[position:0_0,0_8px,8px_-8px,-8px_0] dark:bg-none dark:bg-muted/40">
+            {previewIsPdf ? (
+              <button
+                type="button"
+                onClick={() => onPreview({ src: previewSrc, isPdf: true })}
+                className="flex max-w-full flex-col items-center gap-2 px-4 py-8 text-foreground transition-opacity hover:opacity-80"
+              >
+                <span className="flex h-14 w-14 items-center justify-center rounded-xl border border-border bg-background shadow-sm">
+                  <FileText className="h-7 w-7 text-primary" />
+                </span>
+                <span className="text-sm font-medium">PDF slip ready</span>
+                <span className="text-xs text-muted-foreground">Click to preview</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onPreview({ src: previewSrc, isPdf: false })}
+                className="group relative flex max-h-44 w-full min-w-0 max-w-full items-center justify-center overflow-hidden p-3"
+                title="Preview payment slip"
+              >
+                <img
+                  src={previewSrc}
+                  alt="Payment slip preview"
+                  className="max-h-40 max-w-full h-auto w-auto object-contain"
+                />
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/35 group-hover:opacity-100">
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-background/95 px-3 py-1.5 text-xs font-medium shadow-sm">
+                    <Eye className="h-3.5 w-3.5" />
+                    Preview
+                  </span>
+                </span>
+              </button>
+            )}
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-border bg-background px-3 py-2.5 sm:gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/40">
+              {previewIsPdf ? (
+                <FileText className="h-4 w-4 text-primary" />
+              ) : (
+                <ImageIcon className="h-4 w-4 text-primary" />
+              )}
+            </span>
+            <div className="min-w-0 flex-1 basis-[8rem]">
+              <p className="truncate text-sm font-medium" title={file?.name || undefined}>
+                {file?.name || (showingExisting ? "Current payment slip" : "Payment slip")}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {file
+                  ? `${formatFileSize(file.size)} · ready to upload`
+                  : "Previously uploaded · click preview to view"}
+              </p>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 px-0"
+                onClick={() => onPreview({ src: previewSrc, isPdf: previewIsPdf })}
+                title="Preview"
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() => inputRef.current?.click()}
+              >
+                Replace
+              </Button>
+              {file ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 px-0 text-destructive hover:text-destructive"
+                  onClick={onClear}
+                  title="Remove selected file"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            takeFile(e.dataTransfer.files?.[0] || null);
+          }}
+          className={cn(
+            "flex w-full min-w-0 max-w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-8 text-center transition-colors",
+            dragOver
+              ? "border-primary bg-primary/5"
+              : "border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/35"
+          )}
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background shadow-sm">
+            <Upload className="h-5 w-5 text-primary" />
+          </span>
+          <div className="min-w-0 max-w-full">
+            <p className="text-sm font-medium">Drop slip here or click to upload</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Image or PDF · up to 5 MB · optional
+            </p>
+          </div>
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -264,9 +491,10 @@ export default function AcademyFeesManagement({
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayInputValue);
+  const [paymentSlipNumber, setPaymentSlipNumber] = useState("");
   const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
   const [slipInputKey, setSlipInputKey] = useState(0);
-  const [slipPreview, setSlipPreview] = useState<string | null>(null);
+  const [slipPreview, setSlipPreview] = useState<SlipPreviewState | null>(null);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
   const [enrollmentWizardOpen, setEnrollmentWizardOpen] = useState(false);
   const [assignSectionStudentId, setAssignSectionStudentId] = useState<string | null>(null);
@@ -444,6 +672,7 @@ export default function AcademyFeesManagement({
           amount: nextAmount,
           notes: paymentNotes.trim(),
           paymentMethod,
+          paymentSlipNumber: paymentSlipNumber.trim(),
           paidAt: paymentDate,
           slip: paymentSlip,
         });
@@ -467,6 +696,7 @@ export default function AcademyFeesManagement({
       return payAcademyFees({
         feeRecordIds: selectedFeeIds,
         paymentMethod,
+        paymentSlipNumber: paymentSlipNumber.trim() || undefined,
         notes: paymentNotes.trim() || undefined,
         paidAt: paymentDate,
         slip: paymentSlip,
@@ -484,6 +714,7 @@ export default function AcademyFeesManagement({
       setAmountOverrides({});
       setPayModalMode("pay");
       setPaymentNotes("");
+      setPaymentSlipNumber("");
       setPaymentDate(todayInputValue());
       setPaymentSlip(null);
       setSlipInputKey((key) => key + 1);
@@ -527,6 +758,7 @@ export default function AcademyFeesManagement({
     setPayRecord(r);
     setPaymentMethod(r.paymentMethod || "cash");
     setPaymentNotes(r.notes || "");
+    setPaymentSlipNumber(r.paymentSlipNumber || "");
     setPaymentDate(
       r.paidAt ? String(r.paidAt).slice(0, 10) : todayInputValue()
     );
@@ -864,8 +1096,23 @@ export default function AcademyFeesManagement({
                       <StatusPill status={r.status} />
                     </td>
                     <td className="p-2.5">
-                      {r.status === "paid" && r.paymentSlip ? (
-                        <PaymentSlipThumb path={r.paymentSlip} onOpen={() => setSlipPreview(r.paymentSlip || null)} />
+                      {r.status === "paid" && (r.paymentSlip || r.paymentSlipNumber) ? (
+                        <div className="space-y-1">
+                          {r.paymentSlipNumber ? (
+                            <div className="font-mono text-xs">{r.paymentSlipNumber}</div>
+                          ) : null}
+                          {r.paymentSlip ? (
+                            <PaymentSlipThumb
+                              path={r.paymentSlip}
+                              onOpen={() =>
+                                setSlipPreview({
+                                  src: resolveUploadUrl(r.paymentSlip!),
+                                  isPdf: isPdfSlip(r.paymentSlip!),
+                                })
+                              }
+                            />
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -1039,12 +1286,12 @@ export default function AcademyFeesManagement({
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="min-w-0 sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{payModalMode === "edit" ? "Edit fee payment" : "Record payment"}</DialogTitle>
           </DialogHeader>
           {payRecord && (
-            <div className="space-y-3 text-sm">
+            <div className="min-w-0 max-w-full space-y-3 text-sm">
               <p>
                 <span className="text-muted-foreground">Student:</span>{" "}
                 <span className="font-medium">{studentName(payRecord)}</span>
@@ -1153,21 +1400,22 @@ export default function AcademyFeesManagement({
                   </span>
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
+              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="min-w-0 space-y-1.5">
                   <Label htmlFor="payment-date">Payment date</Label>
                   <Input
                     id="payment-date"
                     type="date"
+                    className="min-w-0 w-full"
                     value={paymentDate}
                     max={todayInputValue()}
                     onChange={(e) => setPaymentDate(e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="min-w-0 space-y-1.5">
                   <Label>Payment method</Label>
                   <select
-                    className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm"
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   >
@@ -1179,32 +1427,37 @@ export default function AcademyFeesManagement({
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="payment-slip">Payment slip</Label>
-                <input
-                  id="payment-slip"
-                  key={slipInputKey}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.pdf"
-                  className="block w-full text-sm text-foreground file:mr-3 file:h-9 file:rounded-md file:border file:border-input file:bg-background file:px-3 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/40"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    if (file && file.size > 5 * 1024 * 1024) {
-                      toast({
-                        title: "Slip is too large",
-                        description: "Upload an image or PDF up to 5 MB.",
-                        variant: "destructive",
-                      });
-                      e.target.value = "";
-                      setPaymentSlip(null);
-                      return;
-                    }
-                    setPaymentSlip(file);
-                  }}
+                <Label htmlFor="payment-slip-number">Payment slip number</Label>
+                <Input
+                  id="payment-slip-number"
+                  value={paymentSlipNumber}
+                  onChange={(e) => setPaymentSlipNumber(e.target.value)}
+                  placeholder="Bank / cash slip number"
+                  maxLength={100}
                 />
-                <p className="text-xs text-muted-foreground">
-                  {paymentSlip ? paymentSlip.name : "Image or PDF, optional"}
-                </p>
               </div>
+              <PaymentSlipUploadBox
+                file={paymentSlip}
+                existingPath={
+                  payModalMode === "edit" && payRecord?.status === "paid"
+                    ? payRecord.paymentSlip
+                    : null
+                }
+                inputKey={slipInputKey}
+                onFileChange={setPaymentSlip}
+                onClear={() => {
+                  setPaymentSlip(null);
+                  setSlipInputKey((key) => key + 1);
+                }}
+                onPreview={setSlipPreview}
+                onTooLarge={() =>
+                  toast({
+                    title: "Slip is too large",
+                    description: "Upload an image or PDF up to 5 MB.",
+                    variant: "destructive",
+                  })
+                }
+              />
               <div className="space-y-1.5">
                 <Label>Notes (optional)</Label>
                 <Input
@@ -1245,15 +1498,15 @@ export default function AcademyFeesManagement({
           <DialogHeader>
             <DialogTitle>Payment slip</DialogTitle>
           </DialogHeader>
-          {slipPreview && isPdfSlip(slipPreview) ? (
+          {slipPreview?.isPdf ? (
             <iframe
-              src={resolveUploadUrl(slipPreview)}
+              src={slipPreview.src}
               title="Payment slip"
               className="h-[70vh] w-full rounded-md border bg-white"
             />
           ) : slipPreview ? (
             <img
-              src={resolveUploadUrl(slipPreview)}
+              src={slipPreview.src}
               alt="Payment slip"
               className="max-h-[70vh] w-full rounded-md border bg-white object-contain"
             />

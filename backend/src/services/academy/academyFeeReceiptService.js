@@ -234,6 +234,9 @@ function drawThermalReceipt(doc, record, brand, logoPath) {
   y = thermalKv(doc, 'Receipt', record.receiptNumber || '—', x, y, w);
   y = thermalKv(doc, 'Date', formatDate(record.paidAt || record.updatedAt || new Date()), x, y, w);
   y = thermalKv(doc, 'Payment', paymentMethodLabel(record.paymentMethod), x, y, w);
+  if (record.paymentSlipNumber) {
+    y = thermalKv(doc, 'Slip No.', record.paymentSlipNumber, x, y, w);
+  }
   y += 2;
   dashLine(doc, x, y, w);
   y += 10;
@@ -531,6 +534,9 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
     writeField('Receipt', paidRecord?.receiptNumber);
     writeField('Paid on', formatDate(paidRecord?.paidAt || paidRecord?.updatedAt));
     writeField('Payment', paymentMethodLabel(paidRecord?.paymentMethod));
+    if (paidRecord?.paymentSlipNumber) {
+      writeField('Slip No.', paidRecord.paymentSlipNumber);
+    }
   } else {
     writeField('Due date', dueDates.join(', ') || '—');
   }

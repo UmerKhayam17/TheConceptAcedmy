@@ -244,6 +244,7 @@ export interface AcademyFeeRecord {
   paidAt?: string;
   paymentMethod?: string;
   paymentSlip?: string;
+  paymentSlipNumber?: string;
   notes?: string;
   components?: { name: string; amount: number; kind?: "tuition" | "admission" | "charge" }[];
   /** Unpaid monthly vouchers for this student, across every month. */
@@ -1209,8 +1210,10 @@ export const addStationeryCharge = (body: {
     body: JSON.stringify(body),
   });
 
-export const payAcademyFee = (id: string, body?: { paymentMethod?: string; notes?: string }) =>
-  api<AcademyFeeRecord>(`/fees/${id}/pay`, { method: "PATCH", body: JSON.stringify(body || {}) });
+export const payAcademyFee = (
+  id: string,
+  body?: { paymentMethod?: string; paymentSlipNumber?: string; notes?: string; paidAt?: string }
+) => api<AcademyFeeRecord>(`/fees/${id}/pay`, { method: "PATCH", body: JSON.stringify(body || {}) });
 
 export async function updateAcademyFee(
   id: string,
@@ -1220,6 +1223,7 @@ export async function updateAcademyFee(
     dueDate?: string | null;
     status?: "pending" | "overdue" | "waived";
     paymentMethod?: string;
+    paymentSlipNumber?: string;
     paidAt?: string;
     slip?: File | null;
   }
@@ -1230,6 +1234,7 @@ export async function updateAcademyFee(
   if (body.dueDate !== undefined) fd.append("dueDate", body.dueDate ?? "");
   if (body.status !== undefined) fd.append("status", body.status);
   if (body.paymentMethod !== undefined) fd.append("paymentMethod", body.paymentMethod);
+  if (body.paymentSlipNumber !== undefined) fd.append("paymentSlipNumber", body.paymentSlipNumber);
   if (body.paidAt !== undefined) fd.append("paidAt", body.paidAt);
   if (body.slip) fd.append("slip", body.slip);
   const res = await authedFetch(`/student-management/fees/${id}`, {
@@ -1249,6 +1254,7 @@ export async function updateAcademyFee(
 export async function payAcademyFees(body: {
   feeRecordIds: string[];
   paymentMethod?: string;
+  paymentSlipNumber?: string;
   notes?: string;
   paidAt?: string;
   slip?: File | null;
@@ -1256,6 +1262,7 @@ export async function payAcademyFees(body: {
   const fd = new FormData();
   fd.append("feeRecordIds", JSON.stringify(body.feeRecordIds));
   if (body.paymentMethod) fd.append("paymentMethod", body.paymentMethod);
+  if (body.paymentSlipNumber !== undefined) fd.append("paymentSlipNumber", body.paymentSlipNumber);
   if (body.notes) fd.append("notes", body.notes);
   if (body.paidAt) fd.append("paidAt", body.paidAt);
   if (body.slip) fd.append("slip", body.slip);

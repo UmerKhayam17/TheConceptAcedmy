@@ -474,6 +474,7 @@ async function applyFeeRecordSearch(q, search) {
         $or: [
           { studentId: { $in: students.map((st) => st._id) } },
           { receiptNumber: rx },
+          { paymentSlipNumber: rx },
           { feeType: rx },
           { notes: rx },
         ],
@@ -606,7 +607,7 @@ async function getFeeRecordById(id) {
 
 /**
  * Edit a fee voucher.
- * Paid: amount, notes, paymentMethod, paidAt, payment slip.
+ * Paid: amount, notes, paymentMethod, paidAt, payment slip, payment slip number.
  * Unpaid (pending/overdue): amount, notes, dueDate, status (pending|overdue|waived).
  */
 async function updateFeeRecord(id, payload = {}, slipFile) {
@@ -651,6 +652,9 @@ async function updateFeeRecord(id, payload = {}, slipFile) {
     }
     if (payload.paidAt !== undefined && payload.paidAt !== null && payload.paidAt !== '') {
       record.paidAt = resolvePaidAt(payload.paidAt);
+    }
+    if (payload.paymentSlipNumber !== undefined) {
+      record.paymentSlipNumber = String(payload.paymentSlipNumber || '').trim();
     }
     const slipPath = savePaymentSlip(slipFile);
     if (slipPath) record.paymentSlip = slipPath;
@@ -997,7 +1001,7 @@ async function addStationeryCharge(studentId, { amount, month, year, notes } = {
   return record;
 }
 
-async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt }, userId, slipFile) {
+async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt, paymentSlipNumber }, userId, slipFile) {
   const existing = await AcademyFeeRecord.findById(feeRecordId).populate('studentId');
   if (!existing) throw new ApiError(404, 'Fee record not found');
   if (existing.status === 'paid') throw new ApiError(400, 'Fee already paid');
@@ -1008,6 +1012,7 @@ async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt }, user
       ? receiptNumber(existing.studentId, existing.month, existing.year, existing.feeType)
       : undefined);
   const paymentSlip = savePaymentSlip(slipFile);
+  const slipNumber = String(paymentSlipNumber || '').trim();
 
   // Atomic: only one concurrent payer can flip pending/overdue → paid
   const record = await AcademyFeeRecord.findOneAndUpdate(
@@ -1024,6 +1029,7 @@ async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt }, user
         recordedBy: userId,
         ...(nextReceipt ? { receiptNumber: nextReceipt } : {}),
         ...(paymentSlip ? { paymentSlip } : {}),
+        ...(slipNumber ? { paymentSlipNumber: slipNumber } : {}),
       },
     },
     { new: true }
@@ -1058,6 +1064,7 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
 
   const paidAt = resolvePaidAt(payload.paidAt);
   const paymentSlip = savePaymentSlip(slipFile);
+  const slipNumber = String(payload.paymentSlipNumber || '').trim();
   const paid = [];
   for (const record of records) {
     // eslint-disable-next-line no-await-in-loop
@@ -1077,6 +1084,7 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
             record.receiptNumber ||
             receiptNumber(record.studentId, record.month, record.year, record.feeType),
           ...(paymentSlip ? { paymentSlip } : {}),
+          ...(slipNumber ? { paymentSlipNumber: slipNumber } : {}),
         },
       },
       { new: true }

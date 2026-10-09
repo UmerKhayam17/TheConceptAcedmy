@@ -18,6 +18,8 @@ const academyFeeRecordSchema = new mongoose.Schema(
     paymentMethod: { type: String, enum: ['cash', 'bank_transfer', 'online', 'other'], default: 'cash' },
     /** Uploaded bank or cash slip, stored under /uploads/payment-slips. */
     paymentSlip: { type: String, trim: true },
+    /** Bank / cash payment slip reference number entered when recording payment. */
+    paymentSlipNumber: { type: String, trim: true },
     notes: { type: String, trim: true },
     /**
      * Optional breakdown of `amount` (tuition, admission, additional charges).
