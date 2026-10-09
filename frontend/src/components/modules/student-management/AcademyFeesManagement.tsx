@@ -43,10 +43,14 @@ import {
   fetchAcademyFeeSummary,
   fetchAcademyFees,
   fetchAcademyStudents,
+  fetchSectionsByClass,
+  fetchAcademySectionsBySession,
   fetchStudentFeeHistory,
   exportFeeDefaultersMonthWise,
   exportPaidFeesReport,
   type DefaulterReportFormat,
+  applyFeeCharges,
+  fetchAdditionalCharges,
   generateMonthlyFees,
   payAcademyFees,
   printFeeChallan,
@@ -55,6 +59,10 @@ import {
   type AcademyFeeRecord,
   type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
+import {
+  applicableChargesForFees,
+  feeAmountWithCharges,
+} from "@/lib/additionalCharges";
 import { resolveUploadUrl } from "@/lib/api";
 import { academyStudentRoutes, type AcademyStudentRoutes } from "@/lib/studentManagementMenus";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
@@ -65,6 +73,11 @@ import {
   AssignSectionDialog,
   EnrollmentVoucherWizard,
 } from "./EnrollmentVoucherWizard";
+import { AdditionalChargesChecklist } from "./AdditionalChargesChecklist";
+import {
+  ChallanPrintDialog,
+  type ChallanPrintRequest,
+} from "./ChallanPrintDialog";
 
 function todayInputValue() {
   const d = new Date();
@@ -497,6 +510,7 @@ export default function AcademyFeesManagement({
     lockedStatus || (user?.role === "parent" ? "paid" : "")
   );
   const [classFilter, setClassFilter] = useState("");
+  const [sectionFilter, setSectionFilter] = useState("");
   const [selectedParentStudentId, setSelectedParentStudentId] = useState<string>(() => {
     try {
       return localStorage.getItem("parent_selected_student_id") || "";
@@ -511,6 +525,7 @@ export default function AcademyFeesManagement({
   const [payRecord, setPayRecord] = useState<AcademyFeeRecord | null>(null);
   const [payModalMode, setPayModalMode] = useState<"pay" | "edit">("pay");
   const [selectedFeeIds, setSelectedFeeIds] = useState<string[]>([]);
+  const [selectedChargeIds, setSelectedChargeIds] = useState<string[]>([]);
   const [amountOverrides, setAmountOverrides] = useState<Record<string, string>>({});
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
@@ -519,6 +534,7 @@ export default function AcademyFeesManagement({
   const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
   const [slipInputKey, setSlipInputKey] = useState(0);
   const [slipPreview, setSlipPreview] = useState<SlipPreviewState | null>(null);
+  const [challanPrint, setChallanPrint] = useState<ChallanPrintRequest | null>(null);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
   const [exportingPaidReport, setExportingPaidReport] = useState<DefaulterReportFormat | null>(null);
   const [enrollmentWizardOpen, setEnrollmentWizardOpen] = useState(false);
@@ -534,10 +550,11 @@ export default function AcademyFeesManagement({
       month: effectiveStudentId ? undefined : month ? Number(month) : undefined,
       year: effectiveStudentId ? undefined : year ? Number(year) : undefined,
       classId: effectiveStudentId || isParent ? undefined : classFilter || undefined,
+      sectionId: effectiveStudentId || isParent ? undefined : sectionFilter || undefined,
       studentId: effectiveStudentId,
       sessionId: effectiveStudentId || isParent ? undefined : apiSessionId,
     }),
-    [month, year, classFilter, effectiveStudentId, isParent, apiSessionId]
+    [month, year, classFilter, sectionFilter, effectiveStudentId, isParent, apiSessionId]
   );
 
   useEffect(() => {
@@ -547,11 +564,17 @@ export default function AcademyFeesManagement({
   useEffect(() => {
     setPage(1);
     setClassFilter("");
+    setSectionFilter("");
   }, [month, year, statusFilter, feeTypeFilter, effectiveStudentId, sessionId]);
 
   useEffect(() => {
+    setSectionFilter("");
     setPage(1);
-  }, [search]);
+  }, [classFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, sectionFilter]);
 
   useEffect(() => {
     if (!isParent) return;
@@ -586,6 +609,15 @@ export default function AcademyFeesManagement({
   const { data: classes = [] } = useQuery({
     queryKey: ["academy-classes", sessionId],
     queryFn: () => fetchAcademyClasses({ status: "active", sessionId: apiSessionId }),
+    enabled: showFilters && !studentId && !isParent && hasScope,
+  });
+
+  const { data: sections = [] } = useQuery({
+    queryKey: ["academy-fee-sections", sessionId, classFilter],
+    queryFn: () =>
+      classFilter
+        ? fetchSectionsByClass(classFilter, { status: "active" })
+        : fetchAcademySectionsBySession(apiSessionId, { status: "active" }),
     enabled: showFilters && !studentId && !isParent && hasScope,
   });
 
@@ -645,17 +677,34 @@ export default function AcademyFeesManagement({
     enabled: Boolean(payStudentId),
   });
 
+  const { data: allCharges = [] } = useQuery({
+    queryKey: ["additional-charges"],
+    queryFn: fetchAdditionalCharges,
+    enabled: Boolean(payRecord) && payModalMode !== "edit",
+  });
+
   const unpaidForPay = useMemo(() => {
     return (payHistory?.records || [])
       .filter((r) => r.status === "pending" || r.status === "overdue")
       .sort((a, b) => a.year - b.year || a.month - b.month);
   }, [payHistory]);
 
+  const payApplicableCharges = useMemo(
+    () =>
+      applicableChargesForFees(
+        allCharges,
+        payHistory?.student,
+        unpaidForPay.filter((f) => f.feeType === "monthly" || f.feeType === "admission")
+      ),
+    [allCharges, payHistory?.student, unpaidForPay]
+  );
+
   useEffect(() => {
     if (!payRecord || !payHistory) return;
     // Paid edit uses the voucher itself — don't replace with unpaid months.
     if (payModalMode === "edit" && payRecord.status === "paid") {
       setSelectedFeeIds([payRecord._id]);
+      setSelectedChargeIds([]);
       setAmountOverrides({ [payRecord._id]: String(payRecord.amount ?? "") });
       return;
     }
@@ -668,12 +717,29 @@ export default function AcademyFeesManagement({
           ? [unpaidForPay[0]._id]
           : [payRecord._id]
     );
+    // Default: no additional charges.
+    setSelectedChargeIds([]);
     const amounts: Record<string, string> = {};
     for (const fee of unpaidForPay) {
-      amounts[fee._id] = String(fee.amount ?? "");
+      amounts[fee._id] = String(
+        feeAmountWithCharges(fee, payHistory.student, allCharges, [])
+      );
     }
     setAmountOverrides(amounts);
-  }, [payRecord, payHistory, unpaidForPay, payModalMode]);
+  }, [payRecord, payHistory, unpaidForPay, payModalMode, allCharges]);
+
+  useEffect(() => {
+    if (!payRecord || payModalMode === "edit" || !payHistory) return;
+    setAmountOverrides((prev) => {
+      const next = { ...prev };
+      for (const fee of unpaidForPay) {
+        next[fee._id] = String(
+          feeAmountWithCharges(fee, payHistory.student, allCharges, selectedChargeIds)
+        );
+      }
+      return next;
+    });
+  }, [selectedChargeIds, payRecord, payModalMode, payHistory, unpaidForPay, allCharges]);
 
   const feeAmount = (fee: AcademyFeeRecord) => {
     const raw = amountOverrides[fee._id];
@@ -721,6 +787,16 @@ export default function AcademyFeesManagement({
             await updateAcademyFee(fee._id, { amount: nextAmount, notes: paymentNotes.trim() });
           }
         }
+      } else {
+        const chargeableIds = selectedUnpaid
+          .filter((f) => f.feeType === "monthly" || f.feeType === "admission")
+          .map((f) => f._id);
+        if (chargeableIds.length) {
+          await applyFeeCharges({
+            feeRecordIds: chargeableIds,
+            chargeIds: selectedChargeIds,
+          });
+        }
       }
       return payAcademyFees({
         feeRecordIds: selectedFeeIds,
@@ -740,6 +816,7 @@ export default function AcademyFeesManagement({
       qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
       setPayRecord(null);
       setSelectedFeeIds([]);
+      setSelectedChargeIds([]);
       setAmountOverrides({});
       setPayModalMode("pay");
       setPaymentNotes("");
@@ -764,12 +841,22 @@ export default function AcademyFeesManagement({
       studentId: sid,
       size,
       months,
+      chargeIds,
     }: {
       id?: string;
       studentId?: string;
       size: FeeReceiptSize;
       months?: number;
-    }) => (sid ? printFeeChallan(sid, size, months) : printFeeReceipt(id!, size)),
+      chargeIds?: string[];
+    }) =>
+      sid
+        ? printFeeChallan(sid, size, months, chargeIds)
+        : printFeeReceipt(id!, size),
+    onSuccess: () => {
+      setChallanPrint(null);
+      qc.invalidateQueries({ queryKey: ["academy-fees"] });
+      qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
+    },
     onError: (e: Error) =>
       toast({ title: "Could not print", description: e.message, variant: "destructive" }),
   });
@@ -785,6 +872,7 @@ export default function AcademyFeesManagement({
     }
     setPayModalMode(mode);
     setPayRecord(r);
+    setSelectedChargeIds([]);
     setPaymentMethod(r.paymentMethod || "cash");
     setPaymentNotes(r.notes || "");
     setPaymentSlipNumber(r.paymentSlipNumber || "");
@@ -951,6 +1039,17 @@ export default function AcademyFeesManagement({
                     {classes.map((c) => (
                       <option key={c._id} value={c._id}>
                         {c.className}
+                      </option>
+                    ))}
+                  </FeeFilterSelect>
+                </FeeFilterField>
+                <FeeFilterField label="Section">
+                  <FeeFilterSelect value={sectionFilter} onChange={setSectionFilter}>
+                    <option value="">All sections</option>
+                    {sections.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.sectionName}
+                        {"className" in s && s.className && !classFilter ? ` · ${s.className}` : ""}
                       </option>
                     ))}
                   </FeeFilterSelect>
@@ -1303,14 +1402,14 @@ export default function AcademyFeesManagement({
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
                                   className="gap-2"
-                                  onClick={() => printMut.mutate({ studentId: sid, size: "a4" })}
+                                  onClick={() => setChallanPrint({ studentId: sid, size: "a4" })}
                                 >
                                   <FileText className="h-4 w-4" />
                                   A4
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="gap-2"
-                                  onClick={() => printMut.mutate({ studentId: sid, size: "thermal" })}
+                                  onClick={() => setChallanPrint({ studentId: sid, size: "thermal" })}
                                 >
                                   <Receipt className="h-4 w-4" />
                                   Thermal
@@ -1399,6 +1498,7 @@ export default function AcademyFeesManagement({
           if (!o) {
             setPayRecord(null);
             setSelectedFeeIds([]);
+            setSelectedChargeIds([]);
             setAmountOverrides({});
             setPayModalMode("pay");
           }
@@ -1414,6 +1514,18 @@ export default function AcademyFeesManagement({
                 <span className="text-muted-foreground">Student:</span>{" "}
                 <span className="font-medium">{studentName(payRecord)}</span>
               </p>
+              {!editingPaid && payModalMode === "pay" && (
+                <div className="rounded-md border">
+                  <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
+                    Additional charges (optional)
+                  </div>
+                  <AdditionalChargesChecklist
+                    charges={payApplicableCharges}
+                    selectedIds={selectedChargeIds}
+                    onChange={setSelectedChargeIds}
+                  />
+                </div>
+              )}
               <div className="rounded-md border">
                 <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
                   {editingPaid
@@ -1492,7 +1604,7 @@ export default function AcademyFeesManagement({
                                   />
                                 ) : (
                                   <span className="font-semibold tabular-nums">
-                                    {formatPkr(fee.amount)}
+                                    {formatPkr(feeAmount(fee))}
                                   </span>
                                 )}
                               </label>
@@ -1631,6 +1743,16 @@ export default function AcademyFeesManagement({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <ChallanPrintDialog
+        request={challanPrint}
+        onClose={() => setChallanPrint(null)}
+        confirming={printMut.isPending && Boolean(printMut.variables?.studentId)}
+        onConfirm={(chargeIds) => {
+          if (!challanPrint) return;
+          printMut.mutate({ ...challanPrint, chargeIds });
+        }}
+      />
 
       <EnrollmentVoucherWizard
         open={enrollmentWizardOpen}

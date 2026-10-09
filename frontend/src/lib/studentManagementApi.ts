@@ -246,7 +246,12 @@ export interface AcademyFeeRecord {
   paymentSlip?: string;
   paymentSlipNumber?: string;
   notes?: string;
-  components?: { name: string; amount: number; kind?: "tuition" | "admission" | "charge" }[];
+  components?: {
+    name: string;
+    amount: number;
+    kind?: "tuition" | "admission" | "charge";
+    chargeId?: string;
+  }[];
   /** Unpaid monthly vouchers for this student, across every month. */
   unpaidMonthCount?: number;
   unpaidFrom?: string;
@@ -928,6 +933,7 @@ export const fetchAcademyFees = async (params?: {
   status?: string;
   feeType?: string;
   classId?: string;
+  sectionId?: string;
   studentId?: string;
   month?: number;
   year?: number;
@@ -940,6 +946,7 @@ export const fetchAcademyFees = async (params?: {
   if (params?.status) q.set("status", params.status);
   if (params?.feeType) q.set("feeType", params.feeType);
   if (params?.classId) q.set("classId", params.classId);
+  if (params?.sectionId) q.set("sectionId", params.sectionId);
   if (params?.studentId) q.set("studentId", params.studentId);
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
@@ -960,6 +967,7 @@ export const fetchAcademyFeeSummary = (params?: {
   month?: number;
   year?: number;
   classId?: string;
+  sectionId?: string;
   studentId?: string;
   sessionId?: string;
 }) => {
@@ -967,6 +975,7 @@ export const fetchAcademyFeeSummary = (params?: {
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
   if (params?.classId) q.set("classId", params.classId);
+  if (params?.sectionId) q.set("sectionId", params.sectionId);
   if (params?.studentId) q.set("studentId", params.studentId);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
   const qs = q.toString();
@@ -1339,10 +1348,13 @@ export function printFeeReceipt(id: string, size: FeeReceiptSize = "a4") {
 export const fetchFeeChallanPdf = async (
   studentId: string,
   size: FeeReceiptSize = "a4",
-  months?: number
+  months?: number,
+  chargeIds?: string[]
 ) => {
   const q = new URLSearchParams({ size });
   if (months) q.set("months", String(months));
+  // Always send chargeIds so the server applies the opt-in selection (empty = none).
+  q.set("chargeIds", (chargeIds || []).join(","));
   const res = await authedFetch(`/student-management/fees/challan/${studentId}?${q}`);
   if (!res.ok) {
     const body = await parseJson<{ message?: string }>(res);
@@ -1351,13 +1363,24 @@ export const fetchFeeChallanPdf = async (
   return res.blob();
 };
 
-export function printFeeChallan(studentId: string, size: FeeReceiptSize = "a4", months?: number) {
+export function printFeeChallan(
+  studentId: string,
+  size: FeeReceiptSize = "a4",
+  months?: number,
+  chargeIds?: string[]
+) {
   const label = months ? `${months}m` : "unpaid";
   return openPdfForPrint(
-    () => fetchFeeChallanPdf(studentId, size, months),
+    () => fetchFeeChallanPdf(studentId, size, months, chargeIds),
     size === "thermal" ? `fee-challan-${label}-thermal.pdf` : `fee-challan-${label}-a4.pdf`
   );
 }
+
+export const applyFeeCharges = (body: { feeRecordIds: string[]; chargeIds: string[] }) =>
+  api<AcademyFeeRecord[]>("/fees/apply-charges", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 
 export const fetchStudentFeeHistory = (studentId: string) =>
   api<{ student: AcademyStudent; records: AcademyFeeRecord[] }>(`/fees/student/${studentId}`);

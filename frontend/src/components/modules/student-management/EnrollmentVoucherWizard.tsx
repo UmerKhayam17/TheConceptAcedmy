@@ -19,6 +19,8 @@ import {
   fetchEnrollmentSubjects,
   fetchSectionsByClass,
   getAcademyStudent,
+  applyFeeCharges,
+  fetchAdditionalCharges,
   prepareEnrollmentVoucher,
   payAcademyFees,
   previewFees,
@@ -27,8 +29,17 @@ import {
   type AcademyStudent,
   type FeePreview,
 } from "@/lib/studentManagementApi";
+import {
+  applicableChargesForFees,
+  feeAmountWithCharges,
+} from "@/lib/additionalCharges";
 import { formatPkr } from "./studentDisplayUtils";
 import { cn } from "@/lib/utils";
+import { AdditionalChargesChecklist } from "./AdditionalChargesChecklist";
+import {
+  ChallanPrintDialog,
+  type ChallanPrintRequest,
+} from "./ChallanPrintDialog";
 
 type Step = "student" | "subjects" | "voucher" | "pay" | "section";
 
@@ -68,6 +79,8 @@ export function EnrollmentVoucherWizard({
   const [fees, setFees] = useState<FeePreview | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [selectedChargeIds, setSelectedChargeIds] = useState<string[]>([]);
+  const [challanPrint, setChallanPrint] = useState<ChallanPrintRequest | null>(null);
   const [sectionId, setSectionId] = useState("");
   const [gender, setGender] = useState("");
 
@@ -85,6 +98,8 @@ export function EnrollmentVoucherWizard({
     setFees(null);
     setPaymentMethod("cash");
     setPaymentNotes("");
+    setSelectedChargeIds([]);
+    setChallanPrint(null);
     setSectionId("");
     setGender("");
   }, [open, initialStudentId]);
@@ -204,9 +219,32 @@ export function EnrollmentVoucherWizard({
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const { data: allCharges = [] } = useQuery({
+    queryKey: ["additional-charges"],
+    queryFn: fetchAdditionalCharges,
+    enabled: open && (step === "pay" || step === "voucher"),
+  });
+
+  const enrollmentApplicableCharges = useMemo(
+    () =>
+      voucher && student
+        ? applicableChargesForFees(allCharges, student, [voucher])
+        : [],
+    [allCharges, student, voucher]
+  );
+
+  const enrollmentPayTotal = useMemo(() => {
+    if (!voucher) return 0;
+    return feeAmountWithCharges(voucher, student, allCharges, selectedChargeIds);
+  }, [voucher, student, allCharges, selectedChargeIds]);
+
   const payMut = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!voucher?._id) throw new Error("No voucher to pay");
+      await applyFeeCharges({
+        feeRecordIds: [voucher._id],
+        chargeIds: selectedChargeIds,
+      });
       return payAcademyFees({
         feeRecordIds: [voucher._id],
         paymentMethod,
@@ -243,7 +281,8 @@ export function EnrollmentVoucherWizard({
   });
 
   const printMut = useMutation({
-    mutationFn: () => printFeeChallan(studentId, "a4"),
+    mutationFn: (chargeIds: string[]) => printFeeChallan(studentId, "a4", undefined, chargeIds),
+    onSuccess: () => setChallanPrint(null),
     onError: (e: Error) =>
       toast({ title: "Could not print", description: e.message, variant: "destructive" }),
   });
@@ -272,6 +311,7 @@ export function EnrollmentVoucherWizard({
   }, [step]);
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -523,12 +563,19 @@ export function EnrollmentVoucherWizard({
                 type="button"
                 variant="outline"
                 disabled={!studentId || printMut.isPending}
-                onClick={() => printMut.mutate()}
+                onClick={() => setChallanPrint({ studentId, size: "a4" })}
               >
                 {printMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Print challan
               </Button>
-              <Button type="button" onClick={() => setStep("pay")} disabled={!voucher}>
+              <Button
+                type="button"
+                onClick={() => {
+                  setSelectedChargeIds([]);
+                  setStep("pay");
+                }}
+                disabled={!voucher}
+              >
                 Mark as paid
               </Button>
             </div>
@@ -537,6 +584,20 @@ export function EnrollmentVoucherWizard({
 
         {step === "pay" ? (
           <div className="space-y-3">
+            <div className="rounded-md border">
+              <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
+                Additional charges (optional)
+              </div>
+              <AdditionalChargesChecklist
+                charges={enrollmentApplicableCharges}
+                selectedIds={selectedChargeIds}
+                onChange={setSelectedChargeIds}
+              />
+              <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/30 text-sm">
+                <span className="text-muted-foreground">Total due</span>
+                <span className="font-semibold">{formatPkr(enrollmentPayTotal)}</span>
+              </div>
+            </div>
             <div>
               <Label>Payment method</Label>
               <select
@@ -559,9 +620,6 @@ export function EnrollmentVoucherWizard({
                 placeholder="Optional"
               />
             </div>
-            <p className="text-sm text-muted-foreground">
-              Amount: <span className="font-semibold text-foreground">{formatPkr(voucher?.amount || 0)}</span>
-            </p>
           </div>
         ) : null}
 
@@ -647,6 +705,14 @@ export function EnrollmentVoucherWizard({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ChallanPrintDialog
+      request={challanPrint}
+      onClose={() => setChallanPrint(null)}
+      confirming={printMut.isPending}
+      onConfirm={(chargeIds) => printMut.mutate(chargeIds)}
+    />
+    </>
   );
 }
 

@@ -351,6 +351,11 @@ const academyFeePayMany = Joi.object({
   paidAt: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+const academyFeeApplyCharges = Joi.object({
+  feeRecordIds: Joi.array().items(objectId).min(1).max(24).required(),
+  chargeIds: Joi.array().items(objectId).max(50).default([]),
+});
+
 const academyFeeGenerate = Joi.object({
   month: Joi.number().integer().min(1).max(12).required(),
   year: Joi.number().integer().min(2000).max(2100).required(),
@@ -611,6 +616,7 @@ module.exports = {
   academyStudentPatch,
   academyFeePay,
   academyFeePayMany,
+  academyFeeApplyCharges,
   academyFeeGenerate,
   academyFeeStationery,
   academyFeePatch,

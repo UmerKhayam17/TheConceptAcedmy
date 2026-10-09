@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, FileText, Loader2, Phone, Printer, Receipt } from "lucide-react";
+import { AlertTriangle, FileText, Loader2, Phone, Printer, Receipt, Search, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,8 +27,11 @@ import {
 } from "@/lib/studentManagementApi";
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
 import { DefaulterListDownload } from "./DefaulterListDownload";
+import {
+  ChallanPrintDialog,
+  type ChallanPrintRequest,
+} from "./ChallanPrintDialog";
 import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
-import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
 
@@ -80,10 +83,19 @@ export default function FeeDefaultersTab({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
+  const [challanPrint, setChallanPrint] = useState<ChallanPrintRequest | null>(null);
 
   const printMut = useMutation({
-    mutationFn: ({ studentId, size }: { studentId: string; size: FeeReceiptSize }) =>
-      printFeeChallan(studentId, size),
+    mutationFn: ({
+      studentId,
+      size,
+      chargeIds,
+    }: {
+      studentId: string;
+      size: FeeReceiptSize;
+      chargeIds?: string[];
+    }) => printFeeChallan(studentId, size, undefined, chargeIds),
+    onSuccess: () => setChallanPrint(null),
     onError: (e: Error) =>
       toast({ title: "Could not print challan", description: e.message, variant: "destructive" }),
   });
@@ -201,7 +213,7 @@ export default function FeeDefaultersTab({
       </div>
 
       <Card className="p-3">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 items-end">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
           <div className="min-w-0">
             <Label className="text-xs">Month (optional)</Label>
             <Input
@@ -224,7 +236,7 @@ export default function FeeDefaultersTab({
               onChange={(e) => setYear(e.target.value)}
             />
           </div>
-          <div className="min-w-0 col-span-2 sm:col-span-1">
+          <div className="min-w-0">
             <Label className="text-xs">Class</Label>
             <select
               className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
@@ -239,11 +251,36 @@ export default function FeeDefaultersTab({
               ))}
             </select>
           </div>
+          <div className="relative min-w-0 col-span-2 sm:col-span-3 lg:col-span-2">
+            <Label className="text-xs">Search</Label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-9 w-full pl-8 pr-8 text-sm"
+                placeholder="Search student, father, phone, ID…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search defaulters"
+              />
+              {search ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+            </div>
+          </div>
           {(month || year) && (
             <Button
               variant="ghost"
               size="sm"
-              className="w-full sm:w-auto"
+              className="w-full h-9"
               onClick={() => {
                 setMonth("");
                 setYear("");
@@ -265,13 +302,6 @@ export default function FeeDefaultersTab({
           )}
         </div>
       </Card>
-
-      <PanelSearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search student, father, phone, ID…"
-        className="max-w-md"
-      />
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -375,14 +405,14 @@ export default function FeeDefaultersTab({
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               className="gap-2"
-                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "a4" })}
+                              onClick={() => setChallanPrint({ studentId: d.student._id, size: "a4" })}
                             >
                               <FileText className="h-4 w-4" />
                               A4
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="gap-2"
-                              onClick={() => printMut.mutate({ studentId: d.student._id, size: "thermal" })}
+                              onClick={() => setChallanPrint({ studentId: d.student._id, size: "thermal" })}
                             >
                               <Receipt className="h-4 w-4" />
                               Thermal
@@ -432,6 +462,16 @@ export default function FeeDefaultersTab({
           </div>
         )}
       </Card>
+
+      <ChallanPrintDialog
+        request={challanPrint}
+        onClose={() => setChallanPrint(null)}
+        confirming={printMut.isPending}
+        onConfirm={(chargeIds) => {
+          if (!challanPrint) return;
+          printMut.mutate({ ...challanPrint, chargeIds });
+        }}
+      />
     </div>
   );
 }

@@ -34,6 +34,7 @@ const list = catchAsync(async (req, res) => {
     month: req.query.month,
     year: req.query.year,
     classId: isParent ? undefined : req.query.classId,
+    sectionId: isParent ? undefined : req.query.sectionId,
     feeType: req.query.feeType,
     sessionId: isParent ? undefined : req.query.sessionId,
     search: req.query.search,
@@ -88,7 +89,7 @@ const challan = catchAsync(async (req, res) => {
     throw new ApiError(400, 'Months must be between 1 and 24');
   }
 
-  const records = await feeService.listUnpaidForChallan(req.params.studentId, months);
+  let records = await feeService.listUnpaidForChallan(req.params.studentId, months);
   if (!records.length) {
     throw new ApiError(400, 'No unpaid fees to print');
   }
@@ -98,6 +99,21 @@ const challan = catchAsync(async (req, res) => {
   const size = String(req.query.size || 'a4').toLowerCase();
   if (!['a4', 'thermal'].includes(size)) {
     throw new ApiError(400, 'Print size must be a4 or thermal');
+  }
+
+  // Optional chargeIds (comma-separated) — only checked charges are baked into the challan.
+  if (req.query.chargeIds !== undefined) {
+    const chargeIds = String(req.query.chargeIds || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const feeRecordIds = records
+      .filter((r) => r.feeType === 'monthly' || r.feeType === 'admission')
+      .map((r) => r._id);
+    if (feeRecordIds.length) {
+      await feeService.applySelectedChargesToFees(feeRecordIds, chargeIds);
+      records = await feeService.listUnpaidForChallan(req.params.studentId, months);
+    }
   }
 
   const buffer = await renderFeeChallanPdf(
@@ -113,6 +129,15 @@ const challan = catchAsync(async (req, res) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
   res.send(buffer);
+});
+
+const applyCharges = catchAsync(async (req, res) => {
+  const data = await feeService.applySelectedChargesToFees(
+    req.body.feeRecordIds,
+    req.body.chargeIds || []
+  );
+  rt.feeCrud('updated', data[0]?._id || 'charges');
+  res.json({ success: true, data });
 });
 
 const update = catchAsync(async (req, res) => {
@@ -166,6 +191,7 @@ const summary = catchAsync(async (req, res) => {
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
     classId: isParent ? undefined : req.query.classId,
+    sectionId: isParent ? undefined : req.query.sectionId,
     studentId: studentId || undefined,
     studentIds,
     sessionId: isParent ? undefined : req.query.sessionId,
@@ -276,6 +302,7 @@ module.exports = {
   update,
   pay,
   payMany,
+  applyCharges,
   receipt,
   challan,
   studentHistory,

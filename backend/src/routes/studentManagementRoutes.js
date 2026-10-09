@@ -475,6 +475,12 @@ router.get(
   requireFeeReadAccess(),
   feeCtrl.challan
 );
+router.post(
+  '/fees/apply-charges',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeeApplyCharges),
+  feeCtrl.applyCharges
+);
 router.get(
   '/fees/:id/receipt',
   requireFeeReadAccess(),

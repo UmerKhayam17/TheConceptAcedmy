@@ -9,6 +9,7 @@ const AcademyClass = require('../../models/academy/AcademyClass');
 const AcademySection = require('../../models/academy/AcademySection');
 const assessmentService = require('./academyAssessmentService');
 const { buildSeriesPlan } = require('./classTestSeries');
+const { isEnrolledInSubject } = require('./studentEnrollment');
 const {
   isTeacherRole,
   getTeacherScopeCombos,
@@ -153,13 +154,16 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
   const studentQ = { classId, status: 'active' };
   if (sectionId) studentQ.sectionId = sectionId;
 
-  // Award list / marks sheet: all active students in the class section
-  // (not only those with subject enrollment — school sections share subjects)
-  const students = await AcademyStudent.find(studentQ)
-    .select('studentId studentName fatherName rollNumber sectionId')
+  const subjectId = test.subjectId?._id || test.subjectId;
+  // Award list / marks: only students enrolled in this subject (full package or selectedSubjects)
+  const studentsRaw = await AcademyStudent.find(studentQ)
+    .select('studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects')
     .populate('sectionId', 'sectionName')
     .sort({ studentName: 1 })
     .lean();
+  const students = subjectId
+    ? studentsRaw.filter((s) => isEnrolledInSubject(s, subjectId))
+    : studentsRaw;
 
   const assessments = await AcademyAssessment.find({ classTestId: testId })
     .populate('createdBy', 'name email')

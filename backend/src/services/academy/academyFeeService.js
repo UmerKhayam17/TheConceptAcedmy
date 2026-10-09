@@ -211,18 +211,35 @@ function roundMoney(n) {
   return Math.round(Number(n) * 100) / 100;
 }
 
-/** Tuition plus charges scheduled for this month. One total, with a line breakdown. */
-function composeMonthlyComponents(student, month, charges, tuitionAmount) {
+/**
+ * Tuition plus optionally selected additional charges for this month.
+ * By default no charges are added — pass chargeIds to include specific ones.
+ */
+function composeMonthlyComponents(student, month, charges, tuitionAmount, { chargeIds } = {}) {
   const tuition = roundMoney(tuitionAmount);
   const components = [];
   if (tuition > 0) components.push({ name: 'Tuition', amount: tuition, kind: 'tuition' });
-  for (const charge of charges || []) {
-    if (!chargeApplies(charge, student, month)) continue;
-    const line = componentFromCharge(charge);
-    if (line.amount > 0) components.push(line);
+
+  const selected = new Set(
+    (Array.isArray(chargeIds) ? chargeIds : []).map((id) => String(id)).filter(Boolean)
+  );
+  if (selected.size) {
+    for (const charge of charges || []) {
+      if (!selected.has(String(charge._id))) continue;
+      if (!chargeApplies(charge, student, month)) continue;
+      const line = componentFromCharge(charge);
+      if (line.amount > 0) components.push(line);
+    }
   }
+
   const amount = roundMoney(components.reduce((sum, line) => sum + line.amount, 0));
   return { amount, components };
+}
+
+function chargeIdsFromComponents(components) {
+  return (Array.isArray(components) ? components : [])
+    .filter((line) => line?.kind === 'charge' && line?.chargeId)
+    .map((line) => String(line.chargeId));
 }
 
 /**
@@ -339,14 +356,14 @@ async function syncUnpaidChallansForStudent(student) {
   return { updated, skipped };
 }
 
-function reviseBillForFeeRecord(student, record, charges) {
+function reviseBillForFeeRecord(student, record, charges, { chargeIds } = {}) {
+  const selectedIds =
+    chargeIds !== undefined ? chargeIds : chargeIdsFromComponents(record.components);
+
   if (record.feeType === 'monthly') {
-    return composeMonthlyComponents(
-      student,
-      record.month,
-      charges,
-      monthlyBillAmount(student)
-    );
+    return composeMonthlyComponents(student, record.month, charges, monthlyBillAmount(student), {
+      chargeIds: selectedIds,
+    });
   }
 
   if (record.feeType === 'admission') {
@@ -357,7 +374,9 @@ function reviseBillForFeeRecord(student, record, charges) {
       admissionFeeDiscount: student.admissionFeeDiscount,
       discountAmount: student.discountAmount,
     });
-    const tuitionBill = composeMonthlyComponents(student, record.month, charges, monthlyAmount);
+    const tuitionBill = composeMonthlyComponents(student, record.month, charges, monthlyAmount, {
+      chargeIds: selectedIds,
+    });
     const components = [...tuitionBill.components];
     if (admissionAmount > 0) {
       components.push({
@@ -391,8 +410,8 @@ async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new D
   const year = asOf.getFullYear();
   const dueDate = resolveMonthlyDueDate(month, year);
   const { admissionAmount, monthlyAmount } = splitEnrollmentAmounts(fees);
-  const charges = await listActiveCharges();
-  const tuitionBill = composeMonthlyComponents(student, month, charges, monthlyAmount);
+  // Enrollment voucher starts tuition-only; staff opt into charges when printing / paying.
+  const tuitionBill = composeMonthlyComponents(student, month, [], monthlyAmount, { chargeIds: [] });
   const components = [...tuitionBill.components];
   if (admissionAmount > 0) {
     components.push({ name: 'Admission', amount: roundMoney(admissionAmount), kind: 'admission' });
@@ -450,7 +469,17 @@ async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new D
   return [record];
 }
 
-async function buildFeeQuery({ studentId, studentIds, status, month, year, classId, feeType, sessionId }) {
+async function buildFeeQuery({
+  studentId,
+  studentIds,
+  status,
+  month,
+  year,
+  classId,
+  sectionId,
+  feeType,
+  sessionId,
+}) {
   const q = {};
   if (status) q.status = status;
   if (feeType) q.feeType = feeType;
@@ -472,8 +501,11 @@ async function buildFeeQuery({ studentId, studentIds, status, month, year, class
     };
     return q;
   }
-  if (classId) {
-    const students = await AcademyStudent.find({ classId }).select('_id');
+  if (classId || sectionId) {
+    const studentQ = {};
+    if (classId) studentQ.classId = classId;
+    if (sectionId) studentQ.sectionId = sectionId;
+    const students = await AcademyStudent.find(studentQ).select('_id');
     q.studentId = { $in: students.map((s) => s._id) };
     return q;
   }
@@ -724,13 +756,34 @@ async function listFeeRecords({
   month,
   year,
   classId,
+  sectionId,
   feeType,
   sessionId,
   search,
 }) {
-  await syncOverdueFees({ studentId, studentIds, status, month, year, classId, feeType, sessionId });
+  await syncOverdueFees({
+    studentId,
+    studentIds,
+    status,
+    month,
+    year,
+    classId,
+    sectionId,
+    feeType,
+    sessionId,
+  });
 
-  const base = await buildFeeQuery({ studentId, studentIds, status, month, year, classId, feeType, sessionId });
+  const base = await buildFeeQuery({
+    studentId,
+    studentIds,
+    status,
+    month,
+    year,
+    classId,
+    sectionId,
+    feeType,
+    sessionId,
+  });
   const q = await applyFeeRecordSearch(base, search);
 
   const skip = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
@@ -839,7 +892,6 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
   const studentQ = { status: 'active' };
   if (classId) studentQ.classId = classId;
   const students = await AcademyStudent.find(studentQ);
-  const charges = await listActiveCharges();
   const dueDate = resolveMonthlyDueDate(month, year);
   const created = [];
   const skipped = [];
@@ -891,11 +943,13 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       continue;
     }
 
+    // Monthly challans are tuition-only until staff check additional charges at print/pay.
     const { amount, components } = composeMonthlyComponents(
       student,
       month,
-      charges,
-      monthlyBillAmount(student)
+      [],
+      monthlyBillAmount(student),
+      { chargeIds: [] }
     );
     if (amount <= 0) {
       skipped.push(student._id);
@@ -935,6 +989,53 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
   }
 
   return { created: created.length, skipped: skipped.length, repaired };
+}
+
+/**
+ * Rebuild unpaid monthly/admission vouchers with the given additional charges only.
+ * Empty chargeIds clears all charge lines (tuition / admission remain).
+ */
+async function applySelectedChargesToFees(feeRecordIds, chargeIds = []) {
+  const ids = [...new Set((Array.isArray(feeRecordIds) ? feeRecordIds : []).map(String).filter(Boolean))];
+  if (!ids.length) throw new ApiError(400, 'Select at least one fee record');
+
+  const selectedChargeIds = [
+    ...new Set((Array.isArray(chargeIds) ? chargeIds : []).map(String).filter(Boolean)),
+  ];
+
+  const records = await AcademyFeeRecord.find({
+    _id: { $in: ids },
+    status: { $in: ['pending', 'overdue'] },
+    feeType: { $in: ['monthly', 'admission'] },
+  }).populate('studentId');
+
+  if (!records.length) throw new ApiError(404, 'No unpaid fee records found');
+
+  const charges = selectedChargeIds.length ? await listActiveCharges() : [];
+  const updated = [];
+
+  for (const record of records) {
+    const student = record.studentId;
+    if (!student) continue;
+    const bill = reviseBillForFeeRecord(student, record, charges, {
+      chargeIds: selectedChargeIds,
+    });
+    if (!bill) continue;
+
+    const amountChanged = Math.abs(roundMoney(bill.amount) - roundMoney(record.amount)) > 0.009;
+    const componentsChanged = !componentsEqual(record.components, bill.components);
+    if (!amountChanged && !componentsChanged) {
+      updated.push(record);
+      continue;
+    }
+
+    record.amount = bill.amount;
+    record.components = bill.components;
+    await record.save();
+    updated.push(record);
+  }
+
+  return updated;
 }
 
 async function listUnpaidForChallan(studentId, months) {
@@ -1151,9 +1252,9 @@ async function getStudentFeeHistory(studentId) {
   return { student, records };
 }
 
-async function getFeeSummary({ month, year, classId, studentId, studentIds, sessionId }) {
-  await syncOverdueFees({ month, year, classId, studentId, studentIds, sessionId });
-  const q = await buildFeeQuery({ month, year, classId, studentId, studentIds, sessionId });
+async function getFeeSummary({ month, year, classId, sectionId, studentId, studentIds, sessionId }) {
+  await syncOverdueFees({ month, year, classId, sectionId, studentId, studentIds, sessionId });
+  const q = await buildFeeQuery({ month, year, classId, sectionId, studentId, studentIds, sessionId });
   const records = await AcademyFeeRecord.find(q).lean();
 
   const byStatus = { pending: 0, paid: 0, overdue: 0, waived: 0 };
@@ -1188,9 +1289,9 @@ async function getFeeSummary({ month, year, classId, studentId, studentIds, sess
       : 0;
   } else {
     const studentQ = { status: 'active' };
-    if (classId) {
-      studentQ.classId = classId;
-    } else if (sessionId) {
+    if (classId) studentQ.classId = classId;
+    if (sectionId) studentQ.sectionId = sectionId;
+    if (!classId && !sectionId && sessionId) {
       const classes = await AcademyClass.find({ sessionId }).select('_id');
       studentQ.classId = { $in: classes.map((c) => c._id) };
     }
@@ -1210,6 +1311,7 @@ async function getFeeSummary({ month, year, classId, studentId, studentIds, sess
       month: prevMonth,
       year: prevYear,
       classId,
+      sectionId,
       studentId,
       studentIds,
       sessionId,
@@ -1249,6 +1351,7 @@ async function getFeeSummary({ month, year, classId, studentId, studentIds, sess
           month: w.month,
           year: w.year,
           classId,
+          sectionId,
           studentId,
           studentIds,
           sessionId,
@@ -1880,6 +1983,7 @@ module.exports = {
   getFeeRecordById,
   updateFeeRecord,
   listUnpaidForChallan,
+  applySelectedChargesToFees,
   addStationeryCharge,
   generateMonthlyFees,
   createEnrollmentFeeVouchers,

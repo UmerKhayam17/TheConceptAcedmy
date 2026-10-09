@@ -7,6 +7,7 @@ const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademySection = require('../../models/academy/AcademySection');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const ApiError = require('../../utils/ApiError');
+const { isEnrolledInSubject } = require('./studentEnrollment');
 
 const GRAY = '#C8C8C8';
 const LINE = '#000000';
@@ -379,12 +380,19 @@ async function loadExamStudents(exam) {
   const studentQ = { classId: exam.academyClass, status: 'active' };
   if (exam.sectionId) studentQ.sectionId = exam.sectionId;
   return AcademyStudent.find(studentQ)
-    .select('studentId studentName fatherName rollNumber sectionId')
+    .select('studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects')
     .lean();
+}
+
+function studentsForSubject(allStudents, subjectRef) {
+  const sid = subjectRef?._id || subjectRef;
+  if (!sid) return allStudents;
+  return allStudents.filter((s) => isEnrolledInSubject(s, sid));
 }
 
 /**
  * Exam award list(s). Optional subjectId → one subject sheet; otherwise all date-sheet subjects.
+ * Each sheet lists only students enrolled in that subject.
  */
 async function renderExamAwardListPdf(examId, subjectId) {
   const exam = await Exam.findById(examId)
@@ -406,7 +414,7 @@ async function renderExamAwardListPdf(examId, subjectId) {
   }
   const programLabel = [className, sectionName].filter(Boolean).join(' - ') || '—';
   const testTypeLabel = exam.type || 'Exam';
-  const students = await loadExamStudents(exam);
+  const allStudents = await loadExamStudents(exam);
 
   const dateSheet = Array.isArray(exam.dateSheet) ? exam.dateSheet : [];
   let papers = dateSheet.filter((p) => p.subject);
@@ -442,7 +450,7 @@ async function renderExamAwardListPdf(examId, subjectId) {
         testNumber: String(index + 1),
         testDate: formatDate(p.date || exam.startDate),
       },
-      students,
+      students: studentsForSubject(allStudents, p.subject),
     };
   });
 
