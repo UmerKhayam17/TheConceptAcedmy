@@ -176,12 +176,45 @@ export const aiCameraAction = (action: string, cameraId?: string) =>
     body: JSON.stringify({ action, cameraId }),
   });
 
+export type StaffTeacherOption = {
+  _id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  isActive?: boolean;
+  role?: { _id: string; name?: string } | string;
+};
+
+export type StaffAttendanceStatus = "present" | "late" | "absent" | "half_day" | "leave";
+
+export type MarkStaffAttendancePayload = {
+  date: string;
+  userId: string;
+  status: StaffAttendanceStatus;
+  checkIn?: string;
+  checkOut?: string;
+  notes?: string;
+};
+
 export const fetchStaffAttendanceDay = (date: string, userId?: string) => {
   const q = new URLSearchParams({ date });
   if (userId) q.set("userId", userId);
   return api<{ date: string; records: StaffAttendanceRecord[]; summary: Record<string, number> }>(
     `/staff-attendance?${q}`,
   );
+};
+
+export const fetchStaffTeachers = () => api<StaffTeacherOption[]>("/staff-attendance/teachers");
+
+export const fetchStaffAttendanceMonth = (month: number, year: number, userId?: string) => {
+  const q = new URLSearchParams({ month: String(month), year: String(year) });
+  if (userId) q.set("userId", userId);
+  return api<{
+    month: number;
+    year: number;
+    records: StaffAttendanceRecord[];
+    summary: Record<string, number>;
+  }>(`/staff-attendance/month?${q}`);
 };
 
 export const fetchMyStaffAttendance = (month?: number, year?: number) => {
@@ -198,3 +231,9 @@ export const fetchStaffAttendanceHistory = (userId: string, month?: number, year
   if (year) q.set("year", String(year));
   return api<StaffAttendanceRecord[]>(`/staff-attendance/history?${q}`);
 };
+
+export const markStaffAttendanceManual = (payload: MarkStaffAttendancePayload) =>
+  api<StaffAttendanceRecord>("/staff-attendance/manual", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

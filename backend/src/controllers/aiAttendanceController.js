@@ -134,11 +134,28 @@ const staffAttendanceHistory = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
-const markStaffAttendance = catchAsync(async (req, res) => {
+const listStaffTeachers = catchAsync(async (_req, res) => {
+  const data = await staffAttendanceService.listTeachers();
+  res.json({ success: true, data });
+});
+
+const listStaffAttendanceMonth = catchAsync(async (req, res) => {
   const role = req.user?.roleDoc || req.user?.role;
   const roleName = typeof role === 'object' && role?.name ? role.name : '';
   const isAdmin = roleName === 'admin';
-  const userId = isAdmin ? req.body.userId : req.user._id;
+  const month = req.query.month ? Number(req.query.month) : new Date().getMonth() + 1;
+  const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+  let userId = req.query.userId;
+  if (!isAdmin) {
+    userId = req.user._id;
+  }
+  const data = await staffAttendanceService.listByMonth({ month, year, userId });
+  res.json({ success: true, data });
+});
+
+const markStaffAttendance = catchAsync(async (req, res) => {
+  // Route already requires mark_attendance / manage_users — allow marking any staff.
+  const userId = req.body.userId || req.user._id;
   if (!userId) throw new ApiError(400, 'userId required');
   const data = await staffAttendanceService.markManual({ ...req.body, userId }, req.user._id);
   res.status(201).json({ success: true, data });
@@ -163,5 +180,7 @@ module.exports = {
   listStaffAttendance,
   myStaffAttendance,
   staffAttendanceHistory,
+  listStaffTeachers,
+  listStaffAttendanceMonth,
   markStaffAttendance,
 };

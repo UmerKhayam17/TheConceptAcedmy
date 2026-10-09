@@ -50,6 +50,7 @@ import {
   type TeacherTestScopeAssignment,
 } from "@/lib/configApi";
 import {
+  deleteClassTest,
   fetchAcademyClasses,
   fetchClassTests,
   fetchSectionsByClass,
@@ -484,8 +485,13 @@ export default function AssignAssessmentsPanel({
                     {canManage && a.status === "draft" && isReady(a, teacherSubjectSet) && (
                       <PublishButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
                     )}
-                    {canManage && a.status === "draft" && (
-                      <DeleteButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
+                    {canManage && (
+                      <DeleteButton
+                        sessionId={effectiveSessionId}
+                        assignmentId={a._id}
+                        published={a.status === "published"}
+                        onDone={invalidate}
+                      />
                     )}
                   </td>
                 </tr>
@@ -513,8 +519,16 @@ export default function AssignAssessmentsPanel({
                   <td className="p-2.5">
                     <Badge variant="default" className="text-[10px]">Published</Badge>
                   </td>
-                  <td className="p-2.5 text-right text-muted-foreground text-xs">
-                    {formatClassTestSchedule(t)} · {t.totalMarks} marks
+                  <td
+                    className="p-2.5 text-right space-x-1 whitespace-nowrap"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-muted-foreground text-xs mr-1">
+                      {formatClassTestSchedule(t)} · {t.totalMarks} marks
+                    </span>
+                    {canManage && (
+                      <DeleteClassTestButton test={t} onDone={invalidate} />
+                    )}
                   </td>
                 </tr>
               ))}
@@ -610,10 +624,12 @@ function PublishButton({
 function DeleteButton({
   sessionId,
   assignmentId,
+  published,
   onDone,
 }: {
   sessionId: string;
   assignmentId: string;
+  published?: boolean;
   onDone: () => void;
 }) {
   const { toast } = useToast();
@@ -626,8 +642,61 @@ function DeleteButton({
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
   return (
-    <Button size="sm" variant="ghost" onClick={() => mut.mutate()} disabled={mut.isPending}>
-      <Trash2 className="h-3.5 w-3.5" />
+    <Button
+      size="sm"
+      variant="ghost"
+      disabled={mut.isPending}
+      onClick={() => {
+        const msg = published
+          ? "Delete this published test and its papers/marks?"
+          : "Delete this draft assignment?";
+        if (!confirm(msg)) return;
+        mut.mutate();
+      }}
+    >
+      {mut.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+      )}
+    </Button>
+  );
+}
+
+function DeleteClassTestButton({
+  test,
+  onDone,
+}: {
+  test: AcademyClassTest;
+  onDone: () => void;
+}) {
+  const { toast } = useToast();
+  const mut = useMutation({
+    mutationFn: (deleteSeries: boolean) =>
+      deleteClassTest(test._id, deleteSeries ? { deleteSeries: true } : undefined),
+    onSuccess: () => {
+      onDone();
+      toast({ title: "Test removed" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      disabled={mut.isPending}
+      onClick={() => {
+        const series = Boolean(test.seriesId && test.occurrenceCount && test.occurrenceCount > 1);
+        const msg = series ? "Delete entire test series?" : "Delete this test and its marks?";
+        if (!confirm(msg)) return;
+        mut.mutate(series);
+      }}
+    >
+      {mut.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+      )}
     </Button>
   );
 }

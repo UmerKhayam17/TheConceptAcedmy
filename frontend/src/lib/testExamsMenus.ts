@@ -9,7 +9,7 @@ export const TEST_EXAMS_SECTIONS: {
   label: string;
   icon: ComponentType<{ className?: string }>;
 }[] = [
-  { key: "enter-tests", label: "Tests", icon: ClipboardList },
+  { key: "enter-tests", label: "Test Scheduling", icon: ClipboardList },
   { key: "term-exams", label: "Exams", icon: GraduationCap },
   { key: "date-sheet", label: "Date sheet", icon: CalendarDays },
 ];

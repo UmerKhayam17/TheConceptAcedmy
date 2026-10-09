@@ -170,20 +170,6 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => systemConfigHref(role, "rooms"),
       },
       {
-        id: "teachers",
-        label: "Teachers",
-        icon: UserCircle,
-        moduleKey: "system-config",
-        href: (role) => systemConfigHref(role, "teachers"),
-      },
-      {
-        id: "subject-teachers",
-        label: "Subject Teachers",
-        icon: Link2,
-        moduleKey: "system-config",
-        href: (role) => systemConfigHref(role, "subject-teachers"),
-      },
-      {
         id: "periods",
         label: "Academy Time Configuration",
         icon: Clock,
@@ -250,6 +236,10 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: ClipboardList,
         moduleKey: "attendance",
         href: (role) => moduleHref(role, "attendance"),
+        isActive: (pathname, role) => {
+          const base = moduleHref(role, "attendance");
+          return pathname === base || pathname.startsWith(`${base}/`);
+        },
       },
       {
         id: "ai-attendance",
@@ -268,44 +258,57 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
     ],
   },
   {
-    id: "teaching",
-    label: "Teaching",
-    icon: BookOpen,
+    id: "teacher-management",
+    label: "Teacher Management",
+    icon: UserCog,
     collapsible: true,
     items: [
       {
-        id: "class-view",
-        label: "Section Dashboard",
-        icon: CalendarDays,
-        moduleKey: "timetable",
-        href: (role) => timetableHref(role, "view"),
+        id: "teachers",
+        label: "Teachers",
+        icon: UserCircle,
+        moduleKey: "system-config",
+        href: (role) => systemConfigHref(role, "teachers"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/system-config/teachers`),
       },
       {
-        id: "my-schedule",
-        label: "My Schedule",
-        icon: Calendar,
-        moduleKey: "timetable",
-        href: (role) => timetableHref(role, "mine"),
-        isActive: (pathname, role) => pathname.startsWith(`${p(role)}/timetable/mine`),
+        id: "subject-teachers",
+        label: "Subject Teachers",
+        icon: Link2,
+        moduleKey: "system-config",
+        href: (role) => systemConfigHref(role, "subject-teachers"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/system-config/subject-teachers`),
       },
       {
-        id: "teaching-attendance",
-        label: "Attendance",
-        icon: ClipboardList,
-        moduleKey: "attendance",
-        href: (role) => moduleHref(role, "attendance"),
+        id: "staff-attendance",
+        label: "Teacher Attendance",
+        icon: Clock,
+        moduleKey: "staff-attendance",
+        href: (role) => moduleHref(role, "staff-attendance"),
+        isActive: (pathname, role) => {
+          const base = moduleHref(role, "staff-attendance");
+          return (
+            pathname === base ||
+            pathname.startsWith(`${base}/`) ||
+            pathname.includes("/staff-attendance") ||
+            pathname.includes("/teacher-attendance")
+          );
+        },
       },
     ],
   },
+  // Teaching group is for the teacher portal only (see TEACHER_SIDEBAR_NAV).
   {
     id: "examinations",
-    label: "Assessments",
+    label: "Examination",
     icon: Award,
     collapsible: true,
     items: [
       {
         id: "class-tests",
-        label: "Tests",
+        label: "Test Scheduling",
         icon: ClipboardList,
         moduleKey: "exams",
         href: (role) => testExamsHref(role, "enter-tests"),
@@ -529,7 +532,7 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
       // },
       {
         id: "exams",
-        label: "Assessments",
+        label: "Examination",
         icon: Award,
         moduleKey: "exams",
         href: (role) => testExamsHref(role),
@@ -650,6 +653,14 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: Clock,
         moduleKey: "staff-attendance",
         href: (role) => moduleHref(role, "staff-attendance"),
+        isActive: (pathname, role) => {
+          const base = moduleHref(role, "staff-attendance");
+          return (
+            pathname === base ||
+            pathname.startsWith(`${base}/`) ||
+            pathname.includes("/staff-attendance")
+          );
+        },
       },
     ],
   },
@@ -925,6 +936,14 @@ export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: Clock,
         moduleKey: "staff-attendance",
         href: (role) => moduleHref(role, "staff-attendance"),
+        isActive: (pathname, role) => {
+          const base = moduleHref(role, "staff-attendance");
+          return (
+            pathname === base ||
+            pathname.startsWith(`${base}/`) ||
+            pathname.includes("/staff-attendance")
+          );
+        },
       },
     ],
   },
@@ -950,7 +969,14 @@ export function groupIsOpen(group: SidebarNavGroup, pathname: string, role: Role
 /** Primary destinations for the mobile bottom tab bar (order matters).
  * Admin uses sidebar *group* ids (main menu). Other roles use item ids. */
 export const MOBILE_PRIMARY_NAV_IDS: Record<Role, string[]> = {
-  admin: ["dashboard", "academic-setup", "student-management", "finance", "administration"],
+  admin: [
+    "dashboard",
+    "academic-setup",
+    "student-management",
+    "teacher-management",
+    "finance",
+    "administration",
+  ],
   accountant: ["dashboard", "students", "fee-management", "academy-expenses", "chat"],
   teacher: ["dashboard", "my-classes", "attendance", "chat", "exams"],
   parent: ["dashboard", "students", "student-attendance", "chat", "announcements"],
@@ -962,6 +988,7 @@ export const ADMIN_MOBILE_GROUP_IDS = [
   "dashboard",
   "academic-setup",
   "student-management",
+  "teacher-management",
   "finance",
   "administration",
 ] as const;

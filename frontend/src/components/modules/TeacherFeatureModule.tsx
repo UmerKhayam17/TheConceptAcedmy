@@ -54,8 +54,8 @@ const COPY: Partial<Record<ModuleKey, { title: string; body: string }>> = {
     body: "Apply for leave and track approval status.",
   },
   "staff-attendance": {
-    title: "My Attendance",
-    body: "View your attendance from the biometric system and request corrections if needed.",
+    title: "Teacher Attendance",
+    body: "View and mark your attendance (manual time in / out and AI check-in).",
   },
 };
 

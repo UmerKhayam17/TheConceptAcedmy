@@ -7,7 +7,9 @@ const AcademySection = require('../../models/academy/AcademySection');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyClassTest = require('../../models/academy/AcademyClassTest');
+const AcademyAssessment = require('../../models/academy/AcademyAssessment');
 const Exam = require('../../models/Exam');
+const Result = require('../../models/Result');
 const User = require('../../models/User');
 const {
   assessmentTypeLabel,
@@ -555,15 +557,40 @@ async function deleteAssignment(sessionId, assignmentId, actor) {
   await assertSessionWritable(sessionId);
   const doc = await AssessmentAssignment.findOne({ _id: assignmentId, sessionId });
   if (!doc) throw new ApiError(404, 'Assignment not found');
-  if (doc.status === 'published') throw new ApiError(400, 'Cannot delete a published assignment');
   if (isTeacherRole(actor)) {
     await assertTeacherCanAccessAssignment(actor._id, doc, sessionId);
     if (doc.category !== 'test') {
       throw new ApiError(403, 'Teachers cannot delete exam assignments');
     }
   }
+
+  // Cascade: remove live class tests / exams created when this assignment was published
+  const paperTestIds = (doc.papers || [])
+    .map((p) => p.classTestId)
+    .filter(Boolean);
+  const linkedTests = await AcademyClassTest.find({
+    $or: [
+      { assignmentId: doc._id },
+      ...(paperTestIds.length ? [{ _id: { $in: paperTestIds } }] : []),
+    ],
+  })
+    .select('_id')
+    .lean();
+  const testIds = linkedTests.map((t) => t._id);
+  if (testIds.length) {
+    await AcademyAssessment.deleteMany({ classTestId: { $in: testIds } });
+    await AcademyClassTest.deleteMany({ _id: { $in: testIds } });
+  }
+
+  const examId = doc.examId;
+  if (examId) {
+    await Result.deleteMany({ exam: examId });
+    await Exam.findByIdAndDelete(examId);
+  }
+
   await doc.deleteOne();
   emitModuleSync('exam', 'assessment-assignment', 'deleted', { sessionId: String(sessionId) });
+  emitModuleSync('exam', 'class-test', 'deleted', { sessionId: String(sessionId) });
   return { ok: true };
 }
 

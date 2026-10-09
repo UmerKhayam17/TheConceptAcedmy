@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Download, FileSpreadsheet, FileText } from "lucide-react";
+import { ChevronDown, Clock, Download, FileSpreadsheet, FileText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +29,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import { localTodayYmd } from "@/lib/localDate";
+import { moduleHref } from "@/lib/panelMenus";
+import type { Role } from "@/lib/auth";
 
 const today = () => localTodayYmd();
 
@@ -251,6 +254,22 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
   return (
     <div>
       <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="font-display text-2xl font-bold text-primary">Student Attendance</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Mark daily attendance for students by class and section.
+            </p>
+          </div>
+          {user?.role === "admin" || user?.role === "accountant" ? (
+            <Button asChild variant="default" className="gap-2 shrink-0">
+              <Link to={moduleHref((user.role || "admin") as Role, "staff-attendance")}>
+                <Clock className="h-4 w-4" />
+                Open Teacher Attendance
+              </Link>
+            </Button>
+          ) : null}
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <Card className="p-4">
             <div className="text-xs text-muted-foreground">Present</div>
@@ -392,7 +411,7 @@ const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
 
         <Card className="overflow-hidden">
           <div className="px-4 py-3 border-b border-border font-semibold text-primary">
-            Attendance — {date}
+            Student attendance — {date}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

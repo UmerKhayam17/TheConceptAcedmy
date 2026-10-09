@@ -33,6 +33,7 @@ function shortLabel(label: string): string {
     Dashboard: "Home",
     "Academic Setup": "Academic",
     "Student Management": "Students",
+    "Teacher Management": "Teachers",
     Finance: "Finance",
     Administration: "Admin",
     Students: "Students",
@@ -49,6 +50,7 @@ function shortLabel(label: string): string {
     Timetable: "Time",
     "Student Timetable": "Time",
     Exams: "Exams",
+    Examination: "Exams",
     Announcements: "News",
     "Class Tests / Exams": "Exams",
     "Staff Salary": "Salary",
@@ -171,6 +173,7 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
         dashboard: "dashboard",
         "academic-setup": "sessions",
         "student-management": "students",
+        "teacher-management": "staff-attendance",
         finance: "fee-management",
         administration: "users",
       };

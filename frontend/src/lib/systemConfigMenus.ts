@@ -48,7 +48,11 @@ export const SYSTEM_CONFIG_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(SYSTEM_CON
   { label: "Academic year", keys: ["academic", "history", "test-catalog", "exam-catalog"] },
   {
     label: "Timetable setup",
-    keys: ["rooms", "teachers", "subject-teachers", "periods", "sections", "timetable-rules"],
+    keys: ["rooms", "periods", "sections", "timetable-rules"],
+  },
+  {
+    label: "Teachers",
+    keys: ["teachers", "subject-teachers"],
   },
 ]);
 

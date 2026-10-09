@@ -101,8 +101,17 @@ export const buildGroupedMenu = (
   })).filter((g) => g.items.length > 0);
 };
 
-export const findModule = (slug: string | undefined): ModuleDef | undefined =>
-  MODULES.find((m) => (slug ? m.key === slug : m.key === "dashboard"));
+/** URL slug → module key (keeps Teacher Attendance on its own path). */
+const MODULE_SLUG_ALIASES: Record<string, ModuleKey> = {
+  "teacher-attendance": "staff-attendance",
+  "staff-attendance": "staff-attendance",
+};
+
+export const findModule = (slug: string | undefined): ModuleDef | undefined => {
+  if (!slug) return MODULES.find((m) => m.key === "dashboard");
+  const key = MODULE_SLUG_ALIASES[slug] || slug;
+  return MODULES.find((m) => m.key === key);
+};
 
 export const moduleHref = (
   role: Role,
@@ -121,4 +130,6 @@ export const moduleHref = (
             ? testExamsHref(role)
         : key === "staff-management"
           ? `/panel/${role}/staff-management`
+          : key === "staff-attendance"
+            ? `/panel/${role}/teacher-attendance`
             : `/panel/${role}/${key}`;

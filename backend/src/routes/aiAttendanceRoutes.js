@@ -87,6 +87,16 @@ router.get(
   ctrl.listStaffAttendance
 );
 router.get(
+  '/staff-attendance/teachers',
+  requireAnyPermission('view_attendance', 'mark_attendance', 'manage_users'),
+  ctrl.listStaffTeachers
+);
+router.get(
+  '/staff-attendance/month',
+  requireAnyPermission('view_attendance', 'mark_attendance', 'manage_users'),
+  ctrl.listStaffAttendanceMonth
+);
+router.get(
   '/staff-attendance/history',
   requireAnyPermission('view_attendance', 'mark_attendance', 'manage_users'),
   ctrl.staffAttendanceHistory

@@ -95,12 +95,12 @@ export const MODULES: ModuleDef[] = [
   },
   { key: "my-classes", label: "My Classes", icon: "School", desc: "View assigned classes" },
   { key: "my-subjects", label: "My Subjects", icon: "BookOpen", desc: "View assigned subjects" },
-  { key: "attendance", label: "Attendance", icon: "ClipboardList", desc: "Daily student attendance" },
+  { key: "attendance", label: "Student Attendance", icon: "ClipboardList", desc: "Daily student attendance" },
   {
     key: "staff-attendance",
-    label: "My Attendance",
+    label: "Teacher Attendance",
     icon: "Clock",
-    desc: "Own attendance and correction requests",
+    desc: "Mark and review teacher / staff attendance",
   },
   {
     key: "ai-attendance",
@@ -130,10 +130,10 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: "exams",
-    label: "Assessments",
-    shortLabel: "Assessments",
+    label: "Examination",
+    shortLabel: "Examination",
     icon: "Award",
-    desc: "Tests and exams — enter marks for assigned subjects",
+    desc: "Test scheduling and exams — enter marks for assigned subjects",
   },
   {
     key: "student-progress",
@@ -247,7 +247,12 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
   {
     id: "student-management",
     label: "Student Management",
-    modules: ["students", "attendance", "ai-attendance", "staff-attendance"],
+    modules: ["students", "attendance", "ai-attendance"],
+  },
+  {
+    id: "teacher-management",
+    label: "Teacher Management",
+    modules: ["staff-attendance", "system-config"],
   },
   {
     id: "teaching",

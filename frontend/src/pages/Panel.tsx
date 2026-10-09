@@ -283,6 +283,11 @@ const Panel = () => {
     );
   }
 
+  // Keep Teacher Attendance on its own URL (not mixed with Student Attendance).
+  if (slug === "staff-attendance") {
+    return <Navigate to={moduleHref(r, "staff-attendance")} replace />;
+  }
+
   const mod = findModule(slug);
   if (!mod) return <Navigate to={`/panel/${r}`} replace />;
 
