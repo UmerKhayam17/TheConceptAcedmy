@@ -22,8 +22,10 @@ const ACADEMY_BRAND = {
 
 function resolveLogoPath() {
   const candidates = [
+    path.join(__dirname, '../assets/logo.png'),
     path.join(__dirname, '../../assets/logo.png'),
     path.join(__dirname, '../../../frontend/src/assets/logo.png'),
+    path.join(__dirname, '../../../frontend/public/logo.png'),
   ];
   return candidates.find((p) => fs.existsSync(p)) || null;
 }

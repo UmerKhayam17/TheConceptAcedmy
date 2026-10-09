@@ -7,6 +7,7 @@ import { ArrowLeft, CalendarClock, ChevronRight, Repeat } from "lucide-react";
 import type { Role } from "@/lib/auth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { classTestMarksHref, testExamsHref } from "@/lib/testExamsMenus";
+import AwardListButton from "@/components/modules/exams/AwardListButton";
 import {
   ASSESSMENT_TYPE_LABELS,
   fetchClassTests,
@@ -114,10 +115,10 @@ export default function ClassTestSeriesPage({
         </div>
         <ul className="divide-y">
           {sorted.map((test) => (
-            <li key={test._id}>
+            <li key={test._id} className="flex items-center gap-2 px-4 py-3 hover:bg-muted/40 transition-colors">
               <Link
                 to={classTestMarksHref(role, test._id)}
-                className="flex items-center gap-3 px-4 py-4 hover:bg-muted/40 transition-colors"
+                className="flex items-center gap-3 flex-1 min-w-0"
               >
                 <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-primary shrink-0">
                   {test.occurrenceIndex ?? "—"}
@@ -134,6 +135,7 @@ export default function ClassTestSeriesPage({
                 </Badge>
                 <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
               </Link>
+              <AwardListButton testId={test._id} className="shrink-0" />
             </li>
           ))}
         </ul>

@@ -62,6 +62,7 @@ import {
   type AcademySubject,
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import AwardListButton from "@/components/modules/exams/AwardListButton";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 
 function idOf(ref: string | { _id: string } | undefined | null): string {
@@ -480,7 +481,7 @@ export default function AssignAssessmentsPanel({
                   >
                     <Button size="sm" variant="outline" onClick={() => setConfigAssignment(a)}>
                       <BookOpen className="h-3.5 w-3.5" />
-                      {a.status === "published" ? "View" : "Syllabus"}
+                      {a.status === "published" ? "Edit" : "Syllabus"}
                     </Button>
                     {canManage && a.status === "draft" && isReady(a, teacherSubjectSet) && (
                       <PublishButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
@@ -526,6 +527,7 @@ export default function AssignAssessmentsPanel({
                     <span className="text-muted-foreground text-xs mr-1">
                       {formatClassTestSchedule(t)} · {t.totalMarks} marks
                     </span>
+                    <AwardListButton testId={t._id} />
                     {canManage && (
                       <DeleteClassTestButton test={t} onDone={invalidate} />
                     )}
@@ -764,15 +766,34 @@ function TestSubjectsDialog({
                     <td className="p-2.5 text-muted-foreground max-w-[240px]">
                       {p.syllabus || "—"}
                     </td>
-                    <td className="p-2.5 text-right">
+                    <td className="p-2.5 text-right whitespace-nowrap">
                       {assignment?.category === "exam" && assignment.examId ? (
-                        <Button size="sm" variant="outline" onClick={() => onEnterExam(String(assignment.examId))}>
-                          Enter marks
-                        </Button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <AwardListButton
+                            examId={String(assignment.examId)}
+                            subjectId={idOf(p.subjectId)}
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3"
+                            onClick={() => onEnterExam(String(assignment.examId))}
+                          >
+                            Enter marks
+                          </Button>
+                        </div>
                       ) : p.classTestId ? (
-                        <Button size="sm" variant="outline" onClick={() => onEnterMarks(String(p.classTestId))}>
-                          Enter marks
-                        </Button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <AwardListButton testId={String(p.classTestId)} />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3"
+                            onClick={() => onEnterMarks(String(p.classTestId))}
+                          >
+                            Enter marks
+                          </Button>
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">Not published</span>
                       )}
@@ -1052,7 +1073,7 @@ function ConfigureAssignmentDialog({
 
   if (!assignment) return null;
 
-  const canEditPapers = canManage && (!published || isTeacher);
+  const canEditPapers = canManage;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1060,6 +1081,11 @@ function ConfigureAssignmentDialog({
         <DialogHeader>
           <DialogTitle>
             {assignment.name} — {classNameOf(assignment)}
+            {published ? (
+              <span className="block text-sm font-normal text-muted-foreground mt-1">
+                Fill missed subjects or update dates and syllabus, then save.
+              </span>
+            ) : null}
           </DialogTitle>
         </DialogHeader>
 
@@ -1162,7 +1188,9 @@ function ConfigureAssignmentDialog({
           <p className="text-xs text-muted-foreground">
             {isTeacher
               ? "Only your assigned subjects are shown. Leave blank to skip. Filled rows need both marks and date."
-              : "Leave a subject blank to skip. Filled rows need both marks and date."}
+              : published
+                ? "Add missed subjects anytime. Filled rows need both marks and date. Saving creates live tests for new subjects."
+                : "Leave a subject blank to skip. Filled rows need both marks and date."}
           </p>
         </div>
 
@@ -1173,7 +1201,7 @@ function ConfigureAssignmentDialog({
           {canEditPapers && (
             <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
               {saveMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save syllabus
+              {published ? "Save changes" : "Save syllabus"}
             </Button>
           )}
         </DialogFooter>

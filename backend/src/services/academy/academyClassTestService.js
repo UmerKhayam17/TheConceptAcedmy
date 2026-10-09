@@ -9,7 +9,6 @@ const AcademyClass = require('../../models/academy/AcademyClass');
 const AcademySection = require('../../models/academy/AcademySection');
 const assessmentService = require('./academyAssessmentService');
 const { buildSeriesPlan } = require('./classTestSeries');
-const { hasAnySubjectEnrollment, isEnrolledInSubject } = require('./studentEnrollment');
 const {
   isTeacherRole,
   getTeacherScopeCombos,
@@ -151,22 +150,16 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
   const classId = test.classId?._id || test.classId;
   const sectionId = test.sectionId?._id || test.sectionId;
 
-  const subjectId = String(test.subjectId?._id || test.subjectId);
-
   const studentQ = { classId, status: 'active' };
   if (sectionId) studentQ.sectionId = sectionId;
 
+  // Award list / marks sheet: all active students in the class section
+  // (not only those with subject enrollment — school sections share subjects)
   const students = await AcademyStudent.find(studentQ)
-    .select(
-      'studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects'
-    )
+    .select('studentId studentName fatherName rollNumber sectionId')
     .populate('sectionId', 'sectionName')
     .sort({ studentName: 1 })
     .lean();
-
-  const enrolledStudents = students.filter(
-    (s) => hasAnySubjectEnrollment(s) && isEnrolledInSubject(s, subjectId)
-  );
 
   const assessments = await AcademyAssessment.find({ classTestId: testId })
     .populate('createdBy', 'name email')
@@ -188,7 +181,7 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
   return {
     test,
     series: seriesSiblings,
-    students: enrolledStudents.map((student) => ({
+    students: students.map((student) => ({
       student: {
         _id: student._id,
         studentId: student.studentId,
@@ -236,11 +229,6 @@ async function saveClassTestMarks(testId, entries, userId, actor, sessionId) {
     if (sectionId && String(student.sectionId || '') !== sectionId) {
       throw new ApiError(400, 'Invalid student for this section');
     }
-    const testSubjectId = String(test.subjectId);
-    if (!hasAnySubjectEnrollment(student) || !isEnrolledInSubject(student, testSubjectId)) {
-      throw new ApiError(400, `${student.studentName} is not enrolled in this test subject`);
-    }
-
     const payload = {
       classTestId: testId,
       subjectId: test.subjectId,
@@ -288,10 +276,6 @@ async function uploadStudentTestPaper(testId, studentId, file, actor, sessionId)
   }
   if (test.sectionId && String(student.sectionId || '') !== String(test.sectionId)) {
     throw new ApiError(400, 'Student not in this test section');
-  }
-  const testSubjectId = String(test.subjectId);
-  if (!hasAnySubjectEnrollment(student) || !isEnrolledInSubject(student, testSubjectId)) {
-    throw new ApiError(400, 'Student is not enrolled in this test subject');
   }
   const url = saveTestPaperFile(testId, studentId, file);
   const existing = await AcademyAssessment.findOne({ classTestId: testId, studentId });

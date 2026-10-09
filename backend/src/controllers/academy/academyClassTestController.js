@@ -1,5 +1,6 @@
 const catchAsync = require('../../utils/catchAsync');
 const classTestService = require('../../services/academy/academyClassTestService');
+const { renderAwardListPdf } = require('../../services/academy/academyAwardListService');
 
 const list = catchAsync(async (req, res) => {
   const data = await classTestService.listClassTests(
@@ -60,4 +61,12 @@ const remove = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
-module.exports = { list, create, getEntry, saveMarks, uploadTestPaper, remove };
+const awardListPdf = catchAsync(async (req, res) => {
+  const buffer = await renderAwardListPdf(req.params.id, req.user, req.query.sessionId);
+  const filename = `award-list-${req.params.id}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.send(buffer);
+});
+
+module.exports = { list, create, getEntry, saveMarks, uploadTestPaper, remove, awardListPdf };

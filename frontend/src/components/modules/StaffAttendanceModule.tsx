@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock, Save } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -169,7 +169,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   const [year, setYear] = useState(now.getFullYear());
   const [monthTeacherFilter, setMonthTeacherFilter] = useState("");
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
-  const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
 
   const {
     data: teachers = [],
@@ -251,60 +251,86 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     }));
   };
 
-  const markMut = useMutation({
-    mutationFn: markStaffAttendanceManual,
-    onSuccess: (_data, vars) => {
-      setDrafts((prev) => ({
-        ...prev,
-        [vars.userId]: { ...(prev[vars.userId] || emptyDraft()), dirty: false },
-      }));
+  const dirtyCount = useMemo(
+    () => dailyRows.filter((t) => drafts[t._id]?.dirty).length,
+    [dailyRows, drafts]
+  );
+
+  const saveAll = async () => {
+    const toSave = dailyRows.filter((t) => drafts[t._id]?.dirty);
+    if (!toSave.length) {
+      toast({ title: "Nothing to save", description: "Change status or times first." });
+      return;
+    }
+
+    const payloads: Parameters<typeof markStaffAttendanceManual>[0][] = [];
+    for (const teacher of toSave) {
+      const draft = drafts[teacher._id] || emptyDraft();
+      const needsTimes =
+        draft.status === "present" || draft.status === "late" || draft.status === "half_day";
+      const timeIn = normalizeTimeHm(draft.timeIn);
+      const timeOut = normalizeTimeHm(draft.timeOut);
+
+      if (needsTimes && timeIn && !/^\d{2}:\d{2}$/.test(timeIn)) {
+        toast({
+          title: `Invalid time in — ${teacher.name}`,
+          description: "Use HH:MM (e.g. 08:30)",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (needsTimes && timeOut && !/^\d{2}:\d{2}$/.test(timeOut)) {
+        toast({
+          title: `Invalid time out — ${teacher.name}`,
+          description: "Use HH:MM (e.g. 14:00)",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (needsTimes && !timeIn) {
+        toast({
+          title: `Time in required — ${teacher.name}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      payloads.push({
+        date,
+        userId: teacher._id,
+        status: draft.status,
+        checkIn: needsTimes ? combineLocalDateTime(date, timeIn) : undefined,
+        checkOut: needsTimes && timeOut ? combineLocalDateTime(date, timeOut) : undefined,
+        notes: draft.notes.trim() || undefined,
+      });
+    }
+
+    setSavingAll(true);
+    try {
+      await Promise.all(payloads.map((p) => markStaffAttendanceManual(p)));
+      setDrafts((prev) => {
+        const next = { ...prev };
+        toSave.forEach((t) => {
+          next[t._id] = { ...(next[t._id] || emptyDraft()), dirty: false };
+        });
+        return next;
+      });
       qc.invalidateQueries({ queryKey: ["staff-attendance-day"] });
       qc.invalidateQueries({ queryKey: ["staff-attendance-month"] });
       qc.invalidateQueries({ queryKey: ["staff-attendance-mine"] });
-      toast({ title: "Attendance saved" });
-    },
-    onError: (e: Error) =>
-      toast({ title: "Could not save", description: e.message, variant: "destructive" }),
-    onSettled: () => setSavingId(null),
-  });
-
-  const saveRow = (teacher: StaffTeacherOption) => {
-    const draft = drafts[teacher._id] || emptyDraft();
-    const needsTimes =
-      draft.status === "present" || draft.status === "late" || draft.status === "half_day";
-    const timeIn = normalizeTimeHm(draft.timeIn);
-    const timeOut = normalizeTimeHm(draft.timeOut);
-
-    if (needsTimes && timeIn && !/^\d{2}:\d{2}$/.test(timeIn)) {
       toast({
-        title: "Invalid time in",
-        description: "Use HH:MM (e.g. 08:30)",
+        title: "Attendance saved",
+        description: `${payloads.length} teacher${payloads.length === 1 ? "" : "s"} updated.`,
+      });
+    } catch (e) {
+      toast({
+        title: "Could not save",
+        description: e instanceof Error ? e.message : undefined,
         variant: "destructive",
       });
-      return;
+    } finally {
+      setSavingAll(false);
     }
-    if (needsTimes && timeOut && !/^\d{2}:\d{2}$/.test(timeOut)) {
-      toast({
-        title: "Invalid time out",
-        description: "Use HH:MM (e.g. 14:00)",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (needsTimes && !timeIn) {
-      toast({ title: "Time in is required", variant: "destructive" });
-      return;
-    }
-
-    setSavingId(teacher._id);
-    markMut.mutate({
-      date,
-      userId: teacher._id,
-      status: draft.status,
-      checkIn: needsTimes ? combineLocalDateTime(date, timeIn) : undefined,
-      checkOut: needsTimes && timeOut ? combineLocalDateTime(date, timeOut) : undefined,
-      notes: draft.notes.trim() || undefined,
-    });
   };
 
   return (
@@ -318,7 +344,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
           <p className="text-sm text-muted-foreground mt-1">
             Staff / teachers only — not student attendance.{" "}
             {isAdmin
-              ? "All teachers load for the selected date. Type time in / out (HH:MM) and save each row."
+              ? "All teachers load for the selected date. Mark status and times, then save all at once."
               : "View and update your own check-in / check-out for the selected date."}
           </p>
         </div>
@@ -359,17 +385,30 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                 {teachersLoading
                   ? "Loading teachers…"
                   : `${dailyRows.length} teacher${dailyRows.length === 1 ? "" : "s"}`}
+                {canMark && dirtyCount > 0 ? ` · ${dirtyCount} unsaved` : ""}
               </p>
             </div>
-            <div className="max-w-xs w-full">
-              <Label htmlFor="daily-date">Date</Label>
-              <Input
-                id="daily-date"
-                type="date"
-                className="mt-1"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
+            <div className="flex flex-col sm:flex-row sm:items-end gap-2 w-full sm:w-auto">
+              <div className="max-w-xs w-full sm:w-44">
+                <Label htmlFor="daily-date">Date</Label>
+                <Input
+                  id="daily-date"
+                  type="date"
+                  className="mt-1"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                />
+              </div>
+              {canMark && (
+                <Button
+                  className="gap-1.5 w-full sm:w-auto"
+                  disabled={savingAll || dailyRows.length === 0 || dirtyCount === 0}
+                  onClick={() => void saveAll()}
+                >
+                  <Save className="h-4 w-4" />
+                  {savingAll ? "Saving…" : "Save all"}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -408,16 +447,12 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                       <th className="text-left p-2.5 font-medium whitespace-nowrap">Time in</th>
                       <th className="text-left p-2.5 font-medium whitespace-nowrap">Time out</th>
                       <th className="text-left p-2.5 font-medium">Notes</th>
-                      {canMark && <th className="text-right p-2.5 font-medium">Action</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {dailyRows.length === 0 && (
                       <tr>
-                        <td
-                          colSpan={canMark ? 6 : 5}
-                          className="p-8 text-center text-muted-foreground"
-                        >
+                        <td colSpan={5} className="p-8 text-center text-muted-foreground">
                           No teachers found. Create staff users with the Teacher role in Staff
                           Management.
                         </td>
@@ -433,7 +468,12 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                       return (
                         <tr key={t._id} className="border-b last:border-0 hover:bg-muted/30">
                           <td className="p-2.5">
-                            <div className="font-medium">{t.name}</div>
+                            <div className="font-medium flex items-center gap-2">
+                              {t.name}
+                              {draft.dirty ? (
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" title="Unsaved" />
+                              ) : null}
+                            </div>
                             {t.email ? (
                               <p className="text-xs text-muted-foreground">{t.email}</p>
                             ) : null}
@@ -517,19 +557,6 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                               <span className="text-muted-foreground">{existing?.notes || "—"}</span>
                             )}
                           </td>
-                          {canMark && (
-                            <td className="p-2.5 text-right">
-                              <Button
-                                size="sm"
-                                className="gap-1.5"
-                                disabled={savingId === t._id && markMut.isPending}
-                                onClick={() => saveRow(t)}
-                              >
-                                <Save className="h-3.5 w-3.5" />
-                                {savingId === t._id && markMut.isPending ? "Saving…" : "Save"}
-                              </Button>
-                            </td>
-                          )}
                         </tr>
                       );
                     })}

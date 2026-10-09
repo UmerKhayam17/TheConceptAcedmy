@@ -1,4 +1,4 @@
-import { parseJson } from "@/lib/api";
+import { getApiRoot, parseJson } from "@/lib/api";
 import { authedFetch } from "@/lib/auth";
 import type { CreatedByUser } from "@/lib/createdBy";
 import type { AcademyClass, AcademySubject } from "@/lib/studentManagementApi";
@@ -134,4 +134,40 @@ export function fetchStudentExamResults(studentId: string) {
 
 export function resultPdfUrl(resultId: string) {
   return `${getApiRoot()}/results/${resultId}/pdf`;
+}
+
+export async function fetchExamAwardListPdf(examId: string, subjectId?: string) {
+  const q = subjectId ? `?subjectId=${encodeURIComponent(subjectId)}` : "";
+  const res = await authedFetch(`/exams/${examId}/award-list.pdf${q}`);
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res);
+    throw new Error(body.message || "Failed to load award list");
+  }
+  return res.blob();
+}
+
+/** Opens exam award list PDF in a new tab (one subject, or all date-sheet subjects). */
+export async function previewExamAwardListPdf(examId: string, subjectId?: string) {
+  const preview = window.open("about:blank", "_blank");
+  try {
+    const blob = await fetchExamAwardListPdf(examId, subjectId);
+    const url = URL.createObjectURL(blob);
+    if (preview && !preview.closed) {
+      preview.location.replace(url);
+      preview.focus();
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = subjectId
+        ? `award-list-exam-${examId}-${subjectId}.pdf`
+        : `award-list-exam-${examId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (err) {
+    preview?.close();
+    throw err;
+  }
 }

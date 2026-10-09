@@ -13,6 +13,11 @@ router.get('/exams', requirePermission('view_results'), ctrl.listExams);
 router.get('/exams/:id', requirePermission('view_results'), ctrl.getExam);
 router.patch('/exams/:id', requirePermission('manage_exams'), validate(schemas.examPatch), ctrl.updateExam);
 router.get('/exams/:id/students', requirePermission('view_results'), ctrl.getExamStudents);
+router.get(
+  '/exams/:id/award-list.pdf',
+  requirePermission('view_results'),
+  ctrl.awardListPdf
+);
 router.post('/exams/:id/results', requirePermission('enter_exam_marks'), validate(schemas.examMarks), ctrl.enterMarks);
 router.get('/exams/:id/results', requirePermission('view_results'), ctrl.getExamResults);
 router.post('/exams/:id/publish-all', requirePermission('publish_results'), ctrl.publishAll);

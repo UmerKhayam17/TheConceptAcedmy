@@ -468,6 +468,17 @@ async function createClassTestFromPaper(doc, paper, userId) {
   });
 }
 
+async function syncClassTestFromPaper(classTestId, paper) {
+  if (!classTestId) return;
+  await AcademyClassTest.findByIdAndUpdate(classTestId, {
+    $set: {
+      examDate: paper.examDate,
+      totalMarks: paper.totalMarks,
+      syllabus: paper.syllabus || '',
+    },
+  });
+}
+
 async function upsertAssignmentPapers(sessionId, assignmentId, papersInput, userId, actor) {
   await assertSessionWritable(sessionId);
   const doc = await AssessmentAssignment.findOne({ _id: assignmentId, sessionId });
@@ -484,8 +495,6 @@ async function upsertAssignmentPapers(sessionId, assignmentId, papersInput, user
     if (!teacherSubjectIds.size) {
       throw new ApiError(403, 'You have no subjects assigned for this class/section');
     }
-  } else if (doc.status === 'published') {
-    throw new ApiError(400, 'Published assignments are locked');
   }
 
   const subjects = await AcademySubject.find({ classId: doc.classId, status: 'active' }).select('_id');
@@ -496,11 +505,16 @@ async function upsertAssignmentPapers(sessionId, assignmentId, papersInput, user
     (doc.papers || []).map((p) => [String(p.subjectId), p])
   );
 
-  if (teacher) {
+  const published = doc.status === 'published';
+  // Draft admin: replace full paper list. Published (or any teacher edit): merge so missed
+  // subjects can be filled later and existing class tests stay linked.
+  const mergeMode = published || teacher;
+
+  if (mergeMode) {
     for (const row of papersInput) {
       const sid = String(row.subjectId || '');
       if (!sid) continue;
-      if (!teacherSubjectIds.has(sid)) {
+      if (teacherSubjectIds && !teacherSubjectIds.has(sid)) {
         throw new ApiError(403, 'You are not assigned to this subject/class combination');
       }
       const parsed = parsePaperRow(row, classAllowed);
@@ -520,10 +534,12 @@ async function upsertAssignmentPapers(sessionId, assignmentId, papersInput, user
         syllabus: parsed.syllabus,
         classTestId: prev?.classTestId,
       };
-      if (doc.status === 'published' && !nextPaper.classTestId) {
+      if (published && !nextPaper.classTestId) {
         const created = await createClassTestFromPaper(doc, nextPaper, userId);
         nextPaper.classTestId = created._id;
         emitModuleSync('exam', 'class-test', 'created', { sessionId: String(sessionId) });
+      } else if (nextPaper.classTestId) {
+        await syncClassTestFromPaper(nextPaper.classTestId, nextPaper);
       }
       existingBySubject.set(sid, nextPaper);
     }

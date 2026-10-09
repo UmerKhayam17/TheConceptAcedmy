@@ -21,6 +21,7 @@ import {
 } from "@/lib/examApi";
 import { getAccessToken } from "@/lib/auth";
 import AssignAssessmentsPanel from "@/components/modules/exams/AssignAssessmentsPanel";
+import AwardListButton from "@/components/modules/exams/AwardListButton";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import CreatedByLine from "@/components/modules/CreatedByLine";
 import { matchesPanelSearch } from "@/lib/panelSearch";
@@ -242,9 +243,18 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                   </p>
                   <CreatedByLine createdBy={selectedExam?.createdBy} className="mt-1" />
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <AwardListButton
+                    examId={selectedExamId}
+                    size="sm"
+                    label={
+                      markColumns.length > 1
+                        ? `Award list (${markColumns.length} subjects)`
+                        : "Award list"
+                    }
+                  />
                   {canEnter && (
-                    <Button size="sm" variant="outline" onClick={handleSaveMarks} disabled={saveMarksMut.isPending}>
+                    <Button size="sm" variant="outline" className="h-8 px-3" onClick={handleSaveMarks} disabled={saveMarksMut.isPending}>
                       <Save className="h-3.5 w-3.5 mr-1" />
                       Save draft
                     </Button>
@@ -253,6 +263,7 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                     <Button
                       size="sm"
                       variant="hero"
+                      className="h-8"
                       onClick={() => publishAllMut.mutate(selectedExamId!)}
                       disabled={publishAllMut.isPending}
                     >
@@ -290,9 +301,21 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                             <tr>
                               <th className="text-left p-2 sticky left-0 bg-muted/50 min-w-[140px]">Student</th>
                               {markColumns.map((col) => (
-                                <th key={col.id} className="text-center p-2 min-w-[100px]">
-                                  {col.name}
+                                <th key={col.id} className="text-center p-2 min-w-[120px]">
+                                  <div>{col.name}</div>
                                   <div className="text-[10px] font-normal text-muted-foreground">/ {col.total}</div>
+                                  {selectedExamId && (
+                                    <div className="mt-1 flex justify-center">
+                                      <AwardListButton
+                                        examId={selectedExamId}
+                                        subjectId={col.id}
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 px-2 text-[10px]"
+                                        label="Award list"
+                                      />
+                                    </div>
+                                  )}
                                 </th>
                               ))}
                             </tr>

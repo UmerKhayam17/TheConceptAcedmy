@@ -3,6 +3,7 @@ const ApiError = require('../utils/ApiError');
 const Result = require('../models/Result');
 const examService = require('../services/exam/examService');
 const { renderResultCardPdf } = require('../services/pdfService');
+const { renderExamAwardListPdf } = require('../services/academy/academyAwardListService');
 const { roleNameOf, assertParentOwnsStudent } = require('../utils/parentScope');
 
 const createExam = catchAsync(async (req, res) => {
@@ -64,6 +65,17 @@ const publishAll = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const awardListPdf = catchAsync(async (req, res) => {
+  const subjectId = req.query.subjectId ? String(req.query.subjectId) : undefined;
+  const buffer = await renderExamAwardListPdf(req.params.id, subjectId);
+  const filename = subjectId
+    ? `award-list-exam-${req.params.id}-${subjectId}.pdf`
+    : `award-list-exam-${req.params.id}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.send(buffer);
+});
+
 const resultPdf = catchAsync(async (req, res) => {
   const result = await Result.findById(req.params.id)
     .populate('exam')
@@ -98,5 +110,6 @@ module.exports = {
   studentResults,
   publishResult,
   publishAll,
+  awardListPdf,
   resultPdf,
 };

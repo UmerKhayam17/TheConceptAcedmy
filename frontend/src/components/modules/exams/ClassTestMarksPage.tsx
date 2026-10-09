@@ -13,6 +13,7 @@ import { classTestSeriesHref, testExamsHref } from "@/lib/testExamsMenus";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import CreatedByLine from "@/components/modules/CreatedByLine";
 import { matchesPanelSearch } from "@/lib/panelSearch";
+import AwardListButton from "@/components/modules/exams/AwardListButton";
 import TestPaperCapture from "@/components/modules/exams/TestPaperCapture";
 import {
   ASSESSMENT_TYPE_LABELS,
@@ -259,12 +260,15 @@ export default function ClassTestMarksPage({
             </Button>
           )}
         </div>
-        {canEnter && (
-          <Button variant="hero" className="shrink-0" onClick={handleSave} disabled={saveMut.isPending}>
-            <Save className="h-4 w-4 mr-1" />
-            Save marks
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <AwardListButton testId={testId} size="default" label="Award list" />
+          {canEnter && (
+            <Button variant="hero" onClick={handleSave} disabled={saveMut.isPending}>
+              <Save className="h-4 w-4 mr-1" />
+              Save marks
+            </Button>
+          )}
+        </div>
       </div>
 
       <PanelSearchBar

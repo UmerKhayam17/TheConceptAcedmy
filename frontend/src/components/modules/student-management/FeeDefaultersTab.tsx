@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Download, FileText, Loader2, Phone, Printer, Receipt } from "lucide-react";
+import { AlertTriangle, FileText, Loader2, Phone, Printer, Receipt } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
-  exportFeeDefaultersCsv,
   exportFeeDefaultersMonthWise,
   type DefaulterReportFormat,
   fetchAcademyClasses,
@@ -31,7 +30,7 @@ import { DefaulterListDownload } from "./DefaulterListDownload";
 import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
-import { formatDate, formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
+import { formatDate, formatPkr } from "./studentDisplayUtils";
 
 function SeverityBadge({ days }: { days: number }) {
   if (days >= 30) {
@@ -80,7 +79,6 @@ export default function FeeDefaultersTab({
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [exporting, setExporting] = useState(false);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
 
   const printMut = useMutation({
@@ -142,28 +140,6 @@ export default function FeeDefaultersTab({
   const defaulters = data?.defaulters ?? [];
   const pagination = data?.pagination;
 
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const blob = await exportFeeDefaultersCsv(filterParams);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "fee-defaulters.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ title: "Export downloaded" });
-    } catch (e) {
-      toast({
-        title: "Export failed",
-        description: e instanceof Error ? e.message : undefined,
-        variant: "destructive",
-      });
-    } finally {
-      setExporting(false);
-    }
-  };
-
   const handleMonthWiseExport = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
     try {
@@ -190,32 +166,11 @@ export default function FeeDefaultersTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <h2 className="font-display text-xl font-bold text-primary flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-destructive" />
-            Fee defaulters
-          </h2>
-        </div>
-        {canExport && (
-          <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 w-full sm:w-auto justify-center"
-              disabled={exporting || defaulters.length === 0}
-              onClick={() => void handleExport()}
-            >
-              <Download className="h-4 w-4" />
-              {exporting ? "Exporting…" : "Export CSV"}
-            </Button>
-            <DefaulterListDownload
-              className="w-full sm:w-auto justify-center"
-              exporting={exportingMonthWise}
-              onDownload={(format) => void handleMonthWiseExport(format)}
-            />
-          </div>
-        )}
+      <div>
+        <h2 className="font-display text-xl font-bold text-primary flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-destructive" />
+          Fee defaulters
+        </h2>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -246,7 +201,7 @@ export default function FeeDefaultersTab({
       </div>
 
       <Card className="p-3">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 items-end">
           <div className="min-w-0">
             <Label className="text-xs">Month (optional)</Label>
             <Input
@@ -297,6 +252,17 @@ export default function FeeDefaultersTab({
               Clear period
             </Button>
           )}
+          {canExport && (
+            <div className="col-span-2 sm:col-span-1 min-w-0">
+              <Label className="text-xs opacity-0 pointer-events-none select-none">Download</Label>
+              <DefaulterListDownload
+                variant="default"
+                className="h-9 w-full justify-center rounded-md px-3 text-sm font-medium"
+                exporting={exportingMonthWise}
+                onDownload={(format) => void handleMonthWiseExport(format)}
+              />
+            </div>
+          )}
         </div>
       </Card>
 
@@ -313,8 +279,10 @@ export default function FeeDefaultersTab({
             <thead className="bg-muted/50 border-b">
               <tr>
                 <th className="text-left p-2.5 font-medium">Student</th>
-                <th className="text-left p-2.5 font-medium hidden md:table-cell">Class</th>
+                <th className="text-left p-2.5 font-medium hidden sm:table-cell">Father</th>
                 <th className="text-left p-2.5 font-medium hidden lg:table-cell">Contact</th>
+                <th className="text-left p-2.5 font-medium hidden md:table-cell">Class</th>
+                <th className="text-left p-2.5 font-medium hidden md:table-cell">Section</th>
                 <th className="text-left p-2.5 font-medium">Total due</th>
                 <th className="text-left p-2.5 font-medium">Vouchers</th>
                 <th className="text-left p-2.5 font-medium">Oldest due</th>
@@ -325,14 +293,14 @@ export default function FeeDefaultersTab({
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={10} className="p-8 text-center text-muted-foreground">
                     Loading defaulters…
                   </td>
                 </tr>
               )}
               {!isLoading && defaulters.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={10} className="p-8 text-center text-muted-foreground">
                     No fee defaulters for the selected filters. All students are up to date.
                   </td>
                 </tr>
@@ -340,6 +308,7 @@ export default function FeeDefaultersTab({
               {defaulters.map((d: FeeDefaulter) => {
                 const detailHref = routes ? routes.detail(d.student._id) : null;
                 const tel = d.student.phone?.replace(/\s/g, "");
+                const rollOrId = d.student.rollNumber || d.student.studentId;
                 return (
                   <tr key={d.studentId} className="border-b last:border-0 bg-red-500/10 text-red-700 dark:text-red-300">
                     <td className="p-2.5">
@@ -350,22 +319,28 @@ export default function FeeDefaultersTab({
                       ) : (
                         <div className="font-semibold text-red-700 dark:text-red-300">{d.student.studentName}</div>
                       )}
-                      <p className="text-xs text-muted-foreground">{d.student.studentId}</p>
-                      <p className="text-xs text-muted-foreground lg:hidden">{d.student.fatherName}</p>
+                      <p className="text-xs text-muted-foreground">{rollOrId}</p>
+                      <p className="text-xs text-muted-foreground sm:hidden">{d.student.fatherName}</p>
+                      <p className="text-xs text-muted-foreground md:hidden">
+                        {[d.className, d.sectionName].filter(Boolean).join(" · ") || "—"}
+                      </p>
                     </td>
-                    <td className="p-2.5 hidden md:table-cell">{d.className || "—"}</td>
+                    <td className="p-2.5 hidden sm:table-cell">{d.student.fatherName || "—"}</td>
                     <td className="p-2.5 hidden lg:table-cell">
-                      <div>{d.student.fatherName}</div>
-                      {tel && (
+                      {tel ? (
                         <a
                           href={`tel:${tel}`}
-                          className="text-xs text-primary inline-flex items-center gap-1 mt-0.5 hover:underline"
+                          className="text-primary inline-flex items-center gap-1 hover:underline"
                         >
                           <Phone className="h-3 w-3" />
                           {d.student.phone}
                         </a>
+                      ) : (
+                        "—"
                       )}
                     </td>
+                    <td className="p-2.5 hidden md:table-cell">{d.className || "—"}</td>
+                    <td className="p-2.5 hidden md:table-cell">{d.sectionName || "—"}</td>
                     <td className="p-2.5 font-semibold text-destructive">{formatPkr(d.totalDue)}</td>
                     <td className="p-2.5">
                       <span className="font-medium">{d.unpaidCount}</span>

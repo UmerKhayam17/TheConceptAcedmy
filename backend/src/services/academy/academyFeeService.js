@@ -9,10 +9,26 @@ const {
 } = require('./academyAdditionalChargeService');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyClass = require('../../models/academy/AcademyClass');
+const AcademySection = require('../../models/academy/AcademySection');
 const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
+const Session = require('../../models/Session');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { notifyByAccess } = require('../realtime/realtimeService');
 const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
+
+async function resolveFeeReportContext({ sessionId, classId }) {
+  let sessionLabel = '';
+  let classLabel = '';
+  if (sessionId) {
+    const session = await Session.findById(sessionId).select('name').lean();
+    sessionLabel = session?.name || '';
+  }
+  if (classId) {
+    const cls = await AcademyClass.findById(classId).select('className').lean();
+    classLabel = cls?.className || '';
+  }
+  return { sessionLabel, classLabel };
+}
 
 const PAYMENT_SLIP_DIR = path.join(__dirname, '../../../uploads/payment-slips');
 
@@ -113,8 +129,17 @@ function buildDefaultersPipeline({ feeMatch, search }) {
       },
     },
     {
+      $lookup: {
+        from: AcademySection.collection.name,
+        localField: 'student.sectionId',
+        foreignField: '_id',
+        as: 'sectionDoc',
+      },
+    },
+    {
       $addFields: {
         className: { $arrayElemAt: ['$classDoc.className', 0] },
+        sectionName: { $arrayElemAt: ['$sectionDoc.sectionName', 0] },
       },
     },
   ];
@@ -129,6 +154,10 @@ function buildDefaultersPipeline({ feeMatch, search }) {
           { 'student.fatherName': rx },
           { 'student.phone': rx },
           { 'student.studentId': rx },
+          { 'student.rollNumber': rx },
+          { 'student.registrationNumber': rx },
+          { className: rx },
+          { sectionName: rx },
         ],
       },
     });
@@ -150,12 +179,16 @@ function mapDefaulterRow(row) {
     student: {
       _id: row.student._id,
       studentId: row.student.studentId,
+      registrationNumber: row.student.registrationNumber,
+      rollNumber: row.student.rollNumber,
       studentName: row.student.studentName,
       fatherName: row.student.fatherName,
       phone: row.student.phone,
       classId: row.student.classId,
+      sectionId: row.student.sectionId,
     },
     className: row.className || null,
+    sectionName: row.sectionName || null,
   };
 }
 
@@ -1310,13 +1343,17 @@ async function listFeeDefaulters({
             pendingCount: 1,
             oldestDueDate: 1,
             className: 1,
+            sectionName: 1,
             student: {
               _id: '$student._id',
               studentId: '$student.studentId',
+              registrationNumber: '$student.registrationNumber',
+              rollNumber: '$student.rollNumber',
               studentName: '$student.studentName',
               fatherName: '$student.fatherName',
               phone: '$student.phone',
               classId: '$student.classId',
+              sectionId: '$student.sectionId',
             },
           },
         },
@@ -1378,11 +1415,13 @@ async function getDefaultersSummary({ classId, month, year, sessionId }) {
 
 function defaultersToCsv(items) {
   const header = [
-    'Student ID',
+    'Ref #',
+    'Roll #',
     'Student Name',
     'Father Name',
-    'Phone',
     'Class',
+    'Section',
+    'Contact',
     'Total Due (PKR)',
     'Unpaid Vouchers',
     'Overdue Vouchers',
@@ -1390,11 +1429,13 @@ function defaultersToCsv(items) {
     'Days Overdue',
   ];
   const rows = items.map((d) => [
-    d.student?.studentId ?? '',
+    d.student?.registrationNumber || d.student?.studentId || '',
+    d.student?.rollNumber || d.student?.studentId || '',
     d.student?.studentName ?? '',
     d.student?.fatherName ?? '',
-    d.student?.phone ?? '',
     d.className ?? '',
+    d.sectionName ?? '',
+    d.student?.phone ?? '',
     d.totalDue ?? 0,
     d.unpaidCount ?? 0,
     d.overdueCount ?? 0,
@@ -1426,6 +1467,13 @@ function monthHeader(record, sameYear) {
   return sameYear ? name : `${name} ${record.year}`;
 }
 
+function formatExportDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+}
+
 function buildDefaulterReport(records) {
   const monthOrder = [];
   const seenMonths = new Set();
@@ -1444,9 +1492,15 @@ function buildDefaulterReport(records) {
     const id = String(student._id);
     if (!byStudent.has(id)) {
       byStudent.set(id, {
-        regNo: student.studentId || student.registrationNumber || '',
+        regNo: student.registrationNumber || student.studentId || '',
+        rollNo: student.rollNumber || student.studentId || '',
         name: student.studentName || '',
+        fatherName: student.fatherName || '',
         className: student.classId?.className || '',
+        sectionName: student.sectionId?.sectionName || '',
+        contact: student.phone || '',
+        challanNo: record.receiptNumber || '',
+        dueDate: record.dueDate || null,
         amounts: {},
         total: 0,
       });
@@ -1455,19 +1509,34 @@ function buildDefaulterReport(records) {
     const key = monthKey(record);
     row.amounts[key] = (row.amounts[key] || 0) + (Number(record.amount) || 0);
     row.total += Number(record.amount) || 0;
+    if (record.dueDate && (!row.dueDate || new Date(record.dueDate) < new Date(row.dueDate))) {
+      row.dueDate = record.dueDate;
+      if (record.receiptNumber) row.challanNo = record.receiptNumber;
+    } else if (!row.challanNo && record.receiptNumber) {
+      row.challanNo = record.receiptNumber;
+    }
   });
 
   const students = [...byStudent.values()].sort(
-    (a, b) => a.className.localeCompare(b.className) || a.name.localeCompare(b.name)
+    (a, b) =>
+      a.className.localeCompare(b.className) ||
+      a.sectionName.localeCompare(b.sectionName) ||
+      a.name.localeCompare(b.name)
   );
 
   const rows = students.map((student, index) => {
     const row = {
       serial: index + 1,
       regNo: student.regNo,
+      rollNo: student.rollNo,
       name: student.name,
+      fatherName: student.fatherName,
       className: student.className,
+      sectionName: student.sectionName,
+      challanNo: student.challanNo,
       total: student.total,
+      dueDate: formatExportDate(student.dueDate),
+      contact: student.contact || '',
     };
     monthOrder.forEach((m) => {
       row[m.key] = student.amounts[m.key] ?? null;
@@ -1476,7 +1545,20 @@ function buildDefaulterReport(records) {
   });
 
   if (rows.length) {
-    const totalRow = { serial: '', regNo: '', name: 'Total', className: '', total: 0 };
+    const totalRow = {
+      _isTotal: true,
+      serial: '',
+      regNo: '',
+      rollNo: '',
+      name: '',
+      fatherName: '',
+      className: '',
+      sectionName: '',
+      challanNo: '',
+      total: 0,
+      dueDate: '',
+      contact: '',
+    };
     monthOrder.forEach((m) => {
       const sum = rows.reduce((acc, row) => acc + (Number(row[m.key]) || 0), 0);
       totalRow[m.key] = sum || null;
@@ -1485,22 +1567,52 @@ function buildDefaulterReport(records) {
     rows.push(totalRow);
   }
 
-  const monthPdf = Math.max(40, Math.min(58, Math.floor(420 / Math.max(monthOrder.length, 1))));
-  const columns = [
-    { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 28, align: 'center' },
-    { key: 'regNo', header: 'Reg No', excelWidth: 22, pdfWidth: 88 },
-    { key: 'name', header: 'Name', excelWidth: 24, pdfWidth: 120 },
-    { key: 'className', header: 'Class', excelWidth: 14, pdfWidth: 52 },
-    ...monthOrder.map((m) => ({
-      key: m.key,
-      header: monthHeader(m, sameYear),
-      excelWidth: 12,
-      pdfWidth: monthPdf,
-      align: 'right',
-      numFmt: '#,##0',
-    })),
-    { key: 'total', header: 'Total pending', excelWidth: 16, pdfWidth: 68, align: 'right', numFmt: '#,##0' },
+  // Base widths for A4 landscape (~770 usable). Renderer scales to exact page width.
+  const usable = 770;
+  const fixed = [
+    { key: 'serial', header: 'Serial', excelWidth: 8, pdfWidth: 32, align: 'center' },
+    { key: 'regNo', header: 'Ref #', excelWidth: 20, pdfWidth: 100, wrap: true },
+    { key: 'rollNo', header: 'Roll #', excelWidth: 16, pdfWidth: 72, wrap: true },
+    { key: 'name', header: 'Name', excelWidth: 20, pdfWidth: 95, wrap: true },
+    { key: 'fatherName', header: 'Father Name', excelWidth: 18, pdfWidth: 90, wrap: true },
+    { key: 'contact', header: 'Contact', excelWidth: 14, pdfWidth: 70 },
+    { key: 'className', header: 'Class', excelWidth: 10, pdfWidth: 40, align: 'center' },
+    { key: 'sectionName', header: 'Section', excelWidth: 10, pdfWidth: 42, align: 'center' },
+    { key: 'challanNo', header: 'Challan #', excelWidth: 16, pdfWidth: 72, wrap: true },
   ];
+  const trail = [
+    { key: 'total', header: 'Total Amount', excelWidth: 13, pdfWidth: 58, align: 'right', numFmt: '#,##0' },
+    { key: 'dueDate', header: 'Due Date', excelWidth: 12, pdfWidth: 55, align: 'center' },
+  ];
+  const fixedW = fixed.reduce((s, c) => s + c.pdfWidth, 0);
+  const trailW = trail.reduce((s, c) => s + c.pdfWidth, 0);
+  const monthBudget = Math.max(40, usable - fixedW - trailW);
+  const monthPdf = Math.max(
+    40,
+    Math.floor(monthBudget / Math.max(monthOrder.length, 1))
+  );
+  const monthColumns = monthOrder.map((m) => ({
+    key: m.key,
+    header: monthHeader(m, sameYear),
+    excelWidth: 11,
+    pdfWidth: monthPdf,
+    align: 'right',
+    numFmt: '#,##0',
+  }));
+  // Distribute any leftover width evenly so the table fills the page.
+  const columns = [...fixed, ...monthColumns, ...trail];
+  const sumW = columns.reduce((s, c) => s + c.pdfWidth, 0);
+  let leftover = usable - sumW;
+  if (leftover !== 0) {
+    const growKeys = new Set(['regNo', 'name', 'fatherName', 'rollNo', 'contact', 'challanNo']);
+    const growCols = columns.filter((c) => growKeys.has(c.key));
+    const targets = growCols.length ? growCols : columns;
+    const each = Math.floor(leftover / targets.length);
+    targets.forEach((c) => {
+      c.pdfWidth += each;
+    });
+    targets[targets.length - 1].pdfWidth += leftover - each * targets.length;
+  }
 
   return { columns, rows, monthCount: monthOrder.length };
 }
@@ -1521,8 +1633,12 @@ async function loadUnpaidMonthlyFees({ classId, month, year, search, sessionId }
   let records = await AcademyFeeRecord.find(feeMatch)
     .populate({
       path: 'studentId',
-      select: 'studentId registrationNumber studentName classId status',
-      populate: { path: 'classId', select: 'className' },
+      select:
+        'studentId registrationNumber rollNumber studentName fatherName phone classId sectionId status',
+      populate: [
+        { path: 'classId', select: 'className' },
+        { path: 'sectionId', select: 'sectionName' },
+      ],
     })
     .sort({ year: 1, month: 1 })
     .lean();
@@ -1532,9 +1648,16 @@ async function loadUnpaidMonthlyFees({ classId, month, year, search, sessionId }
   if (term) {
     records = records.filter((r) => {
       const student = r.studentId;
-      return [student.studentName, student.studentId, student.registrationNumber].some((value) =>
-        String(value || '').toLowerCase().includes(term)
-      );
+      return [
+        student.studentName,
+        student.fatherName,
+        student.phone,
+        student.studentId,
+        student.registrationNumber,
+        student.rollNumber,
+        student.classId?.className,
+        student.sectionId?.sectionName,
+      ].some((value) => String(value || '').toLowerCase().includes(term));
     });
   }
   return records;
@@ -1596,7 +1719,15 @@ function buildPaidCollectionReport(records) {
       period: paidFeePeriodLabel(record),
       feeType: paidFeeTypeLabel(record.feeType),
       amount: Number(record.amount) || 0,
-      paidAt: record.paidAt ? new Date(record.paidAt).toISOString().slice(0, 10) : '',
+      paidAt: record.paidAt
+        ? (() => {
+            const d = new Date(record.paidAt);
+            if (Number.isNaN(d.getTime())) return '';
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            return `${dd}/${mm}/${d.getFullYear()}`;
+          })()
+        : '',
       paymentMethod: paymentMethodExportLabel(record.paymentMethod),
       slipNumber: record.paymentSlipNumber || '',
       notes: record.notes || '',
@@ -1623,21 +1754,21 @@ function buildPaidCollectionReport(records) {
     });
   }
 
-  // Keep total pdfWidth ≤ ~778 (A4 landscape inner width) so columns don't clip.
+  // Keep total pdfWidth ≤ ~770 (A4 landscape inner width @ margin 36).
   const columns = [
-    { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 24, align: 'center' },
-    { key: 'receiptNumber', header: 'Receipt', excelWidth: 18, pdfWidth: 62, wrap: true },
-    { key: 'studentId', header: 'Student ID', excelWidth: 22, pdfWidth: 88 },
-    { key: 'studentName', header: 'Student', excelWidth: 24, pdfWidth: 105, wrap: true },
-    { key: 'fatherName', header: 'Father', excelWidth: 22, pdfWidth: 100, wrap: true },
-    { key: 'className', header: 'Class', excelWidth: 12, pdfWidth: 36 },
-    { key: 'period', header: 'Period', excelWidth: 14, pdfWidth: 58, wrap: true },
-    { key: 'feeType', header: 'Type', excelWidth: 11, pdfWidth: 40 },
-    { key: 'amount', header: 'Amount', excelWidth: 12, pdfWidth: 46, align: 'right', numFmt: '#,##0' },
-    { key: 'paidAt', header: 'Payment date', excelWidth: 14, pdfWidth: 62 },
-    { key: 'paymentMethod', header: 'Method', excelWidth: 12, pdfWidth: 36 },
-    { key: 'slipNumber', header: 'Slip no.', excelWidth: 14, pdfWidth: 52 },
-    { key: 'notes', header: 'Notes', excelWidth: 32, pdfWidth: 68, wrap: true },
+    { key: 'serial', header: 'S.No', excelWidth: 7, pdfWidth: 28, align: 'center' },
+    { key: 'receiptNumber', header: 'Receipt', excelWidth: 16, pdfWidth: 78 },
+    { key: 'studentId', header: 'Student ID', excelWidth: 16, pdfWidth: 78 },
+    { key: 'studentName', header: 'Student', excelWidth: 16, pdfWidth: 78, wrap: true },
+    { key: 'fatherName', header: 'Father', excelWidth: 14, pdfWidth: 72, wrap: true },
+    { key: 'className', header: 'Class', excelWidth: 9, pdfWidth: 34, align: 'center' },
+    { key: 'period', header: 'Month', excelWidth: 12, pdfWidth: 58 },
+    { key: 'feeType', header: 'Type', excelWidth: 10, pdfWidth: 42, align: 'center' },
+    { key: 'amount', header: 'Amount', excelWidth: 11, pdfWidth: 50, align: 'right', numFmt: '#,##0' },
+    { key: 'paidAt', header: 'Paid on', excelWidth: 11, pdfWidth: 52, align: 'center' },
+    { key: 'paymentMethod', header: 'Method', excelWidth: 10, pdfWidth: 42, align: 'center' },
+    { key: 'slipNumber', header: 'Slip no.', excelWidth: 12, pdfWidth: 52 },
+    { key: 'notes', header: 'Notes', excelWidth: 18, pdfWidth: 66, wrap: true },
   ];
 
   return { columns, rows };
@@ -1655,23 +1786,47 @@ async function exportPaidFees({ classId, month, year, search, sessionId, feeType
   return paidFeesToCsv(records);
 }
 
+function formatReportMonthLabel({ month, year, records = [], allLabel = 'All months' }) {
+  if (month && year) {
+    const name = MONTH_NAMES[Number(month) - 1] || '';
+    return `Month: ${name} ${year}`;
+  }
+  if (year && !month) return `Year: ${year} · All months`;
+  const seen = new Map();
+  records.forEach((record) => {
+    if (!record?.month || !record?.year) return;
+    const key = monthKey(record);
+    if (seen.has(key)) return;
+    const name = MONTH_NAMES[(Number(record.month) || 1) - 1] || '';
+    seen.set(key, `${name} ${record.year}`);
+  });
+  const labels = [...seen.values()];
+  if (!labels.length) return allLabel;
+  if (labels.length === 1) return `Month: ${labels[0]}`;
+  if (labels.length <= 4) return `Months: ${labels.join(', ')}`;
+  return `${allLabel} (${labels.length})`;
+}
+
 async function exportPaidFeesReport({ classId, month, year, search, sessionId, feeType, format }) {
   const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType });
   const { columns, rows } = buildPaidCollectionReport(records);
-  const title = 'Paid fee collection report';
-  const filterBits = [];
-  if (month && year) filterBits.push(`${MONTH_NAMES[Number(month) - 1]} ${year}`);
-  else if (year) filterBits.push(String(year));
-  else filterBits.push('All paid vouchers');
-  if (feeType) filterBits.push(paidFeeTypeLabel(feeType));
+  const { sessionLabel, classLabel } = await resolveFeeReportContext({ sessionId, classId });
+  const periodBits = [
+    formatReportMonthLabel({ month, year, records, allLabel: 'All paid months' }),
+  ];
+  if (feeType) periodBits.push(paidFeeTypeLabel(feeType));
   const voucherCount = rows.length ? rows.length - 1 : 0;
   const meta = {
-    filterLine: filterBits.join(' · '),
-    countLabel: `${voucherCount} paid voucher${voucherCount === 1 ? '' : 's'}`,
+    sessionLabel,
+    leftFilter: classLabel || 'All classes',
+    centerFilter: `Total challan paid: ${voucherCount}`,
+    rightFilter: periodBits.join(' · '),
+    filterLine: periodBits.join(' · '),
+    countLabel: `Total challan paid: ${voucherCount}`,
     generatedAt: new Date(),
   };
   const payload = {
-    title,
+    title: 'Paid Fee Collection Report',
     sheetName: 'Paid fees',
     confidentialLabel: 'Paid fee collection',
     subject: 'Paid student fees',
@@ -1679,6 +1834,7 @@ async function exportPaidFeesReport({ classId, month, year, search, sessionId, f
     rows,
     meta,
     emptyMessage: 'No paid fees for the selected filters.',
+    plain: true,
   };
   if (String(format).toLowerCase() === 'pdf') {
     return renderBrandedPdf(payload);
@@ -1689,19 +1845,21 @@ async function exportPaidFeesReport({ classId, month, year, search, sessionId, f
 async function exportFeeDefaultersMonthWise({ classId, month, year, search, sessionId, format }) {
   const records = await loadUnpaidMonthlyFees({ classId, month, year, search, sessionId });
   const { columns, rows } = buildDefaulterReport(records);
-  const title = 'Fee defaulter list';
-  const filterBits = [];
-  if (month && year) filterBits.push(`${MONTH_NAMES[Number(month) - 1]} ${year}`);
-  else if (year) filterBits.push(String(year));
-  else filterBits.push('All unpaid months');
+  const { sessionLabel, classLabel } = await resolveFeeReportContext({ sessionId, classId });
+  const periodBits = [
+    formatReportMonthLabel({ month, year, records, allLabel: 'All unpaid months' }),
+  ];
   const studentCount = rows.length ? rows.length - 1 : 0;
   const meta = {
-    filterLine: filterBits.join(' · '),
+    sessionLabel,
+    leftFilter: classLabel || 'All classes',
+    rightFilter: periodBits.join(' · '),
+    filterLine: periodBits.join(' · '),
     countLabel: `${studentCount} student${studentCount === 1 ? '' : 's'}`,
     generatedAt: new Date(),
   };
   const payload = {
-    title,
+    title: 'Fee Defaulter Report',
     sheetName: 'Defaulters',
     confidentialLabel: 'Fee defaulter list',
     subject: 'Fee defaulters by month',
@@ -1709,6 +1867,7 @@ async function exportFeeDefaultersMonthWise({ classId, month, year, search, sess
     rows,
     meta,
     emptyMessage: 'No fee defaulters for the selected filters.',
+    plain: true,
   };
   if (String(format).toLowerCase() === 'pdf') {
     return renderBrandedPdf(payload);

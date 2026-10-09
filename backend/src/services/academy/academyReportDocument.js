@@ -129,7 +129,9 @@ function formatPdfCellValue(col, value) {
 }
 
 function isPdfTotalRow(row) {
-  return Boolean(row?._isTotal) || String(row?.studentName || '').toLowerCase() === 'total';
+  if (row?._isTotal) return true;
+  const label = String(row?.studentName || row?.name || '').toLowerCase();
+  return label === 'total' || label === 'grand total';
 }
 
 function drawPdfColumnLines(doc, columns, startX, y, height, { plain = false, brand, outer = false } = {}) {
@@ -150,26 +152,61 @@ function drawPdfColumnLines(doc, columns, startX, y, height, { plain = false, br
   doc.restore();
 }
 
+function plainCellAlign(col) {
+  if (col.align) return col.align;
+  if (col.key === 'serial' || col.key === 'className' || col.key === 'feeType' || col.key === 'paymentMethod') {
+    return 'center';
+  }
+  if (col.numFmt || col.key === 'amount' || col.key === 'total') return 'right';
+  return 'left';
+}
+
 function drawPdfTableHeader(doc, columns, startX, y, brand, { plain = false } = {}) {
   const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
-  const headerH = plain ? 22 : 20;
+  const headerPad = 3;
+  const headerFontSize = plain ? 7 : 7.5;
+  doc.font('Helvetica-Bold').fontSize(headerFontSize);
+
+  let headerH = plain ? 22 : 20;
+  if (plain) {
+    columns.forEach((col) => {
+      const innerW = Math.max(8, col.pdfWidth - headerPad * 2);
+      const textH = doc.heightOfString(String(col.header || ''), { width: innerW, align: 'center', lineGap: 0 });
+      headerH = Math.max(headerH, Math.ceil(textH) + 8);
+    });
+  }
+
   doc.save();
   if (plain) {
-    doc.rect(startX, y, tableWidth, headerH).fill('#1A1A1A');
-    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(7.5);
+    doc.rect(startX, y, tableWidth, headerH).fill('#3D3D3D');
+    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(headerFontSize);
   } else {
     doc.rect(startX, y, tableWidth, headerH).fill(brand.colors.navy);
-    doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(7.5);
+    doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(headerFontSize);
   }
-  const headerPad = plain ? 5 : 4;
+
   let x = startX;
   columns.forEach((col) => {
-    pdfLine(doc, col.header, x + headerPad, y + 7, {
-      width: col.pdfWidth - headerPad * 2,
-      align: colAlign(col),
-    });
+    const innerW = Math.max(8, col.pdfWidth - headerPad * 2);
+    const label = String(col.header || '');
+    if (plain) {
+      const textH = doc.heightOfString(label, { width: innerW, align: 'center', lineGap: 0 });
+      const textY = y + Math.max(4, (headerH - textH) / 2);
+      doc.text(label, x + headerPad, textY, {
+        width: innerW,
+        align: 'center',
+        lineBreak: true,
+        lineGap: 0,
+      });
+    } else {
+      pdfLine(doc, label, x + headerPad, y + 7, {
+        width: innerW,
+        align: colAlign(col),
+      });
+    }
     x += col.pdfWidth;
   });
+
   if (plain) {
     drawPdfColumnLines(doc, columns, startX, y, headerH, { plain: true, brand, outer: true });
   } else {
@@ -187,8 +224,8 @@ function pdfRowHeight(doc, columns, row, { minRowH = 16, pad = 4, fontSize = 7.5
     if (!raw) return;
     const innerW = Math.max(8, col.pdfWidth - pad * 2);
     if (col.wrap) {
-      const textH = doc.heightOfString(raw, { width: innerW, lineGap: 0 });
-      rowH = Math.max(rowH, textH + 8);
+      const textH = doc.heightOfString(raw, { width: innerW, lineGap: 0.5 });
+      rowH = Math.max(rowH, textH + 10);
     }
   });
   return rowH;
@@ -196,43 +233,77 @@ function pdfRowHeight(doc, columns, row, { minRowH = 16, pad = 4, fontSize = 7.5
 
 function drawPdfRow(doc, columns, row, startX, y, zebra, brand, { plain = false } = {}) {
   const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
-  const pad = plain ? 5 : 4;
-  const fontSize = 7.5;
+  const pad = plain ? 4 : 4;
+  const fontSize = plain ? 7 : 7.5;
   const totalRow = isPdfTotalRow(row);
   const rowH = Math.max(
-    pdfRowHeight(doc, columns, row, { minRowH: totalRow ? 18 : 16, pad, fontSize }),
-    totalRow ? 18 : 16
+    pdfRowHeight(doc, columns, row, { minRowH: totalRow ? 20 : 17, pad, fontSize }),
+    totalRow ? 20 : 17
   );
 
   doc.save();
   if (plain && totalRow) {
-    doc.rect(startX, y, tableWidth, rowH).fill('#EFEFEF');
-  } else if (zebra && !plain) {
-    doc.rect(startX, y, tableWidth, rowH).fill(brand.colors.zebra);
-  } else if (plain && zebra) {
-    doc.rect(startX, y, tableWidth, rowH).fill('#F7F7F7');
+    doc.rect(startX, y, tableWidth, rowH).fill('#E8E8E8');
+  } else if (zebra) {
+    doc.rect(startX, y, tableWidth, rowH).fill(plain ? '#F7F7F7' : brand.colors.zebra);
   }
   doc.restore();
 
   const textColor = plain ? '#111111' : '#1A2A3A';
   doc.fillColor(textColor).font(totalRow ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
-  let x = startX;
-  columns.forEach((col) => {
-    const raw = formatPdfCellValue(col, row[col.key]);
-    const innerW = Math.max(8, col.pdfWidth - pad * 2);
-    const align = colAlign(col);
-    if (col.wrap && raw) {
-      doc.text(raw, x + pad, y + 4, { width: innerW, lineBreak: true, align });
-    } else {
-      pdfLine(doc, fitText(doc, raw, innerW), x + pad, y + 4, {
-        width: innerW,
-        align,
+
+  if (plain && totalRow) {
+    const amountCols = columns
+      .map((col, idx) => ({ col, idx }))
+      .filter(({ col }) => col.numFmt || col.key === 'amount' || col.key === 'total');
+    const firstAmountIdx = amountCols.length ? amountCols[0].idx : columns.length - 1;
+    const labelWidth = columns.slice(0, firstAmountIdx).reduce((sum, c) => sum + c.pdfWidth, 0);
+    if (labelWidth > 0) {
+      pdfLine(doc, 'Grand Total', startX + pad, y + (rowH - fontSize) / 2, {
+        width: labelWidth - pad * 2,
+        align: 'right',
       });
     }
-    x += col.pdfWidth;
-  });
+    let x = startX;
+    columns.forEach((col, idx) => {
+      if (idx >= firstAmountIdx) {
+        const raw = formatPdfCellValue(col, row[col.key]);
+        const innerW = Math.max(8, col.pdfWidth - pad * 2);
+        pdfLine(doc, fitText(doc, raw, innerW), x + pad, y + (rowH - fontSize) / 2, {
+          width: innerW,
+          align: plainCellAlign(col),
+        });
+      }
+      x += col.pdfWidth;
+    });
+  } else {
+    let x = startX;
+    columns.forEach((col) => {
+      const raw = formatPdfCellValue(col, row[col.key]);
+      const innerW = Math.max(8, col.pdfWidth - pad * 2);
+      const align = plain ? plainCellAlign(col) : colAlign(col);
+      if (col.wrap && raw) {
+        const textH = doc.heightOfString(raw, { width: innerW, lineGap: 0.5 });
+        const textY = y + Math.max(3, (rowH - textH) / 2);
+        doc.text(raw, x + pad, textY, { width: innerW, lineBreak: true, align, lineGap: 0.5 });
+      } else {
+        pdfLine(doc, fitText(doc, raw, innerW), x + pad, y + (rowH - fontSize) / 2, {
+          width: innerW,
+          align,
+        });
+      }
+      x += col.pdfWidth;
+    });
+  }
   if (plain) {
-    drawPdfColumnLines(doc, columns, startX, y, rowH, { plain: true, brand, outer: totalRow });
+    drawPdfColumnLines(doc, columns, startX, y, rowH, { plain: true, brand, outer: true });
+    if (totalRow) {
+      doc.save();
+      doc.strokeColor('#111111').lineWidth(1.1);
+      doc.moveTo(startX, y).lineTo(startX + tableWidth, y).stroke();
+      doc.moveTo(startX, y + rowH).lineTo(startX + tableWidth, y + rowH).stroke();
+      doc.restore();
+    }
   } else {
     doc.save();
     doc.strokeColor(brand.colors.line).lineWidth(0.4);
@@ -242,98 +313,146 @@ function drawPdfRow(doc, columns, row, startX, y, zebra, brand, { plain = false 
   return y + rowH;
 }
 
+/** Classic college-style letterhead: centered logo + academy name, tagline, and contact info. */
 function drawPdfLetterheadPlain(doc, brand, logoPath) {
   const { width } = doc.page;
-  const left = 32;
-  const right = width - 32;
-  const logoSize = 44;
-  const top = 22;
-  let textLeft = left;
+  const top = 12;
+  const logoSize = 54;
+  const gap = 12;
+
+  doc.font('Helvetica-Bold').fontSize(15);
+  const nameW = doc.widthOfString(brand.name || '');
+  doc.font('Helvetica-Oblique').fontSize(8);
+  const tagW = brand.tagline ? doc.widthOfString(brand.tagline) : 0;
+  const contactBits = [
+    brand.address,
+    Array.isArray(brand.phones) ? brand.phones.join('  ·  ') : brand.phones,
+    brand.email,
+  ].filter(Boolean);
+  const contactLine = contactBits.join('  |  ');
+  doc.font('Helvetica').fontSize(7.5);
+  const contactW = contactLine ? doc.widthOfString(contactLine) : 0;
+  doc.font('Helvetica').fontSize(7);
+  const legalW =
+    brand.legalName && brand.legalName !== brand.name ? doc.widthOfString(brand.legalName) : 0;
+
+  const textBlockW = Math.max(nameW, tagW, contactW, legalW);
+  const blockW = logoPath ? logoSize + gap + textBlockW : textBlockW;
+  const blockX = (width - blockW) / 2;
+  const textLeft = logoPath ? blockX + logoSize + gap : blockX;
 
   if (logoPath) {
     try {
-      doc.save();
-      doc.strokeColor('#222222').lineWidth(0.7);
-      doc.rect(left, top, logoSize + 6, logoSize + 6).stroke();
-      doc.image(logoPath, left + 3, top + 3, { fit: [logoSize, logoSize] });
-      doc.restore();
-      textLeft = left + logoSize + 16;
+      doc.image(logoPath, blockX, top, { fit: [logoSize, logoSize] });
     } catch {
       /* skip broken logo */
     }
   }
 
-  const contactW = 210;
-  const contactX = right - contactW;
-
   doc.fillColor('#111111').font('Helvetica-Bold').fontSize(15);
   pdfLine(doc, brand.name, textLeft, top + 2);
-  doc.font('Helvetica-Oblique').fontSize(8);
-  pdfLine(doc, brand.tagline, textLeft, top + 20);
-  doc.font('Helvetica').fontSize(8);
-  pdfLine(doc, brand.legalName, textLeft, top + 34);
 
-  doc.font('Helvetica').fontSize(8);
-  pdfLine(doc, brand.address, contactX, top + 4, { width: contactW, align: 'right' });
-  pdfLine(doc, brand.phones.join('  ·  '), contactX, top + 18, { width: contactW, align: 'right' });
-  pdfLine(doc, brand.email, contactX, top + 32, { width: contactW, align: 'right' });
+  if (brand.tagline) {
+    doc.fillColor('#555555').font('Helvetica-Oblique').fontSize(8);
+    pdfLine(doc, brand.tagline, textLeft, top + 20);
+  }
 
-  const ruleY = top + logoSize + 14;
-  doc.save();
-  doc.strokeColor('#111111').lineWidth(1.2);
-  doc.moveTo(left, ruleY).lineTo(right, ruleY).stroke();
-  doc.strokeColor('#111111').lineWidth(0.35);
-  doc.moveTo(left, ruleY + 3).lineTo(right, ruleY + 3).stroke();
-  doc.restore();
-  return ruleY + 12;
+  if (contactLine) {
+    doc.fillColor('#444444').font('Helvetica').fontSize(7.5);
+    pdfLine(doc, contactLine, textLeft, top + 34);
+  }
+
+  if (brand.legalName && brand.legalName !== brand.name) {
+    doc.fillColor('#666666').font('Helvetica').fontSize(7);
+    pdfLine(doc, brand.legalName, textLeft, top + 46);
+    return top + Math.max(logoSize, 56) + 6;
+  }
+
+  return top + Math.max(logoSize, 44) + 6;
 }
 
-function drawPdfTitlePlain(doc, { title, filterLine, countLabel, extraLine }, y) {
-  const left = 32;
-  const innerW = doc.page.width - 64;
+function drawPdfTitlePlain(
+  doc,
+  { title, filterLine, countLabel, extraLine, sessionLabel, leftFilter, rightFilter, centerFilter },
+  y
+) {
+  const { width } = doc.page;
+  const left = 36;
+  const right = width - 36;
+  const innerW = right - left;
+  let cursor = y;
 
-  doc.fillColor('#111111').font('Helvetica-Bold').fontSize(12);
-  pdfLine(doc, String(title || '').toUpperCase(), left, y);
-
+  // Subtle rule under letterhead
   doc.save();
-  doc.strokeColor('#333333').lineWidth(0.6);
-  doc.moveTo(left, y + 16).lineTo(left + Math.min(220, innerW * 0.35), y + 16).stroke();
+  doc.strokeColor('#C8C8C8').lineWidth(0.6);
+  doc.moveTo(left, cursor).lineTo(right, cursor).stroke();
   doc.restore();
+  cursor += 10;
 
-  doc.fillColor('#333333').font('Helvetica').fontSize(8.5);
-  pdfLine(doc, filterLine || 'All paid vouchers', left, y + 24, { width: innerW - 160 });
-  doc.font('Helvetica-Bold').fontSize(8.5);
-  pdfLine(doc, countLabel, left, y + 24, { width: innerW, align: 'right' });
+  if (sessionLabel) {
+    doc.fillColor('#333333').font('Helvetica-Bold').fontSize(9);
+    const sessionText = `Session: ${sessionLabel}`;
+    const sw = doc.widthOfString(sessionText);
+    pdfLine(doc, sessionText, (width - sw) / 2, cursor);
+    cursor += 14;
+  }
+
+  const boxTitle = String(title || '').trim();
+  doc.font('Helvetica-Bold').fontSize(11);
+  const titleW = doc.widthOfString(boxTitle);
+  const boxPadX = 16;
+  const boxPadY = 5;
+  const boxW = titleW + boxPadX * 2;
+  const boxH = 18;
+  const boxX = (width - boxW) / 2;
+  doc.save();
+  doc.strokeColor('#222222').lineWidth(1);
+  doc.rect(boxX, cursor, boxW, boxH).stroke();
+  doc.restore();
+  doc.fillColor('#111111');
+  pdfLine(doc, boxTitle, boxX + boxPadX, cursor + boxPadY);
+  cursor += boxH + 12;
+
+  const leftText = leftFilter || filterLine || '';
+  const centerText = centerFilter || '';
+  const rightText = rightFilter || '';
+  doc.fillColor('#555555').font('Helvetica-Bold').fontSize(7.5);
+  if (leftText) pdfLine(doc, leftText, left, cursor, { width: innerW * 0.32 });
+  if (centerText) {
+    doc.fillColor('#111111').font('Helvetica-Bold').fontSize(8);
+    pdfLine(doc, centerText, left, cursor, { width: innerW, align: 'center' });
+    doc.fillColor('#555555').font('Helvetica-Bold').fontSize(7.5);
+  } else if (countLabel && !centerText) {
+    pdfLine(doc, countLabel, left, cursor, { width: innerW, align: 'center' });
+  }
+  if (rightText) pdfLine(doc, rightText, left, cursor, { width: innerW, align: 'right' });
+  cursor += 10;
 
   if (extraLine) {
-    doc.font('Helvetica').fontSize(8);
-    pdfLine(doc, extraLine, left, y + 38, { width: innerW });
-    return y + 54;
+    doc.fillColor('#666666').font('Helvetica').fontSize(7);
+    pdfLine(doc, extraLine, left, cursor, { width: innerW });
+    cursor += 10;
   }
-  return y + 42;
+
+  return cursor;
 }
 
 function drawPdfFooterTextPlain(doc, brand, confidentialLabel, meta, page, pages) {
   const { width, height } = doc.page;
-  const left = 32;
-  const right = width - 32;
-  const lineY = height - 34;
+  const left = 36;
+  const right = width - 36;
+  const lineY = height - 28;
 
   doc.save();
-  doc.strokeColor('#111111').lineWidth(0.35);
+  doc.strokeColor('#222222').lineWidth(0.7);
   doc.moveTo(left, lineY).lineTo(right, lineY).stroke();
-  doc.strokeColor('#111111').lineWidth(1);
-  doc.moveTo(left, lineY + 3).lineTo(right, lineY + 3).stroke();
   doc.restore();
 
-  const y = height - 20;
+  const y = height - 18;
   doc.fillColor('#333333').font('Helvetica').fontSize(7);
-  pdfLine(doc, `${brand.name}  ·  ${confidentialLabel}`, left, y);
-  pdfLine(doc, `Page ${page} of ${pages}`, width / 2 - 40, y, { width: 80, align: 'center' });
-  pdfLine(doc, `Generated ${formatDateTime(meta.generatedAt)}`, width / 2 + 40, y, {
-    width: width / 2 - 72,
-    align: 'right',
-  });
+  pdfLine(doc, `Dated: ${formatDateTime(meta.generatedAt)}`, left, y);
+  pdfLine(doc, `${brand.name}`, left, y, { width: right - left, align: 'center' });
+  pdfLine(doc, `Page ${page} of ${pages}`, left, y, { width: right - left, align: 'right' });
 }
 
 async function renderBrandedPdf({
@@ -356,7 +475,7 @@ async function renderBrandedPdf({
       const doc = new PDFDocument({
         size: 'A4',
         layout: 'landscape',
-        margin: 32,
+        margin: plain ? 36 : 32,
         bufferPages: true,
         info: {
           Title: `${title} — ${brand.name}`,
@@ -370,8 +489,22 @@ async function renderBrandedPdf({
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
-      const startX = (doc.page.width - tableWidth) / 2;
+      const pageMargin = plain ? 36 : 32;
+      const usableWidth = doc.page.width - pageMargin * 2;
+      // Scale columns to exactly fill the printable width (no side gaps / no clipping).
+      let scaledColumns = columns;
+      const rawWidth = columns.reduce((sum, c) => sum + (Number(c.pdfWidth) || 0), 0);
+      if (plain && rawWidth > 0) {
+        const scale = usableWidth / rawWidth;
+        scaledColumns = columns.map((c) => ({
+          ...c,
+          pdfWidth: Math.max(18, Math.floor((Number(c.pdfWidth) || 0) * scale)),
+        }));
+        const scaledSum = scaledColumns.reduce((sum, c) => sum + c.pdfWidth, 0);
+        scaledColumns[scaledColumns.length - 1].pdfWidth += usableWidth - scaledSum;
+      }
+      const tableWidth = scaledColumns.reduce((sum, c) => sum + c.pdfWidth, 0);
+      const startX = pageMargin;
       const bottomLimit = () => doc.page.height - (plain ? 42 : 44);
 
       const startTablePage = () => {
@@ -385,6 +518,10 @@ async function renderBrandedPdf({
               filterLine: meta.filterLine || '',
               countLabel,
               extraLine: meta.extraLine,
+              sessionLabel: meta.sessionLabel || '',
+              leftFilter: meta.leftFilter || '',
+              centerFilter: meta.centerFilter || '',
+              rightFilter: meta.rightFilter || '',
             },
             nextY
           );
@@ -402,7 +539,7 @@ async function renderBrandedPdf({
             letterheadBottom + 12
           );
         }
-        return drawPdfTableHeader(doc, columns, startX, nextY, brand, { plain });
+        return drawPdfTableHeader(doc, scaledColumns, startX, nextY, brand, { plain });
       };
 
       let y = startTablePage();
@@ -411,8 +548,8 @@ async function renderBrandedPdf({
         pdfLine(doc, emptyMessage, startX, y + 16, { width: tableWidth, align: 'center' });
       } else {
         rows.forEach((row, idx) => {
-          const nextRowH = pdfRowHeight(doc, columns, row, {
-            pad: plain ? 5 : 4,
+          const nextRowH = pdfRowHeight(doc, scaledColumns, row, {
+            pad: plain ? 4 : 4,
             minRowH: isPdfTotalRow(row) ? 18 : 16,
           });
           if (y + nextRowH > bottomLimit()) {
@@ -420,7 +557,7 @@ async function renderBrandedPdf({
             y = startTablePage();
           }
           const zebra = idx % 2 === 1 && !isPdfTotalRow(row);
-          y = drawPdfRow(doc, columns, row, startX, y, zebra, brand, { plain });
+          y = drawPdfRow(doc, scaledColumns, row, startX, y, zebra, brand, { plain });
         });
       }
 
@@ -447,6 +584,7 @@ async function renderBrandedExcel({
   columns,
   rows,
   meta = {},
+  plain = false,
 }) {
   const brand = ACADEMY_BRAND;
   const workbook = new ExcelJS.Workbook();
@@ -455,6 +593,7 @@ async function renderBrandedExcel({
   workbook.created = new Date();
   workbook.modified = new Date();
 
+  const headerRows = plain ? 5 : 6;
   const sheet = workbook.addWorksheet(sheetName || 'Report', {
     pageSetup: {
       paperSize: 9,
@@ -464,111 +603,207 @@ async function renderBrandedExcel({
       fitToHeight: 0,
       margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
     },
-    views: [{ state: 'frozen', ySplit: 6 }],
+    views: [{ state: 'frozen', ySplit: headerRows }],
   });
 
   sheet.columns = columns.map((c) => ({ key: c.key, width: c.excelWidth }));
   const lastCol = columns.length;
   const merge = (r1, r2 = r1) => sheet.mergeCells(r1, 1, r2, lastCol);
-
-  sheet.getRow(1).height = 22;
-  sheet.getRow(2).height = 16;
-  sheet.getRow(3).height = 16;
-  sheet.getRow(4).height = 16;
-  sheet.getRow(5).height = 8;
-
-  merge(1);
-  const heading = sheet.getCell(1, 1);
-  heading.value = brand.name.toUpperCase();
-  heading.font = { name: 'Calibri', size: 18, bold: true, color: { argb: 'FF0E2A4E' } };
-  heading.alignment = { vertical: 'middle', horizontal: 'center' };
-
-  merge(2);
-  const tag = sheet.getCell(2, 1);
-  tag.value = brand.tagline;
-  tag.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FFE8A317' } };
-  tag.alignment = { vertical: 'middle', horizontal: 'center' };
-
-  merge(3);
-  const contact = sheet.getCell(3, 1);
-  contact.value = `${brand.address}  ·  ${brand.phones.join(' / ')}  ·  ${brand.email}`;
-  contact.font = { name: 'Calibri', size: 9, color: { argb: 'FF5A6A7A' } };
-  contact.alignment = { vertical: 'middle', horizontal: 'center' };
-
-  merge(4);
-  const subtitle = sheet.getCell(4, 1);
   const countLabel = meta.countLabel || `${rows.length} record${rows.length === 1 ? '' : 's'}`;
-  subtitle.value = [title, meta.filterLine, `Generated ${formatDateTime(meta.generatedAt)}`, countLabel]
-    .filter(Boolean)
-    .join('  ·  ');
-  subtitle.font = { name: 'Calibri', size: 9, color: { argb: 'FF0E2A4E' } };
-  subtitle.alignment = { vertical: 'middle', horizontal: 'center' };
-
   const logoPath = resolveLogoPath();
-  if (logoPath) {
-    try {
-      const imageId = workbook.addImage({ filename: logoPath, extension: 'png' });
-      sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 52, height: 52 } });
-    } catch {
-      /* skip broken logo */
+  const thinBlack = { style: 'thin', color: { argb: 'FF222222' } };
+  const gridBorder = { top: thinBlack, bottom: thinBlack, left: thinBlack, right: thinBlack };
+
+  if (plain) {
+    sheet.getRow(1).height = 28;
+    sheet.getRow(2).height = 16;
+    sheet.getRow(3).height = 20;
+    sheet.getRow(4).height = 16;
+
+    merge(1);
+    const heading = sheet.getCell(1, 1);
+    heading.value = brand.name;
+    heading.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FF000000' } };
+    heading.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    merge(2);
+    const session = sheet.getCell(2, 1);
+    session.value = meta.sessionLabel ? `Session: ${meta.sessionLabel}` : '';
+    session.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF000000' } };
+    session.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    merge(3);
+    const titleCell = sheet.getCell(3, 1);
+    titleCell.value = title;
+    titleCell.font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF000000' } };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    titleCell.border = gridBorder;
+
+    merge(4);
+    const filters = sheet.getCell(4, 1);
+    const leftText = meta.leftFilter || meta.filterLine || '';
+    const centerText = meta.centerFilter || countLabel || '';
+    const rightText = meta.rightFilter || '';
+    filters.value = [leftText, centerText, rightText].filter(Boolean).join('          ');
+    filters.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF696969' } };
+    filters.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    if (logoPath) {
+      try {
+        const imageId = workbook.addImage({ filename: logoPath, extension: 'png' });
+        sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 48, height: 48 } });
+      } catch {
+        /* skip broken logo */
+      }
     }
+
+    const headerRow = sheet.getRow(5);
+    headerRow.height = 20;
+    columns.forEach((col, i) => {
+      const cell = headerRow.getCell(i + 1);
+      cell.value = col.header;
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF555555' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = gridBorder;
+    });
+  } else {
+    sheet.getRow(1).height = 22;
+    sheet.getRow(2).height = 16;
+    sheet.getRow(3).height = 16;
+    sheet.getRow(4).height = 16;
+    sheet.getRow(5).height = 8;
+
+    merge(1);
+    const heading = sheet.getCell(1, 1);
+    heading.value = brand.name.toUpperCase();
+    heading.font = { name: 'Calibri', size: 18, bold: true, color: { argb: 'FF0E2A4E' } };
+    heading.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    merge(2);
+    const tag = sheet.getCell(2, 1);
+    tag.value = brand.tagline;
+    tag.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FFE8A317' } };
+    tag.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    merge(3);
+    const contact = sheet.getCell(3, 1);
+    contact.value = `${brand.address}  ·  ${brand.phones.join(' / ')}  ·  ${brand.email}`;
+    contact.font = { name: 'Calibri', size: 9, color: { argb: 'FF5A6A7A' } };
+    contact.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    merge(4);
+    const subtitle = sheet.getCell(4, 1);
+    subtitle.value = [title, meta.filterLine, `Generated ${formatDateTime(meta.generatedAt)}`, countLabel]
+      .filter(Boolean)
+      .join('  ·  ');
+    subtitle.font = { name: 'Calibri', size: 9, color: { argb: 'FF0E2A4E' } };
+    subtitle.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    if (logoPath) {
+      try {
+        const imageId = workbook.addImage({ filename: logoPath, extension: 'png' });
+        sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 52, height: 52 } });
+      } catch {
+        /* skip broken logo */
+      }
+    }
+
+    const headerRow = sheet.getRow(6);
+    headerRow.height = 20;
+    columns.forEach((col, i) => {
+      const cell = headerRow.getCell(i + 1);
+      cell.value = col.header;
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E2A4E' } };
+      cell.alignment = { vertical: 'middle', horizontal: colAlign(col) };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF0E2A4E' } },
+        bottom: { style: 'thin', color: { argb: 'FFE8A317' } },
+      };
+    });
   }
 
-  const headerRow = sheet.getRow(6);
-  headerRow.height = 20;
-  columns.forEach((col, i) => {
-    const cell = headerRow.getCell(i + 1);
-    cell.value = col.header;
-    cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E2A4E' } };
-    cell.alignment = { vertical: 'middle', horizontal: colAlign(col) };
-    cell.border = {
-      top: { style: 'thin', color: { argb: 'FF0E2A4E' } },
-      bottom: { style: 'thin', color: { argb: 'FFE8A317' } },
-    };
-  });
-
   rows.forEach((row, idx) => {
+    const totalRow = isPdfTotalRow(row);
     const values = {};
     columns.forEach((col) => {
       values[col.key] = row[col.key] == null ? '' : row[col.key];
     });
+    if (plain && totalRow) {
+      const amountCols = columns
+        .map((col, i) => ({ col, i }))
+        .filter(({ col }) => col.numFmt || col.key === 'amount' || col.key === 'total');
+      const firstAmountIdx = amountCols.length ? amountCols[0].i : columns.length - 1;
+      columns.forEach((col, i) => {
+        if (i < firstAmountIdx) values[col.key] = i === 0 ? 'Grand Total' : '';
+      });
+    }
     const excelRow = sheet.addRow(values);
     excelRow.height = 18;
+    if (plain && totalRow) {
+      const amountCols = columns
+        .map((col, i) => ({ col, i }))
+        .filter(({ col }) => col.numFmt || col.key === 'amount' || col.key === 'total');
+      const firstAmountIdx = amountCols.length ? amountCols[0].i : columns.length - 1;
+      if (firstAmountIdx > 1) {
+        try {
+          sheet.mergeCells(excelRow.number, 1, excelRow.number, firstAmountIdx);
+        } catch {
+          /* already merged */
+        }
+      }
+    }
     excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const col = columns[colNumber - 1];
-      cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF1A2A3A' } };
+      cell.font = {
+        name: 'Calibri',
+        size: 10,
+        bold: totalRow,
+        color: { argb: plain ? 'FF000000' : 'FF1A2A3A' },
+      };
       cell.alignment = {
         vertical: col?.wrap ? 'top' : 'middle',
-        horizontal: colAlign(col),
+        horizontal: plain ? 'center' : colAlign(col),
         wrapText: Boolean(col?.wrap),
       };
-      if (idx % 2 === 1) {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F8FB' } };
+      if (plain) {
+        cell.border = gridBorder;
+        if (totalRow) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
+        }
+      } else {
+        if (idx % 2 === 1) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F8FB' } };
+        }
+        cell.border = { bottom: { style: 'hair', color: { argb: 'FFD6DEE8' } } };
       }
-      cell.border = { bottom: { style: 'hair', color: { argb: 'FFD6DEE8' } } };
       if (col?.numFmt) cell.numFmt = col.numFmt;
     });
   });
 
-  if (meta.extraLine) {
+  if (!plain && meta.extraLine) {
     const extra = sheet.addRow([]);
     extra.getCell(1).value = meta.extraLine;
     extra.getCell(1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF5A6A7A' } };
     sheet.mergeCells(extra.number, 1, extra.number, lastCol);
   }
 
-  const summaryRow = sheet.addRow([]);
-  summaryRow.getCell(1).value = countLabel;
-  summaryRow.getCell(1).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0E2A4E' } };
-  sheet.mergeCells(summaryRow.number, 1, summaryRow.number, lastCol);
+  if (!plain) {
+    const summaryRow = sheet.addRow([]);
+    summaryRow.getCell(1).value = countLabel;
+    summaryRow.getCell(1).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0E2A4E' } };
+    sheet.mergeCells(summaryRow.number, 1, summaryRow.number, lastCol);
+  }
 
-  sheet.headerFooter.oddFooter = `&L${brand.name}  |  ${confidentialLabel}&C&P / &N&RGenerated ${formatDate(
-    meta.generatedAt || new Date()
-  )}`;
+  sheet.headerFooter.oddFooter = plain
+    ? `&LDated: ${formatDateTime(meta.generatedAt || new Date())}&RPage &P of &N`
+    : `&L${brand.name}  |  ${confidentialLabel}&C&P / &N&RGenerated ${formatDate(
+        meta.generatedAt || new Date()
+      )}`;
   sheet.autoFilter = {
-    from: { row: 6, column: 1 },
-    to: { row: 6 + rows.length, column: lastCol },
+    from: { row: headerRows, column: 1 },
+    to: { row: headerRows + rows.length, column: lastCol },
   };
 
   return workbook.xlsx.writeBuffer();

@@ -1371,13 +1371,17 @@ export interface FeeDefaulter {
   oldestDueDate?: string;
   daysOverdue: number;
   className?: string | null;
+  sectionName?: string | null;
   student: {
     _id: string;
     studentId: string;
+    registrationNumber?: string;
+    rollNumber?: string;
     studentName: string;
     fatherName: string;
     phone: string;
     classId?: string;
+    sectionId?: string;
   };
 }
 
@@ -1940,6 +1944,39 @@ export function formatClassTestSchedule(test: Pick<AcademyClassTest, "examDate" 
 
 export function fetchClassTestEntry(testId: string) {
   return api<ClassTestMarksEntry>(`/class-tests/${testId}/entry`);
+}
+
+export async function fetchAwardListPdf(testId: string) {
+  const res = await authedFetch(`/student-management/class-tests/${testId}/award-list.pdf`);
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res);
+    throw new Error(body.message || "Failed to load award list");
+  }
+  return res.blob();
+}
+
+/** Opens award list PDF in a new tab for preview (user can print from the browser). */
+export async function previewAwardListPdf(testId: string) {
+  const preview = window.open("about:blank", "_blank");
+  try {
+    const blob = await fetchAwardListPdf(testId);
+    const url = URL.createObjectURL(blob);
+    if (preview && !preview.closed) {
+      preview.location.replace(url);
+      preview.focus();
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `award-list-${testId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (err) {
+    preview?.close();
+    throw err;
+  }
 }
 
 export function saveClassTestMarks(

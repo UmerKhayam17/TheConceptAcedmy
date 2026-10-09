@@ -326,6 +326,11 @@ router.get(
   requireAnyPermission('view_academy_students', 'enter_exam_marks', 'view_results'),
   classTestCtrl.getEntry
 );
+router.get(
+  '/class-tests/:id/award-list.pdf',
+  requireAnyPermission('view_academy_students', 'enter_exam_marks', 'view_results'),
+  classTestCtrl.awardListPdf
+);
 router.post(
   '/class-tests/:id/students/:studentId/test-paper',
   requireAnyPermission('enter_exam_marks', 'manage_academy_students'),
