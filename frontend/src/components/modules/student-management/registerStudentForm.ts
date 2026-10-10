@@ -1,4 +1,4 @@
-import { formatCnicInput, formatLandlineInput, formatMobileInput } from "@/lib/pkFieldFormat";
+import { formatCnicInput, formatMobileInput } from "@/lib/pkFieldFormat";
 import type { AcademicRecord, AcademyStudent } from "@/lib/studentManagementApi";
 import { resolveClassId, resolveSubjectIds } from "./studentDisplayUtils";
 
@@ -78,7 +78,7 @@ export function mapStudentToForm(student: AcademyStudent) {
     parentPassword: "Concept@1234",
     studentEmail: student.studentEmail || "",
     postalAddress: student.postalAddress || student.address || "",
-    contactPhoneRes: formatLandlineInput(student.contactPhoneRes || ""),
+    contactPhoneRes: formatMobileInput(student.contactPhoneRes || ""),
     mobileNo: formatMobileInput(student.phone || ""),
     permanentAddress: student.permanentAddress || "",
     currentSchoolCollege: student.currentSchoolCollege || "",

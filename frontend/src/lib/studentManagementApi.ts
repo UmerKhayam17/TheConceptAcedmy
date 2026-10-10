@@ -112,6 +112,7 @@ export interface AcademyStudentProvisionalBody {
   fatherName: string;
   phone: string;
   dateOfBirth: string;
+  gender: string;
   classId: string;
   description?: string;
 }

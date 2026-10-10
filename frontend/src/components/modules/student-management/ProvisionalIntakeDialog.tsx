@@ -23,6 +23,7 @@ const emptyForm = {
   fatherName: "",
   phone: "",
   dateOfBirth: "",
+  gender: "",
   classId: "",
   description: "",
 };
@@ -71,6 +72,7 @@ export default function ProvisionalIntakeDialog({
         fatherName: form.fatherName.trim(),
         phone: form.phone.trim(),
         dateOfBirth: form.dateOfBirth,
+        gender: form.gender,
         classId: form.classId,
         description: form.description.trim() || undefined,
       }),
@@ -93,6 +95,7 @@ export default function ProvisionalIntakeDialog({
     && form.fatherName.trim()
     && isValidMobile(form.phone)
     && form.dateOfBirth
+    && form.gender
     && form.classId;
 
   const handleOpenChange = (next: boolean) => {
@@ -152,6 +155,20 @@ export default function ProvisionalIntakeDialog({
               value={form.dateOfBirth}
               onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="intake-gender">Gender</Label>
+            <select
+              id="intake-gender"
+              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm font-sans"
+              value={form.gender}
+              onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
+            >
+              <option value="">Select gender…</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="intake-class">Class</Label>

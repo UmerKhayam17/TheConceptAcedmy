@@ -173,6 +173,7 @@ const academyStudentProvisional = Joi.object({
   fatherName: Joi.string().trim().required(),
   phone: Joi.string().trim().required(),
   dateOfBirth: Joi.date().required(),
+  gender: Joi.string().valid('male', 'female', 'other').required(),
   classId: objectId.required(),
   description: Joi.string().allow('').trim().max(2000),
 });

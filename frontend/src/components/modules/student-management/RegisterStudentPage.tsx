@@ -44,12 +44,9 @@ import { cn } from "@/lib/utils";
 import {
   cnicValidationMessage,
   formatCnicInput,
-  formatLandlineInput,
   formatMobileInput,
   isValidCnic,
-  isValidLandline,
   isValidMobile,
-  landlineValidationMessage,
   mobileValidationMessage,
 } from "@/lib/pkFieldFormat";
 import { useToast } from "@/hooks/use-toast";
@@ -477,8 +474,10 @@ export default function RegisterStudentPage({
       if (mobileErr) throw new Error(mobileErr);
       const cnicErr = cnicValidationMessage(form.fatherGuardianCnic);
       if (cnicErr) throw new Error(cnicErr);
-      const landlineErr = landlineValidationMessage(form.contactPhoneRes);
-      if (landlineErr) throw new Error(landlineErr);
+      if (form.contactPhoneRes.trim()) {
+        const contactErr = mobileValidationMessage(form.contactPhoneRes);
+        if (contactErr) throw new Error(contactErr);
+      }
 
       const body = buildStudentPayload(form);
       if (isActivate && studentId) {
@@ -617,8 +616,8 @@ export default function RegisterStudentPage({
     if (form.fatherGuardianCnic.trim() && !isValidCnic(form.fatherGuardianCnic)) {
       missing.push("Valid CNIC (13 digits)");
     }
-    if (form.contactPhoneRes.trim() && !isValidLandline(form.contactPhoneRes)) {
-      missing.push("Valid contact number (0XX-XXXXXXX)");
+    if (form.contactPhoneRes.trim() && !isValidMobile(form.contactPhoneRes)) {
+      missing.push("Valid residence phone (03XX-XXXXXXX)");
     }
     if (!form.classId) missing.push("Class");
     if (!form.sectionId) missing.push("Section");
@@ -646,7 +645,7 @@ export default function RegisterStudentPage({
     && form.gender
     && isValidMobile(form.mobileNo)
     && (!form.fatherGuardianCnic.trim() || isValidCnic(form.fatherGuardianCnic))
-    && (!form.contactPhoneRes.trim() || isValidLandline(form.contactPhoneRes))
+    && (!form.contactPhoneRes.trim() || isValidMobile(form.contactPhoneRes))
     && form.classId
     && form.sectionId
     && (!requiresDiscipline || Boolean(form.disciplineId))
@@ -659,7 +658,9 @@ export default function RegisterStudentPage({
 
   const cnicError = fieldTouched.fatherGuardianCnic ? cnicValidationMessage(form.fatherGuardianCnic) : null;
   const mobileError = fieldTouched.mobileNo ? mobileValidationMessage(form.mobileNo) : null;
-  const contactError = fieldTouched.contactPhoneRes ? landlineValidationMessage(form.contactPhoneRes) : null;
+  const contactError = fieldTouched.contactPhoneRes && form.contactPhoneRes.trim()
+    ? mobileValidationMessage(form.contactPhoneRes)
+    : null;
 
   const handleClose = () => {
     if (asDialog) onOpenChange?.(false);
@@ -948,11 +949,11 @@ export default function RegisterStudentPage({
                 icon={Phone}
                 type="tel"
                 inputMode="numeric"
-                placeholder="042-XXXXXXX"
-                maxLength={11}
+                placeholder="03XX-XXXXXXX"
+                maxLength={12}
                 className={cn(contactError && "border-destructive")}
                 value={form.contactPhoneRes}
-                onChange={(e) => setForm((f) => ({ ...f, contactPhoneRes: formatLandlineInput(e.target.value) }))}
+                onChange={(e) => setForm((f) => ({ ...f, contactPhoneRes: formatMobileInput(e.target.value) }))}
                 onBlur={() => setFieldTouched((t) => ({ ...t, contactPhoneRes: true }))}
               />
             </FormField>
