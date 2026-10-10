@@ -27,6 +27,11 @@ const examSchema = new mongoose.Schema(
       ref: 'AcademySection',
       index: true,
     },
+    disciplineId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'AcademyDiscipline',
+      index: true,
+    },
     sessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Session', index: true },
     sessionLabel: { type: String, trim: true, default: '' },
     startDate: { type: Date, required: true },

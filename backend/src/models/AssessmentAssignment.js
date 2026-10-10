@@ -49,6 +49,12 @@ const assessmentAssignmentSchema = new mongoose.Schema(
       ref: 'AcademySection',
       index: true,
     },
+    /** Optional stream cohort when the class has disciplines (Medical / Engineering / ICS). */
+    disciplineId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'AcademyDiscipline',
+      index: true,
+    },
     papers: [paperSchema],
     status: {
       type: String,

@@ -399,7 +399,11 @@ async function renderAwardListPdf(testId, actor, sessionId) {
     typeof test.sectionId === 'object' && test.sectionId ? test.sectionId.sectionName : '';
   const subjectName =
     typeof test.subjectId === 'object' && test.subjectId ? test.subjectId.subjectName : '';
-  const disciplineLabel = disciplineLabelFromStudents(students);
+  const disciplineFromTest =
+    typeof test.disciplineId === 'object' && test.disciplineId
+      ? String(test.disciplineId.name || '').trim()
+      : '';
+  const disciplineLabel = disciplineFromTest || disciplineLabelFromStudents(students);
   const programLabel = buildProgramLabel(className, sectionName, disciplineLabel);
   const testTypeLabel = assessmentTypeLabel(test.assessmentType) || 'Test';
   const testNumber =
@@ -427,6 +431,7 @@ async function renderAwardListPdf(testId, actor, sessionId) {
 async function loadExamStudents(exam) {
   const studentQ = { classId: exam.academyClass, status: 'active' };
   if (exam.sectionId) studentQ.sectionId = exam.sectionId;
+  if (exam.disciplineId) studentQ.disciplineId = exam.disciplineId;
   const rows = await AcademyStudent.find(studentQ)
     .select(
       'studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects disciplineId'
@@ -454,6 +459,7 @@ async function renderExamAwardListPdf(examId, subjectId) {
   const exam = await Exam.findById(examId)
     .populate('academyClass', 'className')
     .populate('sectionId', 'sectionName')
+    .populate('disciplineId', 'name code')
     .populate('dateSheet.subject', 'subjectName subjectCode')
     .lean();
   if (!exam) throw new ApiError(404, 'Exam not found');
@@ -468,6 +474,10 @@ async function renderExamAwardListPdf(examId, subjectId) {
     const sec = await AcademySection.findById(exam.sectionId).select('sectionName').lean();
     sectionName = sec?.sectionName || '';
   }
+  const disciplineFromExam =
+    typeof exam.disciplineId === 'object' && exam.disciplineId
+      ? String(exam.disciplineId.name || '').trim()
+      : '';
   const testTypeLabel = exam.type || 'Exam';
   const allStudents = await loadExamStudents(exam);
 
@@ -496,7 +506,8 @@ async function renderExamAwardListPdf(examId, subjectId) {
     const subjectName =
       typeof p.subject === 'object' && p.subject ? p.subject.subjectName : '';
     const students = studentsForSubject(allStudents, p.subject);
-    const disciplineLabel = disciplineLabelFromStudents(students);
+    const disciplineLabel =
+      disciplineFromExam || disciplineLabelFromStudents(students);
     const programLabel = buildProgramLabel(className, sectionName, disciplineLabel);
     return {
       meta: {

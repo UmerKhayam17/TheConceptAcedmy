@@ -43,6 +43,11 @@ function sectionNameOf(test: AcademyClassTest) {
   return typeof s === "object" && s ? s.sectionName : "";
 }
 
+function disciplineNameOf(test: AcademyClassTest) {
+  const d = test.disciplineId;
+  return typeof d === "object" && d ? d.name : "";
+}
+
 export default function ClassTestMarksPage({
   testId,
   role,
@@ -96,6 +101,7 @@ export default function ClassTestMarksPage({
         row.student.rollNumber,
         row.student.phone,
         row.student.sectionName,
+        row.student.disciplineName,
         row.student.guardianName
       )
     );
@@ -212,6 +218,7 @@ export default function ClassTestMarksPage({
   }
 
   const sectionLabel = sectionNameOf(test);
+  const disciplineLabel = disciplineNameOf(test);
 
   return (
     <div className="space-y-4">
@@ -234,7 +241,8 @@ export default function ClassTestMarksPage({
           </h2>
           <p className="text-sm text-muted-foreground">
             {classNameOf(test)}
-            {sectionLabel ? ` · ${sectionLabel}` : ""} · {subjectNameOf(test)} ·{" "}
+            {sectionLabel ? ` · ${sectionLabel}` : ""}
+            {disciplineLabel ? ` · ${disciplineLabel}` : ""} · {subjectNameOf(test)} ·{" "}
             {ASSESSMENT_TYPE_LABELS[test.assessmentType as AssessmentType]} ·{" "}
             {formatClassTestSchedule(test)} · Total {test.totalMarks} marks
           </p>

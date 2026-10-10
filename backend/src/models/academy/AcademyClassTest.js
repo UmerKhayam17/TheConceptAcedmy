@@ -33,6 +33,11 @@ const academyClassTestSchema = new mongoose.Schema(
       ref: 'AcademySection',
       index: true,
     },
+    disciplineId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'AcademyDiscipline',
+      index: true,
+    },
     status: {
       type: String,
       enum: ['open', 'closed'],

@@ -71,6 +71,7 @@ export default function DateSheetPanel() {
         r.subjectName,
         r.className,
         r.sectionName,
+        r.disciplineName,
         r.syllabus,
         r.assessmentTypeLabel,
       ]),
@@ -171,6 +172,7 @@ export default function DateSheetPanel() {
                         <td className="p-3 whitespace-nowrap">
                           {r.className}
                           {r.sectionName ? ` · ${r.sectionName}` : ""}
+                          {r.disciplineName ? ` · ${r.disciplineName}` : ""}
                         </td>
                         <td className="p-3 font-medium">{r.subjectName}</td>
                         <td className="p-3">{r.totalMarks}</td>

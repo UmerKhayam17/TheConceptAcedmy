@@ -525,6 +525,7 @@ export type AssessmentAssignment = {
   assessmentType: string;
   classId: string | { _id: string; className?: string };
   sectionId?: string | { _id: string; sectionName?: string };
+  disciplineId?: string | { _id: string; name?: string; code?: string };
   papers: AssessmentPlanPaper[];
   status: "draft" | "published";
   examId?: string;
@@ -545,6 +546,8 @@ export type DateSheetRow = {
   classId: string;
   sectionName: string;
   sectionId: string;
+  disciplineName?: string;
+  disciplineId?: string;
   subjectName: string;
   subjectId: string;
   totalMarks: number;
@@ -632,7 +635,7 @@ export const fetchTeacherTestScope = (sessionId: string) =>
 
 export const createAssessmentAssignment = (
   sessionId: string,
-  body: { planItemId: string; classId: string; sectionId?: string },
+  body: { planItemId: string; classId: string; sectionId?: string; disciplineId?: string },
 ) =>
   api<{ assignment: AssessmentAssignment; session: AcademicSession }>(
     `/sessions/${sessionId}/assessment-assignments`,
@@ -642,7 +645,7 @@ export const createAssessmentAssignment = (
 export const updateAssessmentAssignment = (
   sessionId: string,
   assignmentId: string,
-  body: { classId?: string; sectionId?: string | null },
+  body: { classId?: string; sectionId?: string | null; disciplineId?: string | null },
 ) =>
   api<{ assignment: AssessmentAssignment }>(
     `/sessions/${sessionId}/assessment-assignments/${assignmentId}`,

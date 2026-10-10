@@ -71,10 +71,12 @@ async function getExamStudents(examId) {
   const exam = await Exam.findById(examId).lean();
   if (!exam) throw new ApiError(404, 'Exam not found');
 
+  const studentQ = { classId: exam.academyClass, status: 'active' };
+  if (exam.sectionId) studentQ.sectionId = exam.sectionId;
+  if (exam.disciplineId) studentQ.disciplineId = exam.disciplineId;
+
   const [students, subjects, results] = await Promise.all([
-    AcademyStudent.find({ classId: exam.academyClass, status: 'active' })
-      .populate('selectedSubjects', 'subjectName subjectCode')
-      .lean(),
+    AcademyStudent.find(studentQ).populate('selectedSubjects', 'subjectName subjectCode').lean(),
     AcademySubject.find({ classId: exam.academyClass, status: 'active' }).sort({ subjectName: 1 }).lean(),
     Result.find({ exam: examId }).lean(),
   ]);

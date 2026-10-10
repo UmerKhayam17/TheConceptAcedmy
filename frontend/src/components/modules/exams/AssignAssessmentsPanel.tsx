@@ -53,11 +53,13 @@ import {
   deleteClassTest,
   fetchAcademyClasses,
   fetchClassTests,
+  fetchDisciplinesByClass,
   fetchSectionsByClass,
   fetchSubjectsByClass,
   formatClassTestSchedule,
   type AcademyClassTest,
   type AcademyClass,
+  type AcademyDiscipline,
   type AcademySection,
   type AcademySubject,
 } from "@/lib/studentManagementApi";
@@ -78,6 +80,11 @@ function classNameOf(a: AssessmentAssignment) {
 function sectionNameOf(a: AssessmentAssignment) {
   const s = a.sectionId;
   return typeof s === "object" && s ? s.sectionName || "" : "";
+}
+
+function disciplineNameOf(a: AssessmentAssignment) {
+  const d = a.disciplineId;
+  return typeof d === "object" && d ? d.name || "" : "";
 }
 
 function paperDate(p: AssessmentPlanPaper) {
@@ -253,6 +260,7 @@ export default function AssignAssessmentsPanel({
         a.name,
         classNameOf(a),
         sectionNameOf(a),
+        disciplineNameOf(a),
         ASSESSMENT_TYPE_LABELS[a.assessmentType as AssessmentType],
       ]);
     });
@@ -419,6 +427,7 @@ export default function AssignAssessmentsPanel({
                 <th className="text-left p-2.5 font-medium">Type</th>
                 <th className="text-left p-2.5 font-medium">Class</th>
                 <th className="text-left p-2.5 font-medium hidden md:table-cell">Section</th>
+                <th className="text-left p-2.5 font-medium hidden lg:table-cell">Discipline</th>
                 <th className="text-left p-2.5 font-medium">Subjects</th>
                 <th className="text-left p-2.5 font-medium">Status</th>
                 <th className="text-right p-2.5 font-medium">Action</th>
@@ -427,7 +436,7 @@ export default function AssignAssessmentsPanel({
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={8} className="p-6 text-center text-muted-foreground">
                     <span className="inline-flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" /> Loading…
                     </span>
@@ -436,14 +445,14 @@ export default function AssignAssessmentsPanel({
               )}
               {!isLoading && assignments.length === 0 && otherTests.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     No {noun}s yet. Create one from the catalog, then set the date, marks, and syllabus.
                   </td>
                 </tr>
               )}
               {!isLoading && (assignments.length > 0 || otherTests.length > 0) && filtered.length === 0 && otherTests.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     Nothing matches these filters.
                   </td>
                 </tr>
@@ -465,6 +474,7 @@ export default function AssignAssessmentsPanel({
                   </td>
                   <td className="p-2.5">{classNameOf(a)}</td>
                   <td className="p-2.5 hidden md:table-cell">{sectionNameOf(a) || "All"}</td>
+                  <td className="p-2.5 hidden lg:table-cell">{disciplineNameOf(a) || "All"}</td>
                   <td className="p-2.5 text-muted-foreground">
                     {visiblePapers.length
                       ? visiblePapers.map((p) => paperLabel(p)).join(", ")
@@ -516,6 +526,11 @@ export default function AssignAssessmentsPanel({
                   </td>
                   <td className="p-2.5">{testClassName(t)}</td>
                   <td className="p-2.5 hidden md:table-cell">—</td>
+                  <td className="p-2.5 hidden lg:table-cell">
+                    {typeof t.disciplineId === "object" && t.disciplineId
+                      ? t.disciplineId.name
+                      : "All"}
+                  </td>
                   <td className="p-2.5 text-primary">{testSubjectName(t)}</td>
                   <td className="p-2.5">
                     <Badge variant="default" className="text-[10px]">Published</Badge>
@@ -832,12 +847,14 @@ function AssignDialog({
   const [planItemId, setPlanItemId] = useState("");
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
+  const [disciplineId, setDisciplineId] = useState("");
 
   useEffect(() => {
     if (open) {
       setPlanItemId("");
       setClassId("");
       setSectionId("");
+      setDisciplineId("");
     }
   }, [open, branch]);
 
@@ -853,10 +870,17 @@ function AssignDialog({
     enabled: Boolean(classId) && !isTeacher,
   });
 
+  const { data: disciplines = [] } = useQuery({
+    queryKey: ["academy-disciplines", classId, "active"],
+    queryFn: () => fetchDisciplinesByClass(classId, { status: "active" }),
+    enabled: Boolean(classId),
+  });
+
   const classes = isTeacher ? uniqueClassOptions(scopeRows) : (allClasses as AcademyClass[]);
   const sections = isTeacher
     ? sectionOptionsForClass(scopeRows, classId)
     : (allSections as AcademySection[]);
+  const hasDisciplines = (disciplines as AcademyDiscipline[]).length > 0;
 
   const subjectHint = useMemo(() => {
     if (!isTeacher || !classId || !sectionId) return "";
@@ -872,6 +896,7 @@ function AssignDialog({
         planItemId,
         classId,
         sectionId: sectionId || undefined,
+        disciplineId: disciplineId || undefined,
       }),
     onSuccess: (res) => onCreated(res.assignment),
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -909,6 +934,7 @@ function AssignDialog({
               onValueChange={(v) => {
                 setClassId(v === "_" ? "" : v);
                 setSectionId("");
+                setDisciplineId("");
               }}
             >
               <SelectTrigger>
@@ -945,6 +971,31 @@ function AssignDialog({
               </SelectContent>
             </Select>
           </div>
+          {hasDisciplines && (
+            <div className="space-y-1">
+              <Label>Discipline (optional)</Label>
+              <Select
+                value={disciplineId || "_"}
+                onValueChange={(v) => setDisciplineId(v === "_" ? "" : v)}
+                disabled={!classId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All disciplines" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">All disciplines</SelectItem>
+                  {(disciplines as AcademyDiscipline[]).map((d) => (
+                    <SelectItem key={d._id} value={d._id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Pick a stream for stream subjects (e.g. Biology). Leave as All for shared subjects.
+              </p>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             {isTeacher
               ? `Choose a catalog test and one of your assigned class/sections. ${subjectHint}`
@@ -988,6 +1039,7 @@ function ConfigureAssignmentDialog({
   const published = assignment?.status === "published";
   const classId = idOf(assignment?.classId);
   const [sectionId, setSectionId] = useState("");
+  const [disciplineId, setDisciplineId] = useState("");
   const [paperRows, setPaperRows] = useState<
     Record<string, { totalMarks: string; examDate: string; syllabus: string }>
   >({});
@@ -995,6 +1047,7 @@ function ConfigureAssignmentDialog({
   useEffect(() => {
     if (!assignment) return;
     setSectionId(idOf(assignment.sectionId));
+    setDisciplineId(idOf(assignment.disciplineId));
     const map: Record<string, { totalMarks: string; examDate: string; syllabus: string }> = {};
     for (const p of assignment.papers || []) {
       map[idOf(p.subjectId)] = {
@@ -1012,15 +1065,27 @@ function ConfigureAssignmentDialog({
     enabled: Boolean(classId) && !isTeacher,
   });
 
+  const { data: disciplines = [] } = useQuery({
+    queryKey: ["academy-disciplines", classId, "active"],
+    queryFn: () => fetchDisciplinesByClass(classId, { status: "active" }),
+    enabled: Boolean(classId),
+  });
+
   const { data: allSubjects = [] } = useQuery({
-    queryKey: ["academy-subjects", classId],
-    queryFn: () => fetchSubjectsByClass(classId),
+    queryKey: ["academy-subjects", classId, sectionId || "", disciplineId || ""],
+    queryFn: () =>
+      fetchSubjectsByClass(classId, {
+        status: "active",
+        sectionId: sectionId || undefined,
+        disciplineId: disciplineId || undefined,
+      }),
     enabled: Boolean(classId),
   });
 
   const sections = isTeacher
     ? sectionOptionsForClass(scopeRows, classId)
     : (allSections as AcademySection[]);
+  const hasDisciplines = (disciplines as AcademyDiscipline[]).length > 0;
 
   const allowedSubjectIds = useMemo(() => {
     if (!isTeacher) return null;
@@ -1047,11 +1112,18 @@ function ConfigureAssignmentDialog({
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!assignment) return;
-      if (!published && sectionId !== idOf(assignment.sectionId)) {
-        if (isTeacher && !sectionId) throw new Error("Section is required");
-        await updateAssessmentAssignment(sessionId, assignment._id, {
-          sectionId: sectionId || null,
-        });
+      if (!published) {
+        const sectionChanged = sectionId !== idOf(assignment.sectionId);
+        const disciplineChanged = disciplineId !== idOf(assignment.disciplineId);
+        if (sectionChanged || disciplineChanged) {
+          if (isTeacher && !sectionId) throw new Error("Section is required");
+          await updateAssessmentAssignment(sessionId, assignment._id, {
+            ...(sectionChanged ? { sectionId: sectionId || null } : {}),
+            ...(disciplineChanged && !isTeacher
+              ? { disciplineId: disciplineId || null }
+              : {}),
+          });
+        }
       }
       const papers = subjects.map((s) => {
         const row = paperRows[s._id] || { totalMarks: "", examDate: "", syllabus: "" };
@@ -1090,32 +1162,58 @@ function ConfigureAssignmentDialog({
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
-          <div className="space-y-1 max-w-xs">
-            <Label>Section</Label>
-            <Select
-              value={sectionId || "_"}
-              onValueChange={(v) => setSectionId(v === "_" ? "" : v)}
-              disabled={published || !canManage || isTeacher}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={isTeacher ? "Section" : "All sections"} />
-              </SelectTrigger>
-              <SelectContent>
-                {!isTeacher && <SelectItem value="_">All sections</SelectItem>}
-                {sections.map((s) => (
-                  <SelectItem key={s._id} value={s._id}>
-                    {"sectionName" in s ? s.sectionName : (s as AcademySection).sectionName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label>Section</Label>
+              <Select
+                value={sectionId || "_"}
+                onValueChange={(v) => setSectionId(v === "_" ? "" : v)}
+                disabled={published || !canManage || isTeacher}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={isTeacher ? "Section" : "All sections"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {!isTeacher && <SelectItem value="_">All sections</SelectItem>}
+                  {sections.map((s) => (
+                    <SelectItem key={s._id} value={s._id}>
+                      {"sectionName" in s ? s.sectionName : (s as AcademySection).sectionName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {hasDisciplines && (
+              <div className="space-y-1">
+                <Label>Discipline</Label>
+                <Select
+                  value={disciplineId || "_"}
+                  onValueChange={(v) => setDisciplineId(v === "_" ? "" : v)}
+                  disabled={published || !canManage || isTeacher}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All disciplines" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_">All disciplines</SelectItem>
+                    {(disciplines as AcademyDiscipline[]).map((d) => (
+                      <SelectItem key={d._id} value={d._id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           {!subjects.length ? (
             <p className="text-sm text-muted-foreground">
               {isTeacher
                 ? "No subjects assigned to you for this class/section."
-                : "No subjects on this class yet."}
+                : disciplineId
+                  ? "No subjects for this section/discipline combination."
+                  : "No subjects on this class yet."}
             </p>
           ) : (
             <div className="border rounded-md overflow-x-auto">

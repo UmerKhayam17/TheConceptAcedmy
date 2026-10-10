@@ -48,6 +48,7 @@ async function populateTestQuery(query) {
   return query
     .populate('classId', 'className')
     .populate('sectionId', 'sectionName')
+    .populate('disciplineId', 'name code')
     .populate('subjectId', 'subjectName subjectCode')
     .populate('teacherId', 'name email')
     .populate('createdBy', 'name email')
@@ -150,9 +151,11 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
   const test = await getClassTestById(testId, actor, sessionId);
   const classId = test.classId?._id || test.classId;
   const sectionId = test.sectionId?._id || test.sectionId;
+  const disciplineId = test.disciplineId?._id || test.disciplineId;
 
   const studentQ = { classId, status: 'active' };
   if (sectionId) studentQ.sectionId = sectionId;
+  if (disciplineId) studentQ.disciplineId = disciplineId;
 
   const subjectId = test.subjectId?._id || test.subjectId;
   // Award list / marks: only students enrolled in this subject (full package or selectedSubjects)
@@ -227,6 +230,7 @@ async function saveClassTestMarks(testId, entries, userId, actor, sessionId) {
 
   const classId = String(test.classId);
   const sectionId = test.sectionId ? String(test.sectionId) : '';
+  const disciplineId = test.disciplineId ? String(test.disciplineId) : '';
   const saved = [];
 
   for (const row of entries) {
@@ -243,6 +247,9 @@ async function saveClassTestMarks(testId, entries, userId, actor, sessionId) {
     }
     if (sectionId && String(student.sectionId || '') !== sectionId) {
       throw new ApiError(400, 'Invalid student for this section');
+    }
+    if (disciplineId && String(student.disciplineId || '') !== disciplineId) {
+      throw new ApiError(400, 'Invalid student for this discipline');
     }
     const payload = {
       classTestId: testId,
@@ -291,6 +298,9 @@ async function uploadStudentTestPaper(testId, studentId, file, actor, sessionId)
   }
   if (test.sectionId && String(student.sectionId || '') !== String(test.sectionId)) {
     throw new ApiError(400, 'Student not in this test section');
+  }
+  if (test.disciplineId && String(student.disciplineId || '') !== String(test.disciplineId)) {
+    throw new ApiError(400, 'Student not in this test discipline');
   }
   const url = saveTestPaperFile(testId, studentId, file);
   const existing = await AcademyAssessment.findOne({ classTestId: testId, studentId });

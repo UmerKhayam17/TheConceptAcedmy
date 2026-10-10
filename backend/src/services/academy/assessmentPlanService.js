@@ -4,7 +4,6 @@ const SessionAssessmentPlan = require('../../models/SessionAssessmentPlan');
 const AssessmentAssignment = require('../../models/AssessmentAssignment');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const AcademySection = require('../../models/academy/AcademySection');
-const AcademySubject = require('../../models/academy/AcademySubject');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyClassTest = require('../../models/academy/AcademyClassTest');
 const AcademyAssessment = require('../../models/academy/AcademyAssessment');
@@ -28,9 +27,13 @@ const {
   resolveTeacherForCombo,
 } = require('./teacherTestScope');
 
+const AcademyDiscipline = require('../../models/academy/AcademyDiscipline');
+const { getAllowedSubjects } = require('./academyEnrollmentSubjectService');
+
 const ASSIGN_POPULATE = [
   { path: 'classId', select: 'className sessionId' },
   { path: 'sectionId', select: 'sectionName classId' },
+  { path: 'disciplineId', select: 'name code classId' },
   { path: 'papers.subjectId', select: 'subjectName subjectCode classId' },
 ];
 
@@ -225,12 +228,27 @@ function assignmentReady(a) {
   return Boolean(a.classId) && (a.papers || []).some(paperReady);
 }
 
-async function findDuplicateAssignment(planItemId, classId, sectionId, excludeId) {
+async function findDuplicateAssignment(planItemId, classId, sectionId, disciplineId, excludeId) {
   const q = { planItemId, classId };
+  const and = [];
   if (sectionId) q.sectionId = sectionId;
-  else q.$or = [{ sectionId: null }, { sectionId: { $exists: false } }];
+  else and.push({ $or: [{ sectionId: null }, { sectionId: { $exists: false } }] });
+  if (disciplineId) q.disciplineId = disciplineId;
+  else and.push({ $or: [{ disciplineId: null }, { disciplineId: { $exists: false } }] });
+  if (and.length) q.$and = and;
   if (excludeId) q._id = { $ne: excludeId };
   return AssessmentAssignment.findOne(q);
+}
+
+async function resolveDisciplineId(classId, disciplineId) {
+  if (!disciplineId) return undefined;
+  const doc = await AcademyDiscipline.findById(disciplineId);
+  if (!doc) throw new ApiError(404, 'Discipline not found');
+  if (String(doc.classId) !== String(classId)) {
+    throw new ApiError(400, 'Discipline does not belong to this class');
+  }
+  if (doc.status !== 'active') throw new ApiError(400, 'Discipline is not active');
+  return doc._id;
 }
 
 /** Assessments module: list assignments (optionally by category / plan item). */
@@ -325,6 +343,8 @@ async function createAssignment(sessionId, body, userId, actor) {
     sectionId = body.sectionId;
   }
 
+  const disciplineId = await resolveDisciplineId(body.classId, body.disciplineId);
+
   if (isTeacherRole(actor)) {
     await assertTeacherHasClassSection(actor._id, {
       classId: body.classId,
@@ -333,15 +353,24 @@ async function createAssignment(sessionId, body, userId, actor) {
     });
   }
 
-  const dup = await findDuplicateAssignment(item._id, body.classId, sectionId);
+  const dup = await findDuplicateAssignment(item._id, body.classId, sectionId, disciplineId);
   if (dup) {
-    // Teachers join the shared catalog assignment for this class/section.
+    // Teachers join the shared catalog assignment for this class/section/discipline.
     if (isTeacherRole(actor)) {
       await assertTeacherCanAccessAssignment(actor._id, dup, sessionId);
       const populated = await AssessmentAssignment.findById(dup._id).populate(ASSIGN_POPULATE);
       return { assignment: populated, session, reused: true };
     }
-    throw new ApiError(409, `${item.name} is already assigned to this class${sectionId ? '/section' : ''}`);
+    const scope = [
+      sectionId ? 'section' : null,
+      disciplineId ? 'discipline' : null,
+    ]
+      .filter(Boolean)
+      .join('/');
+    throw new ApiError(
+      409,
+      `${item.name} is already assigned to this class${scope ? `/${scope}` : ''}`
+    );
   }
 
   const doc = await AssessmentAssignment.create({
@@ -353,6 +382,7 @@ async function createAssignment(sessionId, body, userId, actor) {
     assessmentType: item.assessmentType,
     classId: body.classId,
     sectionId: sectionId || undefined,
+    disciplineId: disciplineId || undefined,
     papers: [],
     status: 'draft',
     createdBy: userId,
@@ -387,6 +417,7 @@ async function updateAssignment(sessionId, assignmentId, body, userId, actor) {
     doc.classId = body.classId;
     if (classChanged) {
       doc.sectionId = undefined;
+      doc.disciplineId = undefined;
       doc.papers = [];
     }
   }
@@ -411,9 +442,30 @@ async function updateAssignment(sessionId, assignmentId, body, userId, actor) {
     }
   }
 
-  const dup = await findDuplicateAssignment(doc.planItemId, doc.classId, doc.sectionId, doc._id);
+  if (body.disciplineId !== undefined) {
+    if (isTeacherRole(actor)) {
+      throw new ApiError(403, 'Teachers cannot change discipline on an assignment');
+    }
+    const prevDiscipline = String(doc.disciplineId || '');
+    if (!body.disciplineId) {
+      doc.disciplineId = undefined;
+    } else {
+      doc.disciplineId = await resolveDisciplineId(doc.classId, body.disciplineId);
+    }
+    if (String(doc.disciplineId || '') !== prevDiscipline) {
+      doc.papers = [];
+    }
+  }
+
+  const dup = await findDuplicateAssignment(
+    doc.planItemId,
+    doc.classId,
+    doc.sectionId,
+    doc.disciplineId,
+    doc._id
+  );
   if (dup) {
-    throw new ApiError(409, `${doc.name} is already assigned to this class/section`);
+    throw new ApiError(409, `${doc.name} is already assigned to this class/section/discipline`);
   }
 
   doc.updatedBy = userId;
@@ -450,6 +502,7 @@ async function createClassTestFromPaper(doc, paper, userId) {
   return AcademyClassTest.create({
     classId: doc.classId,
     sectionId: doc.sectionId || undefined,
+    disciplineId: doc.disciplineId || undefined,
     subjectId: paper.subjectId,
     title: `${doc.name} — ${assessmentTypeLabel(doc.assessmentType)}`,
     seriesLabel: doc.name,
@@ -497,7 +550,12 @@ async function upsertAssignmentPapers(sessionId, assignmentId, papersInput, user
     }
   }
 
-  const subjects = await AcademySubject.find({ classId: doc.classId, status: 'active' }).select('_id');
+  const subjects = await getAllowedSubjects(
+    doc.classId,
+    doc.sectionId || undefined,
+    'active',
+    doc.disciplineId || undefined
+  );
   const classAllowed = new Set(subjects.map((s) => String(s._id)));
   if (!Array.isArray(papersInput)) throw new ApiError(400, 'papers must be an array');
 
@@ -657,6 +715,7 @@ async function publishAssignment(sessionId, assignmentId, userId, actor) {
       type: assessmentTypeLabel(doc.assessmentType),
       academyClass: doc.classId,
       sectionId: doc.sectionId || undefined,
+      disciplineId: doc.disciplineId || undefined,
       sessionId: session._id,
       sessionLabel: session.name,
       startDate,
@@ -700,6 +759,7 @@ async function notifyParentsForAssignment(session, assignment) {
   try {
     const q = { classId: assignment.classId, status: 'active' };
     if (assignment.sectionId) q.sectionId = assignment.sectionId;
+    if (assignment.disciplineId) q.disciplineId = assignment.disciplineId;
     const students = await AcademyStudent.find(q).select('guardianEmail');
     const emails = [
       ...new Set(students.map((s) => String(s.guardianEmail || '').trim().toLowerCase()).filter(Boolean)),
@@ -751,6 +811,9 @@ async function getPublishedDateSheet(sessionId, { classId, sectionId } = {}) {
         classId: String(a.classId?._id || a.classId || ''),
         sectionName: typeof a.sectionId === 'object' ? a.sectionId?.sectionName || '' : '',
         sectionId: a.sectionId ? String(a.sectionId._id || a.sectionId) : '',
+        disciplineName:
+          typeof a.disciplineId === 'object' ? a.disciplineId?.name || '' : '',
+        disciplineId: a.disciplineId ? String(a.disciplineId._id || a.disciplineId) : '',
         subjectName: typeof subj === 'object' ? subj.subjectName : '',
         subjectId: String(subj?._id || subj || ''),
         totalMarks: paper.totalMarks,

@@ -413,10 +413,14 @@ export const getAcademyClassRecord = (classId: string) =>
   api<AcademyClassRecord>(`/classes/${classId}/record`);
 
 // Subjects
-export const fetchSubjectsByClass = (classId: string, params?: { status?: string; sectionId?: string }) => {
+export const fetchSubjectsByClass = (
+  classId: string,
+  params?: { status?: string; sectionId?: string; disciplineId?: string },
+) => {
   const qp = new URLSearchParams();
   if (params?.status) qp.set("status", params.status);
   if (params?.sectionId) qp.set("sectionId", params.sectionId);
+  if (params?.disciplineId) qp.set("disciplineId", params.disciplineId);
   const q = qp.toString();
   return api<AcademySubject[]>(`/classes/${classId}/subjects${q ? `?${q}` : ""}`);
 };
@@ -1888,6 +1892,7 @@ export interface AcademyClassTest {
   _id: string;
   classId: string | AcademyClass;
   sectionId?: string | AcademySection;
+  disciplineId?: string | AcademyDiscipline;
   subjectId: string | AcademySubject;
   title: string;
   seriesLabel?: string;

@@ -1,6 +1,9 @@
 const catchAsync = require('../../utils/catchAsync');
 const subjectService = require('../../services/academy/academySubjectService');
-const { getEnrollmentLayout } = require('../../services/academy/academyEnrollmentSubjectService');
+const {
+  getEnrollmentLayout,
+  getAllowedSubjects,
+} = require('../../services/academy/academyEnrollmentSubjectService');
 const rt = require('../../services/realtime/academyRealtime');
 const {
   resolveTeacherScope,
@@ -14,10 +17,17 @@ const listByClass = catchAsync(async (req, res) => {
   if (teacherScope) {
     ensureClassInTeacherScope(teacherScope, req.params.classId);
   }
-  let data = await subjectService.listByClass(req.params.classId, {
-    status: req.query.status,
-    sectionId: req.query.sectionId,
-  });
+  let data = req.query.disciplineId
+    ? await getAllowedSubjects(
+        req.params.classId,
+        req.query.sectionId,
+        req.query.status || 'active',
+        req.query.disciplineId
+      )
+    : await subjectService.listByClass(req.params.classId, {
+        status: req.query.status,
+        sectionId: req.query.sectionId,
+      });
   if (teacherScope) {
     const allowed = new Set(
       subjectIdsForClassFromCombos(
