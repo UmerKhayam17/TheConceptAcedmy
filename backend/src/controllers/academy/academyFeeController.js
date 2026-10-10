@@ -54,6 +54,12 @@ const addStationery = catchAsync(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+const resyncCharges = catchAsync(async (req, res) => {
+  const data = await feeService.resyncSeparateChargeChallans(req.body || {}, req.user._id);
+  rt.feeCrud('updated', 'resync-charges');
+  res.json({ success: true, data });
+});
+
 const receipt = catchAsync(async (req, res) => {
   const record = await feeService.getFeeRecordById(req.params.id);
   const studentId = record.studentId?._id || record.studentId;
@@ -299,6 +305,7 @@ module.exports = {
   list,
   generate,
   addStationery,
+  resyncCharges,
   update,
   pay,
   payMany,

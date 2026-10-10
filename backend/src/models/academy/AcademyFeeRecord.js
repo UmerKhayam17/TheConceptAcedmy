@@ -8,6 +8,7 @@ const academyFeeRecordSchema = new mongoose.Schema(
     amount: { type: Number, required: true, min: 0 },
     feeType: {
       type: String,
+      // `stationery` kept for legacy paid rows; new stationery is a monthly component line.
       enum: ['admission', 'monthly', 'stationery'],
       default: 'monthly',
     },

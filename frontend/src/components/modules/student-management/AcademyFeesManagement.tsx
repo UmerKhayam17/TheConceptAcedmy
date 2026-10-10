@@ -12,6 +12,7 @@ import {
   Pencil,
   Printer,
   Receipt,
+  RefreshCw,
   Search,
   Upload,
   X,
@@ -55,6 +56,7 @@ import {
   payAcademyFees,
   printFeeChallan,
   printFeeReceipt,
+  resyncSeparateFeeCharges,
   updateAcademyFee,
   type AcademyFeeRecord,
   type FeeReceiptSize,
@@ -670,6 +672,37 @@ export default function AcademyFeesManagement({
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const resyncMut = useMutation({
+    mutationFn: () => {
+      if (!writable) throw new Error("Switch to the active session to resync charges.");
+      return resyncSeparateFeeCharges({
+        month: month ? Number(month) : undefined,
+        year: year ? Number(year) : undefined,
+        classId: classFilter || undefined,
+        sessionId: apiSessionId || undefined,
+        studentId: effectiveStudentId || undefined,
+      });
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["academy-fees"] });
+      qc.invalidateQueries({ queryKey: ["academy-fees-summary"] });
+      qc.invalidateQueries({ queryKey: ["academy-student-record"] });
+      toast({
+        title: "Separate charges resynced",
+        description: [
+          `${r.merged} merged into monthly challans`,
+          `${r.waivedRecords} separate rows waived (kept, not deleted)`,
+          r.createdMonthly ? `${r.createdMonthly} monthly challans created` : null,
+          r.skipped ? `${r.skipped} skipped` : null,
+          r.amountMerged ? `${formatPkr(r.amountMerged)} moved` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const payStudentId = payRecord ? studentMongoId(payRecord) : "";
   const { data: payHistory, isLoading: payHistoryLoading } = useQuery({
     queryKey: ["academy-fee-history", payStudentId],
@@ -1070,7 +1103,6 @@ export default function AcademyFeesManagement({
                     <option value="">All types</option>
                     <option value="monthly">Monthly</option>
                     <option value="admission">Admission</option>
-                    <option value="stationery">Stationery</option>
                   </FeeFilterSelect>
                 </FeeFilterField>
               </>
@@ -1135,6 +1167,19 @@ export default function AcademyFeesManagement({
                 >
                   <Download className="h-4 w-4 shrink-0" />
                   {genMut.isPending ? "Generating…" : "Generate Report"}
+                </Button>
+              )}
+              {showBulkActions && canGenerate && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 w-full justify-center gap-1.5 rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground sm:h-9 sm:w-auto sm:whitespace-nowrap"
+                  disabled={resyncMut.isPending}
+                  title="Merge separate stationery challans into monthly fees without deleting them"
+                  onClick={() => resyncMut.mutate()}
+                >
+                  <RefreshCw className={cn("h-4 w-4 shrink-0 text-primary", resyncMut.isPending && "animate-spin")} />
+                  {resyncMut.isPending ? "Resyncing…" : "Resync charges"}
                 </Button>
               )}
               {showBulkActions && !studentId && caps.canView && (

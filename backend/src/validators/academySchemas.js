@@ -363,6 +363,14 @@ const academyFeeGenerate = Joi.object({
   classId: objectId.optional(),
 });
 
+const academyFeeResyncCharges = Joi.object({
+  studentId: objectId.optional(),
+  classId: objectId.optional(),
+  sessionId: objectId.optional(),
+  month: Joi.number().integer().min(1).max(12).optional(),
+  year: Joi.number().integer().min(2000).max(2100).optional(),
+});
+
 const academyFeeStationery = Joi.object({
   studentId: objectId.required(),
   amount: Joi.number().positive().max(1_000_000).required(),
@@ -619,6 +627,7 @@ module.exports = {
   academyFeePayMany,
   academyFeeApplyCharges,
   academyFeeGenerate,
+  academyFeeResyncCharges,
   academyFeeStationery,
   academyFeePatch,
   feeDefaultersQuery,

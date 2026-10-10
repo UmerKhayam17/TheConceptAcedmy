@@ -470,6 +470,12 @@ router.post(
   validate(schemas.academyFeeStationery),
   feeCtrl.addStationery
 );
+router.post(
+  '/fees/resync-charges',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeeResyncCharges),
+  feeCtrl.resyncCharges
+);
 router.get(
   '/fees/challan/:studentId',
   requireFeeReadAccess(),

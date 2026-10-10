@@ -242,6 +242,51 @@ function chargeIdsFromComponents(components) {
     .map((line) => String(line.chargeId));
 }
 
+/** Ad-hoc charge lines (e.g. stationery) with no linked additional-charge id. */
+function manualChargeLines(components) {
+  return (Array.isArray(components) ? components : [])
+    .filter((line) => line?.kind === 'charge' && !line.chargeId && Number(line.amount) > 0)
+    .map((line) => ({
+      name: String(line.name || 'Charge').trim() || 'Charge',
+      amount: roundMoney(Number(line.amount) || 0),
+      kind: 'charge',
+    }));
+}
+
+function withPreservedManualCharges(bill, previousComponents) {
+  if (!bill) return bill;
+  const manual = manualChargeLines(previousComponents);
+  if (!manual.length) return bill;
+  const components = [...bill.components, ...manual];
+  const amount = roundMoney(components.reduce((sum, line) => sum + line.amount, 0));
+  return { amount, components };
+}
+
+function isStationeryLine(line) {
+  return (
+    line?.kind === 'charge' &&
+    !line.chargeId &&
+    /^stationery$/i.test(String(line.name || '').trim())
+  );
+}
+
+function seedComponentsIfEmpty(record) {
+  const existing = Array.isArray(record.components) ? [...record.components] : [];
+  if (existing.length) return existing;
+  const amt = roundMoney(Number(record.amount) || 0);
+  if (amt <= 0) return [];
+  if (record.feeType === 'admission') {
+    return [{ name: 'Admission', amount: amt, kind: 'admission' }];
+  }
+  return [{ name: 'Tuition', amount: amt, kind: 'tuition' }];
+}
+
+function totalFromComponents(components) {
+  return roundMoney(
+    (Array.isArray(components) ? components : []).reduce((sum, line) => sum + (Number(line.amount) || 0), 0)
+  );
+}
+
 /**
  * Nominal due day is the 10th. For the current calendar month, never set a past
  * due date so newly issued challans do not flip to overdue on the same day.
@@ -292,7 +337,7 @@ function splitEnrollmentAmounts(fees) {
  *
  * PAID / WAIVED → never touched
  * PENDING / OVERDUE → amount + components updated together
- * Stationery → left alone (manual charge)
+ * Manual charge lines (stationery without chargeId) → preserved on the same challan
  *
  * Partial credit: if prior amount was reduced below the old components total
  * (staff recorded a remaining balance), keep that credit against the revised bill.
@@ -359,11 +404,13 @@ async function syncUnpaidChallansForStudent(student) {
 function reviseBillForFeeRecord(student, record, charges, { chargeIds } = {}) {
   const selectedIds =
     chargeIds !== undefined ? chargeIds : chargeIdsFromComponents(record.components);
+  const previousComponents = record.components;
 
   if (record.feeType === 'monthly') {
-    return composeMonthlyComponents(student, record.month, charges, monthlyBillAmount(student), {
+    const bill = composeMonthlyComponents(student, record.month, charges, monthlyBillAmount(student), {
       chargeIds: selectedIds,
     });
+    return withPreservedManualCharges(bill, previousComponents);
   }
 
   if (record.feeType === 'admission') {
@@ -386,7 +433,7 @@ function reviseBillForFeeRecord(student, record, charges, { chargeIds } = {}) {
       });
     }
     const amount = roundMoney(components.reduce((sum, line) => sum + line.amount, 0));
-    return { amount, components };
+    return withPreservedManualCharges({ amount, components }, previousComponents);
   }
 
   return null;
@@ -773,6 +820,22 @@ async function listFeeRecords({
     sessionId,
   });
 
+  // Merge legacy separate stationery challans into monthly/admission when possible.
+  const orphanQ = { feeType: 'stationery', status: { $in: ['pending', 'overdue'] } };
+  if (studentId) orphanQ.studentId = studentId;
+  else if (studentIds?.length) orphanQ.studentId = { $in: studentIds };
+  if (month) orphanQ.month = Number(month);
+  if (year) orphanQ.year = Number(year);
+  const orphans = await AcademyFeeRecord.find(orphanQ).select('studentId month year').limit(200);
+  const seen = new Set();
+  for (const orphan of orphans) {
+    const key = `${orphan.studentId}-${orphan.month}-${orphan.year}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // eslint-disable-next-line no-await-in-loop
+    await absorbUnpaidStationeryIntoMonthly(orphan.studentId, orphan.month, orphan.year, null);
+  }
+
   const base = await buildFeeQuery({
     studentId,
     studentIds,
@@ -939,6 +1002,7 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       feeType: 'monthly',
     });
     if (exists) {
+      await absorbUnpaidStationeryIntoMonthly(student._id, month, year, userId);
       skipped.push(student._id);
       continue;
     }
@@ -970,8 +1034,11 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       createdBy: userId,
       pendingNoticeAt: new Date(),
     });
-    created.push(record);
-    record.studentId = student;
+    await absorbUnpaidStationeryIntoMonthly(student._id, month, year, userId);
+    const refreshed = await AcademyFeeRecord.findById(record._id);
+    created.push(refreshed || record);
+    if (refreshed) refreshed.studentId = student;
+    else record.studentId = student;
   }
 
   if (created.length) {
@@ -993,7 +1060,7 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
 
 /**
  * Rebuild unpaid monthly/admission vouchers with the given additional charges only.
- * Empty chargeIds clears all charge lines (tuition / admission remain).
+ * Empty chargeIds clears configured charge lines (tuition / admission / manual stationery remain).
  */
 async function applySelectedChargesToFees(feeRecordIds, chargeIds = []) {
   const ids = [...new Set((Array.isArray(feeRecordIds) ? feeRecordIds : []).map(String).filter(Boolean))];
@@ -1042,9 +1109,22 @@ async function listUnpaidForChallan(studentId, months) {
   const student = await AcademyStudent.findById(studentId);
   if (!student) throw new ApiError(404, 'Student not found');
   await syncOverdueFees({ studentId });
+
+  // Fold legacy separate stationery rows into monthly/admission challans before print.
+  const stationeryOrphans = await AcademyFeeRecord.find({
+    studentId,
+    feeType: 'stationery',
+    status: { $in: ['pending', 'overdue'] },
+  }).select('month year');
+  for (const orphan of stationeryOrphans) {
+    // eslint-disable-next-line no-await-in-loop
+    await absorbUnpaidStationeryIntoMonthly(studentId, orphan.month, orphan.year, null);
+  }
+
   let query = AcademyFeeRecord.find({
     studentId,
     status: { $in: ['pending', 'overdue'] },
+    feeType: { $in: ['monthly', 'admission'] },
   })
     .sort({ year: 1, month: 1, createdAt: 1 })
     .populate({
@@ -1062,8 +1142,210 @@ async function listUnpaidForChallan(studentId, months) {
   return query;
 }
 
+async function waiveResyncedOrphans(orphans, host, userId) {
+  if (!orphans?.length) return 0;
+  const hostLabel = host
+    ? `${host.feeType || 'monthly'} challan${host.receiptNumber ? ` ${host.receiptNumber}` : ''}`
+    : 'monthly fee challan';
+  const note = `Resynced into ${hostLabel} (not deleted)`;
+  const ids = orphans.map((row) => row._id);
+  await AcademyFeeRecord.updateMany(
+    { _id: { $in: ids }, status: { $in: ['pending', 'overdue'] } },
+    {
+      $set: {
+        status: 'waived',
+        notes: note,
+        ...(userId ? { recordedBy: userId } : {}),
+      },
+    }
+  );
+  return ids.length;
+}
+
 /**
- * Add (or update pending) stationery charge for a student so it appears on their fee challan.
+ * Fold any unpaid legacy stationery rows into the monthly/admission challan for that period.
+ * Separate rows are waived (kept for history), not deleted.
+ * Returns { host, waived, amount } or null when nothing could be merged.
+ */
+async function absorbUnpaidStationeryIntoMonthly(studentId, month, year, userId) {
+  const orphans = await AcademyFeeRecord.find({
+    studentId,
+    month,
+    year,
+    feeType: 'stationery',
+    status: { $in: ['pending', 'overdue'] },
+  });
+  if (!orphans.length) return null;
+
+  const stationeryAmount = roundMoney(
+    orphans.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+  );
+  if (stationeryAmount <= 0) {
+    const waived = await waiveResyncedOrphans(orphans, null, userId);
+    return { host: null, waived, amount: 0 };
+  }
+
+  let host = await AcademyFeeRecord.findOne({
+    studentId,
+    month,
+    year,
+    feeType: 'monthly',
+    status: { $in: ['pending', 'overdue'] },
+  });
+  if (!host) {
+    host = await AcademyFeeRecord.findOne({
+      studentId,
+      month,
+      year,
+      feeType: 'admission',
+      status: { $in: ['pending', 'overdue'] },
+    });
+  }
+
+  if (!host) {
+    const anyMonthly = await AcademyFeeRecord.findOne({
+      studentId,
+      month,
+      year,
+      feeType: 'monthly',
+    });
+    if (anyMonthly) {
+      // Monthly exists but is paid/waived — cannot merge without creating a duplicate key.
+      return null;
+    }
+
+    const student = await AcademyStudent.findById(studentId);
+    if (!student || student.status !== 'active') return null;
+
+    const tuitionBill = composeMonthlyComponents(student, month, [], monthlyBillAmount(student), {
+      chargeIds: [],
+    });
+    const components = [
+      ...tuitionBill.components,
+      { name: 'Stationery', amount: stationeryAmount, kind: 'charge' },
+    ];
+    const total = totalFromComponents(components);
+    if (total <= 0) return null;
+
+    host = await AcademyFeeRecord.create({
+      studentId,
+      month,
+      year,
+      amount: total,
+      components,
+      feeType: 'monthly',
+      status: 'pending',
+      dueDate: resolveMonthlyDueDate(month, year),
+      receiptNumber: receiptNumber(student, month, year, 'monthly'),
+      notes: 'Created while resyncing separate stationery challan',
+      createdBy: userId,
+      recordedBy: userId,
+      pendingNoticeAt: new Date(),
+    });
+  } else {
+    const components = seedComponentsIfEmpty(host).filter((line) => !isStationeryLine(line));
+    components.push({ name: 'Stationery', amount: stationeryAmount, kind: 'charge' });
+    host.amount = totalFromComponents(components);
+    host.components = components;
+    if (userId) host.recordedBy = userId;
+    const orphanNotes = orphans
+      .map((row) => String(row.notes || '').trim())
+      .filter(Boolean);
+    if (orphanNotes.length && !String(host.notes || '').trim()) {
+      host.notes = orphanNotes[0];
+    }
+    await host.save();
+  }
+
+  const waived = await waiveResyncedOrphans(orphans, host, userId);
+  return { host, waived, amount: stationeryAmount };
+}
+
+/**
+ * Batch-resync separately created stationery/charge challans into monthly (or admission) challans.
+ * Orphan rows are waived and kept — never deleted.
+ */
+async function resyncSeparateChargeChallans(
+  { studentId, classId, month, year, sessionId } = {},
+  userId
+) {
+  const orphanQ = {
+    feeType: 'stationery',
+    status: { $in: ['pending', 'overdue'] },
+  };
+  if (month != null && month !== '') orphanQ.month = Number(month);
+  if (year != null && year !== '') orphanQ.year = Number(year);
+
+  if (studentId) {
+    orphanQ.studentId = studentId;
+  } else if (classId || sessionId) {
+    const ids = await resolveActiveStudentIds(classId || undefined, sessionId || undefined);
+    if (!ids.length) {
+      return { groups: 0, merged: 0, skipped: 0, waivedRecords: 0, amountMerged: 0, createdMonthly: 0 };
+    }
+    orphanQ.studentId = { $in: ids };
+  }
+
+  const orphans = await AcademyFeeRecord.find(orphanQ).select('studentId month year').limit(5000);
+  const groups = new Map();
+  for (const orphan of orphans) {
+    const key = `${orphan.studentId}-${orphan.month}-${orphan.year}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        studentId: orphan.studentId,
+        month: orphan.month,
+        year: orphan.year,
+      });
+    }
+  }
+
+  let merged = 0;
+  let skipped = 0;
+  let waivedRecords = 0;
+  let amountMerged = 0;
+  let createdMonthly = 0;
+
+  for (const group of groups.values()) {
+    const beforeHost = await AcademyFeeRecord.findOne({
+      studentId: group.studentId,
+      month: group.month,
+      year: group.year,
+      feeType: { $in: ['monthly', 'admission'] },
+      status: { $in: ['pending', 'overdue'] },
+    }).select('_id');
+
+    // eslint-disable-next-line no-await-in-loop
+    const result = await absorbUnpaidStationeryIntoMonthly(
+      group.studentId,
+      group.month,
+      group.year,
+      userId
+    );
+
+    if (!result?.host) {
+      skipped += 1;
+      continue;
+    }
+
+    merged += 1;
+    waivedRecords += result.waived || 0;
+    amountMerged = roundMoney(amountMerged + (result.amount || 0));
+    if (!beforeHost && result.host.feeType === 'monthly') createdMonthly += 1;
+  }
+
+  return {
+    groups: groups.size,
+    merged,
+    skipped,
+    waivedRecords,
+    amountMerged,
+    createdMonthly,
+  };
+}
+
+/**
+ * Add (or update) stationery on the student's monthly fee challan for that period.
+ * Does not create a separate stationery fee record — same pattern as additional charges.
  */
 async function addStationeryCharge(studentId, { amount, month, year, notes } = {}, userId) {
   const student = await AcademyStudent.findById(studentId);
@@ -1072,7 +1354,7 @@ async function addStationeryCharge(studentId, { amount, month, year, notes } = {
     throw new ApiError(400, 'Stationery can only be charged for active students');
   }
 
-  const amt = Math.round(Number(amount) * 100) / 100;
+  const amt = roundMoney(amount);
   if (!Number.isFinite(amt) || amt <= 0) {
     throw new ApiError(400, 'Stationery amount must be greater than 0');
   }
@@ -1086,46 +1368,77 @@ async function addStationeryCharge(studentId, { amount, month, year, notes } = {
   const dueDate = resolveMonthlyDueDate(m, y);
   const noteText = String(notes || '').trim() || 'Stationery charge';
 
-  const existing = await AcademyFeeRecord.findOne({
+  await absorbUnpaidStationeryIntoMonthly(student._id, m, y, userId);
+
+  let record = await AcademyFeeRecord.findOne({
     studentId: student._id,
     month: m,
     year: y,
-    feeType: 'stationery',
+    feeType: 'monthly',
   });
+  if (!record) {
+    record = await AcademyFeeRecord.findOne({
+      studentId: student._id,
+      month: m,
+      year: y,
+      feeType: 'admission',
+      status: { $in: ['pending', 'overdue'] },
+    });
+  }
 
-  let record;
-  if (existing) {
-    if (existing.status === 'paid' || existing.status === 'waived') {
-      throw new ApiError(
-        400,
-        'Stationery for this month is already settled. Choose another month or record a new period.'
-      );
-    }
-    existing.amount = amt;
-    existing.dueDate = dueDate;
-    existing.notes = noteText;
-    existing.recordedBy = userId;
-    if (!existing.receiptNumber) {
-      existing.receiptNumber = receiptNumber(student, m, y, 'stationery');
-    }
-    await existing.save();
-    record = existing;
-  } else {
+  if (record && (record.status === 'paid' || record.status === 'waived')) {
+    throw new ApiError(
+      400,
+      'Fee for this month is already settled. Choose another month to add stationery.'
+    );
+  }
+
+  if (!record) {
+    const tuitionBill = composeMonthlyComponents(student, m, [], monthlyBillAmount(student), {
+      chargeIds: [],
+    });
+    const components = [...tuitionBill.components, { name: 'Stationery', amount: amt, kind: 'charge' }];
+    const total = totalFromComponents(components);
+    if (total <= 0) throw new ApiError(400, 'Nothing to charge for this month');
+
     record = await AcademyFeeRecord.create({
       studentId: student._id,
       month: m,
       year: y,
-      amount: amt,
-      feeType: 'stationery',
+      amount: total,
+      components,
+      feeType: 'monthly',
       status: 'pending',
       dueDate,
-      receiptNumber: receiptNumber(student, m, y, 'stationery'),
+      receiptNumber: receiptNumber(student, m, y, 'monthly'),
       notes: noteText,
       createdBy: userId,
       recordedBy: userId,
       pendingNoticeAt: new Date(),
     });
+  } else {
+    const components = seedComponentsIfEmpty(record).filter((line) => !isStationeryLine(line));
+    components.push({ name: 'Stationery', amount: amt, kind: 'charge' });
+    record.amount = totalFromComponents(components);
+    record.components = components;
+    record.notes = noteText;
+    record.recordedBy = userId;
+    if (!record.dueDate) record.dueDate = dueDate;
+    if (!record.receiptNumber) {
+      record.receiptNumber = receiptNumber(student, m, y, record.feeType || 'monthly');
+    }
+    await record.save();
   }
+
+  // Waive any leftover unpaid stationery rows for this period (keep history).
+  const leftovers = await AcademyFeeRecord.find({
+    studentId: student._id,
+    month: m,
+    year: y,
+    feeType: 'stationery',
+    status: { $in: ['pending', 'overdue'] },
+  });
+  await waiveResyncedOrphans(leftovers, record, userId);
 
   await record.populate({
     path: 'studentId',
@@ -1985,6 +2298,7 @@ module.exports = {
   listUnpaidForChallan,
   applySelectedChargesToFees,
   addStationeryCharge,
+  resyncSeparateChargeChallans,
   generateMonthlyFees,
   createEnrollmentFeeVouchers,
   syncUnpaidChallansForStudent,

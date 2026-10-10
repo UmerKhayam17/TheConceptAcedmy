@@ -1212,6 +1212,7 @@ export const generateMonthlyFees = (body: { month: number; year: number; classId
     body: JSON.stringify(body),
   });
 
+/** Adds stationery onto the monthly fee challan (component line), not a separate record. */
 export const addStationeryCharge = (body: {
   studentId: string;
   amount: number;
@@ -1222,6 +1223,26 @@ export const addStationeryCharge = (body: {
   api<AcademyFeeRecord>("/fees/stationery", {
     method: "POST",
     body: JSON.stringify(body),
+  });
+
+/** Merge separately created stationery challans into monthly fees (waives orphans, does not delete). */
+export const resyncSeparateFeeCharges = (body?: {
+  studentId?: string;
+  classId?: string;
+  sessionId?: string;
+  month?: number;
+  year?: number;
+}) =>
+  api<{
+    groups: number;
+    merged: number;
+    skipped: number;
+    waivedRecords: number;
+    amountMerged: number;
+    createdMonthly: number;
+  }>("/fees/resync-charges", {
+    method: "POST",
+    body: JSON.stringify(body || {}),
   });
 
 export const payAcademyFee = (
