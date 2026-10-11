@@ -46,13 +46,6 @@ function normalizeDefaultChargeIds(ids) {
   return [...new Set((Array.isArray(ids) ? ids : []).map((id) => String(id)).filter(Boolean))];
 }
 
-function resolveDefaultChargeIds(student, payload) {
-  if (payload?.defaultChargeIds !== undefined) {
-    return normalizeDefaultChargeIds(payload.defaultChargeIds);
-  }
-  return normalizeDefaultChargeIds(student?.defaultChargeIds);
-}
-
 function sanitizeEmailLocalPart(value) {
   return (
     String(value || '')
@@ -317,10 +310,8 @@ async function registerStudent(payload, userId) {
   });
 
   const now = new Date();
-  await createEnrollmentFeeVouchers(student, fees, userId, {
-    asOf: now,
-    chargeIds: defaultChargeIds,
-  });
+  // Voucher stays tuition + admission only; defaultChargeIds are preferences for pay/print opt-in.
+  await createEnrollmentFeeVouchers(student, fees, userId, { asOf: now });
 
   return student.populate([
     { path: 'classId', select: 'className' },
@@ -431,13 +422,9 @@ async function updateStudent(id, payload) {
   await student.save();
 
   // Keep Fee Management challans aligned with the recalculated student fee profile.
+  // Do not force defaultChargeIds onto existing vouchers — charges stay opt-in at pay/print.
   if (needsFeeRecalc && student.status === 'active') {
-    await syncUnpaidChallansForStudent(
-      student,
-      payload.defaultChargeIds !== undefined
-        ? { chargeIds: normalizeDefaultChargeIds(payload.defaultChargeIds) }
-        : undefined
-    );
+    await syncUnpaidChallansForStudent(student);
   }
 
   return student.populate([
@@ -938,10 +925,7 @@ async function activateStudent(id, payload, userId) {
   await student.save();
 
   const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
-  await createEnrollmentFeeVouchers(student, fees, userId, {
-    asOf,
-    chargeIds: resolveDefaultChargeIds(student, payload),
-  });
+  await createEnrollmentFeeVouchers(student, fees, userId, { asOf });
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
@@ -1048,7 +1032,6 @@ async function prepareEnrollmentVoucher(id, payload, userId) {
   const vouchers = await createEnrollmentFeeVouchers(student, fees, userId, {
     asOf,
     replacePending: true,
-    chargeIds: resolveDefaultChargeIds(student, payload),
   });
   const voucher = vouchers[0] || null;
 
@@ -1261,10 +1244,7 @@ async function registerDirectStudent(payload, userId) {
   });
 
   const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
-  await createEnrollmentFeeVouchers(student, fees, userId, {
-    asOf,
-    chargeIds: defaultChargeIds,
-  });
+  await createEnrollmentFeeVouchers(student, fees, userId, { asOf });
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },

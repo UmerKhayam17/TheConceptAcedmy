@@ -108,72 +108,96 @@ function isStationeryLine(line) {
   return line?.kind === 'charge' && /^stationery$/i.test(String(line.name || '').trim());
 }
 
-function isAdditionalChargeLine(line) {
-  return line?.kind === 'charge' && !isStationeryLine(line);
-}
-
 function formatAmountCell(n) {
   const num = Number(n);
   if (!Number.isFinite(num) || Math.abs(num) < 0.005) return '—';
   return num.toLocaleString('en-PK');
 }
 
-/** Split a voucher into monthly/admission fee, stationery, and other additional charges. */
-function categorizeRecordAmounts(record) {
-  const parts = feeComponents(record);
-  let fee = 0;
-  let stationery = 0;
-  let additional = 0;
+function roundMoney(n) {
+  return Math.round(Number(n) * 100) / 100;
+}
 
-  if (!parts.length) {
-    const amount = Number(record.amount) || 0;
-    if (record.feeType === 'stationery') stationery = amount;
-    else fee = amount;
-  } else {
+function monthPeriodLabel(record) {
+  const monthName = MONTH_NAMES[(Number(record.month) || 1) - 1] || '';
+  return `${monthName} ${record.year || ''}`.trim();
+}
+
+/** Professional line label for a voucher component (tuition fee, stationery, AC, etc.). */
+function particularLabel(line) {
+  if (line.kind === 'tuition') return 'Tuition fee';
+  if (line.kind === 'admission') return 'Admission fee';
+  if (isStationeryLine(line)) return 'Stationery';
+  return String(line.name || 'Additional charge').trim() || 'Additional charge';
+}
+
+/**
+ * Itemized challan lines: Particular | Month | Amount
+ * e.g. Tuition fee | October 2026 | 12,000 · Stationery · AC charges
+ */
+function challanItemLines(records) {
+  const list = Array.isArray(records) ? records : [];
+  const items = [];
+
+  for (const record of list) {
+    const parts = feeComponents(record);
+    const month = monthPeriodLabel(record) || '—';
+
+    if (!parts.length) {
+      const amount = roundMoney(Number(record.amount) || 0);
+      if (amount <= 0) continue;
+      let name;
+      if (record.feeType === 'stationery') name = 'Stationery';
+      else if (record.feeType === 'admission') name = 'Admission fee';
+      else name = 'Tuition fee';
+      items.push({ name, month, amount });
+      continue;
+    }
+
     for (const line of parts) {
-      const amount = Number(line.amount) || 0;
-      if (isStationeryLine(line)) stationery += amount;
-      else if (isAdditionalChargeLine(line)) additional += amount;
-      else fee += amount;
+      const amount = roundMoney(Number(line.amount) || 0);
+      if (amount <= 0) continue;
+      items.push({
+        name: particularLabel(line),
+        month,
+        amount,
+      });
     }
   }
 
-  const round = (n) => Math.round(Number(n) * 100) / 100;
-  fee = round(fee);
-  stationery = round(stationery);
-  additional = round(additional);
+  return items;
+}
+
+function challanItemsTotal(items) {
+  return roundMoney((items || []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0));
+}
+
+/** @deprecated kept for any callers expecting category totals */
+function categorizeRecordAmounts(record) {
+  const items = challanItemLines([record]);
+  let fee = 0;
+  let stationery = 0;
+  let additional = 0;
+  for (const item of items) {
+    if (/^Tuition fee/i.test(item.name) || /^Admission fee/i.test(item.name)) fee += item.amount;
+    else if (/^Stationery/i.test(item.name)) stationery += item.amount;
+    else additional += item.amount;
+  }
   return {
-    fee,
-    stationery,
-    additional,
-    total: round(fee + stationery + additional),
+    fee: roundMoney(fee),
+    stationery: roundMoney(stationery),
+    additional: roundMoney(additional),
+    total: roundMoney(fee + stationery + additional),
   };
 }
 
 function challanBreakdownRows(records) {
-  const many = records.length > 1;
-  return records.map((record) => {
-    const amounts = categorizeRecordAmounts(record);
-    const period = periodLabel(record);
-    const type = feeTypeLabel(record.feeType, { short: true });
-    return {
-      name: many ? `${type} · ${period}` : period || type,
-      ...amounts,
-    };
-  });
+  return challanItemLines(records);
 }
 
 function challanBreakdownTotals(rows) {
-  const round = (n) => Math.round(Number(n) * 100) / 100;
-  return rows.reduce(
-    (acc, row) => ({
-      fee: round(acc.fee + (row.fee || 0)),
-      stationery: round(acc.stationery + (row.stationery || 0)),
-      additional: round(acc.additional + (row.additional || 0)),
-      total: round(acc.total + (row.total || 0)),
-    }),
-    { fee: 0, stationery: 0, additional: 0, total: 0 }
-  );
+  const total = challanItemsTotal(rows);
+  return { fee: 0, stationery: 0, additional: 0, total };
 }
 
 function studentOf(record) {
@@ -326,26 +350,25 @@ function drawThermalReceipt(doc, record, brand, logoPath) {
 
   y = thermalKv(doc, 'Fee', feeTypeLabel(record.feeType), x, y, w);
   y = thermalKv(doc, 'Period', periodLabel(record), x, y, w);
-  const breakdown = categorizeRecordAmounts(record);
-  const lines = feeComponents(record);
-  if (lines.length) {
-    y += 4;
-    lines.forEach((line) => {
-      y = thermalKv(doc, line.name, formatPkr(line.amount), x, y, w);
+  const items = challanItemLines([record]);
+  const breakdownTotal = challanItemsTotal(items);
+  y += 4;
+  if (items.length) {
+    items.forEach((item) => {
+      const label = item.month && item.month !== '—' ? `${item.name} (${item.month})` : item.name;
+      y = thermalKv(doc, label, formatPkr(item.amount), x, y, w);
     });
+  } else {
+    y = thermalKv(doc, 'Amount', formatPkr(record.amount), x, y, w);
   }
   y += 4;
   dashLine(doc, x, y, w);
   y += 8;
-  y = thermalKv(doc, 'Monthly fee', formatPkr(breakdown.fee), x, y, w);
-  y = thermalKv(doc, 'Stationery', formatPkr(breakdown.stationery), x, y, w);
-  y = thermalKv(doc, 'Add. charges', formatPkr(breakdown.additional), x, y, w);
-  y += 4;
   doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11);
-  pdfLine(doc, `Grand total  ${formatPkr(breakdown.total)}`, x, y, { width: w, align: 'center' });
+  pdfLine(doc, `Grand total  ${formatPkr(breakdownTotal)}`, x, y, { width: w, align: 'center' });
   y += 14;
   doc.fillColor('#222222').font('Helvetica').fontSize(7);
-  y = pdfWrapCenter(doc, amountInWords(breakdown.total), x, y, w, 10);
+  y = pdfWrapCenter(doc, amountInWords(breakdownTotal), x, y, w, 10);
   y += 4;
 
   if (record.notes) {
@@ -599,69 +622,42 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
   }
   cy += 8;
 
-  // Columns: Particular | Monthly fee | Stationery | Add. charges | Total
-  const colFee = 46;
-  const colStat = 46;
-  const colAdd = 50;
-  const colTotal = 48;
-  const nameCol = Math.max(56, innerW - colFee - colStat - colAdd - colTotal);
-  const colXs = {
-    name: innerX,
-    fee: innerX + nameCol,
-    stationery: innerX + nameCol + colFee,
-    additional: innerX + nameCol + colFee + colStat,
-    total: innerX + nameCol + colFee + colStat + colAdd,
-  };
-  const headerH = 28;
-  const rowH = 16;
-  const summaryRowH = 15;
-  const summaryRows = 4;
-  const summaryH = summaryRows * summaryRowH + 4;
+  // Itemized table: Particular | Month | Amount
+  const amountCol = 88;
+  const monthCol = 78;
+  const nameCol = Math.max(70, innerW - amountCol - monthCol);
+  const monthX = innerX + nameCol;
+  const amountX = innerX + nameCol + monthCol;
+  const headerH = 22;
+  const rowH = 18;
+  const grandH = 20;
   const footerTop = y + h - 148;
   const maxTableBottom = footerTop - 16;
   const visibleRows = [];
   rows.forEach((row) => {
-    const nextBottom = cy + headerH + (visibleRows.length + 1) * rowH + summaryH;
+    const nextBottom = cy + headerH + (visibleRows.length + 1) * rowH + grandH;
     if (nextBottom <= maxTableBottom) visibleRows.push(row);
   });
-  const tableH = headerH + visibleRows.length * rowH + summaryH;
+  if (!visibleRows.length && rows.length) visibleRows.push(rows[0]);
+  const tableH = headerH + Math.max(visibleRows.length, 1) * rowH + grandH;
   const tableTop = cy;
-
-  const drawColHeaders = (top) => {
-    doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(6.5);
-    pdfLine(doc, 'Particular', colXs.name + 4, top + 9, { width: nameCol - 6 });
-    pdfLine(doc, 'Monthly', colXs.fee + 2, top + 4, { width: colFee - 4, align: 'right' });
-    pdfLine(doc, 'fee', colXs.fee + 2, top + 13, { width: colFee - 4, align: 'right' });
-    pdfLine(doc, 'Stationery', colXs.stationery + 2, top + 9, { width: colStat - 4, align: 'right' });
-    pdfLine(doc, 'Additional', colXs.additional + 2, top + 4, { width: colAdd - 4, align: 'right' });
-    pdfLine(doc, 'charges', colXs.additional + 2, top + 13, { width: colAdd - 4, align: 'right' });
-    pdfLine(doc, 'Total', colXs.total + 2, top + 9, { width: colTotal - 6, align: 'right' });
-  };
-
-  const drawAmountCols = (row, top, opts = {}) => {
-    const bold = Boolean(opts.bold);
-    const color = opts.color || '#10244A';
-    doc.fillColor(color).font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(opts.fontSize || 7);
-    pdfLine(doc, formatAmountCell(row.fee), colXs.fee + 2, top, { width: colFee - 4, align: 'right' });
-    pdfLine(doc, formatAmountCell(row.stationery), colXs.stationery + 2, top, {
-      width: colStat - 4,
-      align: 'right',
-    });
-    pdfLine(doc, formatAmountCell(row.additional), colXs.additional + 2, top, {
-      width: colAdd - 4,
-      align: 'right',
-    });
-    doc.font('Helvetica-Bold');
-    pdfLine(doc, formatAmountCell(row.total), colXs.total + 2, top, {
-      width: colTotal - 6,
-      align: 'right',
-    });
-  };
+  const summaryTop = tableTop + headerH + Math.max(visibleRows.length, 1) * rowH;
 
   doc.save();
   doc.rect(innerX, tableTop, innerW, headerH).fill(brand.colors.navy);
   doc.restore();
-  drawColHeaders(tableTop);
+  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(9.5);
+  pdfLine(doc, 'Particular', innerX + 6, tableTop + 6, { width: nameCol - 10 });
+  pdfLine(doc, 'Month', monthX + 4, tableTop + 6, { width: monthCol - 8 });
+  pdfLine(doc, 'Amount (PKR)', amountX + 2, tableTop + 6, { width: amountCol - 6, align: 'right' });
+
+  if (!visibleRows.length) {
+    const rowTop = tableTop + headerH;
+    doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(9.5);
+    pdfLine(doc, 'No fee lines', innerX + 6, rowTop + 4, { width: nameCol - 10 });
+    pdfLine(doc, '—', monthX + 4, rowTop + 4, { width: monthCol - 8 });
+    pdfLine(doc, '—', amountX + 4, rowTop + 4, { width: amountCol - 10, align: 'right' });
+  }
 
   visibleRows.forEach((row, index) => {
     const rowTop = tableTop + headerH + index * rowH;
@@ -670,43 +666,28 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
       doc.rect(innerX, rowTop, innerW, rowH).fill('#F7FAFD');
       doc.restore();
     }
-    doc.fillColor('#10244A').font('Helvetica').fontSize(7.5);
-    pdfLine(doc, fitText(doc, row.name, nameCol - 8), colXs.name + 4, rowTop + 4, {
-      width: nameCol - 8,
+    doc.fillColor('#10244A').font('Helvetica').fontSize(9.5);
+    pdfLine(doc, fitText(doc, row.name, nameCol - 12), innerX + 6, rowTop + 4, {
+      width: nameCol - 12,
     });
-    drawAmountCols(row, rowTop + 4);
+    pdfLine(doc, fitText(doc, row.month || '—', monthCol - 8), monthX + 4, rowTop + 4, {
+      width: monthCol - 8,
+    });
+    doc.font('Helvetica-Bold');
+    pdfLine(doc, formatAmountCell(row.amount), amountX + 4, rowTop + 4, {
+      width: amountCol - 10,
+      align: 'right',
+    });
   });
 
-  const summaryTop = tableTop + headerH + visibleRows.length * rowH;
-  const summaryItems = [
-    { label: 'Monthly fee total', value: totals.fee, grand: false },
-    { label: 'Stationery total', value: totals.stationery, grand: false },
-    { label: 'Additional charges total', value: totals.additional, grand: false },
-    { label: 'Grand total', value: totals.total, grand: true },
-  ];
-  summaryItems.forEach((item, index) => {
-    const rowTop = summaryTop + 2 + index * summaryRowH;
-    if (item.grand) {
-      doc.save();
-      doc.rect(innerX, rowTop - 1, innerW, summaryRowH + 1).fill(brand.colors.navy);
-      doc.restore();
-      doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(7.5);
-      pdfLine(doc, item.label, colXs.name + 4, rowTop + 2, { width: nameCol + colFee + colStat + colAdd - 10 });
-      pdfLine(doc, formatPkr(item.value), colXs.total - 40, rowTop + 2, {
-        width: colTotal + 36,
-        align: 'right',
-      });
-    } else {
-      doc.fillColor('#10244A').font('Helvetica').fontSize(7);
-      pdfLine(doc, item.label, colXs.name + 4, rowTop + 2, {
-        width: nameCol + colFee + colStat + colAdd - 10,
-      });
-      doc.font('Helvetica-Bold');
-      pdfLine(doc, formatPkr(item.value), colXs.total - 40, rowTop + 2, {
-        width: colTotal + 36,
-        align: 'right',
-      });
-    }
+  doc.save();
+  doc.rect(innerX, summaryTop, innerW, grandH).fill(brand.colors.navy);
+  doc.restore();
+  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(10);
+  pdfLine(doc, 'Grand total', innerX + 6, summaryTop + 5, { width: nameCol + monthCol - 12 });
+  pdfLine(doc, formatPkr(total), amountX + 4, summaryTop + 5, {
+    width: amountCol - 10,
+    align: 'right',
   });
 
   doc.save();
@@ -715,8 +696,7 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
     const lineY = tableTop + headerH + index * rowH;
     doc.moveTo(innerX, lineY).lineTo(innerX + innerW, lineY).stroke();
   }
-  // Vertical column rules through body rows
-  [colXs.fee, colXs.stationery, colXs.additional, colXs.total].forEach((vx) => {
+  [monthX, amountX].forEach((vx) => {
     doc
       .moveTo(vx, tableTop + headerH)
       .lineTo(vx, summaryTop)
@@ -728,7 +708,7 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
   doc.restore();
 
   cy = tableTop + tableH + 6;
-  doc.fillColor('#10244A').font('Helvetica-Oblique').fontSize(7.5);
+  doc.fillColor('#10244A').font('Helvetica-Oblique').fontSize(9);
   doc.text(amountInWords(total), innerX, cy, { width: innerW, align: 'center', lineGap: 0 });
   cy += 16;
 
@@ -815,21 +795,15 @@ function drawThermalChallan(doc, records, brand, logoPath) {
   dashLine(doc, x, y, w);
   y += 10;
 
-  const rows = challanBreakdownRows(records);
-  const totals = challanBreakdownTotals(rows);
+  const rows = challanItemLines(records);
+  const total = challanItemsTotal(rows);
   if (rows.length) {
     doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8);
-    pdfLine(doc, 'Charges', x, y, { width: w });
+    pdfLine(doc, 'Particulars', x, y, { width: w });
     y += 12;
     rows.forEach((row) => {
-      doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8);
-      pdfLine(doc, fitText(doc, row.name, w), x, y, { width: w });
-      y += 11;
-      y = thermalKv(doc, 'Monthly fee', formatPkr(row.fee), x, y, w);
-      y = thermalKv(doc, 'Stationery', formatPkr(row.stationery), x, y, w);
-      y = thermalKv(doc, 'Add. charges', formatPkr(row.additional), x, y, w);
-      y = thermalKv(doc, 'Row total', formatPkr(row.total), x, y, w);
-      y += 2;
+      const label = row.month && row.month !== '—' ? `${row.name} (${row.month})` : row.name;
+      y = thermalKv(doc, label, formatPkr(row.amount), x, y, w);
     });
   } else {
     records.forEach((record, index) => {
@@ -846,11 +820,6 @@ function drawThermalChallan(doc, records, brand, logoPath) {
   dashLine(doc, x, y, w);
   y += 8;
 
-  y = thermalKv(doc, 'Monthly fee', formatPkr(totals.fee), x, y, w);
-  y = thermalKv(doc, 'Stationery', formatPkr(totals.stationery), x, y, w);
-  y = thermalKv(doc, 'Add. charges', formatPkr(totals.additional), x, y, w);
-  y += 4;
-  const total = totals.total;
   doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11);
   pdfLine(doc, `Grand total  ${formatPkr(total)}`, x, y, { width: w, align: 'center' });
   y += 14;

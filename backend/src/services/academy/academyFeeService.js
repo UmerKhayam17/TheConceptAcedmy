@@ -459,10 +459,6 @@ function componentsEqual(a, b) {
   return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
 }
 
-function studentDefaultChargeIds(student) {
-  return [...new Set((student?.defaultChargeIds || []).map((id) => String(id)).filter(Boolean))];
-}
-
 async function createEnrollmentFeeVouchers(
   student,
   fees,
@@ -473,10 +469,12 @@ async function createEnrollmentFeeVouchers(
   const year = asOf.getFullYear();
   const dueDate = resolveMonthlyDueDate(month, year);
   const { admissionAmount, monthlyAmount } = splitEnrollmentAmounts(fees);
+  // Enrollment vouchers stay tuition + admission only unless chargeIds are passed explicitly
+  // (e.g. staff opt-in at pay/print). Registration defaults must not rewrite voucher amounts.
   const selectedIds =
     chargeIds !== undefined
       ? [...new Set((Array.isArray(chargeIds) ? chargeIds : []).map(String).filter(Boolean))]
-      : studentDefaultChargeIds(student);
+      : [];
   const charges = selectedIds.length ? await listActiveCharges() : [];
   const tuitionBill = composeMonthlyComponents(student, month, charges, monthlyAmount, {
     chargeIds: selectedIds,
@@ -502,9 +500,7 @@ async function createEnrollmentFeeVouchers(
       existingAdm.amount = totalDue;
       existingAdm.components = components;
       existingAdm.dueDate = dueDate;
-      existingAdm.notes = selectedIds.length
-        ? 'First month: monthly + admission (after discounts) + selected charges'
-        : 'First month: monthly fee + admission fee (after discounts)';
+      existingAdm.notes = 'First month: monthly fee + admission fee (after discounts)';
       existingAdm.recordedBy = userId;
       await existingAdm.save();
       return [existingAdm];
@@ -530,9 +526,7 @@ async function createEnrollmentFeeVouchers(
     status: 'pending',
     dueDate,
     receiptNumber: receiptNumber(student, month, year, 'admission'),
-    notes: selectedIds.length
-      ? 'First month: monthly + admission (after discounts) + selected charges'
-      : 'First month: monthly fee + admission fee (after discounts)',
+    notes: 'First month: monthly fee + admission fee (after discounts)',
     components,
     createdBy: userId,
     recordedBy: userId,
@@ -1033,15 +1027,13 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       continue;
     }
 
-    // Prefer charges opted in at registration; staff can still change at print/pay.
-    const selectedChargeIds = studentDefaultChargeIds(student);
-    const charges = selectedChargeIds.length ? await listActiveCharges() : [];
+    // Monthly challans stay tuition-only until staff check additional charges at print/pay.
     const { amount, components } = composeMonthlyComponents(
       student,
       month,
-      charges,
+      [],
       monthlyBillAmount(student),
-      { chargeIds: selectedChargeIds }
+      { chargeIds: [] }
     );
     if (amount <= 0) {
       skipped.push(student._id);

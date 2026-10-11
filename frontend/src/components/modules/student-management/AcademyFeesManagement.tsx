@@ -752,15 +752,11 @@ export default function AcademyFeesManagement({
           ? [unpaidForPay[0]._id]
           : [payRecord._id]
     );
-    // Prefer charges already on vouchers / set at registration so stationery + other charges stay active.
+    // Keep voucher as-is: only pre-check charges already on the challan. Do not auto-apply
+    // registration defaults (that would rewrite previously correct voucher amounts).
     const fromFees = unpaidForPay.flatMap((fee) => chargeIdsOnFee(fee));
-    const fromStudent = (payHistory.student?.defaultChargeIds || []).map((id) =>
-      typeof id === "object" && id && "_id" in id ? String((id as { _id: string })._id) : String(id)
-    );
     const applicableIds = new Set(payApplicableCharges.map((c) => c._id));
-    const initialCharges = [...new Set([...fromFees, ...fromStudent])].filter((id) =>
-      applicableIds.has(id)
-    );
+    const initialCharges = [...new Set(fromFees)].filter((id) => applicableIds.has(id));
     setSelectedChargeIds(initialCharges);
     const amounts: Record<string, string> = {};
     for (const fee of unpaidForPay) {
@@ -1179,7 +1175,7 @@ export default function AcademyFeesManagement({
                   {genMut.isPending ? "Generating…" : "Generate Report"}
                 </Button>
               )}
-              {showBulkActions && canGenerate && (
+              {/* {showBulkActions && canGenerate && (
                 <Button
                   type="button"
                   variant="outline"
@@ -1191,7 +1187,7 @@ export default function AcademyFeesManagement({
                   <RefreshCw className={cn("h-4 w-4 shrink-0 text-primary", resyncMut.isPending && "animate-spin")} />
                   {resyncMut.isPending ? "Resyncing…" : "Resync charges"}
                 </Button>
-              )}
+              )} */}
               {showBulkActions && !studentId && caps.canView && (
                 <div className="w-full sm:w-auto">
                   <DefaulterListDownload

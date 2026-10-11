@@ -83,14 +83,10 @@ export function ChallanPrintDialog({
       setSelectedChargeIds([]);
       return;
     }
+    // Only pre-check charges already baked on the voucher — do not rewrite from student defaults.
     const fromFees = chargeableFees.flatMap((fee) => chargeIdsOnFee(fee));
-    const fromStudent = (history.student?.defaultChargeIds || []).map((id) =>
-      typeof id === "object" && id && "_id" in id ? String((id as { _id: string })._id) : String(id)
-    );
     const applicableIds = new Set(applicable.map((c) => c._id));
-    setSelectedChargeIds(
-      [...new Set([...fromFees, ...fromStudent])].filter((id) => applicableIds.has(id))
-    );
+    setSelectedChargeIds([...new Set(fromFees)].filter((id) => applicableIds.has(id)));
   }, [request?.studentId, history, chargeableFees, applicable]);
 
   const totalPreview = useMemo(() => {
