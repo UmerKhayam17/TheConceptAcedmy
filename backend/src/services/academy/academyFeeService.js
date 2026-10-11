@@ -2150,9 +2150,47 @@ async function loadPaidFees({ classId, month, year, search, sessionId, feeType }
   return records.filter((r) => r.studentId && r.studentId.status === 'active');
 }
 
+/** Split paid voucher into tuition/admission base vs additional charges (incl. stationery). */
+function splitPaidFeeAmounts(record) {
+  const total = roundMoney(Number(record.amount) || 0);
+  const comps = Array.isArray(record.components) ? record.components : [];
+  if (!comps.length) {
+    if (record.feeType === 'stationery') {
+      return { tuition: 0, additionalCharges: total };
+    }
+    return { tuition: total, additionalCharges: 0 };
+  }
+
+  let tuition = 0;
+  let additionalCharges = 0;
+  for (const line of comps) {
+    const amt = roundMoney(Number(line?.amount) || 0);
+    if (amt <= 0) continue;
+    if (line.kind === 'charge') additionalCharges += amt;
+    else tuition += amt;
+  }
+  tuition = roundMoney(tuition);
+  additionalCharges = roundMoney(additionalCharges);
+
+  // Keep column totals aligned with voucher amount when a remaining-balance credit was applied.
+  const componentsTotal = roundMoney(tuition + additionalCharges);
+  if (componentsTotal > 0 && Math.abs(componentsTotal - total) > 0.009) {
+    const ratio = total / componentsTotal;
+    tuition = roundMoney(tuition * ratio);
+    additionalCharges = roundMoney(total - tuition);
+  } else if (componentsTotal <= 0) {
+    return record.feeType === 'stationery'
+      ? { tuition: 0, additionalCharges: total }
+      : { tuition: total, additionalCharges: 0 };
+  }
+
+  return { tuition, additionalCharges };
+}
+
 function buildPaidCollectionReport(records) {
   const rows = records.map((record, index) => {
     const student = record.studentId;
+    const { tuition, additionalCharges } = splitPaidFeeAmounts(record);
     return {
       serial: index + 1,
       receiptNumber: record.receiptNumber || '',
@@ -2162,7 +2200,8 @@ function buildPaidCollectionReport(records) {
       className: student?.classId?.className || '',
       period: paidFeePeriodLabel(record),
       feeType: paidFeeTypeLabel(record.feeType),
-      amount: Number(record.amount) || 0,
+      tuition,
+      additionalCharges,
       paidAt: record.paidAt
         ? (() => {
             const d = new Date(record.paidAt);
@@ -2179,7 +2218,8 @@ function buildPaidCollectionReport(records) {
   });
 
   if (rows.length) {
-    const total = rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    const tuitionTotal = rows.reduce((sum, row) => sum + (Number(row.tuition) || 0), 0);
+    const chargesTotal = rows.reduce((sum, row) => sum + (Number(row.additionalCharges) || 0), 0);
     rows.push({
       _isTotal: true,
       serial: '',
@@ -2190,7 +2230,8 @@ function buildPaidCollectionReport(records) {
       className: '',
       period: '',
       feeType: '',
-      amount: total,
+      tuition: roundMoney(tuitionTotal),
+      additionalCharges: roundMoney(chargesTotal),
       paidAt: '',
       paymentMethod: '',
       slipNumber: '',
@@ -2200,19 +2241,27 @@ function buildPaidCollectionReport(records) {
 
   // Keep total pdfWidth ≤ ~770 (A4 landscape inner width @ margin 36).
   const columns = [
-    { key: 'serial', header: 'S.No', excelWidth: 7, pdfWidth: 28, align: 'center' },
-    { key: 'receiptNumber', header: 'Receipt', excelWidth: 16, pdfWidth: 78 },
-    { key: 'studentId', header: 'Student ID', excelWidth: 16, pdfWidth: 78 },
-    { key: 'studentName', header: 'Student', excelWidth: 16, pdfWidth: 78, wrap: true },
-    { key: 'fatherName', header: 'Father', excelWidth: 14, pdfWidth: 72, wrap: true },
-    { key: 'className', header: 'Class', excelWidth: 9, pdfWidth: 34, align: 'center' },
-    { key: 'period', header: 'Month', excelWidth: 12, pdfWidth: 58 },
-    { key: 'feeType', header: 'Type', excelWidth: 10, pdfWidth: 42, align: 'center' },
-    { key: 'amount', header: 'Amount', excelWidth: 11, pdfWidth: 50, align: 'right', numFmt: '#,##0' },
-    { key: 'paidAt', header: 'Paid on', excelWidth: 11, pdfWidth: 52, align: 'center' },
-    { key: 'paymentMethod', header: 'Method', excelWidth: 10, pdfWidth: 42, align: 'center' },
-    { key: 'slipNumber', header: 'Slip no.', excelWidth: 12, pdfWidth: 52 },
-    { key: 'notes', header: 'Notes', excelWidth: 18, pdfWidth: 66, wrap: true },
+    { key: 'serial', header: 'S.No', excelWidth: 7, pdfWidth: 26, align: 'center' },
+    { key: 'receiptNumber', header: 'Receipt', excelWidth: 15, pdfWidth: 70 },
+    { key: 'studentId', header: 'Student ID', excelWidth: 14, pdfWidth: 68 },
+    { key: 'studentName', header: 'Student', excelWidth: 14, pdfWidth: 68, wrap: true },
+    { key: 'fatherName', header: 'Father', excelWidth: 13, pdfWidth: 62, wrap: true },
+    { key: 'className', header: 'Class', excelWidth: 8, pdfWidth: 32, align: 'center' },
+    { key: 'period', header: 'Month', excelWidth: 11, pdfWidth: 52 },
+    { key: 'feeType', header: 'Type', excelWidth: 9, pdfWidth: 38, align: 'center' },
+    { key: 'tuition', header: 'Tuition', excelWidth: 11, pdfWidth: 46, align: 'right', numFmt: '#,##0' },
+    {
+      key: 'additionalCharges',
+      header: 'Additional charges',
+      excelWidth: 14,
+      pdfWidth: 58,
+      align: 'right',
+      numFmt: '#,##0',
+    },
+    { key: 'paidAt', header: 'Paid on', excelWidth: 11, pdfWidth: 48, align: 'center' },
+    { key: 'paymentMethod', header: 'Method', excelWidth: 10, pdfWidth: 40, align: 'center' },
+    { key: 'slipNumber', header: 'Slip no.', excelWidth: 11, pdfWidth: 48 },
+    { key: 'notes', header: 'Notes', excelWidth: 14, pdfWidth: 54, wrap: true },
   ];
 
   return { columns, rows };
