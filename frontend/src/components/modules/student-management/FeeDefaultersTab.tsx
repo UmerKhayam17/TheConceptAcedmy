@@ -294,7 +294,8 @@ export default function FeeDefaultersTab({
               <Label className="text-xs opacity-0 pointer-events-none select-none">Download</Label>
               <DefaulterListDownload
                 variant="default"
-                className="h-9 w-full justify-center rounded-md px-3 text-sm font-medium"
+                className="w-full justify-center sm:w-auto"
+                label="Defaulter list"
                 exporting={exportingMonthWise}
                 onDownload={(format) => void handleMonthWiseExport(format)}
               />

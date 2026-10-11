@@ -17,7 +17,7 @@ export function DefaulterListDownload({
   exporting,
   onDownload,
   className,
-  label = "Download defaulter list",
+  label = "Defaulter list",
   variant = "outline",
 }: {
   exporting: DefaulterReportFormat | null;
@@ -34,17 +34,27 @@ export function DefaulterListDownload({
           size="sm"
           variant={variant}
           className={cn(
-            "h-9 gap-2 shadow-sm whitespace-normal text-left leading-tight",
-            !isPrimary && "bg-background",
+            "inline-flex h-9 items-center gap-2 whitespace-nowrap px-3 text-sm font-medium shadow-sm",
+            !isPrimary && "border-border bg-background text-foreground hover:bg-muted hover:text-foreground",
             isPrimary &&
               "border-0 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
             className,
           )}
           disabled={Boolean(exporting)}
         >
-          <Download className="h-4 w-4 shrink-0" />
-          <span className="min-w-0">{exporting ? "Downloading…" : label}</span>
-          <ChevronDown className={cn("h-3.5 w-3.5 shrink-0", isPrimary ? "opacity-90" : "opacity-70")} />
+          <Download className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
+          <span className="truncate">{exporting ? "Downloading…" : label}</span>
+          <span
+            className={cn(
+              "ml-0.5 h-4 w-px shrink-0",
+              isPrimary ? "bg-primary-foreground/25" : "bg-border",
+            )}
+            aria-hidden
+          />
+          <ChevronDown
+            className={cn("h-3.5 w-3.5 shrink-0", isPrimary ? "opacity-80" : "opacity-60")}
+            aria-hidden
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60 p-1.5 shadow-lg">

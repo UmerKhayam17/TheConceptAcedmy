@@ -1151,8 +1151,8 @@ export default function AcademyFeesManagement({
                 <div className="w-full sm:w-auto">
                   <DefaulterListDownload
                     variant="default"
-                    className="h-10 w-full justify-between rounded-md px-3 text-sm font-medium sm:h-9 sm:w-auto sm:justify-center sm:whitespace-nowrap"
-                    label="Download paid report"
+                    className="w-full justify-center sm:w-auto"
+                    label="Paid report"
                     exporting={exportingPaidReport}
                     onDownload={(format) => void downloadPaidReport(format)}
                   />
@@ -1195,8 +1195,8 @@ export default function AcademyFeesManagement({
               {showBulkActions && !studentId && caps.canView && (
                 <div className="w-full sm:w-auto">
                   <DefaulterListDownload
-                    className="h-10 w-full justify-between rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground sm:h-9 sm:w-auto sm:justify-center sm:whitespace-nowrap"
-                    label="Download Defaulter List"
+                    className="w-full justify-center sm:w-auto"
+                    label="Defaulter list"
                     exporting={exportingMonthWise}
                     onDownload={(format) => void downloadMonthWise(format)}
                   />
