@@ -342,7 +342,7 @@ function splitEnrollmentAmounts(fees) {
  * Partial credit: if prior amount was reduced below the old components total
  * (staff recorded a remaining balance), keep that credit against the revised bill.
  */
-async function syncUnpaidChallansForStudent(student) {
+async function syncUnpaidChallansForStudent(student, { chargeIds } = {}) {
   if (!student?._id) return { updated: 0, skipped: 0 };
 
   const unpaid = await AcademyFeeRecord.find({
@@ -354,11 +354,18 @@ async function syncUnpaidChallansForStudent(student) {
   if (!unpaid.length) return { updated: 0, skipped: 0 };
 
   const charges = await listActiveCharges();
+  const forceChargeIds =
+    chargeIds !== undefined ? [...new Set((Array.isArray(chargeIds) ? chargeIds : []).map(String).filter(Boolean))] : undefined;
   let updated = 0;
   let skipped = 0;
 
   for (const record of unpaid) {
-    const bill = reviseBillForFeeRecord(student, record, charges);
+    const bill = reviseBillForFeeRecord(
+      student,
+      record,
+      charges,
+      forceChargeIds !== undefined ? { chargeIds: forceChargeIds } : undefined
+    );
     if (!bill || bill.amount < 0) {
       skipped += 1;
       continue;
@@ -452,13 +459,28 @@ function componentsEqual(a, b) {
   return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
 }
 
-async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new Date(), replacePending = false } = {}) {
+function studentDefaultChargeIds(student) {
+  return [...new Set((student?.defaultChargeIds || []).map((id) => String(id)).filter(Boolean))];
+}
+
+async function createEnrollmentFeeVouchers(
+  student,
+  fees,
+  userId,
+  { asOf = new Date(), replacePending = false, chargeIds } = {}
+) {
   const month = asOf.getMonth() + 1;
   const year = asOf.getFullYear();
   const dueDate = resolveMonthlyDueDate(month, year);
   const { admissionAmount, monthlyAmount } = splitEnrollmentAmounts(fees);
-  // Enrollment voucher starts tuition-only; staff opt into charges when printing / paying.
-  const tuitionBill = composeMonthlyComponents(student, month, [], monthlyAmount, { chargeIds: [] });
+  const selectedIds =
+    chargeIds !== undefined
+      ? [...new Set((Array.isArray(chargeIds) ? chargeIds : []).map(String).filter(Boolean))]
+      : studentDefaultChargeIds(student);
+  const charges = selectedIds.length ? await listActiveCharges() : [];
+  const tuitionBill = composeMonthlyComponents(student, month, charges, monthlyAmount, {
+    chargeIds: selectedIds,
+  });
   const components = [...tuitionBill.components];
   if (admissionAmount > 0) {
     components.push({ name: 'Admission', amount: roundMoney(admissionAmount), kind: 'admission' });
@@ -480,7 +502,9 @@ async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new D
       existingAdm.amount = totalDue;
       existingAdm.components = components;
       existingAdm.dueDate = dueDate;
-      existingAdm.notes = 'First month: monthly fee + admission fee (after discounts)';
+      existingAdm.notes = selectedIds.length
+        ? 'First month: monthly + admission (after discounts) + selected charges'
+        : 'First month: monthly fee + admission fee (after discounts)';
       existingAdm.recordedBy = userId;
       await existingAdm.save();
       return [existingAdm];
@@ -506,7 +530,9 @@ async function createEnrollmentFeeVouchers(student, fees, userId, { asOf = new D
     status: 'pending',
     dueDate,
     receiptNumber: receiptNumber(student, month, year, 'admission'),
-    notes: 'First month: monthly fee + admission fee (after discounts)',
+    notes: selectedIds.length
+      ? 'First month: monthly + admission (after discounts) + selected charges'
+      : 'First month: monthly fee + admission fee (after discounts)',
     components,
     createdBy: userId,
     recordedBy: userId,
@@ -1007,13 +1033,15 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       continue;
     }
 
-    // Monthly challans are tuition-only until staff check additional charges at print/pay.
+    // Prefer charges opted in at registration; staff can still change at print/pay.
+    const selectedChargeIds = studentDefaultChargeIds(student);
+    const charges = selectedChargeIds.length ? await listActiveCharges() : [];
     const { amount, components } = composeMonthlyComponents(
       student,
       month,
-      [],
+      charges,
       monthlyBillAmount(student),
-      { chargeIds: [] }
+      { chargeIds: selectedChargeIds }
     );
     if (amount <= 0) {
       skipped.push(student._id);

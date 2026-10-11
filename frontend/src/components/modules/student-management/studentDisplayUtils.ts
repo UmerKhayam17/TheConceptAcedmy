@@ -30,11 +30,16 @@ export function formatPkr(n?: number) {
   return `₨ ${n.toLocaleString()}`;
 }
 
+/** Always day/month/year (e.g. 11/10/2026) for Pakistan-style dates. */
 export function formatDate(value?: string) {
   if (!value) return "—";
-  const d = new Date(value);
+  const raw = value.length >= 10 ? value.slice(0, 10) : value;
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T12:00:00` : value);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString();
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 export function resolveClassId(classId: AcademyStudent["classId"]): string {

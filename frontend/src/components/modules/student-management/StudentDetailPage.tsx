@@ -270,8 +270,26 @@ function ProfileTab({ student, hideSensitive = false }: { student: AcademyStuden
             )}
             <DetailRow label="Monthly fee" value={formatPkr(student.monthlyFee)} />
             <DetailRow label="Admission fee" value={formatPkr(student.admissionFee)} />
+            <DetailRow
+              label="Monthly total payable"
+              value={formatPkr(
+                Math.max(0, (student.monthlyFee || 0) - (student.monthlyFeeDiscount || 0)),
+              )}
+            />
+            <DetailRow
+              label="Admission total payable"
+              value={formatPkr(
+                Math.max(0, (student.admissionFee || 0) - (student.admissionFeeDiscount || 0)),
+              )}
+            />
             <DetailRow label="Monthly fee discount" value={formatPkr(student.monthlyFeeDiscount)} />
             <DetailRow label="Admission fee discount" value={formatPkr(student.admissionFeeDiscount)} />
+            {(student.defaultChargeIds?.length ?? 0) > 0 && (
+              <DetailRow
+                label="Default additional charges"
+                value={`${student.defaultChargeIds!.length} selected`}
+              />
+            )}
             {(student.discountAmount ?? 0) > 0 &&
               !(student.monthlyFeeDiscount || student.admissionFeeDiscount) ? (
               <DetailRow label="Combined discount (legacy)" value={formatPkr(student.discountAmount)} />

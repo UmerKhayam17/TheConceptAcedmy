@@ -104,6 +104,78 @@ function feeComponents(record) {
   return record.components.filter((line) => line && Number(line.amount) > 0 && line.name);
 }
 
+function isStationeryLine(line) {
+  return line?.kind === 'charge' && /^stationery$/i.test(String(line.name || '').trim());
+}
+
+function isAdditionalChargeLine(line) {
+  return line?.kind === 'charge' && !isStationeryLine(line);
+}
+
+function formatAmountCell(n) {
+  const num = Number(n);
+  if (!Number.isFinite(num) || Math.abs(num) < 0.005) return '—';
+  return num.toLocaleString('en-PK');
+}
+
+/** Split a voucher into monthly/admission fee, stationery, and other additional charges. */
+function categorizeRecordAmounts(record) {
+  const parts = feeComponents(record);
+  let fee = 0;
+  let stationery = 0;
+  let additional = 0;
+
+  if (!parts.length) {
+    const amount = Number(record.amount) || 0;
+    if (record.feeType === 'stationery') stationery = amount;
+    else fee = amount;
+  } else {
+    for (const line of parts) {
+      const amount = Number(line.amount) || 0;
+      if (isStationeryLine(line)) stationery += amount;
+      else if (isAdditionalChargeLine(line)) additional += amount;
+      else fee += amount;
+    }
+  }
+
+  const round = (n) => Math.round(Number(n) * 100) / 100;
+  fee = round(fee);
+  stationery = round(stationery);
+  additional = round(additional);
+  return {
+    fee,
+    stationery,
+    additional,
+    total: round(fee + stationery + additional),
+  };
+}
+
+function challanBreakdownRows(records) {
+  const many = records.length > 1;
+  return records.map((record) => {
+    const amounts = categorizeRecordAmounts(record);
+    const period = periodLabel(record);
+    const type = feeTypeLabel(record.feeType, { short: true });
+    return {
+      name: many ? `${type} · ${period}` : period || type,
+      ...amounts,
+    };
+  });
+}
+
+function challanBreakdownTotals(rows) {
+  const round = (n) => Math.round(Number(n) * 100) / 100;
+  return rows.reduce(
+    (acc, row) => ({
+      fee: round(acc.fee + (row.fee || 0)),
+      stationery: round(acc.stationery + (row.stationery || 0)),
+      additional: round(acc.additional + (row.additional || 0)),
+      total: round(acc.total + (row.total || 0)),
+    }),
+    { fee: 0, stationery: 0, additional: 0, total: 0 }
+  );
+}
+
 function studentOf(record) {
   const s = record.studentId;
   return s && typeof s === 'object' ? s : null;
@@ -254,6 +326,7 @@ function drawThermalReceipt(doc, record, brand, logoPath) {
 
   y = thermalKv(doc, 'Fee', feeTypeLabel(record.feeType), x, y, w);
   y = thermalKv(doc, 'Period', periodLabel(record), x, y, w);
+  const breakdown = categorizeRecordAmounts(record);
   const lines = feeComponents(record);
   if (lines.length) {
     y += 4;
@@ -261,12 +334,18 @@ function drawThermalReceipt(doc, record, brand, logoPath) {
       y = thermalKv(doc, line.name, formatPkr(line.amount), x, y, w);
     });
   }
-  y += 6;
-  doc.fillColor('#000000').font('Helvetica-Bold').fontSize(12);
-  pdfLine(doc, formatPkr(record.amount), x, y, { width: w, align: 'center' });
-  y += 15;
+  y += 4;
+  dashLine(doc, x, y, w);
+  y += 8;
+  y = thermalKv(doc, 'Monthly fee', formatPkr(breakdown.fee), x, y, w);
+  y = thermalKv(doc, 'Stationery', formatPkr(breakdown.stationery), x, y, w);
+  y = thermalKv(doc, 'Add. charges', formatPkr(breakdown.additional), x, y, w);
+  y += 4;
+  doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11);
+  pdfLine(doc, `Grand total  ${formatPkr(breakdown.total)}`, x, y, { width: w, align: 'center' });
+  y += 14;
   doc.fillColor('#222222').font('Helvetica').fontSize(7);
-  y = pdfWrapCenter(doc, amountInWords(record.amount), x, y, w, 10);
+  y = pdfWrapCenter(doc, amountInWords(breakdown.total), x, y, w, 10);
   y += 4;
 
   if (record.notes) {
@@ -395,31 +474,8 @@ function statusLabel(status) {
   return String(status || 'UNPAID').toUpperCase();
 }
 
-function challanLineItems(records) {
-  const many = records.length > 1;
-  const lines = [];
-  records.forEach((record) => {
-    const parts = feeComponents(record);
-    const period = periodLabel(record);
-    if (parts.length) {
-      parts.forEach((line) => {
-        lines.push({
-          name: many ? `${line.name} · ${period}` : line.name,
-          amount: Number(line.amount) || 0,
-        });
-      });
-      return;
-    }
-    lines.push({
-      name: many ? `${feeTypeLabel(record.feeType)} · ${period}` : feeTypeLabel(record.feeType),
-      amount: Number(record.amount) || 0,
-    });
-  });
-  return lines;
-}
-
 function challanTotal(records) {
-  return challanLineItems(records).reduce((sum, line) => sum + line.amount, 0);
+  return challanBreakdownTotals(challanBreakdownRows(records)).total;
 }
 
 const CHALLAN_COPIES = [
@@ -488,8 +544,9 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
   const innerW = w - pad * 2;
   const first = records[0];
   const { student, classLine } = receiptContext(first);
-  const lines = challanLineItems(records);
-  const total = lines.reduce((sum, line) => sum + line.amount, 0);
+  const rows = challanBreakdownRows(records);
+  const totals = challanBreakdownTotals(rows);
+  const total = totals.total;
   const periods = [...new Set(records.map((record) => periodLabel(record)))].join(', ');
   const dueDates = [...new Set(records.map((record) => formatDate(record.dueDate)).filter((value) => value && value !== '—'))];
 
@@ -542,60 +599,132 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
   }
   cy += 8;
 
-  const amountCol = 96;
-  const nameCol = innerW - amountCol;
-  const headerH = 18;
-  const rowH = 18;
-  const totalH = 22;
-  const footerTop = y + h - 156;
-  const maxTableBottom = footerTop - 18;
-  const visibleLines = [];
-  lines.forEach((line) => {
-    const nextBottom = cy + headerH + (visibleLines.length + 1) * rowH + totalH;
-    if (nextBottom <= maxTableBottom) visibleLines.push(line);
+  // Columns: Particular | Monthly fee | Stationery | Add. charges | Total
+  const colFee = 46;
+  const colStat = 46;
+  const colAdd = 50;
+  const colTotal = 48;
+  const nameCol = Math.max(56, innerW - colFee - colStat - colAdd - colTotal);
+  const colXs = {
+    name: innerX,
+    fee: innerX + nameCol,
+    stationery: innerX + nameCol + colFee,
+    additional: innerX + nameCol + colFee + colStat,
+    total: innerX + nameCol + colFee + colStat + colAdd,
+  };
+  const headerH = 28;
+  const rowH = 16;
+  const summaryRowH = 15;
+  const summaryRows = 4;
+  const summaryH = summaryRows * summaryRowH + 4;
+  const footerTop = y + h - 148;
+  const maxTableBottom = footerTop - 16;
+  const visibleRows = [];
+  rows.forEach((row) => {
+    const nextBottom = cy + headerH + (visibleRows.length + 1) * rowH + summaryH;
+    if (nextBottom <= maxTableBottom) visibleRows.push(row);
   });
-  const tableH = headerH + visibleLines.length * rowH + totalH;
+  const tableH = headerH + visibleRows.length * rowH + summaryH;
   const tableTop = cy;
+
+  const drawColHeaders = (top) => {
+    doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(6.5);
+    pdfLine(doc, 'Particular', colXs.name + 4, top + 9, { width: nameCol - 6 });
+    pdfLine(doc, 'Monthly', colXs.fee + 2, top + 4, { width: colFee - 4, align: 'right' });
+    pdfLine(doc, 'fee', colXs.fee + 2, top + 13, { width: colFee - 4, align: 'right' });
+    pdfLine(doc, 'Stationery', colXs.stationery + 2, top + 9, { width: colStat - 4, align: 'right' });
+    pdfLine(doc, 'Additional', colXs.additional + 2, top + 4, { width: colAdd - 4, align: 'right' });
+    pdfLine(doc, 'charges', colXs.additional + 2, top + 13, { width: colAdd - 4, align: 'right' });
+    pdfLine(doc, 'Total', colXs.total + 2, top + 9, { width: colTotal - 6, align: 'right' });
+  };
+
+  const drawAmountCols = (row, top, opts = {}) => {
+    const bold = Boolean(opts.bold);
+    const color = opts.color || '#10244A';
+    doc.fillColor(color).font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(opts.fontSize || 7);
+    pdfLine(doc, formatAmountCell(row.fee), colXs.fee + 2, top, { width: colFee - 4, align: 'right' });
+    pdfLine(doc, formatAmountCell(row.stationery), colXs.stationery + 2, top, {
+      width: colStat - 4,
+      align: 'right',
+    });
+    pdfLine(doc, formatAmountCell(row.additional), colXs.additional + 2, top, {
+      width: colAdd - 4,
+      align: 'right',
+    });
+    doc.font('Helvetica-Bold');
+    pdfLine(doc, formatAmountCell(row.total), colXs.total + 2, top, {
+      width: colTotal - 6,
+      align: 'right',
+    });
+  };
 
   doc.save();
   doc.rect(innerX, tableTop, innerW, headerH).fill(brand.colors.navy);
   doc.restore();
-  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(8);
-  pdfLine(doc, 'Particular', innerX + 8, tableTop + 5, { width: nameCol - 14 });
-  pdfLine(doc, 'Amount', innerX + nameCol, tableTop + 5, { width: amountCol - 8, align: 'right' });
+  drawColHeaders(tableTop);
 
-  visibleLines.forEach((line, index) => {
+  visibleRows.forEach((row, index) => {
     const rowTop = tableTop + headerH + index * rowH;
     if (index % 2 === 1) {
       doc.save();
       doc.rect(innerX, rowTop, innerW, rowH).fill('#F7FAFD');
       doc.restore();
     }
-    doc.fillColor('#10244A').font('Helvetica').fontSize(9);
-    pdfLine(doc, fitText(doc, line.name, nameCol - 16), innerX + 8, rowTop + 5, { width: nameCol - 16 });
-    doc.font('Helvetica-Bold');
-    pdfLine(doc, formatPkr(line.amount), innerX + nameCol, rowTop + 5, { width: amountCol - 8, align: 'right' });
+    doc.fillColor('#10244A').font('Helvetica').fontSize(7.5);
+    pdfLine(doc, fitText(doc, row.name, nameCol - 8), colXs.name + 4, rowTop + 4, {
+      width: nameCol - 8,
+    });
+    drawAmountCols(row, rowTop + 4);
   });
 
-  const totalTop = tableTop + headerH + visibleLines.length * rowH;
-  doc.save();
-  doc.rect(innerX, totalTop, innerW, totalH).fill(brand.colors.navy);
-  doc.restore();
-  doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(9);
-  pdfLine(doc, 'Total', innerX + 8, totalTop + 6, { width: nameCol - 14 });
-  pdfLine(doc, formatPkr(total), innerX + nameCol, totalTop + 6, { width: amountCol - 8, align: 'right' });
+  const summaryTop = tableTop + headerH + visibleRows.length * rowH;
+  const summaryItems = [
+    { label: 'Monthly fee total', value: totals.fee, grand: false },
+    { label: 'Stationery total', value: totals.stationery, grand: false },
+    { label: 'Additional charges total', value: totals.additional, grand: false },
+    { label: 'Grand total', value: totals.total, grand: true },
+  ];
+  summaryItems.forEach((item, index) => {
+    const rowTop = summaryTop + 2 + index * summaryRowH;
+    if (item.grand) {
+      doc.save();
+      doc.rect(innerX, rowTop - 1, innerW, summaryRowH + 1).fill(brand.colors.navy);
+      doc.restore();
+      doc.fillColor(brand.colors.white).font('Helvetica-Bold').fontSize(7.5);
+      pdfLine(doc, item.label, colXs.name + 4, rowTop + 2, { width: nameCol + colFee + colStat + colAdd - 10 });
+      pdfLine(doc, formatPkr(item.value), colXs.total - 40, rowTop + 2, {
+        width: colTotal + 36,
+        align: 'right',
+      });
+    } else {
+      doc.fillColor('#10244A').font('Helvetica').fontSize(7);
+      pdfLine(doc, item.label, colXs.name + 4, rowTop + 2, {
+        width: nameCol + colFee + colStat + colAdd - 10,
+      });
+      doc.font('Helvetica-Bold');
+      pdfLine(doc, formatPkr(item.value), colXs.total - 40, rowTop + 2, {
+        width: colTotal + 36,
+        align: 'right',
+      });
+    }
+  });
 
   doc.save();
-  doc.strokeColor('#D6DEE8').lineWidth(0.6);
-  for (let index = 1; index < visibleLines.length; index += 1) {
+  doc.strokeColor('#D6DEE8').lineWidth(0.5);
+  for (let index = 1; index < visibleRows.length; index += 1) {
     const lineY = tableTop + headerH + index * rowH;
     doc.moveTo(innerX, lineY).lineTo(innerX + innerW, lineY).stroke();
   }
-  doc.moveTo(innerX + nameCol, tableTop + headerH).lineTo(innerX + nameCol, totalTop).stroke();
-  doc.strokeColor(brand.colors.white).lineWidth(0.6);
-  doc.moveTo(innerX + nameCol, totalTop).lineTo(innerX + nameCol, tableTop + tableH).stroke();
+  // Vertical column rules through body rows
+  [colXs.fee, colXs.stationery, colXs.additional, colXs.total].forEach((vx) => {
+    doc
+      .moveTo(vx, tableTop + headerH)
+      .lineTo(vx, summaryTop)
+      .stroke();
+  });
   doc.strokeColor(brand.colors.navy).lineWidth(1);
   doc.rect(innerX, tableTop, innerW, tableH).stroke();
+  doc.moveTo(innerX, summaryTop).lineTo(innerX + innerW, summaryTop).stroke();
   doc.restore();
 
   cy = tableTop + tableH + 6;
@@ -686,21 +815,21 @@ function drawThermalChallan(doc, records, brand, logoPath) {
   dashLine(doc, x, y, w);
   y += 10;
 
-  const lines = challanLineItems(records);
-  if (lines.length) {
+  const rows = challanBreakdownRows(records);
+  const totals = challanBreakdownTotals(rows);
+  if (rows.length) {
     doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8);
     pdfLine(doc, 'Charges', x, y, { width: w });
     y += 12;
-    lines.forEach((line) => {
-      doc.fillColor('#000000').font('Helvetica').fontSize(8);
-      const amountText = formatPkr(line.amount);
-      doc.font('Helvetica-Bold');
-      const amountW = Math.min(86, doc.widthOfString(amountText) + 6);
-      doc.font('Helvetica');
-      pdfLine(doc, fitText(doc, line.name, w - amountW - 4), x, y, { width: w - amountW - 4 });
-      doc.font('Helvetica-Bold');
-      pdfLine(doc, amountText, x + w - amountW, y, { width: amountW, align: 'right' });
-      y += 12;
+    rows.forEach((row) => {
+      doc.fillColor('#000000').font('Helvetica-Bold').fontSize(8);
+      pdfLine(doc, fitText(doc, row.name, w), x, y, { width: w });
+      y += 11;
+      y = thermalKv(doc, 'Monthly fee', formatPkr(row.fee), x, y, w);
+      y = thermalKv(doc, 'Stationery', formatPkr(row.stationery), x, y, w);
+      y = thermalKv(doc, 'Add. charges', formatPkr(row.additional), x, y, w);
+      y = thermalKv(doc, 'Row total', formatPkr(row.total), x, y, w);
+      y += 2;
     });
   } else {
     records.forEach((record, index) => {
@@ -717,9 +846,13 @@ function drawThermalChallan(doc, records, brand, logoPath) {
   dashLine(doc, x, y, w);
   y += 8;
 
-  const total = challanTotal(records);
+  y = thermalKv(doc, 'Monthly fee', formatPkr(totals.fee), x, y, w);
+  y = thermalKv(doc, 'Stationery', formatPkr(totals.stationery), x, y, w);
+  y = thermalKv(doc, 'Add. charges', formatPkr(totals.additional), x, y, w);
+  y += 4;
+  const total = totals.total;
   doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11);
-  pdfLine(doc, `Total due  ${formatPkr(total)}`, x, y, { width: w, align: 'center' });
+  pdfLine(doc, `Grand total  ${formatPkr(total)}`, x, y, { width: w, align: 'center' });
   y += 14;
   doc.fillColor('#222222').font('Helvetica').fontSize(7);
   y = pdfWrapCenter(doc, amountInWords(total), x, y, w, 10);

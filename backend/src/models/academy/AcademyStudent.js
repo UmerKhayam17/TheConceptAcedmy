@@ -55,6 +55,8 @@ const academyStudentSchema = new mongoose.Schema(
     admissionFeeDiscount: { type: Number, default: 0, min: 0 },
     discountAmount: { type: Number, default: 0, min: 0 },
     totalFee: { type: Number, default: 0, min: 0 },
+    /** Additional charges opted in at registration; used on enrollment + monthly challans. */
+    defaultChargeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'AcademyAdditionalCharge' }],
     feeStructureId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademyFeeStructure' },
     status: {
       type: String,

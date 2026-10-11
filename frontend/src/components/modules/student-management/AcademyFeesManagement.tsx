@@ -63,7 +63,9 @@ import {
 } from "@/lib/studentManagementApi";
 import {
   applicableChargesForFees,
+  chargeIdsOnFee,
   feeAmountWithCharges,
+  feePreviewLines,
 } from "@/lib/additionalCharges";
 import { resolveUploadUrl } from "@/lib/api";
 import { academyStudentRoutes, type AcademyStudentRoutes } from "@/lib/studentManagementMenus";
@@ -750,16 +752,24 @@ export default function AcademyFeesManagement({
           ? [unpaidForPay[0]._id]
           : [payRecord._id]
     );
-    // Default: no additional charges.
-    setSelectedChargeIds([]);
+    // Prefer charges already on vouchers / set at registration so stationery + other charges stay active.
+    const fromFees = unpaidForPay.flatMap((fee) => chargeIdsOnFee(fee));
+    const fromStudent = (payHistory.student?.defaultChargeIds || []).map((id) =>
+      typeof id === "object" && id && "_id" in id ? String((id as { _id: string })._id) : String(id)
+    );
+    const applicableIds = new Set(payApplicableCharges.map((c) => c._id));
+    const initialCharges = [...new Set([...fromFees, ...fromStudent])].filter((id) =>
+      applicableIds.has(id)
+    );
+    setSelectedChargeIds(initialCharges);
     const amounts: Record<string, string> = {};
     for (const fee of unpaidForPay) {
       amounts[fee._id] = String(
-        feeAmountWithCharges(fee, payHistory.student, allCharges, [])
+        feeAmountWithCharges(fee, payHistory.student, allCharges, initialCharges)
       );
     }
     setAmountOverrides(amounts);
-  }, [payRecord, payHistory, unpaidForPay, payModalMode, allCharges]);
+  }, [payRecord, payHistory, unpaidForPay, payModalMode, allCharges, payApplicableCharges]);
 
   useEffect(() => {
     if (!payRecord || payModalMode === "edit" || !payHistory) return;
@@ -1609,12 +1619,21 @@ export default function AcademyFeesManagement({
                       <p className="px-3 py-4 text-muted-foreground">No unpaid months left.</p>
                     )}
                     {!payHistoryLoading && unpaidForPay.length > 0 && (
-                      <ul className="max-h-52 overflow-y-auto divide-y">
+                      <ul className="max-h-64 overflow-y-auto divide-y">
                         {unpaidForPay.map((fee) => {
                           const checked = selectedFeeIds.includes(fee._id);
+                          const lines =
+                            payModalMode === "pay"
+                              ? feePreviewLines(
+                                  fee,
+                                  payHistory?.student,
+                                  allCharges,
+                                  selectedChargeIds
+                                )
+                              : [];
                           return (
-                            <li key={fee._id}>
-                              <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40">
+                            <li key={fee._id} className="px-3 py-2 hover:bg-muted/40">
+                              <label className="flex items-center gap-3 cursor-pointer">
                                 <input
                                   type="checkbox"
                                   className="h-4 w-4 shrink-0"
@@ -1653,6 +1672,29 @@ export default function AcademyFeesManagement({
                                   </span>
                                 )}
                               </label>
+                              {payModalMode === "pay" && lines.length > 0 && (
+                                <ul className="mt-1.5 ml-7 space-y-1 text-xs text-muted-foreground">
+                                  {lines.map((line) => (
+                                    <li
+                                      key={line.key}
+                                      className="flex items-baseline justify-between gap-3"
+                                    >
+                                      <span
+                                        className={
+                                          line.kind === "tuition" || line.kind === "admission"
+                                            ? "text-foreground/80"
+                                            : undefined
+                                        }
+                                      >
+                                        {line.name}
+                                      </span>
+                                      <span className="tabular-nums font-medium text-foreground/90">
+                                        {formatPkr(line.amount)}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                             </li>
                           );
                         })}

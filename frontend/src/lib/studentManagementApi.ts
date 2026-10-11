@@ -146,6 +146,7 @@ export interface AcademyStudentRegisterBody {
   discountAmount?: number;
   monthlyFeeDiscount?: number;
   admissionFeeDiscount?: number;
+  defaultChargeIds?: string[];
 }
 
 export interface AcademyStudentActivateBody extends AcademyStudentRegisterBody {
@@ -213,6 +214,7 @@ export interface AcademyStudent {
   monthlyFeeDiscount?: number;
   admissionFeeDiscount?: number;
   discountAmount?: number;
+  defaultChargeIds?: string[];
   totalFee: number;
   status: AcademyStudentStatus;
   createdAt?: string;

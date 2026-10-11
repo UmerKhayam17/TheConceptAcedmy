@@ -20,7 +20,6 @@ import {
   ArrowLeft,
   Briefcase,
   Building2,
-  Calendar,
   CircleCheck,
   GraduationCap,
   Globe,
@@ -58,6 +57,7 @@ import {
 } from "@/lib/studentManagementMenus";
 import {
   fetchAcademyClasses,
+  fetchAdditionalCharges,
   fetchDisciplinesByClassWithMeta,
   fetchEnrollmentSubjects,
   fetchSectionsByClass,
@@ -74,6 +74,7 @@ import {
   type EnrollmentSubjectLayout,
   type FeePreview,
 } from "@/lib/studentManagementApi";
+import { chargeAppliesToStudent } from "@/lib/additionalCharges";
 import {
   buildStudentPayload,
   defaultRegisterForm,
@@ -81,7 +82,9 @@ import {
   mapStudentToForm,
   type AcademicRow,
 } from "./registerStudentForm";
-import { formatDate } from "./studentDisplayUtils";
+import { DateDmYInput } from "@/components/ui/date-dmy-input";
+import { AdditionalChargesChecklist } from "./AdditionalChargesChecklist";
+import { formatDate, formatPkr } from "./studentDisplayUtils";
 
 function deriveChoiceSelections(
   layout: EnrollmentSubjectLayout,
@@ -282,6 +285,8 @@ export default function RegisterStudentPage({
     contactPhoneRes: false,
   });
   const autoPackageSectionRef = useRef<string | null>(null);
+  /** When true, next fee preview fills payables to list price (after subject/class change). */
+  const defaultPayablesRef = useRef(true);
 
   const routes =
     routesProp ?? (user?.role ? academyStudentRoutes(user.role, "registration") : null);
@@ -311,6 +316,7 @@ export default function RegisterStudentPage({
 
   useEffect(() => {
     if (existingStudent) {
+      defaultPayablesRef.current = false;
       setForm(mapStudentToForm(existingStudent));
       setPhotoFile(null);
       setPhotoPreview(
@@ -426,6 +432,51 @@ export default function RegisterStudentPage({
     enabled: Boolean(form.classId),
   });
 
+  const { data: allCharges = [] } = useQuery({
+    queryKey: ["additional-charges"],
+    queryFn: fetchAdditionalCharges,
+    enabled: Boolean(form.classId),
+  });
+
+  const chargeStudentStub = {
+    _id: existingStudent?._id || "new",
+    classId: form.classId,
+    sectionId: form.sectionId,
+  } as Pick<AcademyStudent, "_id" | "classId" | "sectionId">;
+
+  const enrollmentMonth = new Date().getMonth() + 1;
+  const applicableCharges = allCharges.filter(
+    (c) => c.status === "active" && chargeAppliesToStudent(c, chargeStudentStub, enrollmentMonth),
+  );
+
+  const selectedChargesTotal = applicableCharges
+    .filter((c) => form.defaultChargeIds.includes(c._id))
+    .reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+
+  const recurringChargesTotal = applicableCharges
+    .filter(
+      (c) =>
+        form.defaultChargeIds.includes(c._id) &&
+        (c.frequency === "every_month" ||
+          (c.frequency === "selected_months" && (c.months || []).map(Number).includes(enrollmentMonth))),
+    )
+    .reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+
+  const subjectsKey = form.selectedSubjects.slice().sort().join(",");
+
+  // New registrations: when class/subjects change, next preview resets payables to list fees.
+  useEffect(() => {
+    if (isEdit || isActivate) return;
+    defaultPayablesRef.current = true;
+    setForm((f) => ({
+      ...f,
+      monthlyPayable: "",
+      admissionPayable: "",
+      monthlyFeeDiscount: "0",
+      admissionFeeDiscount: "0",
+    }));
+  }, [form.classId, form.isFullPackage, subjectsKey, isEdit, isActivate]);
+
   useEffect(() => {
     if (!form.classId) {
       setFeePreview(null);
@@ -453,7 +504,52 @@ export default function RegisterStudentPage({
         monthlyFeeDiscount: Number(form.monthlyFeeDiscount) || 0,
         admissionFeeDiscount: Number(form.admissionFeeDiscount) || 0,
       })
-        .then(setFeePreview)
+        .then((preview) => {
+          setFeePreview(preview);
+          setForm((f) => {
+            const listMonthly = preview.monthlyFee || 0;
+            const listAdmission = preview.admissionFee || 0;
+
+            if (defaultPayablesRef.current) {
+              defaultPayablesRef.current = false;
+              return {
+                ...f,
+                monthlyPayable: String(listMonthly),
+                admissionPayable: String(listAdmission),
+                monthlyFeeDiscount: "0",
+                admissionFeeDiscount: "0",
+              };
+            }
+
+            const monthlyPayable = String(
+              Math.min(Math.max(0, Number(f.monthlyPayable) || 0), listMonthly),
+            );
+            const admissionPayable = String(
+              Math.min(Math.max(0, Number(f.admissionPayable) || 0), listAdmission),
+            );
+            const monthlyFeeDiscount = String(
+              Math.max(0, listMonthly - (Number(monthlyPayable) || 0)),
+            );
+            const admissionFeeDiscount = String(
+              Math.max(0, listAdmission - (Number(admissionPayable) || 0)),
+            );
+            if (
+              monthlyPayable === f.monthlyPayable &&
+              admissionPayable === f.admissionPayable &&
+              monthlyFeeDiscount === f.monthlyFeeDiscount &&
+              admissionFeeDiscount === f.admissionFeeDiscount
+            ) {
+              return f;
+            }
+            return {
+              ...f,
+              monthlyPayable,
+              admissionPayable,
+              monthlyFeeDiscount,
+              admissionFeeDiscount,
+            };
+          });
+        })
         .catch(() => setFeePreview(null));
     }, 300);
     return () => clearTimeout(t);
@@ -792,12 +888,12 @@ export default function RegisterStudentPage({
               />
             </FormField>
             <FormField label="Date of birth" required>
-              <IconInput
-                icon={Calendar}
-                type="date"
+              <DateDmYInput
                 value={form.dateOfBirth}
-                onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
+                onChange={(iso) => setForm((f) => ({ ...f, dateOfBirth: iso }))}
+                maxIso={new Date().toISOString().slice(0, 10)}
               />
+              <p className="text-xs text-muted-foreground mt-1">Format: dd/mm/yyyy</p>
             </FormField>
             <FormField label="Nationality">
               <IconInput
@@ -1360,35 +1456,88 @@ export default function RegisterStudentPage({
           )}
 
           <div className="grid sm:grid-cols-2 gap-4">
-            <FormField label="Monthly fee discount (PKR)">
+            <FormField label="Monthly total payable (PKR)">
               <IconInput
                 icon={Tag}
                 type="number"
                 min={0}
                 step={1}
-                placeholder="0"
-                value={form.monthlyFeeDiscount}
-                onChange={(e) => setForm((f) => ({ ...f, monthlyFeeDiscount: e.target.value }))}
+                max={feePreview?.monthlyFee}
+                placeholder={feePreview ? String(feePreview.monthlyFee) : "0"}
+                value={form.monthlyPayable}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const list = feePreview?.monthlyFee ?? 0;
+                  const payable = Math.min(Math.max(0, Number(raw) || 0), list || Number(raw) || 0);
+                  setForm((f) => ({
+                    ...f,
+                    monthlyPayable: raw,
+                    monthlyFeeDiscount: list
+                      ? String(Math.max(0, list - payable))
+                      : f.monthlyFeeDiscount,
+                  }));
+                }}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Applied on the first-month challan and every later monthly challan
+                Amount parent pays each month. Discount is calculated automatically
+                {feePreview
+                  ? ` (list ₨ ${feePreview.monthlyFee.toLocaleString()} − discount ₨ ${(Number(form.monthlyFeeDiscount) || 0).toLocaleString()})`
+                  : ""}
               </p>
             </FormField>
-            <FormField label="Admission fee discount (PKR)">
+            <FormField label="Admission total payable (PKR)">
               <IconInput
                 icon={Tag}
                 type="number"
                 min={0}
                 step={1}
-                placeholder="0"
-                value={form.admissionFeeDiscount}
-                onChange={(e) => setForm((f) => ({ ...f, admissionFeeDiscount: e.target.value }))}
+                max={feePreview?.admissionFee}
+                placeholder={feePreview ? String(feePreview.admissionFee) : "0"}
+                value={form.admissionPayable}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const list = feePreview?.admissionFee ?? 0;
+                  const payable = Math.min(Math.max(0, Number(raw) || 0), list || Number(raw) || 0);
+                  setForm((f) => ({
+                    ...f,
+                    admissionPayable: raw,
+                    admissionFeeDiscount: list
+                      ? String(Math.max(0, list - payable))
+                      : f.admissionFeeDiscount,
+                  }));
+                }}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                One-time; included in the first-month challan only
+                One-time admission amount. Discount is calculated automatically
+                {feePreview
+                  ? ` (list ₨ ${feePreview.admissionFee.toLocaleString()} − discount ₨ ${(Number(form.admissionFeeDiscount) || 0).toLocaleString()})`
+                  : ""}
               </p>
             </FormField>
           </div>
+
+          {form.classId && (
+            <div className="rounded-md border">
+              <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
+                Additional charges for this student (optional)
+              </div>
+              <AdditionalChargesChecklist
+                charges={applicableCharges}
+                selectedIds={form.defaultChargeIds}
+                onChange={(ids) => setForm((f) => ({ ...f, defaultChargeIds: ids }))}
+                emptyLabel="No additional charges apply to this class/section yet."
+              />
+              {selectedChargesTotal > 0 && (
+                <p className="px-3 py-2 border-t text-xs text-muted-foreground">
+                  Selected charges add {formatPkr(selectedChargesTotal)} on the first-month challan
+                  {recurringChargesTotal > 0
+                    ? ` and ${formatPkr(recurringChargesTotal)} on later months when applicable`
+                    : ""}
+                  .
+                </p>
+              )}
+            </div>
+          )}
 
           {feePreview && (
             <div className="rounded-lg border border-accent/30 bg-accent/5 p-4 grid sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 text-sm">
@@ -1420,17 +1569,31 @@ export default function RegisterStudentPage({
               </div>
               <div>
                 <span className="text-muted-foreground">First month due</span>
-                <p className="font-bold text-lg text-accent">₨ {feePreview.totalFee.toLocaleString()}</p>
+                <p className="font-bold text-lg text-accent">
+                  ₨ {(feePreview.totalFee + selectedChargesTotal).toLocaleString()}
+                </p>
+                {selectedChargesTotal > 0 && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    includes {formatPkr(selectedChargesTotal)} charges
+                  </p>
+                )}
               </div>
               <div>
                 <span className="text-muted-foreground">Next months</span>
                 <p className="font-bold text-lg">
                   ₨{" "}
-                  {Math.max(
-                    0,
-                    (feePreview.monthlyFee || 0) - (feePreview.monthlyFeeDiscount || 0),
+                  {(
+                    Math.max(
+                      0,
+                      (feePreview.monthlyFee || 0) - (feePreview.monthlyFeeDiscount || 0),
+                    ) + recurringChargesTotal
                   ).toLocaleString()}
                 </p>
+                {recurringChargesTotal > 0 && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    includes {formatPkr(recurringChargesTotal)} charges
+                  </p>
+                )}
               </div>
             </div>
           )}

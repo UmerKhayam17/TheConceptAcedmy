@@ -42,6 +42,17 @@ function parentModulePermissionsMap() {
   return new Map(Object.entries(PARENT_DEFAULT_MODULE_PERMISSIONS));
 }
 
+function normalizeDefaultChargeIds(ids) {
+  return [...new Set((Array.isArray(ids) ? ids : []).map((id) => String(id)).filter(Boolean))];
+}
+
+function resolveDefaultChargeIds(student, payload) {
+  if (payload?.defaultChargeIds !== undefined) {
+    return normalizeDefaultChargeIds(payload.defaultChargeIds);
+  }
+  return normalizeDefaultChargeIds(student?.defaultChargeIds);
+}
+
 function sanitizeEmailLocalPart(value) {
   return (
     String(value || '')
@@ -284,6 +295,8 @@ async function registerStudent(payload, userId) {
     await parentUser.save();
   }
 
+  const defaultChargeIds = normalizeDefaultChargeIds(payload.defaultChargeIds);
+
   const student = await AcademyStudent.create({
     studentId,
     studentName: payload.studentName.trim(),
@@ -297,13 +310,17 @@ async function registerStudent(payload, userId) {
     selectedSubjects: subjectIds,
     isFullPackage,
     ...fees,
+    defaultChargeIds,
     feeStructureId: feeStructure._id,
     status: payload.status || 'active',
     createdBy: userId,
   });
 
   const now = new Date();
-  await createEnrollmentFeeVouchers(student, fees, userId, { asOf: now });
+  await createEnrollmentFeeVouchers(student, fees, userId, {
+    asOf: now,
+    chargeIds: defaultChargeIds,
+  });
 
   return student.populate([
     { path: 'classId', select: 'className' },
@@ -350,7 +367,8 @@ async function updateStudent(id, payload) {
     payload.isFullPackage !== undefined ||
     payload.discountAmount !== undefined ||
     payload.monthlyFeeDiscount !== undefined ||
-    payload.admissionFeeDiscount !== undefined;
+    payload.admissionFeeDiscount !== undefined ||
+    payload.defaultChargeIds !== undefined;
 
   if (payload.studentName) student.studentName = payload.studentName.trim();
   if (payload.fatherName) student.fatherName = payload.fatherName.trim();
@@ -361,6 +379,9 @@ async function updateStudent(id, payload) {
   if (payload.status) student.status = payload.status;
   if (payload.classId) student.classId = payload.classId;
   if (payload.sectionId) student.sectionId = payload.sectionId;
+  if (payload.defaultChargeIds !== undefined) {
+    student.defaultChargeIds = normalizeDefaultChargeIds(payload.defaultChargeIds);
+  }
 
   if (needsFeeRecalc) {
     const feeStructure = await getByClass(classId);
@@ -411,7 +432,12 @@ async function updateStudent(id, payload) {
 
   // Keep Fee Management challans aligned with the recalculated student fee profile.
   if (needsFeeRecalc && student.status === 'active') {
-    await syncUnpaidChallansForStudent(student);
+    await syncUnpaidChallansForStudent(
+      student,
+      payload.defaultChargeIds !== undefined
+        ? { chargeIds: normalizeDefaultChargeIds(payload.defaultChargeIds) }
+        : undefined
+    );
   }
 
   return student.populate([
@@ -900,6 +926,9 @@ async function activateStudent(id, payload, userId) {
   student.selectedSubjects = subjectIds;
   student.isFullPackage = isFullPackage;
   Object.assign(student, fees);
+  if (payload.defaultChargeIds !== undefined) {
+    student.defaultChargeIds = normalizeDefaultChargeIds(payload.defaultChargeIds);
+  }
   student.feeStructureId = feeStructure._id;
   student.status = 'active';
   student.activatedAt = new Date();
@@ -909,7 +938,10 @@ async function activateStudent(id, payload, userId) {
   await student.save();
 
   const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
-  await createEnrollmentFeeVouchers(student, fees, userId, { asOf });
+  await createEnrollmentFeeVouchers(student, fees, userId, {
+    asOf,
+    chargeIds: resolveDefaultChargeIds(student, payload),
+  });
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
@@ -1006,6 +1038,9 @@ async function prepareEnrollmentVoucher(id, payload, userId) {
   student.selectedSubjects = subjectIds;
   student.isFullPackage = isFullPackage;
   Object.assign(student, fees);
+  if (payload.defaultChargeIds !== undefined) {
+    student.defaultChargeIds = normalizeDefaultChargeIds(payload.defaultChargeIds);
+  }
   student.feeStructureId = feeStructure._id;
   student.status = 'pending_fee';
   await student.save();
@@ -1013,6 +1048,7 @@ async function prepareEnrollmentVoucher(id, payload, userId) {
   const vouchers = await createEnrollmentFeeVouchers(student, fees, userId, {
     asOf,
     replacePending: true,
+    chargeIds: resolveDefaultChargeIds(student, payload),
   });
   const voucher = vouchers[0] || null;
 
@@ -1195,6 +1231,8 @@ async function registerDirectStudent(payload, userId) {
     studentId: officialStudentId,
   });
 
+  const defaultChargeIds = normalizeDefaultChargeIds(payload.defaultChargeIds);
+
   const student = await AcademyStudent.create({
     registrationNumber,
     studentId: officialStudentId,
@@ -1213,6 +1251,7 @@ async function registerDirectStudent(payload, userId) {
     selectedSubjects: subjectIds,
     isFullPackage,
     ...fees,
+    defaultChargeIds,
     feeStructureId: feeStructure._id,
     status: 'active',
     activatedAt: new Date(),
@@ -1222,7 +1261,10 @@ async function registerDirectStudent(payload, userId) {
   });
 
   const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
-  await createEnrollmentFeeVouchers(student, fees, userId, { asOf });
+  await createEnrollmentFeeVouchers(student, fees, userId, {
+    asOf,
+    chargeIds: defaultChargeIds,
+  });
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },

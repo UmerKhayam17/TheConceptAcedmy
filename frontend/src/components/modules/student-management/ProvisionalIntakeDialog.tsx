@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DateDmYInput } from "@/components/ui/date-dmy-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -149,12 +150,13 @@ export default function ProvisionalIntakeDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="intake-dob">Date of birth</Label>
-            <Input
+            <DateDmYInput
               id="intake-dob"
-              type="date"
               value={form.dateOfBirth}
-              onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
+              onChange={(iso) => setForm((f) => ({ ...f, dateOfBirth: iso }))}
+              maxIso={new Date().toISOString().slice(0, 10)}
             />
+            <p className="text-xs text-muted-foreground">Format: dd/mm/yyyy</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="intake-gender">Gender</Label>

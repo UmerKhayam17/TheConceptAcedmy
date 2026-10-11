@@ -15,17 +15,23 @@ import {
 } from "@/lib/studentManagementApi";
 import {
   applicableChargesForFees,
-  chargeAppliesToStudent,
-  baseFeeAmount,
+  chargeIdsOnFee,
+  feeAmountWithCharges,
+  feePreviewLines,
 } from "@/lib/additionalCharges";
 import { AdditionalChargesChecklist } from "./AdditionalChargesChecklist";
-import { formatPkr } from "./studentDisplayUtils";
+import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
 
 export type ChallanPrintRequest = {
   studentId: string;
   size: FeeReceiptSize;
   months?: number;
 };
+
+function periodLabel(fee: { feeType: string; month?: number; year?: number }) {
+  if (fee.feeType === "admission") return "Admission";
+  return `${MONTH_NAMES[(Number(fee.month) || 1) - 1]} ${fee.year || ""}`.trim();
+}
 
 export function ChallanPrintDialog({
   request,
@@ -57,32 +63,47 @@ export function ChallanPrintDialog({
       (history?.records || []).filter(
         (r) =>
           (r.status === "pending" || r.status === "overdue") &&
-          (r.feeType === "monthly" || r.feeType === "admission")
+          (r.feeType === "monthly" || r.feeType === "admission" || r.feeType === "stationery")
       ),
     [history]
   );
 
+  const chargeableFees = useMemo(
+    () => unpaid.filter((f) => f.feeType === "monthly" || f.feeType === "admission"),
+    [unpaid]
+  );
+
   const applicable = useMemo(
-    () => applicableChargesForFees(allCharges, history?.student, unpaid),
-    [allCharges, history?.student, unpaid]
+    () => applicableChargesForFees(allCharges, history?.student, chargeableFees),
+    [allCharges, history?.student, chargeableFees]
   );
 
   useEffect(() => {
-    setSelectedChargeIds([]);
-  }, [request?.studentId]);
+    if (!request?.studentId || !history) {
+      setSelectedChargeIds([]);
+      return;
+    }
+    const fromFees = chargeableFees.flatMap((fee) => chargeIdsOnFee(fee));
+    const fromStudent = (history.student?.defaultChargeIds || []).map((id) =>
+      typeof id === "object" && id && "_id" in id ? String((id as { _id: string })._id) : String(id)
+    );
+    const applicableIds = new Set(applicable.map((c) => c._id));
+    setSelectedChargeIds(
+      [...new Set([...fromFees, ...fromStudent])].filter((id) => applicableIds.has(id))
+    );
+  }, [request?.studentId, history, chargeableFees, applicable]);
 
   const totalPreview = useMemo(() => {
     let total = 0;
     for (const fee of unpaid) {
-      total += baseFeeAmount(fee);
-      for (const charge of applicable) {
-        if (!selectedChargeIds.includes(charge._id)) continue;
-        if (!chargeAppliesToStudent(charge, history?.student, fee.month)) continue;
-        total += Number(charge.amount) || 0;
+      if (fee.feeType === "stationery") {
+        total += Number(fee.amount) || 0;
+        continue;
       }
+      total += feeAmountWithCharges(fee, history?.student, allCharges, selectedChargeIds);
     }
     return Math.round(total * 100) / 100;
-  }, [unpaid, applicable, selectedChargeIds, history?.student]);
+  }, [unpaid, allCharges, selectedChargeIds, history?.student]);
 
   return (
     <Dialog open={Boolean(request)} onOpenChange={(open) => !open && onClose()}>
@@ -92,7 +113,8 @@ export function ChallanPrintDialog({
         </DialogHeader>
         <div className="space-y-3 text-sm">
           <p className="text-muted-foreground">
-            Additional charges are optional. Leave unchecked for tuition only.
+            Select additional charges to include. Stationery already on the challan stays active with
+            any other selected charges.
           </p>
           <div className="rounded-md border">
             <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
@@ -107,9 +129,71 @@ export function ChallanPrintDialog({
                 onChange={setSelectedChargeIds}
               />
             )}
+          </div>
+
+          <div className="rounded-md border">
+            <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
+              Challan breakdown
+            </div>
+            {historyLoading ? (
+              <p className="px-3 py-4 text-muted-foreground">Loading…</p>
+            ) : unpaid.length === 0 ? (
+              <p className="px-3 py-4 text-muted-foreground">No unpaid fees to print.</p>
+            ) : (
+              <ul className="max-h-56 overflow-y-auto divide-y">
+                {unpaid.map((fee) => {
+                  const lines =
+                    fee.feeType === "stationery"
+                      ? [
+                          {
+                            key: "stationery",
+                            name: "Stationery",
+                            amount: Number(fee.amount) || 0,
+                            kind: "charge" as const,
+                          },
+                        ]
+                      : feePreviewLines(fee, history?.student, allCharges, selectedChargeIds);
+                  const feeTotal =
+                    fee.feeType === "stationery"
+                      ? Number(fee.amount) || 0
+                      : feeAmountWithCharges(
+                          fee,
+                          history?.student,
+                          allCharges,
+                          selectedChargeIds
+                        );
+                  return (
+                    <li key={fee._id} className="px-3 py-2">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-medium">{periodLabel(fee)}</span>
+                        <span className="font-semibold tabular-nums">{formatPkr(feeTotal)}</span>
+                      </div>
+                      <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
+                        {lines.map((line) => (
+                          <li key={line.key} className="flex items-baseline justify-between gap-3">
+                            <span
+                              className={
+                                line.kind === "tuition" || line.kind === "admission"
+                                  ? "text-foreground/80"
+                                  : undefined
+                              }
+                            >
+                              {line.name}
+                            </span>
+                            <span className="tabular-nums font-medium text-foreground/90">
+                              {formatPkr(line.amount)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/30">
               <span className="text-muted-foreground">
-                {unpaid.length} unpaid month{unpaid.length === 1 ? "" : "s"}
+                {unpaid.length} unpaid item{unpaid.length === 1 ? "" : "s"}
               </span>
               <span className="font-semibold">{formatPkr(totalPreview)}</span>
             </div>

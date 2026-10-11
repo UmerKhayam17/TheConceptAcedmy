@@ -48,6 +48,11 @@ export const defaultRegisterForm = () => ({
   discountAmount: "",
   monthlyFeeDiscount: "",
   admissionFeeDiscount: "",
+  /** What parent pays for monthly tuition (discount = list − this). */
+  monthlyPayable: "",
+  /** What parent pays for admission (discount = list − this). */
+  admissionPayable: "",
+  defaultChargeIds: [] as string[],
   status: "active" as "active" | "inactive" | "suspended" | "pending_fee",
 });
 
@@ -95,6 +100,15 @@ export function mapStudentToForm(student: AcademyStudent) {
     discountAmount: String(student.discountAmount ?? 0),
     monthlyFeeDiscount: String(student.monthlyFeeDiscount ?? 0),
     admissionFeeDiscount: String(student.admissionFeeDiscount ?? 0),
+    monthlyPayable: String(
+      Math.max(0, (Number(student.monthlyFee) || 0) - (Number(student.monthlyFeeDiscount) || 0)),
+    ),
+    admissionPayable: String(
+      Math.max(0, (Number(student.admissionFee) || 0) - (Number(student.admissionFeeDiscount) || 0)),
+    ),
+    defaultChargeIds: (student.defaultChargeIds || []).map((id) =>
+      typeof id === "object" && id && "_id" in id ? String((id as { _id: string })._id) : String(id),
+    ),
     status: (student.status as "active" | "inactive" | "suspended" | "pending_fee") || "active",
   };
 }
@@ -127,6 +141,7 @@ export function buildStudentPayload(form: ReturnType<typeof defaultRegisterForm>
     isFullPackage: form.isFullPackage,
     monthlyFeeDiscount: Number(form.monthlyFeeDiscount) || 0,
     admissionFeeDiscount: Number(form.admissionFeeDiscount) || 0,
+    defaultChargeIds: form.defaultChargeIds,
     status: form.status,
   };
 }
