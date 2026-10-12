@@ -71,6 +71,15 @@ const assignSection = catchAsync(async (req, res) => {
   res.json({ success: true, data: result.student, credentials: result.credentials });
 });
 
+const changeSection = catchAsync(async (req, res) => {
+  const result = await studentService.changeStudentSection(req.params.id, req.body);
+  rt.studentUpdated(result.student);
+  res.json({ success: true, data: result.student, meta: {
+    previousSectionId: result.previousSectionId,
+    newSectionId: result.newSectionId,
+  } });
+});
+
 const registerDirect = catchAsync(async (req, res) => {
   const result = await studentService.registerDirectStudent(req.body, req.user._id);
   rt.studentActivated(result.student);
@@ -243,6 +252,7 @@ module.exports = {
   activate,
   prepareEnrollmentVoucher,
   assignSection,
+  changeSection,
   update,
   getById,
   getRecord,

@@ -13,7 +13,8 @@ export function TimetableClassCard({
   columnDate: Date;
   onClick?: () => void;
 }) {
-  const theme = subjectTheme(slot.subject._id, slot.subject.name);
+  const subjectName = slot.subject?.name || "Unknown subject";
+  const theme = subjectTheme(slot.subject?._id || "", subjectName);
   const status = scheduleStatusForDate(slot, columnDate);
   const statusLabel =
     status === "completed" ? "Completed" : status === "ongoing" ? "Ongoing" : "Upcoming";
@@ -33,11 +34,11 @@ export function TimetableClassCard({
         theme.card,
         theme.icon,
       )}
-      aria-label={`${slot.subject.name}, ${meta || "class"}, ${statusLabel}`}
+      aria-label={`${subjectName}, ${meta || "class"}, ${statusLabel}`}
     >
       <SubjectIcon className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
       <div className="min-w-0 text-[#334155]">
-        <h3 className="truncate text-[12px] font-extrabold leading-4">{slot.subject.name}</h3>
+        <h3 className="truncate text-[12px] font-extrabold leading-4">{subjectName}</h3>
         <p className="truncate text-[10px] leading-3.5 text-[#94A3B8]">{meta || "—"}</p>
         <span className="mt-1 inline-flex rounded-sm bg-white/80 px-1.5 py-0.5 text-[9px] font-bold text-[#94A3B8]">
           {statusLabel}

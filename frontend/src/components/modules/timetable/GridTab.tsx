@@ -47,7 +47,9 @@ import {
   fetchTimetableVersions,
   moveScheduleSlot,
   publishTimetableVersion,
+  isDeletedSubject,
   scheduleSlotEntries,
+  scheduleSlotTitle,
   upsertScheduleSlot,
   validateTimetableVersion,
   type PeriodSlot,
@@ -91,6 +93,7 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
   const singles: SchoolSubject[] = [];
 
   for (const s of subjects) {
+    if (!s?._id) continue;
     const groupName = s.choiceGroupName?.trim();
     if (s.enrollmentType === "choice" && groupName) {
       const key = groupName.toLowerCase();
@@ -104,7 +107,7 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
   const options: SlotSubjectOption[] = [];
 
   for (const group of byGroup.values()) {
-    const sorted = [...group].sort((a, b) => a.name.localeCompare(b.name));
+    const sorted = [...group].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     if (sorted.length >= 2) {
       const groupName = sorted[0].choiceGroupName!.trim();
       options.push({
@@ -112,7 +115,7 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
         kind: "choice",
         groupName,
         subjectIds: sorted.map((s) => s._id),
-        label: sorted.map((s) => s.name).join(" / "),
+        label: sorted.map((s) => s.name || "Untitled").join(" / "),
       });
     } else {
       singles.push(...sorted);
@@ -124,7 +127,7 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
       key: s._id,
       kind: "single",
       subjectIds: [s._id],
-      label: s.name,
+      label: s.name || "Untitled",
     });
   }
 
@@ -133,7 +136,11 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
 
 function optionKeyForSlot(slot: ScheduleSlot | undefined, options: SlotSubjectOption[]): string {
   if (!slot) return "";
-  const entryIds = scheduleSlotEntries(slot).map((e) => e.subject._id);
+  const entryIds = scheduleSlotEntries(slot)
+    .map((e) => e.subject)
+    .filter((s): s is NonNullable<typeof s> => Boolean(s) && !isDeletedSubject(s))
+    .map((s) => s._id)
+    .filter((id): id is string => Boolean(id));
   if (entryIds.length > 1) {
     const match = options.find(
       (o) =>
@@ -143,8 +150,9 @@ function optionKeyForSlot(slot: ScheduleSlot | undefined, options: SlotSubjectOp
     );
     if (match) return match.key;
   }
-  return options.find((o) => o.kind === "single" && o.subjectIds[0] === slot.subject._id)?.key
-    || slot.subject._id;
+  const subjectId = entryIds[0];
+  if (!subjectId) return "";
+  return options.find((o) => o.kind === "single" && o.subjectIds[0] === subjectId)?.key || subjectId;
 }
 
 export default function GridTab({
@@ -489,9 +497,9 @@ export default function GridTab({
       if (map.has(key)) continue;
       map.set(key, {
         id: key,
-        title: entries.map((e) => e.subject.name).join(" / "),
+        title: scheduleSlotTitle(slot),
         subjectName: entries[0]?.subject?.name || "",
-        teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
+        teachers: entries.map((e) => e.teacher?.name || "—").join(" / ") || "—",
         periodLabel: period?.label || `P${period?.order || ""}`,
         periodOrder: period?.order ?? 999,
         sections: [boardSectionLabel || "Section"],
@@ -508,8 +516,8 @@ export default function GridTab({
         const key = `shared:${slot.combinedGroupId}`;
         const label = classSectionBoardLabel(
           row.class?.name,
-          row.section.name,
-          row.section.label
+          row.section?.name,
+          row.section?.label
         );
         const existing = map.get(key);
         if (existing) {
@@ -521,9 +529,9 @@ export default function GridTab({
         const period = boardPeriods.find((p) => slotMatchesPeriod(slot, p._id));
         map.set(key, {
           id: key,
-          title: entries.map((e) => e.subject.name).join(" / "),
+          title: scheduleSlotTitle(slot),
           subjectName: entries[0]?.subject?.name || "",
-          teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
+          teachers: entries.map((e) => e.teacher?.name || "—").join(" / ") || "—",
           periodLabel: period?.label || `P${period?.order || ""}`,
           periodOrder: period?.order ?? 999,
           sections: [label],
@@ -550,6 +558,7 @@ export default function GridTab({
     }
     for (const slot of grid?.slots || []) {
       for (const e of scheduleSlotEntries(slot)) {
+        if (isDeletedSubject(e.subject)) continue;
         const name = e.subject?.name?.trim();
         if (!name) continue;
         const key = subjectColorKey(name);
@@ -590,8 +599,8 @@ export default function GridTab({
   const defaultTeacherForSubject = (subjectId: string, existing?: ScheduleSlot) => {
     if (existing) {
       const fromExisting = scheduleSlotEntries(existing).find(
-        (e) => e.subject._id === subjectId
-      )?.teacher._id;
+        (e) => e.subject?._id === subjectId && !isDeletedSubject(e.subject)
+      )?.teacher?._id;
       if (fromExisting) return fromExisting;
     }
     return teachersForSubject(subjectId)[0]?._id || "";

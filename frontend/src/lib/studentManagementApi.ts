@@ -819,6 +819,30 @@ export async function assignSectionAfterPayment(id: string, body: AssignSectionB
   return { student: parsed.data!, credentials: parsed.credentials! };
 }
 
+export type ChangeSectionBody = {
+  sectionId: string;
+  selectedSubjects?: string[];
+  isFullPackage?: boolean;
+  notes?: string;
+};
+
+/** Move an active student to another section in the same class. */
+export async function changeStudentSection(id: string, body: ChangeSectionBody) {
+  const res = await authedFetch(`/student-management/students/${id}/change-section`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: AcademyStudent;
+    meta?: { previousSectionId?: string | null; newSectionId?: string };
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Section change failed (${res.status})`);
+  return { student: parsed.data!, meta: parsed.meta };
+}
+
 export type ParentPortalProvisionRow = {
   studentMongoId: string;
   studentId: string;

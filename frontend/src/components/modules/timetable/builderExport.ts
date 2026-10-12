@@ -1,4 +1,4 @@
-import { scheduleSlotEntries, type PeriodSlot, type ScheduleSlot } from "@/lib/timetableApi";
+import { scheduleSlotEntries, scheduleSlotTitle, type PeriodSlot, type ScheduleSlot } from "@/lib/timetableApi";
 import type { Weekday } from "@/lib/configApi";
 import { DAY_FULL_LABELS, slotMatchesPeriod } from "./constants";
 
@@ -16,8 +16,8 @@ function cellFromSlot(slot: ScheduleSlot | undefined): CellPlain | null {
   if (!slot) return null;
   const entries = scheduleSlotEntries(slot);
   return {
-    title: entries.map((e) => e.subject.name).join(" / "),
-    teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
+    title: scheduleSlotTitle(slot),
+    teachers: entries.map((e) => e.teacher?.name || "—").join(" / ") || "—",
     room: slot.room?.code || slot.room?.name || "",
   };
 }

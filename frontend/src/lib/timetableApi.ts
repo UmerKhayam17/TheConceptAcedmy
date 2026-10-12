@@ -107,17 +107,28 @@ export interface TimetableVersion {
   notes?: string;
 }
 
+export interface ScheduleSlotSubject {
+  _id: string;
+  name: string;
+  code: string;
+  choiceGroupName?: string;
+  /** Set by API when the AcademySubject was deleted but the slot still exists. */
+  deleted?: boolean;
+}
+
 export interface ScheduleSlotEntry {
-  subject: { _id: string; name: string; code: string; choiceGroupName?: string };
-  teacher: { _id: string; name: string; email?: string };
+  /** Null when the referenced subject was deleted after the slot was saved. */
+  subject: ScheduleSlotSubject | null;
+  teacher: { _id: string; name: string; email?: string; deleted?: boolean } | null;
 }
 
 export interface ScheduleSlot {
   _id: string;
   day: Weekday;
   periodId: string;
-  subject: { _id: string; name: string; code: string; choiceGroupName?: string };
-  teacher: { _id: string; name: string; email?: string };
+  /** Null when the referenced subject was deleted after the slot was saved. */
+  subject: ScheduleSlotSubject | null;
+  teacher: { _id: string; name: string; email?: string; deleted?: boolean } | null;
   /** Extra concurrent subjects for a choice group (same period, different teachers). */
   parallelEntries?: ScheduleSlotEntry[];
   room?: { _id: string; name: string; code: string } | null;
@@ -127,6 +138,8 @@ export interface ScheduleSlot {
   combinedGroupId?: string | null;
   locked?: boolean;
   source?: string;
+  /** True when primary subject is missing and API returned a placeholder. */
+  subjectMissing?: boolean;
   /** Present on teacher "My schedule" responses. */
   startTime?: string;
   endTime?: string;
@@ -169,11 +182,40 @@ export interface ClassBoard {
   structure?: ClassBoardStructureProgram[];
 }
 
+export function isDeletedSubject(
+  subject: ScheduleSlotSubject | null | undefined
+): boolean {
+  if (!subject) return true;
+  return Boolean(subject.deleted) || subject._id === "deleted" || !String(subject._id || "").trim();
+}
+
+/** Slot entries with a subject object (includes deleted placeholders for display). */
 export function scheduleSlotEntries(slot: ScheduleSlot): ScheduleSlotEntry[] {
   return [
     { subject: slot.subject, teacher: slot.teacher },
     ...(slot.parallelEntries || []),
-  ];
+  ].filter((e): e is ScheduleSlotEntry & { subject: ScheduleSlotSubject } =>
+    Boolean(e?.subject && (e.subject._id || e.subject.name))
+  );
+}
+
+/** Entries that can still be saved / assigned (excludes deleted subjects). */
+export function scheduleSlotActiveEntries(slot: ScheduleSlot): ScheduleSlotEntry[] {
+  return scheduleSlotEntries(slot).filter((e) => !isDeletedSubject(e.subject));
+}
+
+/** Display title for a slot; safe when subjects were deleted. */
+export function scheduleSlotTitle(slot: ScheduleSlot, fallback = "Deleted subject"): string {
+  const names = scheduleSlotEntries(slot)
+    .map((e) => {
+      if (isDeletedSubject(e.subject)) return "Deleted subject";
+      return e.subject?.name?.trim() || "";
+    })
+    .filter(Boolean);
+  if (!names.length) return fallback;
+  // If every entry is deleted, show a single label
+  if (names.every((n) => n === "Deleted subject")) return "Deleted subject";
+  return names.join(" / ");
 }
 
 export interface TimetableGrid {

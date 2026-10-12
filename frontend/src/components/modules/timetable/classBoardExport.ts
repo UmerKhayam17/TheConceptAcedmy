@@ -1,5 +1,5 @@
 import { classSectionBoardLabel } from "@/lib/configApi";
-import { scheduleSlotEntries, type PeriodSlot, type ScheduleSlot } from "@/lib/timetableApi";
+import { scheduleSlotEntries, scheduleSlotTitle, type PeriodSlot, type ScheduleSlot } from "@/lib/timetableApi";
 import { slotMatchesPeriod } from "./constants";
 
 export type ClassBoardExportRow = {
@@ -34,15 +34,15 @@ export type ClassBoardPrintOpts = {
 };
 
 function sectionLabel(row: ClassBoardExportRow): string {
-  return classSectionBoardLabel(row.class?.name, row.section.name, row.section.label);
+  return classSectionBoardLabel(row.class?.name, row.section?.name, row.section?.label);
 }
 
 function slotCell(slot: ScheduleSlot | undefined): CellData | null {
   if (!slot) return null;
   const entries = scheduleSlotEntries(slot);
   return {
-    title: entries.map((e) => e.subject.name).join(" / "),
-    teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
+    title: scheduleSlotTitle(slot),
+    teachers: entries.map((e) => e.teacher?.name || "—").join(" / ") || "—",
     room: slot.room?.code || slot.room?.name || "",
     shared: Boolean(slot.combinedGroupId),
     parallel: entries.length > 1,

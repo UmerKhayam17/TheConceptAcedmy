@@ -193,6 +193,10 @@ async function deleteSubject(id) {
   const doc = await AcademySubject.findById(id);
   if (!doc) throw new ApiError(404, 'Subject not found');
   const classId = doc.classId;
+  // Clear timetable slots that still reference this subject so Class Board / Builder
+  // never receive null populated subjects after delete.
+  const { purgeSubjectFromSchedule } = require('../timetable/scheduleSlotSanitize');
+  await purgeSubjectFromSchedule(doc._id);
   await doc.deleteOne();
   await syncSubjectCount(classId);
   return { deleted: true };

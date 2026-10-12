@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { BookOpen, GraduationCap, Layers, Route, UserPlus, Wallet } from "lucide-react";
+import { ArrowLeftRight, BookOpen, GraduationCap, Layers, Route, UserPlus, Wallet } from "lucide-react";
 import type { Role } from "./auth";
 import { buildSidebarSubmenuGroups } from "./sidebarSubmenu";
 
@@ -10,6 +10,7 @@ export type StudentManagementSection =
   | "disciplines"
   | "fees-structure"
   | "registration"
+  | "change-section"
   | "fees"
   | "fee-defaulters";
 
@@ -25,11 +26,12 @@ export const STUDENT_MANAGEMENT_SECTIONS: {
   { key: "disciplines", label: "Disciplines", icon: Route },
   { key: "fees-structure", label: "Fee structure", icon: Wallet },
   { key: "registration", label: "Register students", icon: UserPlus },
+  { key: "change-section", label: "Change section", icon: ArrowLeftRight },
 ];
 
 export const STUDENT_MANAGEMENT_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(STUDENT_MANAGEMENT_SECTIONS, [
   { label: "1. Structure", keys: ["classes", "sections", "subjects", "disciplines"] },
-  { label: "2. Enrollment", keys: ["registration"] },
+  { label: "2. Enrollment", keys: ["registration", "change-section"] },
   { label: "3. Fees", keys: ["fees-structure"] },
 ]);
 

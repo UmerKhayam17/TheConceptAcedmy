@@ -30,6 +30,7 @@ import {
   UserCog,
   KeyRound,
   Route,
+  ArrowLeftRight,
 } from "lucide-react";
 import type { Role } from "./auth";
 import type { ModuleKey } from "./permissions";
@@ -222,6 +223,16 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => studentManagementHref(role, "registration"),
         isActive: (pathname, role) =>
           pathname.startsWith(`${p(role)}/student-management/registration`),
+      },
+      {
+        id: "change-section",
+        label: "Change Section",
+        icon: ArrowLeftRight,
+        moduleKey: "student-management",
+        requireManage: true,
+        href: (role) => studentManagementHref(role, "change-section"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/student-management/change-section`),
       },
       {
         id: "students",
@@ -791,6 +802,16 @@ export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => studentManagementHref(role, "registration"),
         isActive: (pathname, role) =>
           pathname.startsWith(`${p(role)}/student-management/registration`),
+      },
+      {
+        id: "change-section",
+        label: "Change Section",
+        icon: ArrowLeftRight,
+        moduleKey: "student-management",
+        requireManage: true,
+        href: (role) => studentManagementHref(role, "change-section"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/student-management/change-section`),
       },
       {
         id: "students",

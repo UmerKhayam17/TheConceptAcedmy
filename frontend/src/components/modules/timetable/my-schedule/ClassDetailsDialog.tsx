@@ -27,7 +27,8 @@ export function ClassDetailsDialog({
   attendanceHref: string;
 }) {
   const status = slot && columnDate ? scheduleStatusForDate(slot, columnDate) : "upcoming";
-  const theme = slot ? subjectTheme(slot.subject._id, slot.subject.name) : null;
+  const subjectName = slot?.subject?.name || "Unknown subject";
+  const theme = slot ? subjectTheme(slot.subject?._id || "", subjectName) : null;
   const statusUi = STATUS_STYLE[status];
   const SubjectIcon = theme?.Icon;
   const dateLabel = columnDate
@@ -54,7 +55,7 @@ export function ClassDetailsDialog({
                 <DialogHeader className="mt-1 space-y-0">
                   <DialogTitle className="flex items-center gap-2 text-xl font-bold text-[#0B2347]">
                     <SubjectIcon className={cn("h-5 w-5 shrink-0", theme.icon)} aria-hidden />
-                    {slot.subject.name}
+                    {subjectName}
                   </DialogTitle>
                 </DialogHeader>
                 <span

@@ -2,7 +2,12 @@ import { useRef } from "react";
 import { DoorOpen, GripVertical, Link2, User, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { subjectIcon } from "@/lib/subjectTheme";
-import { scheduleSlotEntries, type ScheduleSlot } from "@/lib/timetableApi";
+import {
+  isDeletedSubject,
+  scheduleSlotEntries,
+  scheduleSlotTitle,
+  type ScheduleSlot,
+} from "@/lib/timetableApi";
 import { subjectColor } from "./constants";
 
 /** Fixed-height lesson cell for Timetable Builder — Class Board visual style. */
@@ -30,13 +35,14 @@ export default function TimetableSlotCard({
   onEdit?: () => void;
 }) {
   const entries = scheduleSlotEntries(slot);
-  const title = entries.map((e) => e.subject.name).join(" / ");
-  const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ");
+  const title = scheduleSlotTitle(slot);
+  const missing = Boolean(slot.subjectMissing) || isDeletedSubject(slot.subject);
+  const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ") || "—";
   const isParallel = entries.length > 1;
   const roomLabel = slot.room?.code || slot.room?.name || "—";
   const didDragRef = useRef(false);
-  const colorId = entries[0]?.subject?._id || slot.subject?._id || "";
-  const PrimaryIcon = subjectIcon(entries[0]?.subject.name || slot.subject?.name);
+  const colorId = missing ? "" : entries[0]?.subject?._id || slot.subject?._id || "";
+  const PrimaryIcon = subjectIcon(missing ? "Deleted subject" : entries[0]?.subject?.name || slot.subject?.name);
 
   return (
     <div
@@ -64,11 +70,14 @@ export default function TimetableSlotCard({
       }}
       className={cn(
         "relative flex h-[72px] w-full min-w-0 flex-col justify-center overflow-hidden rounded-xl border px-2.5 py-1.5 text-left text-xs leading-snug select-none shadow-sm transition-shadow",
-        colorClass || subjectColor(colorId),
+        missing
+          ? "border-dashed border-amber-400/80 bg-amber-50 text-amber-900"
+          : colorClass || subjectColor(colorId),
         draggable && "cursor-grab active:cursor-grabbing hover:shadow-md",
         isDragging && "opacity-40 ring-2 ring-primary/40",
         isDropTarget && "ring-2 ring-primary/50"
       )}
+      title={missing ? "Subject was deleted — edit or clear this lesson" : title}
     >
       {draggable && (
         <span className="absolute left-1 top-1.5 opacity-40" aria-hidden>

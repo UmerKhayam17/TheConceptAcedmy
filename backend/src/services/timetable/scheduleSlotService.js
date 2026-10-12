@@ -4,6 +4,7 @@ const ApiError = require('../../utils/ApiError');
 const { WEEKDAYS } = require('../../models/timetable/constants');
 const { validateSlot } = require('./timetableConflictService');
 const { assertSessionWritable } = require('../session/sessionGuard');
+const { sanitizeSlot, sanitizeSlots } = require('./scheduleSlotSanitize');
 
 /** School week used by “Apply to Full Week”. */
 const FULL_WEEK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
@@ -109,9 +110,10 @@ function resolveTargetDays(body) {
 }
 
 async function listSlots(timetableVersionId) {
-  return ScheduleSlot.find({ timetableVersion: timetableVersionId, cancelled: { $ne: true } })
+  const slots = await ScheduleSlot.find({ timetableVersion: timetableVersionId, cancelled: { $ne: true } })
     .populate(slotPopulate)
     .sort({ day: 1 });
+  return sanitizeSlots(slots);
 }
 
 /**
@@ -252,16 +254,18 @@ async function upsertSlot(timetableVersionId, body, { excludeSlotId, userId } = 
         runValidators: true,
       }).populate(slotPopulate);
       if (!slot) throw new ApiError(404, 'Schedule slot not found');
-      return slot;
+      return sanitizeSlot(slot);
     }
     if (existing && (!multiDay || day === body.day)) {
-      return ScheduleSlot.findByIdAndUpdate(existing._id, payload, {
+      const slot = await ScheduleSlot.findByIdAndUpdate(existing._id, payload, {
         new: true,
         runValidators: true,
       }).populate(slotPopulate);
+      return sanitizeSlot(slot);
     }
     const created = await ScheduleSlot.create({ ...payload, createdBy: userId || undefined });
-    return ScheduleSlot.findById(created._id).populate(slotPopulate).populate('createdBy', 'name email');
+    const slot = await ScheduleSlot.findById(created._id).populate(slotPopulate).populate('createdBy', 'name email');
+    return sanitizeSlot(slot);
   };
 
   if (!multiDay) {
@@ -296,7 +300,8 @@ async function moveSlot(slotId, body) {
   const fromPeriodId = slot.periodId;
 
   if (toDay === fromDay && String(toPeriodId) === String(fromPeriodId)) {
-    return ScheduleSlot.findById(slotId).populate(slotPopulate);
+    const unchanged = await ScheduleSlot.findById(slotId).populate(slotPopulate);
+    return sanitizeSlot(unchanged);
   }
 
   const targetExisting = await ScheduleSlot.findOne({
@@ -434,8 +439,7 @@ async function getTeacherSchedule(sessionId, teacherId, { status = 'published' }
     })
     .sort({ day: 1 });
 
-  const enriched = slots.map((slot) => {
-    const plain = typeof slot.toObject === 'function' ? slot.toObject() : { ...slot };
+  const enriched = sanitizeSlots(slots).map((plain) => {
     const versionId = String(plain.timetableVersion?._id || plain.timetableVersion || '');
     const template = templateById.get(versionTemplateId.get(versionId) || '');
     const period =
@@ -491,7 +495,7 @@ async function getRoomSchedule(sessionId, roomId, { status = 'published' } = {})
     })
     .sort({ day: 1 });
 
-  return slots;
+  return sanitizeSlots(slots);
 }
 
 async function createSubstitution(body, userId) {
@@ -553,7 +557,8 @@ async function createSubstitution(body, userId) {
     source: 'manual',
     createdBy: userId,
   });
-  return ScheduleSlot.findById(slot._id).populate(slotPopulate).populate('createdBy', 'name email');
+  const created = await ScheduleSlot.findById(slot._id).populate(slotPopulate).populate('createdBy', 'name email');
+  return sanitizeSlot(created);
 }
 
 module.exports = {
@@ -567,4 +572,6 @@ module.exports = {
   slotPopulate,
   FULL_WEEK_DAYS,
   resolveTargetDays,
+  sanitizeSlot,
+  sanitizeSlots,
 };

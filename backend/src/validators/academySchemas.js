@@ -273,6 +273,14 @@ const academyAssignSection = Joi.object({
   address: Joi.string().allow('').trim(),
 });
 
+/** Move an active student to another section in the same class. */
+const academyChangeSection = Joi.object({
+  sectionId: objectId.required(),
+  selectedSubjects: Joi.array().items(objectId),
+  isFullPackage: Joi.boolean(),
+  notes: Joi.string().allow('').trim().max(500),
+});
+
 const academyStudentDirectRegister = Joi.object({
   studentName: Joi.string().trim().required(),
   fatherName: Joi.string().trim().required(),
@@ -626,6 +634,7 @@ module.exports = {
   academyStudentActivate,
   academyEnrollmentVoucher,
   academyAssignSection,
+  academyChangeSection,
   academyStudentDirectRegister,
   academyStudentPatch,
   academyFeePay,

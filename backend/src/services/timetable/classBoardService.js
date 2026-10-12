@@ -11,6 +11,7 @@ const { validateSlot } = require('./timetableConflictService');
 const { assertSessionWritable } = require('../session/sessionGuard');
 const { createVersion, publishVersion } = require('./timetableVersionService');
 const { moveSlot, upsertSlot } = require('./scheduleSlotService');
+const { sanitizeSlot, sanitizeSlots, repairOrphanedSlots } = require('./scheduleSlotSanitize');
 const {
   sortClassesByLevel,
   sortSectionsByName,
@@ -188,11 +189,23 @@ async function getClassBoard({ sessionId, classId, day, versionMode = 'draft' })
       let slots = [];
       if (active) {
         // eslint-disable-next-line no-await-in-loop
-        slots = await ScheduleSlot.find({
+        let rawSlots = await ScheduleSlot.find({
           timetableVersion: active._id,
           day,
           cancelled: { $ne: true },
         }).populate(slotPopulate);
+        // Drop / repair slots whose subject was deleted from Student Management
+        // eslint-disable-next-line no-await-in-loop
+        const repair = await repairOrphanedSlots(rawSlots);
+        if (repair.repaired || repair.deleted) {
+          // eslint-disable-next-line no-await-in-loop
+          rawSlots = await ScheduleSlot.find({
+            timetableVersion: active._id,
+            day,
+            cancelled: { $ne: true },
+          }).populate(slotPopulate);
+        }
+        slots = sanitizeSlots(rawSlots);
       }
 
       const className = klass.className || klass.name;
@@ -463,7 +476,7 @@ async function upsertSharedLesson(body, userId) {
         // eslint-disable-next-line no-await-in-loop
         slot = await ScheduleSlot.findById(created._id).populate(slotPopulate);
       }
-      written.push(slot);
+      written.push(sanitizeSlot(slot));
     }
   }
 
@@ -561,10 +574,11 @@ async function moveClassBoardLesson(body, userId) {
   // Same section: reuse section-grid move/swap
   if (fromSectionId === toSection) {
     if (fromPeriodId === toPeriod) {
+      const unchanged = await ScheduleSlot.findById(slotId).populate(slotPopulate);
       return {
         moved: 0,
         shared: false,
-        slots: [await ScheduleSlot.findById(slotId).populate(slotPopulate)],
+        slots: [sanitizeSlot(unchanged)],
       };
     }
     const moved = await moveSlot(slotId, { day, periodId: toPeriod });

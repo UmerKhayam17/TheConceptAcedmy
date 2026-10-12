@@ -21,6 +21,7 @@ import RegisterStudentPage from "@/components/modules/student-management/Registe
 import EnrollmentActivatePage from "@/components/modules/student-management/EnrollmentActivatePage";
 import StudentDetailPage from "@/components/modules/student-management/StudentDetailPage";
 import ClassDetailPage from "@/components/modules/student-management/ClassDetailPage";
+import ChangeSectionTab from "@/components/modules/student-management/ChangeSectionTab";
 
 const StudentManagementModule = ({
   caps,
@@ -109,6 +110,9 @@ const StudentManagementModule = ({
     if (section === "fees-structure") return <FeeStructureTab caps={caps} sessionId={sessionId} />;
     if (section === "registration") {
       return <RegistrationTab caps={caps} routes={registrationRoutes ?? undefined} sessionId={sessionId} enrollmentFlow="intake" />;
+    }
+    if (section === "change-section") {
+      return <ChangeSectionTab caps={caps} sessionId={sessionId} />;
     }
     return null;
   };

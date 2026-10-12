@@ -1,14 +1,21 @@
 import { DoorOpen, Link2, User, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { scheduleSlotEntries, type PeriodSlot, type ScheduleSlot } from "@/lib/timetableApi";
+import {
+  isDeletedSubject,
+  scheduleSlotEntries,
+  scheduleSlotTitle,
+  type PeriodSlot,
+  type ScheduleSlot,
+} from "@/lib/timetableApi";
 import { DAY_FULL_LABELS, DAY_LABELS, slotMatchesPeriod, subjectColor } from "./constants";
 import type { Weekday } from "@/lib/configApi";
 
 /** Read-only lesson cell — matches Class Board LessonCard look. */
 export function AcademyLessonCell({ slot }: { slot: ScheduleSlot }) {
   const entries = scheduleSlotEntries(slot);
-  const title = entries.map((e) => e.subject.name).join(" / ");
-  const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ");
+  const title = scheduleSlotTitle(slot);
+  const missing = Boolean(slot.subjectMissing) || isDeletedSubject(slot.subject);
+  const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ") || "—";
   const isParallel = entries.length > 1;
   const roomLabel = slot.room?.code || slot.room?.name;
 
@@ -16,8 +23,11 @@ export function AcademyLessonCell({ slot }: { slot: ScheduleSlot }) {
     <div
       className={cn(
         "relative rounded-xl border px-2.5 py-2 text-left text-xs leading-snug shadow-sm",
-        subjectColor(slot.subject._id)
+        missing
+          ? "border-dashed border-amber-400/80 bg-amber-50 text-amber-900"
+          : subjectColor(entries[0]?.subject?._id || slot.subject?._id || "")
       )}
+      title={missing ? "Subject was deleted" : title}
     >
       {slot.combinedGroupId && (
         <span

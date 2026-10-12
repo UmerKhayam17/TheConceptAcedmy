@@ -1052,6 +1052,98 @@ async function prepareEnrollmentVoucher(id, payload, userId) {
 /**
  * Pay-first enrollment — step 2: after admission voucher is paid, assign section and activate.
  */
+/**
+ * Move an active student to another section in the same class.
+ * Re-validates subjects against the new section layout, recalculates fees,
+ * and syncs unpaid challans (same rules as updateStudent).
+ */
+async function changeStudentSection(id, payload) {
+  const student = await AcademyStudent.findById(id);
+  if (!student) throw new ApiError(404, 'Student not found');
+  if (student.status !== 'active') {
+    throw new ApiError(
+      400,
+      'Only active students can change section here. Use Assign Section for pending enrollments.'
+    );
+  }
+
+  const sectionId = payload.sectionId;
+  if (!sectionId) throw new ApiError(400, 'Section is required');
+
+  const classId = student.classId;
+  const cls = await AcademyClass.findById(classId);
+  if (!cls) throw new ApiError(404, 'Class not found');
+  if (cls.status !== 'active') throw new ApiError(400, 'Class is not active');
+
+  const section = await AcademySection.findById(sectionId);
+  if (!section) throw new ApiError(404, 'Section not found');
+  if (section.status !== 'active') throw new ApiError(400, 'Section is not active');
+  if (String(section.classId) !== String(classId)) {
+    throw new ApiError(400, "Section must belong to the student's current class");
+  }
+  if (student.sectionId && String(student.sectionId) === String(sectionId)) {
+    throw new ApiError(400, 'Student is already in this section');
+  }
+
+  const isFullPackage =
+    payload.isFullPackage !== undefined ? Boolean(payload.isFullPackage) : Boolean(student.isFullPackage);
+  const disciplineId = await resolveEnrollmentDiscipline(classId, student.disciplineId);
+  const subjectIds = await validateSubjects(
+    classId,
+    sectionId,
+    payload.selectedSubjects || student.selectedSubjects || [],
+    isFullPackage,
+    disciplineId
+  );
+
+  const previousSectionId = student.sectionId ? String(student.sectionId) : null;
+  student.sectionId = sectionId;
+  student.disciplineId = disciplineId || undefined;
+  student.isFullPackage = isFullPackage;
+  student.selectedSubjects = subjectIds;
+
+  const feeStructure = await getByClass(classId);
+  if (!feeStructure) throw new ApiError(400, 'No active fee structure for class');
+  const hasSeparateDiscounts =
+    Number(student.monthlyFeeDiscount) > 0 || Number(student.admissionFeeDiscount) > 0;
+  const discountOptions = hasSeparateDiscounts
+    ? {
+        monthlyFeeDiscount: student.monthlyFeeDiscount,
+        admissionFeeDiscount: student.admissionFeeDiscount,
+      }
+    : { discountAmount: student.discountAmount };
+  const fees = calculateFeesWithDiscount(feeStructure, {
+    selectedSubjectIds: subjectIds,
+    isFullPackage,
+    ...discountOptions,
+  });
+  Object.assign(student, fees);
+  student.feeStructureId = feeStructure._id;
+
+  const note = String(payload.notes || '').trim();
+  if (note) {
+    const stamp = `Section change ${new Date().toISOString().slice(0, 10)}: ${note}`;
+    student.intakeNotes = [String(student.intakeNotes || '').trim(), stamp].filter(Boolean).join('\n');
+  }
+
+  await student.save();
+  await syncUnpaidChallansForStudent(student);
+
+  const populated = await student.populate([
+    { path: 'classId', select: 'className' },
+    { path: 'sectionId', select: 'sectionName' },
+    { path: 'disciplineId', select: 'name code' },
+    { path: 'selectedSubjects', select: 'subjectName subjectCode' },
+    { path: 'createdBy', select: 'name email' },
+  ]);
+
+  return {
+    student: populated,
+    previousSectionId,
+    newSectionId: String(sectionId),
+  };
+}
+
 async function assignSectionAfterPayment(id, payload, userId) {
   const student = await AcademyStudent.findById(id);
   if (!student) throw new ApiError(404, 'Student not found');
@@ -1327,6 +1419,7 @@ module.exports = {
   activateStudent,
   prepareEnrollmentVoucher,
   assignSectionAfterPayment,
+  changeStudentSection,
   updateStudent,
   getStudent,
   listStudents,

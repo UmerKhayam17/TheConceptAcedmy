@@ -63,8 +63,8 @@ export default function MyScheduleTab({ sessionId }: { sessionId: string }) {
   const subjectOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of slots) {
-      if (!s.subject?._id) continue;
-      map.set(s.subject._id, s.subject.name);
+      if (!s.subject?._id || s.subject.deleted || s.subject._id === "deleted") continue;
+      map.set(s.subject._id, s.subject.name || "Untitled");
     }
     return [...map.entries()]
       .map(([value, label]) => ({ value, label }))

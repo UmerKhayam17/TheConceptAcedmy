@@ -51,7 +51,9 @@ import {
   fetchTeacherProfiles,
   moveClassBoardLesson,
   publishClassDrafts,
+  isDeletedSubject,
   scheduleSlotEntries,
+  scheduleSlotTitle,
   upsertSharedLesson,
   type ClassBoardVersionMode,
   type PeriodSlot,
@@ -85,6 +87,7 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
   const singles: SchoolSubject[] = [];
 
   for (const s of subjects) {
+    if (!s?._id) continue;
     const groupName = s.choiceGroupName?.trim();
     if (s.enrollmentType === "choice" && groupName) {
       const key = groupName.toLowerCase();
@@ -97,7 +100,7 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
 
   const options: SlotSubjectOption[] = [];
   for (const group of byGroup.values()) {
-    const sorted = [...group].sort((a, b) => a.name.localeCompare(b.name));
+    const sorted = [...group].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     if (sorted.length >= 2) {
       const groupName = sorted[0].choiceGroupName!.trim();
       options.push({
@@ -105,7 +108,7 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
         kind: "choice",
         groupName,
         subjectIds: sorted.map((s) => s._id),
-        label: sorted.map((s) => s.name).join(" / "),
+        label: sorted.map((s) => s.name || "Untitled").join(" / "),
       });
     } else {
       singles.push(...sorted);
@@ -116,7 +119,7 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
       key: s._id,
       kind: "single",
       subjectIds: [s._id],
-      label: s.name,
+      label: s.name || "Untitled",
     });
   }
   return options.sort((a, b) => a.label.localeCompare(b.label));
@@ -124,7 +127,11 @@ function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[]
 
 function optionKeyForSlot(slot: ScheduleSlot | undefined, options: SlotSubjectOption[]): string {
   if (!slot) return "";
-  const entryIds = scheduleSlotEntries(slot).map((e) => e.subject._id);
+  const entryIds = scheduleSlotEntries(slot)
+    .map((e) => e.subject)
+    .filter((s): s is NonNullable<typeof s> => Boolean(s) && !isDeletedSubject(s))
+    .map((s) => s._id)
+    .filter((id): id is string => Boolean(id));
   if (entryIds.length > 1) {
     const match = options.find(
       (o) =>
@@ -134,10 +141,9 @@ function optionKeyForSlot(slot: ScheduleSlot | undefined, options: SlotSubjectOp
     );
     if (match) return match.key;
   }
-  return (
-    options.find((o) => o.kind === "single" && o.subjectIds[0] === slot.subject._id)?.key ||
-    slot.subject._id
-  );
+  const subjectId = entryIds[0];
+  if (!subjectId) return "";
+  return options.find((o) => o.kind === "single" && o.subjectIds[0] === subjectId)?.key || subjectId;
 }
 
 function LessonCard({
@@ -162,13 +168,16 @@ function LessonCard({
   onEdit: () => void;
 }) {
   const entries = scheduleSlotEntries(slot);
-  const title = entries.map((e) => e.subject.name).join(" / ");
-  const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ");
+  const title = scheduleSlotTitle(slot);
+  const missing = Boolean(slot.subjectMissing) || isDeletedSubject(slot.subject);
+  const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ") || "—";
   const isParallel = entries.length > 1;
   const roomLabel = slot.room?.code || slot.room?.name || "—";
   const didDragRef = useRef(false);
-  const colorId = entries[0]?.subject?._id || slot.subject?._id || "";
-  const PrimaryIcon = subjectIcon(entries[0]?.subject.name || slot.subject?.name);
+  const colorId = missing ? "" : entries[0]?.subject?._id || slot.subject?._id || "";
+  const PrimaryIcon = subjectIcon(
+    missing ? "Deleted subject" : entries[0]?.subject?.name || slot.subject?.name
+  );
 
   return (
     <div
@@ -193,11 +202,14 @@ function LessonCard({
       }}
       className={cn(
         "relative flex h-[72px] w-full min-w-0 flex-col justify-center overflow-hidden rounded-xl border px-2.5 py-1.5 text-left text-xs leading-snug select-none shadow-sm transition-shadow",
-        colorClass || subjectColor(colorId),
+        missing
+          ? "border-dashed border-amber-400/80 bg-amber-50 text-amber-900"
+          : colorClass || subjectColor(colorId),
         draggable && "cursor-grab active:cursor-grabbing hover:shadow-md",
         isDragging && "opacity-40 ring-2 ring-primary/40",
         isDropTarget && "ring-2 ring-primary/50"
       )}
+      title={missing ? "Subject was deleted — edit or clear this lesson" : title}
     >
       {draggable && (
         <span className="absolute left-1 top-1.5 opacity-40" aria-hidden>
@@ -342,8 +354,8 @@ export default function ClassBoardTab({
   const sectionRows = useMemo(() => {
     const rows = board?.sections || [];
     return [...rows].sort((a, b) => {
-      const la = classSectionBoardLabel(a.class?.name, a.section.name, a.section.label);
-      const lb = classSectionBoardLabel(b.class?.name, b.section.name, b.section.label);
+      const la = classSectionBoardLabel(a.class?.name, a.section?.name, a.section?.label);
+      const lb = classSectionBoardLabel(b.class?.name, b.section?.name, b.section?.label);
       return compareClassLevels(la, lb);
     });
   }, [board?.sections]);
@@ -375,8 +387,8 @@ export default function ClassBoardTab({
         const period = lecturePeriods.find((p) => slotMatchesPeriod(slot, p._id));
         const sectionLabel = classSectionBoardLabel(
           row.class?.name,
-          row.section.name,
-          row.section.label
+          row.section?.name,
+          row.section?.label
         );
         const shared = Boolean(slot.combinedGroupId);
         const key = shared ? `shared:${slot.combinedGroupId}` : `slot:${slot._id}`;
@@ -386,9 +398,9 @@ export default function ClassBoardTab({
         } else {
           map.set(key, {
             id: key,
-            title: entries.map((e) => e.subject.name).join(" / "),
+            title: scheduleSlotTitle(slot),
             subjectName: entries[0]?.subject?.name || "",
-            teachers: entries.map((e) => e.teacher?.name || "—").join(" / "),
+            teachers: entries.map((e) => e.teacher?.name || "—").join(" / ") || "—",
             periodLabel: period?.label || `P${period?.order || ""}`,
             periodOrder: period?.order ?? 999,
             sections: [sectionLabel],
@@ -428,6 +440,7 @@ export default function ClassBoardTab({
     for (const row of sectionRows) {
       for (const slot of row.slots) {
         for (const e of scheduleSlotEntries(slot)) {
+          if (isDeletedSubject(e.subject)) continue;
           const name = e.subject?.name?.trim();
           if (!name) continue;
           const key = subjectColorKey(name);
@@ -487,7 +500,9 @@ export default function ClassBoardTab({
     const teachersBySubject: Record<string, string> = {};
     if (existing) {
       for (const e of scheduleSlotEntries(existing)) {
-        teachersBySubject[e.subject._id] = e.teacher._id;
+        if (e.subject?._id && e.teacher?._id && !isDeletedSubject(e.subject)) {
+          teachersBySubject[e.subject._id] = e.teacher._id;
+        }
       }
     }
 
@@ -973,11 +988,11 @@ export default function ClassBoardTab({
                         const rowClassId = row.class?._id || classId;
                         const rowLabel = classSectionBoardLabel(
                           row.class?.name,
-                          row.section.name,
-                          row.section.label
+                          row.section?.name,
+                          row.section?.label
                         );
                         return (
-                          <tr key={row.section._id} className="align-top">
+                          <tr key={row.section?._id || rowLabel} className="align-top">
                             <td className="w-[120px] border-b bg-primary/5 px-3 py-3 font-semibold overflow-hidden">
                               <div className="truncate" title={rowLabel}>{rowLabel}</div>
                               {row.version && (
@@ -1362,21 +1377,23 @@ export default function ClassBoardTab({
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   {dialogSectionRows.map((row) => {
-                    const checked = form.sectionIds.includes(row.section._id);
+                    const checked = form.sectionIds.includes(row.section?._id);
                     const label = classSectionBoardLabel(
                       row.class?.name,
-                      row.section.name,
-                      row.section.label
+                      row.section?.name,
+                      row.section?.label
                     );
                     return (
-                      <label key={row.section._id} className="flex items-center gap-2 text-sm">
+                      <label key={row.section?._id || label} className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={checked}
                           onCheckedChange={(v) => {
+                            const sectionId = row.section?._id;
+                            if (!sectionId) return;
                             setForm((f) => {
                               const next = new Set(f.sectionIds);
-                              if (v) next.add(row.section._id);
-                              else next.delete(row.section._id);
+                              if (v) next.add(sectionId);
+                              else next.delete(sectionId);
                               if (!next.size) next.add(dialog.sectionId);
                               return { ...f, sectionIds: [...next] };
                             });

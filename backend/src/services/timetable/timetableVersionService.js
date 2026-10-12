@@ -6,6 +6,7 @@ const ApiError = require('../../utils/ApiError');
 const { validateVersion } = require('./timetableConflictService');
 const { assertSessionWritable } = require('../session/sessionGuard');
 const { logAudit } = require('../session/auditService');
+const { sanitizeSlots, repairOrphanedSlots } = require('./scheduleSlotSanitize');
 
 function academyClassTransform(doc) {
   if (!doc) return doc;
@@ -126,7 +127,7 @@ async function duplicateVersion(id, userId) {
 
 async function getVersionGrid(id) {
   const version = await getVersion(id);
-  const slots = await ScheduleSlot.find({ timetableVersion: id, cancelled: { $ne: true } })
+  const rawSlots = await ScheduleSlot.find({ timetableVersion: id, cancelled: { $ne: true } })
     .populate({
       path: 'subject',
       select: 'subjectName subjectCode enrollmentType choiceGroupName',
@@ -141,6 +142,25 @@ async function getVersionGrid(id) {
     .populate('parallelEntries.teacher', 'name email')
     .populate('room', 'name code type');
 
+  const repair = await repairOrphanedSlots(rawSlots);
+  let slots = rawSlots;
+  if (repair.repaired || repair.deleted) {
+    slots = await ScheduleSlot.find({ timetableVersion: id, cancelled: { $ne: true } })
+      .populate({
+        path: 'subject',
+        select: 'subjectName subjectCode enrollmentType choiceGroupName',
+        transform: academySubjectTransform,
+      })
+      .populate('teacher', 'name email')
+      .populate({
+        path: 'parallelEntries.subject',
+        select: 'subjectName subjectCode enrollmentType choiceGroupName',
+        transform: academySubjectTransform,
+      })
+      .populate('parallelEntries.teacher', 'name email')
+      .populate('room', 'name code type');
+  }
+
   const session = await Session.findById(version.session._id || version.session);
   const template = version.periodTemplate;
 
@@ -148,7 +168,7 @@ async function getVersionGrid(id) {
     version,
     workingDays: session?.workingDays?.length ? session.workingDays : ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'],
     periods: template?.slots || [],
-    slots,
+    slots: sanitizeSlots(slots),
   };
 }
 

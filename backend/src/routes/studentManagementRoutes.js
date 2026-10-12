@@ -402,6 +402,12 @@ router.post(
   studentCtrl.assignSection
 );
 router.post(
+  '/students/:id/change-section',
+  requirePermission('manage_academy_students'),
+  validate(schemas.academyChangeSection),
+  studentCtrl.changeSection
+);
+router.post(
   '/students/:id/photo',
   requirePermission('manage_academy_students'),
   uploadImage.single('photo'),
