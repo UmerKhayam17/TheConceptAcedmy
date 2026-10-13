@@ -6,6 +6,14 @@ const academySalaryRecordSchema = new mongoose.Schema(
     month: { type: Number, required: true, min: 1, max: 12 },
     year: { type: Number, required: true },
     amount: { type: Number, required: true, min: 0 },
+    /** Snapshot of staff pay type when voucher was generated. */
+    payType: {
+      type: String,
+      enum: ['fixed', 'percentage'],
+      default: 'fixed',
+    },
+    /** Snapshot of percentage rate (for percentage payType). */
+    salaryPercentage: { type: Number, min: 0, max: 100, default: 0 },
     status: {
       type: String,
       enum: ['pending', 'paid', 'cancelled'],

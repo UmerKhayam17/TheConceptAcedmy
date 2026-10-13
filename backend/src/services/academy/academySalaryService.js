@@ -9,6 +9,17 @@ function voucherNumber(userDoc, month, year) {
   return `SAL-${code}-${year}${String(month).padStart(2, '0')}`;
 }
 
+function staffPayType(member) {
+  return member.payType === 'percentage' ? 'percentage' : 'fixed';
+}
+
+function staffHasPayroll(member) {
+  if (staffPayType(member) === 'percentage') {
+    return Number(member.salaryPercentage || 0) > 0;
+  }
+  return Number(member.salary || 0) > 0;
+}
+
 async function staffRoleIds() {
   const roles = await Role.find({ name: { $in: ['teacher', 'accountant'] } }).select('_id');
   return roles.map((r) => r._id);
@@ -75,7 +86,7 @@ async function listSalaryRecords({
       AcademySalaryRecord.find(q)
         .populate({
           path: 'staffId',
-          select: 'name email phone salary profileImage',
+          select: 'name email phone salary payType salaryPercentage profileImage',
           populate: { path: 'role', select: 'name' },
         })
         .sort({ year: -1, month: -1, createdAt: -1 })
@@ -111,11 +122,25 @@ async function generateMonthlySalaries({ month, year, roleName }, userId) {
   let skipped = 0;
 
   for (const member of staff) {
-    const amount = member.salary || 0;
-    if (amount <= 0) {
+    if (!staffHasPayroll(member)) {
       skipped += 1;
       continue;
     }
+
+    const payType = staffPayType(member);
+    const pct = Number(member.salaryPercentage || 0);
+    // Fixed: use monthly salary. Percentage: start at 0 — set amount before/when paying.
+    const amount = payType === 'fixed' ? Number(member.salary || 0) : 0;
+    const notes =
+      payType === 'percentage'
+        ? `Percentage pay (${pct}%). Enter calculated amount before marking paid.`
+        : undefined;
+
+    if (payType === 'fixed' && amount <= 0) {
+      skipped += 1;
+      continue;
+    }
+
     const exists = await AcademySalaryRecord.findOne({
       staffId: member._id,
       month,
@@ -130,9 +155,12 @@ async function generateMonthlySalaries({ month, year, roleName }, userId) {
       month,
       year,
       amount,
+      payType,
+      salaryPercentage: payType === 'percentage' ? pct : 0,
       status: 'pending',
       dueDate,
       voucherNumber: voucherNumber(member, month, year),
+      notes,
       createdBy: userId,
       recordedBy: userId,
     });
@@ -142,7 +170,7 @@ async function generateMonthlySalaries({ month, year, roleName }, userId) {
   return { created, skipped };
 }
 
-async function recordSalaryPayment(id, { paymentMethod, notes }, userId) {
+async function recordSalaryPayment(id, { paymentMethod, notes, amount }, userId) {
   const record = await AcademySalaryRecord.findById(id).populate({
     path: 'staffId',
     select: 'name',
@@ -151,16 +179,48 @@ async function recordSalaryPayment(id, { paymentMethod, notes }, userId) {
   if (record.status === 'paid') throw new ApiError(400, 'Salary already paid');
   if (record.status === 'cancelled') throw new ApiError(400, 'Salary record cancelled');
 
+  if (amount !== undefined && amount !== null && amount !== '') {
+    const n = Number(amount);
+    if (Number.isNaN(n) || n < 0) throw new ApiError(400, 'Invalid salary amount');
+    record.amount = n;
+  }
+
+  if (record.payType === 'percentage' && !(record.amount > 0)) {
+    throw new ApiError(400, 'Enter the calculated percentage amount before marking paid');
+  }
+  if (!(record.amount > 0)) {
+    throw new ApiError(400, 'Salary amount must be greater than zero');
+  }
+
   record.status = 'paid';
   record.paidAt = new Date();
   record.paymentMethod = paymentMethod || 'bank_transfer';
-  record.notes = notes || '';
+  if (notes !== undefined) record.notes = notes || '';
   record.recordedBy = userId;
   if (!record.voucherNumber && record.staffId) {
     record.voucherNumber = voucherNumber(record.staffId, record.month, record.year);
   }
   await record.save();
   return record;
+}
+
+/** Update pending voucher amount (mainly for percentage staff). */
+async function updateSalaryAmount(id, amount, userId) {
+  const record = await AcademySalaryRecord.findById(id);
+  if (!record) throw new ApiError(404, 'Salary record not found');
+  if (record.status !== 'pending') {
+    throw new ApiError(400, 'Only pending salary vouchers can be edited');
+  }
+  const n = Number(amount);
+  if (Number.isNaN(n) || n < 0) throw new ApiError(400, 'Invalid salary amount');
+  record.amount = n;
+  record.recordedBy = userId;
+  await record.save();
+  return record.populate({
+    path: 'staffId',
+    select: 'name email phone salary payType salaryPercentage profileImage',
+    populate: { path: 'role', select: 'name' },
+  });
 }
 
 async function getSalarySummary({ month, year, roleName, staffId }) {
@@ -178,7 +238,11 @@ async function getSalarySummary({ month, year, roleName, staffId }) {
   });
 
   const roleIds = await staffRoleIds();
-  const userQ = { isActive: true, role: { $in: roleIds }, salary: { $gt: 0 } };
+  const userQ = {
+    isActive: true,
+    role: { $in: roleIds },
+    $or: [{ salary: { $gt: 0 } }, { payType: 'percentage', salaryPercentage: { $gt: 0 } }],
+  };
   if (roleName) {
     const role = await Role.findOne({ name: roleName });
     if (role) userQ.role = role._id;
@@ -198,5 +262,6 @@ module.exports = {
   listSalaryRecords,
   generateMonthlySalaries,
   recordSalaryPayment,
+  updateSalaryAmount,
   getSalarySummary,
 };

@@ -37,7 +37,10 @@ export interface StaffUser {
   email: string;
   phone: string;
   isActive: boolean;
+  /** fixed = monthly salary; percentage = share of fees (rate in salaryPercentage). */
+  payType?: "fixed" | "percentage";
   salary?: number;
+  salaryPercentage?: number;
   profileImage?: string;
   modulePermissions?: Record<string, string[]>;
   role?: RoleOption | string;
@@ -192,7 +195,9 @@ export async function createStaffUser(payload: {
   phone: string;
   role: string;
   isActive?: boolean;
+  payType?: "fixed" | "percentage";
   salary?: number;
+  salaryPercentage?: number;
   modulePermissions?: Record<string, string[]>;
 }): Promise<StaffUser> {
   const res = await authedFetch("/users", {
@@ -213,7 +218,9 @@ export async function updateStaffUser(
     phone: string;
     role: string;
     isActive: boolean;
+    payType: "fixed" | "percentage";
     salary: number;
+    salaryPercentage: number;
     password: string;
     modulePermissions: Record<string, string[]>;
   }>,

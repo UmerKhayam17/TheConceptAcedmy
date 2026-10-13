@@ -15,8 +15,20 @@ const userSchema = new mongoose.Schema(
       default: new Map(),
     },
     isActive: { type: Boolean, default: true },
-    /** Monthly / contractual salary for staff (teacher, accountant); PKR */
+    /**
+     * Staff payroll type:
+     * - fixed → monthly PKR in `salary`
+     * - percentage → share of fees; rate in `salaryPercentage` (amount set each month)
+     */
+    payType: {
+      type: String,
+      enum: ['fixed', 'percentage'],
+      default: 'fixed',
+    },
+    /** Monthly / contractual salary for fixed-pay staff (PKR). */
     salary: { type: Number, default: 0, min: 0 },
+    /** Pay rate for percentage staff (0–100). */
+    salaryPercentage: { type: Number, default: 0, min: 0, max: 100 },
     profileImage: { type: String },
     /** Linked face ID in AIAttendance (`STF-…`). */
     aiEmployeeId: { type: String, trim: true, index: true },

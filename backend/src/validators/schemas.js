@@ -30,7 +30,9 @@ const createUser = Joi.object({
   modulePermissions: Joi.object().pattern(Joi.string(), Joi.array().items(Joi.string())).optional(),
   isActive: Joi.boolean().optional(),
   profileImage: Joi.string().max(2048).allow('').optional(),
+  payType: Joi.string().valid('fixed', 'percentage').optional(),
   salary: Joi.number().min(0).optional(),
+  salaryPercentage: Joi.number().min(0).max(100).optional(),
 });
 
 const updateUser = Joi.object({
@@ -42,7 +44,9 @@ const updateUser = Joi.object({
   fcmToken: Joi.string().allow('', null),
   password: Joi.string().min(8),
   profileImage: Joi.string().max(2048).allow(''),
+  payType: Joi.string().valid('fixed', 'percentage'),
   salary: Joi.number().min(0),
+  salaryPercentage: Joi.number().min(0).max(100),
   modulePermissions: Joi.object().pattern(Joi.string(), Joi.array().items(Joi.string())),
 }).min(1);
 

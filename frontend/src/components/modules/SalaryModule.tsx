@@ -3,11 +3,7 @@ import AcademySalaryManagement from "@/components/modules/student-management/Aca
 
 /** Panel Teacher salary — live staff payroll from the API */
 const SalaryModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleActionCaps }) => {
-  return (
-    <div className="px-4 sm:px-6 lg:px-8 py-4">
-      <AcademySalaryManagement caps={caps} />
-    </div>
-  );
+  return <AcademySalaryManagement caps={caps} />;
 };
 
 export default SalaryModule;

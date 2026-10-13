@@ -1602,11 +1602,16 @@ export interface AcademySalaryRecord {
     email?: string;
     phone?: string;
     salary?: number;
+    payType?: "fixed" | "percentage";
+    salaryPercentage?: number;
+    profileImage?: string;
     role?: { name: string };
   } | string;
   month: number;
   year: number;
   amount: number;
+  payType?: "fixed" | "percentage";
+  salaryPercentage?: number;
   status: "pending" | "paid" | "cancelled";
   dueDate?: string;
   paidAt?: string;
@@ -1678,8 +1683,17 @@ export const generateMonthlySalaries = (body: {
     body: JSON.stringify(body),
   });
 
-export const payAcademySalary = (id: string, body?: { paymentMethod?: string; notes?: string }) =>
+export const payAcademySalary = (
+  id: string,
+  body?: { paymentMethod?: string; notes?: string; amount?: number }
+) =>
   api<AcademySalaryRecord>(`/salaries/${id}/pay`, { method: "PATCH", body: JSON.stringify(body || {}) });
+
+export const updateAcademySalaryAmount = (id: string, amount: number) =>
+  api<AcademySalaryRecord>(`/salaries/${id}/amount`, {
+    method: "PATCH",
+    body: JSON.stringify({ amount }),
+  });
 
 // Academy expenses
 export type ExpenseCategory =

@@ -174,9 +174,15 @@ function formatTableCell(user: StaffUser, key: UserFieldKey): React.ReactNode {
       </span>
     );
   }
+  if (key === "payType") {
+    return user.payType === "percentage" ? "Percentage" : "Fixed";
+  }
   if (key === "salary") {
     const n = Number(user.salary ?? 0);
     return `₨ ${n.toLocaleString()}`;
+  }
+  if (key === "salaryPercentage") {
+    return `${Number(user.salaryPercentage ?? 0)}%`;
   }
   const v = user[key as keyof StaffUser];
   if (v === undefined || v === null) return "—";
@@ -393,7 +399,9 @@ const UsersModule = ({
           phone: parentCreate.phone.trim() || "N/A",
           role: form.role,
           isActive: true,
+          payType: "fixed",
           salary: 0,
+          salaryPercentage: 0,
           modulePermissions: mods,
         });
         await assignParentStudents(u._id, [parentCreate.studentId]);
@@ -411,7 +419,9 @@ const UsersModule = ({
       for (const f of fields) {
         const v = (form[f.key] || "").trim();
         if (f.key === "password" && mode === "edit" && f.optionalOnEdit) continue;
-        if (f.required && !v && f.key !== "salary") throw new Error(`${f.label} is required.`);
+        if (f.required && !v && f.key !== "salary" && f.key !== "salaryPercentage") {
+          throw new Error(`${f.label} is required.`);
+        }
         if (f.key === "password" && mode === "create" && (!v || v.length < 8)) {
           throw new Error("Password must be at least 8 characters.");
         }
@@ -421,7 +431,15 @@ const UsersModule = ({
         if (f.key === "role" && !form.role) throw new Error("Select a role.");
       }
 
+      const payType = form.payType === "percentage" ? "percentage" : "fixed";
       const salaryNum = Math.max(0, Number(form.salary) || 0);
+      const pctNum = Math.min(100, Math.max(0, Number(form.salaryPercentage) || 0));
+      if (payType === "percentage" && pctNum <= 0) {
+        throw new Error("Enter a salary percentage greater than 0.");
+      }
+      if (payType === "fixed" && salaryNum < 0) {
+        throw new Error("Salary cannot be negative.");
+      }
       const permsPayload = { ...modulePerms };
       if (isParentRole && parentStudentIds.length === 0) {
         throw new Error("Select at least one student for this parent.");
@@ -436,7 +454,9 @@ const UsersModule = ({
           phone: form.phone.trim(),
           role: form.role,
           isActive: form.isActive === "true",
-          salary: salaryNum,
+          payType,
+          salary: payType === "fixed" ? salaryNum : 0,
+          salaryPercentage: payType === "percentage" ? pctNum : 0,
           modulePermissions: permsPayload,
         });
         if (photoFile) await uploadStaffProfilePhoto(u._id, photoFile);
@@ -449,7 +469,9 @@ const UsersModule = ({
         phone: form.phone.trim(),
         role: form.role,
         isActive: form.isActive === "true",
-        salary: salaryNum,
+        payType,
+        salary: payType === "fixed" ? salaryNum : 0,
+        salaryPercentage: payType === "percentage" ? pctNum : 0,
         modulePermissions: permsPayload,
       };
       if (form.password.trim()) payload.password = form.password;
@@ -687,12 +709,28 @@ const UsersModule = ({
                   ) : (
                     <>
                       {visibleFormFields(mode)
-                        .filter((field) => field.key !== "role")
+                        .filter((field) => {
+                          if (field.key === "role") return false;
+                          if (
+                            isParentRole &&
+                            (field.key === "payType" ||
+                              field.key === "salary" ||
+                              field.key === "salaryPercentage")
+                          ) {
+                            return false;
+                          }
+                          if (field.key === "salary" && form.payType === "percentage") return false;
+                          if (field.key === "salaryPercentage" && form.payType !== "percentage") return false;
+                          return true;
+                        })
                         .map((field) => (
                           <div key={field.key} className={field.colSpan === 2 ? "col-span-2" : "col-span-2 sm:col-span-1"}>
                             <Label className="mb-1.5 block">
                               {field.label}
                               {field.required && !(mode === "edit" && field.key === "password" && field.optionalOnEdit) ? (
+                                <span className="text-destructive"> *</span>
+                              ) : null}
+                              {field.key === "salaryPercentage" ? (
                                 <span className="text-destructive"> *</span>
                               ) : null}
                             </Label>
@@ -703,6 +741,12 @@ const UsersModule = ({
                               onChange={(v) => setFormField(setForm, field.key, v)}
                               roleOptions={roleOptions}
                             />
+                            {field.key === "payType" ? (
+                              <p className="text-[11px] text-muted-foreground mt-1">
+                                Fixed uses a monthly amount. Percentage staff get a voucher each month; enter the
+                                calculated PKR amount when paying.
+                              </p>
+                            ) : null}
                           </div>
                         ))}
 

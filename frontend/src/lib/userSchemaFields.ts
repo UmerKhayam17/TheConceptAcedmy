@@ -3,7 +3,16 @@
  * Profile photos are uploaded as files (`POST /users/:id/profile-photo`), not URL fields.
  */
 
-export type UserFieldKey = "name" | "email" | "password" | "phone" | "role" | "isActive" | "salary";
+export type UserFieldKey =
+  | "name"
+  | "email"
+  | "password"
+  | "phone"
+  | "role"
+  | "isActive"
+  | "payType"
+  | "salary"
+  | "salaryPercentage";
 
 export type UserFieldType = "text" | "email" | "password" | "tel" | "select" | "number";
 
@@ -96,14 +105,37 @@ export const USER_SCHEMA_FIELDS: UserSchemaField[] = [
     ],
   },
   {
+    key: "payType",
+    label: "Pay type",
+    inputType: "select",
+    modes: ["create", "edit"],
+    required: true,
+    colSpan: 1,
+    showInTable: true,
+    options: [
+      { value: "fixed", label: "Fixed salary" },
+      { value: "percentage", label: "Percentage" },
+    ],
+  },
+  {
     key: "salary",
-    label: "Salary (PKR)",
+    label: "Monthly salary (PKR)",
     inputType: "number",
     modes: ["create", "edit"],
     required: false,
-    colSpan: 2,
+    colSpan: 1,
     showInTable: false,
     placeholder: "0",
+  },
+  {
+    key: "salaryPercentage",
+    label: "Salary percentage (%)",
+    inputType: "number",
+    modes: ["create", "edit"],
+    required: false,
+    colSpan: 1,
+    showInTable: false,
+    placeholder: "e.g. 40",
   },
 ];
 
@@ -125,7 +157,9 @@ export function emptyUserForm(): UserFormValues {
     phone: "",
     role: "",
     isActive: "true",
+    payType: "fixed",
     salary: "0",
+    salaryPercentage: "0",
   };
 }
 
@@ -134,7 +168,9 @@ export function userToFormValues(u: {
   email?: string;
   phone?: string;
   isActive?: boolean;
+  payType?: "fixed" | "percentage" | string;
   salary?: number;
+  salaryPercentage?: number;
   role?: { _id?: string; name?: string } | string;
 }): UserFormValues {
   const roleId = typeof u.role === "object" && u.role?._id ? String(u.role._id) : "";
@@ -145,6 +181,8 @@ export function userToFormValues(u: {
     phone: u.phone ?? "",
     role: roleId,
     isActive: u.isActive === false ? "false" : "true",
+    payType: u.payType === "percentage" ? "percentage" : "fixed",
     salary: String(u.salary ?? 0),
+    salaryPercentage: String(u.salaryPercentage ?? 0),
   };
 }

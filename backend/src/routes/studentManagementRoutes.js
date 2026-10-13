@@ -543,6 +543,12 @@ router.post(
   salaryCtrl.generate
 );
 router.patch(
+  '/salaries/:id/amount',
+  requirePermission('manage_academy_salaries'),
+  validate(schemas.academySalaryAmount),
+  salaryCtrl.updateAmount
+);
+router.patch(
   '/salaries/:id/pay',
   requirePermission('manage_academy_salaries'),
   validate(schemas.academySalaryPay),

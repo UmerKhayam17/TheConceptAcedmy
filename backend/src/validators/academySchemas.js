@@ -426,6 +426,12 @@ const feePaidExportQuery = Joi.object({
 const academySalaryPay = Joi.object({
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').optional(),
   notes: Joi.string().allow('').trim(),
+  /** Required for percentage vouchers that still have amount 0. */
+  amount: Joi.number().min(0).optional(),
+});
+
+const academySalaryAmount = Joi.object({
+  amount: Joi.number().min(0).required(),
 });
 
 const academySalaryGenerate = Joi.object({
@@ -647,6 +653,7 @@ module.exports = {
   feeDefaultersQuery,
   feePaidExportQuery,
   academySalaryPay,
+  academySalaryAmount,
   academySalaryGenerate,
   academyExpenseBody,
   academyExpensePatch,

@@ -181,11 +181,21 @@ const createUser = catchAsync(async (req, res) => {
     isActive,
     profileImage,
     salary,
+    payType,
+    salaryPercentage,
   } = req.body;
   const exists = await User.findOne({ email });
   if (exists) throw new ApiError(409, 'Email already in use');
   const hash = await bcrypt.hash(password, 12);
   let userModulePerms = modulePermissionsToMap(modulePermissions);
+
+  const resolvedPayType = payType === 'percentage' ? 'percentage' : 'fixed';
+  const resolvedSalary =
+    typeof salary === 'number' && !Number.isNaN(salary) ? Math.max(0, salary) : 0;
+  const resolvedPct =
+    typeof salaryPercentage === 'number' && !Number.isNaN(salaryPercentage)
+      ? Math.min(100, Math.max(0, salaryPercentage))
+      : 0;
 
   const Role = require('../models/Role');
   const roleDoc = await Role.findById(role);
@@ -247,7 +257,9 @@ const createUser = catchAsync(async (req, res) => {
     permissions: permissionIds || roleDoc?.permissions || [],
     modulePermissions: userModulePerms,
     isActive: typeof isActive === 'boolean' ? isActive : true,
-    salary: typeof salary === 'number' && !Number.isNaN(salary) ? Math.max(0, salary) : 0,
+    payType: resolvedPayType,
+    salary: resolvedPayType === 'fixed' ? resolvedSalary : 0,
+    salaryPercentage: resolvedPayType === 'percentage' ? resolvedPct : 0,
     ...(profileImage ? { profileImage } : {}),
     createdBy: req.user._id,
   });
@@ -272,6 +284,8 @@ const updateUser = catchAsync(async (req, res) => {
     password,
     profileImage,
     salary,
+    payType,
+    salaryPercentage,
     modulePermissions,
   } = req.body;
 
@@ -299,7 +313,22 @@ const updateUser = catchAsync(async (req, res) => {
   }
   if (fcmToken !== undefined) user.fcmToken = fcmToken;
   if (profileImage !== undefined) user.profileImage = profileImage;
-  if (typeof salary === 'number' && !Number.isNaN(salary)) user.salary = Math.max(0, salary);
+  if (payType === 'fixed' || payType === 'percentage') {
+    user.payType = payType;
+  }
+  if (typeof salary === 'number' && !Number.isNaN(salary)) {
+    user.salary = Math.max(0, salary);
+  }
+  if (typeof salaryPercentage === 'number' && !Number.isNaN(salaryPercentage)) {
+    user.salaryPercentage = Math.min(100, Math.max(0, salaryPercentage));
+  }
+  // Keep fields consistent with the active pay type.
+  if (user.payType === 'percentage') {
+    user.salary = 0;
+  } else {
+    user.payType = 'fixed';
+    user.salaryPercentage = 0;
+  }
   if (password) {
     user.password = await bcrypt.hash(password, 12);
   }

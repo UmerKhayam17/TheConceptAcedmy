@@ -327,7 +327,15 @@ export default function StaffDetailPage({ staffId }: { staffId: string }) {
               {staff.phone ? ` · ${staff.phone}` : ""}
             </p>
             <p className="text-xs mt-1">
-              Monthly salary <span className="font-semibold text-primary">{formatPkr(staff.salary)}</span>
+              {staff.payType === "percentage" ? (
+                <>
+                  Pay type <span className="font-semibold text-primary">Percentage ({Number(staff.salaryPercentage ?? 0)}%)</span>
+                </>
+              ) : (
+                <>
+                  Monthly salary <span className="font-semibold text-primary">{formatPkr(staff.salary)}</span>
+                </>
+              )}
               {" · "}
               {staff.isActive ? "Active" : "Inactive"}
             </p>
