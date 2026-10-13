@@ -666,7 +666,7 @@ export default function RegistrationTab({
       <Card className="overflow-hidden shadow-sm border-border/80">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-sky-50/80 border-b">
+            <thead className="bg-muted/40 border-b">
               <tr>
                 <th className="w-10 p-3 text-center">
                   <SquareCheckbox
@@ -730,7 +730,7 @@ export default function RegistrationTab({
                     key={s._id}
                     className={cn(
                       "border-b last:border-0 hover:bg-muted/20",
-                      isSelected && "bg-sky-50/40",
+                      isSelected && "bg-muted/50",
                     )}
                   >
                     <td className="w-10 p-3 text-center">
