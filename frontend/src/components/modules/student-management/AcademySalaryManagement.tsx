@@ -538,17 +538,6 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             <option value="paid">Paid</option>
           </select>
 
-          {canGenerate && (
-            <Button
-              className="gap-2 h-10 shrink-0"
-              disabled={genMut.isPending}
-              onClick={() => genMut.mutate()}
-            >
-              <CalendarPlus className="h-4 w-4" />
-              {genMut.isPending ? "Generating…" : "Generate monthly salaries"}
-            </Button>
-          )}
-
           <div className="relative min-w-[12rem] flex-1 max-w-md">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -559,43 +548,41 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             />
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-1.5 h-10 shrink-0 ml-auto" disabled={exporting}>
-                <Download className="h-4 w-4" />
-                {exporting ? "Exporting…" : "Export"}
-                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+          <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+            {canGenerate && (
+              <Button
+                className="gap-2 h-10 shrink-0"
+                disabled={genMut.isPending}
+                onClick={() => genMut.mutate()}
+              >
+                <CalendarPlus className="h-4 w-4" />
+                {genMut.isPending ? "Generating…" : "Generate monthly salaries"}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem className="gap-2" onClick={() => void handleExport("csv")}>
-                <FileSpreadsheet className="h-4 w-4" />
-                Excel / CSV (.csv)
-              </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2" onClick={() => void handleExport("txt")}>
-                <FileText className="h-4 w-4" />
-                Text report (.txt)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-1.5 h-10 shrink-0" disabled={exporting}>
+                  <Download className="h-4 w-4" />
+                  {exporting ? "Exporting…" : "Export"}
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("csv")}>
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Excel / CSV (.csv)
+                </DropdownMenuItem>
+                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("txt")}>
+                  <FileText className="h-4 w-4" />
+                  Text report (.txt)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </Card>
 
       <Card className="overflow-hidden shadow-sm border-border/80">
-        <div className="flex items-center gap-2.5 px-4 py-3 border-b bg-white">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#dbeafe] text-[#2563eb]">
-            <Users className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[#1a2b4b]">Staff Salary Records</h2>
-            <p className="text-xs text-muted-foreground">
-              {pagination && pagination.total > 0
-                ? `Showing ${showingFrom} to ${showingTo} of ${pagination.total} staff`
-                : "No records for this period"}
-            </p>
-          </div>
-        </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 border-b">
