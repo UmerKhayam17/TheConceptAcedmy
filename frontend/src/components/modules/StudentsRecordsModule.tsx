@@ -73,7 +73,8 @@ const StudentsRecordsModule = ({
         caps={caps}
         routes={routes ?? undefined}
         sessionId={sessionId}
-        showHeading={false}
+        heading="Students"
+        showHeading
         enrollmentFlow="both"
         emptyHint="No students on record yet."
       />
