@@ -12,7 +12,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
-  Copy,
   FileDown,
   FileSpreadsheet,
   LayoutGrid,
@@ -39,7 +38,6 @@ import {
 import {
   createTimetableVersion,
   deleteScheduleSlot,
-  duplicateTimetableVersion,
   fetchClassBoard,
   fetchPeriodTemplates,
   fetchTeacherProfiles,
@@ -296,7 +294,10 @@ export default function GridTab({
     onSuccess: (v) => {
       setVersionId(v._id);
       qc.invalidateQueries({ queryKey: ["timetable-versions", sessionId, sectionId] });
-      toast({ title: "Draft timetable created" });
+      toast({
+        title: v.status === "published" ? "Opened published timetable" : "Timetable ready",
+        description: "One timetable per section — edit this sheet, then publish.",
+      });
     },
     onError: (e: Error) => {
       autoDraftForSectionRef.current = null;
@@ -304,10 +305,10 @@ export default function GridTab({
     },
   });
 
-  // Auto-create a draft so the builder grid is ready by default.
+  // Auto-open/create the single timetable for this section (no multi-version).
   useEffect(() => {
     if (!sectionId || !versionsFetched || !caps.canCreate) return;
-    if (versions.length > 0) return;
+    if (versions.some((v) => v.status === "draft" || v.status === "published")) return;
     if (!templates.length) return;
     if (createVersionMut.isPending) return;
     if (autoDraftForSectionRef.current === sectionId) return;
@@ -316,7 +317,7 @@ export default function GridTab({
   }, [
     sectionId,
     versionsFetched,
-    versions.length,
+    versions,
     templates.length,
     caps.canCreate,
     createVersionMut.isPending,
@@ -419,15 +420,6 @@ export default function GridTab({
       });
     },
     onError: (e: Error) => toast({ title: "Cannot publish", description: e.message, variant: "destructive" }),
-  });
-
-  const duplicateMut = useMutation({
-    mutationFn: () => duplicateTimetableVersion(activeVersionId),
-    onSuccess: (v) => {
-      setVersionId(v._id);
-      qc.invalidateQueries({ queryKey: ["timetable-versions", sessionId, sectionId] });
-      toast({ title: "Draft duplicated" });
-    },
   });
 
   const workingDays = normalizeWorkingDays(grid?.workingDays);
@@ -771,8 +763,8 @@ export default function GridTab({
               Timetable Builder
             </h2>
             <p className="text-sm text-muted-foreground max-w-2xl">
-              Plan and manage the timetable by selecting class, section and version. Click on any
-              cell to add or edit a lesson.
+              Plan and manage one timetable per section. Edit the same sheet, then publish when ready.
+              Click any cell to add or edit a lesson.
             </p>
           </div>
         </div>
@@ -784,7 +776,7 @@ export default function GridTab({
               onClick={() => createVersionMut.mutate()}
               disabled={createVersionMut.isPending}
             >
-              <Plus className="h-3.5 w-3.5" /> New draft
+              <Plus className="h-3.5 w-3.5" /> Create timetable
             </Button>
           )}
           {activeVersionId && canManageGrid && (
@@ -808,9 +800,6 @@ export default function GridTab({
               )}
               <Button size="sm" variant="outline" className="gap-1.5" onClick={() => validateMut.mutate()}>
                 <AlertCircle className="h-3.5 w-3.5" /> Validate
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => duplicateMut.mutate()}>
-                <Copy className="h-3.5 w-3.5" /> Duplicate
               </Button>
               {canPublishVersion && grid && (
                 <Button
@@ -876,29 +865,10 @@ export default function GridTab({
                 ))}
               </select>
             </div>
-            {sectionId && versions.length > 0 && (
-              <div className="min-w-[180px]">
-                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Version</Label>
-                <select
-                  className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
-                  value={activeVersionId}
-                  onChange={(e) => {
-                    setVersionId(e.target.value);
-                    setEditingLive(false);
-                  }}
-                >
-                  {versions.map((v) => (
-                    <option key={v._id} value={v._id}>
-                      v{v.version} · {v.status}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
             {activeVersionId && (
               <Badge variant={grid?.version.status === "published" ? "default" : "secondary"}>
                 {classLabel ? classDisplayName(classLabel) : "—"} · {sectionLabel?.name || "—"}
-                {grid ? ` · v${grid.version.version}` : ""}
+                {grid?.version.status === "published" ? " · Published" : " · Draft"}
               </Badge>
             )}
             {sectionId && (

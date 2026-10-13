@@ -25,6 +25,7 @@ const timetableVersionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/** At most one published timetable per section. */
 timetableVersionSchema.index(
   { session: 1, section: 1, status: 1 },
   {
@@ -32,5 +33,7 @@ timetableVersionSchema.index(
     partialFilterExpression: { status: 'published' },
   }
 );
+/** Draft uniqueness is enforced in createVersion + consolidateSectionDrafts (not a DB index,
+ *  so existing multi-draft rows can be merged without blocking app startup). */
 
 module.exports = mongoose.model('TimetableVersion', timetableVersionSchema);

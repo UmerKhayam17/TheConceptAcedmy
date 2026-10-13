@@ -50,14 +50,14 @@ async function resolvePeriodTemplate(sessionId) {
   return { template, settings: settings || null };
 }
 
-/** Always use/create a draft — never write auto slots onto published. Prefer newest draft. */
+/**
+ * One timetable per section: merge legacy multi-drafts, then reuse/create a single draft.
+ * Never spawn parallel draft versions (v2/v3).
+ */
 async function ensureDraftVersion({ sessionId, classId, sectionId, periodTemplateId, userId }) {
-  const existingDraft = await TimetableVersion.findOne({
-    session: sessionId,
-    section: sectionId,
-    status: 'draft',
-  }).sort({ version: -1, updatedAt: -1 });
-  if (existingDraft) return existingDraft;
+  const { consolidateSectionDrafts } = require('./classBoardService');
+  const consolidated = await consolidateSectionDrafts(sessionId, sectionId);
+  if (consolidated) return consolidated;
 
   if (!periodTemplateId) {
     throw new ApiError(400, 'Create an academy time configuration before generating timetables');

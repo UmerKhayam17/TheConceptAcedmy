@@ -40,6 +40,7 @@ async function listVersions({ sessionId, sectionId, classId, status }) {
   if (sectionId) q.section = sectionId;
   if (classId) q.class = classId;
   if (status) q.status = status;
+  else q.status = { $in: ['draft', 'published'] }; // hide archived history from UI
   return TimetableVersion.find(q).populate(versionPopulate).sort({ version: -1, createdAt: -1 });
 }
 
@@ -57,8 +58,49 @@ async function getPublishedVersion(sessionId, sectionId) {
   }).populate(versionPopulate);
 }
 
+/**
+ * One timetable per section: reuse the existing draft (never create v2/v3 drafts).
+ * If only a published timetable exists, return that for in-place edits.
+ */
 async function createVersion(body, userId) {
   await assertSessionWritable(body.session);
+
+  // Heal any legacy multi-draft rows before deciding
+  try {
+    const { consolidateSectionDrafts } = require('./classBoardService');
+    await consolidateSectionDrafts(body.session, body.section);
+  } catch (_) {
+    /* consolidate is best-effort */
+  }
+
+  const existingDraft = await TimetableVersion.findOne({
+    session: body.session,
+    section: body.section,
+    status: 'draft',
+  })
+    .sort({ version: -1, updatedAt: -1 })
+    .populate(versionPopulate);
+  if (existingDraft) {
+    if (body.periodTemplate && String(existingDraft.periodTemplate?._id || existingDraft.periodTemplate) !== String(body.periodTemplate)) {
+      existingDraft.periodTemplate = body.periodTemplate;
+      await existingDraft.save();
+      return TimetableVersion.findById(existingDraft._id).populate(versionPopulate);
+    }
+    return existingDraft;
+  }
+
+  const published = await TimetableVersion.findOne({
+    session: body.session,
+    section: body.section,
+    status: 'published',
+  })
+    .sort({ version: -1, updatedAt: -1 })
+    .populate(versionPopulate);
+  if (published) {
+    // Do not spawn a second "version" — edit the live published sheet
+    return published;
+  }
+
   const last = await TimetableVersion.findOne({
     session: body.session,
     section: body.section,
@@ -75,54 +117,12 @@ async function createVersion(body, userId) {
   return TimetableVersion.findById(version._id).populate(versionPopulate);
 }
 
-async function duplicateVersion(id, userId) {
-  const source = await TimetableVersion.findById(id);
-  if (!source) throw new ApiError(404, 'Timetable version not found');
-
-  const last = await TimetableVersion.findOne({
-    session: source.session,
-    section: source.section,
-  })
-    .sort({ version: -1 })
-    .select('version');
-
-  const newVersion = await TimetableVersion.create({
-    session: source.session,
-    class: source.class,
-    section: source.section,
-    periodTemplate: source.periodTemplate,
-    version: (last?.version || 0) + 1,
-    status: 'draft',
-    effectiveFrom: source.effectiveFrom,
-    notes: `Duplicated from v${source.version}`,
-    createdBy: userId,
-  });
-
-  const slots = await ScheduleSlot.find({ timetableVersion: source._id });
-  if (slots.length) {
-    await ScheduleSlot.insertMany(
-      slots.map((s) => ({
-        timetableVersion: newVersion._id,
-        session: s.session,
-        class: s.class,
-        section: s.section,
-        day: s.day,
-        periodId: s.periodId,
-        subject: s.subject,
-        teacher: s.teacher,
-        parallelEntries: (s.parallelEntries || []).map((e) => ({
-          subject: e.subject,
-          teacher: e.teacher,
-        })),
-        room: s.room,
-        combinedGroupId: s.combinedGroupId || null,
-        source: s.source,
-        locked: s.locked,
-      }))
-    );
-  }
-
-  return TimetableVersion.findById(newVersion._id).populate(versionPopulate);
+/** Disabled: multiple drafts caused Class Board / shared-lesson conflicts. */
+async function duplicateVersion(_id, _userId) {
+  throw new ApiError(
+    400,
+    'Duplicate versions are disabled. Keep one timetable per section — edit and publish the same sheet.'
+  );
 }
 
 async function getVersionGrid(id) {

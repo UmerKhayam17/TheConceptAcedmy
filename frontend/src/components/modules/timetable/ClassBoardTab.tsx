@@ -799,8 +799,8 @@ export default function ClassBoardTab({
           <div>
             <h2 className="font-display text-xl font-semibold tracking-tight">Class Board</h2>
             <p className="text-sm text-muted-foreground max-w-xl">
-              Display only — shows ScheduleSlots from section timetables. Use Auto Generate to
-              create drafts for all classes at once.
+              One timetable per section — edit here, then publish. Use Auto Generate to fill
+              all classes at once.
             </p>
           </div>
         </div>
