@@ -27,8 +27,8 @@ function CaptureIconButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground",
-        "transition-colors hover:bg-muted hover:text-foreground",
+        "inline-flex h-8 w-8 items-center justify-center rounded-md text-[#2563eb]",
+        "transition-colors hover:bg-[#eff6ff] hover:text-[#1d4ed8]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
         "disabled:pointer-events-none disabled:opacity-40",
       )}
