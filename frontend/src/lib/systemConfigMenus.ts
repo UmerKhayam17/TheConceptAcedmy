@@ -6,7 +6,6 @@ import {
   DoorOpen,
   GraduationCap,
   History,
-  Layers,
   Link2,
   SlidersHorizontal,
   UserCircle,
@@ -14,6 +13,7 @@ import {
 import type { Role } from "./auth";
 import { buildSidebarSubmenuGroups } from "./sidebarSubmenu";
 
+/** Legacy `sections` kept only so old /system-config/sections URLs type-check; UI redirects to Student Management. */
 export type SystemConfigSection =
   | "academic"
   | "test-catalog"
@@ -36,7 +36,6 @@ export const SYSTEM_CONFIG_SECTIONS: {
     { key: "history", label: "Session History", icon: History },
     { key: "test-catalog", label: "Test Catalog", icon: ClipboardList },
     { key: "exam-catalog", label: "Exam Catalog", icon: Award },
-    { key: "sections", label: "Timetable Sections", icon: Layers },
     { key: "periods", label: "Academy Time Configuration", icon: Clock },
     { key: "rooms", label: "Rooms", icon: DoorOpen },
     { key: "teachers", label: "Teachers", icon: UserCircle },
@@ -48,7 +47,7 @@ export const SYSTEM_CONFIG_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(SYSTEM_CON
   { label: "Academic year", keys: ["academic", "history", "test-catalog", "exam-catalog"] },
   {
     label: "Timetable setup",
-    keys: ["rooms", "periods", "sections", "timetable-rules"],
+    keys: ["rooms", "periods", "timetable-rules"],
   },
   {
     label: "Teachers",

@@ -1,5 +1,6 @@
 const ApiError = require('../utils/ApiError');
 const { hasModulePermission } = require('../modules');
+const { isSystemAdmin } = require('../utils/systemAdmin');
 
 /**
  * Legacy Permission.name → module RBAC.
@@ -77,7 +78,7 @@ function roleNameOf(user) {
 
 function requirePermission(...permissionNames) {
   return (req, res, next) => {
-    if (roleNameOf(req.user) === 'admin') return next();
+    if (isSystemAdmin(req.user)) return next();
 
     const allowed = permissionNames.some((p) => hasLegacyOrModulePermission(req.user, p));
     if (!allowed) {
@@ -96,7 +97,7 @@ function requireAnyPermission(...permissionNames) {
  */
 function requireFeeReadAccess() {
   return (req, res, next) => {
-    if (roleNameOf(req.user) === 'admin') return next();
+    if (isSystemAdmin(req.user)) return next();
     if (String(roleNameOf(req.user) || '').toLowerCase() === 'parent') return next();
     const allowed = ['view_academy_fee_reports', 'manage_academy_fees'].some((p) =>
       hasLegacyOrModulePermission(req.user, p)
@@ -115,7 +116,7 @@ function requireFeeReadAccess() {
  */
 function requireModulePermission(moduleName, action) {
   return (req, res, next) => {
-    if (roleNameOf(req.user) === 'admin') return next();
+    if (isSystemAdmin(req.user)) return next();
 
     const actions = Array.isArray(action) ? action : [action];
     const hasPermission = actions.some((a) => hasModulePermission(req.user, moduleName, a));
@@ -132,7 +133,7 @@ function requireModulePermission(moduleName, action) {
 /** Face enrollment photos: staff managers or AI Attendance operators — not general view_attendance. */
 function requireFaceImageAccess() {
   return (req, res, next) => {
-    if (roleNameOf(req.user) === 'admin') return next();
+    if (isSystemAdmin(req.user)) return next();
     if (hasLegacyOrModulePermission(req.user, 'manage_users')) return next();
     if (hasLegacyOrModulePermission(req.user, 'manage_academy_students')) return next();
     if (['view', 'create', 'edit'].some((a) => hasModulePermission(req.user, 'aiAttendance', a))) {

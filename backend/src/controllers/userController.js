@@ -7,6 +7,7 @@ const User = require('../models/User');
 const AcademyStudent = require('../models/academy/AcademyStudent');
 const { MODULES } = require('../modules');
 const { getSystemModulesForApi } = require('../config/systemModules');
+const { isSystemAdmin, seedAdminEmail } = require('../utils/systemAdmin');
 const rt = require('../services/realtime/academyRealtime');
 
 function notifyStaff(req, action = 'updated', userId) {
@@ -194,6 +195,7 @@ const createUser = catchAsync(async (req, res) => {
   }
 
   // New teachers / accountants / parents inherit role defaults when none provided.
+  // Secondary admins keep the request matrix (or empty) — they never inherit full admin-role access.
   if (
     (roleName === 'teacher' || roleName === 'accountant' || roleName === 'parent') &&
     (!userModulePerms || userModulePerms.size === 0)
@@ -225,6 +227,15 @@ const createUser = catchAsync(async (req, res) => {
               })
             );
     }
+  }
+
+  if (roleName === 'admin') {
+    const newEmail = String(email || '').toLowerCase().trim();
+    if (newEmail === seedAdminEmail()) {
+      throw new ApiError(400, 'Cannot create another account with the system admin email.');
+    }
+    // Ensure Map exists so secondary admins always use dynamic permissions (not role full-access).
+    if (!userModulePerms) userModulePerms = new Map();
   }
 
   const user = await User.create({
@@ -264,18 +275,40 @@ const updateUser = catchAsync(async (req, res) => {
     modulePermissions,
   } = req.body;
 
+  const targetIsSystemAdmin = isSystemAdmin(user);
+
   if (name !== undefined) user.name = name;
-  if (email !== undefined) user.email = email;
+  if (email !== undefined) {
+    if (targetIsSystemAdmin && String(email).toLowerCase().trim() !== seedAdminEmail()) {
+      throw new ApiError(400, 'Cannot change the system admin email.');
+    }
+    user.email = email;
+  }
   if (phone !== undefined) user.phone = phone;
-  if (role !== undefined) user.role = role;
-  if (typeof isActive === 'boolean') user.isActive = isActive;
+  if (role !== undefined) {
+    if (targetIsSystemAdmin) {
+      throw new ApiError(400, 'Cannot change the system admin role.');
+    }
+    user.role = role;
+  }
+  if (typeof isActive === 'boolean') {
+    if (targetIsSystemAdmin && isActive === false) {
+      throw new ApiError(400, 'Cannot deactivate the system admin account.');
+    }
+    user.isActive = isActive;
+  }
   if (fcmToken !== undefined) user.fcmToken = fcmToken;
   if (profileImage !== undefined) user.profileImage = profileImage;
   if (typeof salary === 'number' && !Number.isNaN(salary)) user.salary = Math.max(0, salary);
   if (password) {
     user.password = await bcrypt.hash(password, 12);
   }
-  if (modulePermissions !== undefined && typeof modulePermissions === 'object') {
+  // System admin access is always full at runtime — ignore matrix edits that could confuse operators.
+  if (
+    !targetIsSystemAdmin &&
+    modulePermissions !== undefined &&
+    typeof modulePermissions === 'object'
+  ) {
     user.modulePermissions = modulePermissionsToMap(modulePermissions);
   }
 
@@ -331,6 +364,9 @@ const patchModulePermissions = catchAsync(async (req, res) => {
 
   const user = await User.findById(req.params.id);
   if (!user) throw new ApiError(404, 'User not found');
+  if (isSystemAdmin(user)) {
+    throw new ApiError(400, 'System admin permissions cannot be changed.');
+  }
 
   const validActions = actions.filter((a) => MODULES[moduleName].actions.includes(a));
 
@@ -358,6 +394,9 @@ const revokeModulePermissions = catchAsync(async (req, res) => {
 
   const user = await User.findById(req.params.id);
   if (!user) throw new ApiError(404, 'User not found');
+  if (isSystemAdmin(user)) {
+    throw new ApiError(400, 'System admin permissions cannot be changed.');
+  }
 
   const modulePerms = user.modulePermissions || new Map();
   modulePerms.delete(moduleName);
@@ -378,6 +417,10 @@ const deleteUser = catchAsync(async (req, res) => {
 
   const user = await User.findById(targetId).populate('role');
   if (!user) throw new ApiError(404, 'User not found');
+
+  if (isSystemAdmin(user)) {
+    throw new ApiError(400, 'Cannot delete the system admin account.');
+  }
 
   const roleName = String(user.role?.name || '').toLowerCase();
   if (roleName === 'admin') {

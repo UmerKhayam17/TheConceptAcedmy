@@ -9,6 +9,8 @@ export interface SessionUser {
   role: Role;
   profileImage?: string | null;
   modulePermissions?: Record<string, string[]>;
+  /** Bootstrap admin (SEED_ADMIN_EMAIL) — full access; other admins use modulePermissions. */
+  isSystemAdmin?: boolean;
 }
 
 const USER_KEY = "tces_user";
@@ -190,6 +192,7 @@ async function fetchMe(accessToken: string): Promise<SessionUser | null> {
       role,
       profileImage: (d as SessionUser).profileImage || null,
       modulePermissions: d.modulePermissions,
+      isSystemAdmin: Boolean((d as SessionUser).isSystemAdmin),
     };
   } catch {
     return null;
@@ -363,6 +366,7 @@ export async function loginWithPassword(email: string, password: string): Promis
         role?: string;
         profileImage?: string | null;
         modulePermissions?: Record<string, string[]>;
+        isSystemAdmin?: boolean;
       };
     };
   }>(res);
@@ -380,6 +384,7 @@ export async function loginWithPassword(email: string, password: string): Promis
     role,
     profileImage: u.profileImage || null,
     modulePermissions: u.modulePermissions,
+    isSystemAdmin: Boolean(u.isSystemAdmin),
   };
   setAccessToken(accessToken);
   scheduleProactiveRefresh(accessToken);

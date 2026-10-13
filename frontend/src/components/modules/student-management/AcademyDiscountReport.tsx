@@ -9,6 +9,7 @@ import {
   type DiscountReportRow,
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
 import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 
@@ -67,25 +68,17 @@ export default function AcademyDiscountReport() {
           className="max-w-md flex-1"
         />
         <div className="space-y-1 min-w-[180px]">
-          <Label htmlFor="discount-class-filter" className="text-xs">
-            Class
-          </Label>
-          <select
+          <ClassProgramSelect
             id="discount-class-filter"
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="w-full"
             value={classId}
-            onChange={(e) => {
-              setClassId(e.target.value);
+            onChange={(v) => {
+              setClassId(v);
               setPage(1);
             }}
-          >
-            <option value="">All classes</option>
-            {classes.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.className}
-              </option>
-            ))}
-          </select>
+            classes={classes}
+            allowAll
+          />
         </div>
       </div>
 

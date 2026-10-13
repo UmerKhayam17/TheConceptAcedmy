@@ -16,14 +16,16 @@ export const usePermissions = () => {
     const roles = Object.keys(DEFAULT_PERMISSIONS) as Role[];
     const out = {} as Record<Role, Record<ModuleKey, PermLevel>>;
     for (const role of roles) {
+      const isCurrent = role === user?.role;
       out[role] = applyBackendModulePermissions(
         DEFAULT_PERMISSIONS[role],
-        role === user?.role ? user?.modulePermissions : undefined,
+        isCurrent ? user?.modulePermissions : undefined,
         role,
+        isCurrent ? Boolean(user?.isSystemAdmin) : false,
       );
     }
     return out;
-  }, [user?.role, user?.modulePermissions]);
+  }, [user?.role, user?.modulePermissions, user?.isSystemAdmin]);
 
   const get = (role: Role, mod: ModuleKey): PermLevel => perms[role]?.[mod] ?? "none";
 

@@ -178,13 +178,6 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => systemConfigHref(role, "periods"),
       },
       {
-        id: "timetable-sections",
-        label: "Timetable Sections",
-        icon: Layers,
-        moduleKey: "system-config",
-        href: (role) => systemConfigHref(role, "sections"),
-      },
-      {
         id: "timetable-rules",
         label: "Timetable Rules",
         icon: SlidersHorizontal,
@@ -225,16 +218,6 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
           pathname.startsWith(`${p(role)}/student-management/registration`),
       },
       {
-        id: "change-section",
-        label: "Change Section",
-        icon: ArrowLeftRight,
-        moduleKey: "student-management",
-        requireManage: true,
-        href: (role) => studentManagementHref(role, "change-section"),
-        isActive: (pathname, role) =>
-          pathname.startsWith(`${p(role)}/student-management/change-section`),
-      },
-      {
         id: "students",
         label: "Students",
         icon: GraduationCap,
@@ -258,6 +241,16 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: ScanFace,
         moduleKey: "ai-attendance",
         href: (role) => moduleHref(role, "ai-attendance"),
+      },
+      {
+        id: "change-section",
+        label: "Change Section",
+        icon: ArrowLeftRight,
+        moduleKey: "student-management",
+        requireManage: true,
+        href: (role) => studentManagementHref(role, "change-section"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/student-management/change-section`),
       },
       {
         id: "student-timetable",

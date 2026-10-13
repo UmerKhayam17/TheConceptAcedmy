@@ -7,9 +7,10 @@ import {
   isSessionMongoId,
   type SystemConfigSection,
 } from "@/lib/systemConfigMenus";
+import { studentManagementHref } from "@/lib/studentManagementMenus";
+import { useAuth } from "@/hooks/useAuth";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import AcademicSetupTab from "@/components/modules/timetable/AcademicSetupTab";
-import SectionsTab from "@/components/modules/timetable/SectionsTab";
 import PeriodsTab from "@/components/modules/timetable/PeriodsTab";
 import RoomsTab from "@/components/modules/timetable/RoomsTab";
 import TeacherProfilesTab from "@/components/modules/timetable/TeacherProfilesTab";
@@ -29,6 +30,8 @@ const SystemConfigModule = ({
   section?: string;
   action?: string;
 }) => {
+  const { user } = useAuth();
+  const role = user?.role ?? "admin";
   const isDetailView = sectionParam === "academic" && action && isSessionMongoId(action);
   const { sessionId, setSessionId, headerSearch, setHeaderSearch } = usePanelSession();
   const { isAll, writable } = useSessionScope(sessionId);
@@ -38,6 +41,11 @@ const SystemConfigModule = ({
       setSessionId(action);
     }
   }, [isDetailView, action, sessionId, setSessionId]);
+
+  /** Sections CRUD lives under Student Management — keep one canonical home. */
+  if (sectionParam === "sections") {
+    return <Navigate to={studentManagementHref(role, "sections")} replace />;
+  }
 
   if (sectionParam === "assessments") {
     return <Navigate to="../test-catalog" replace />;
@@ -87,7 +95,6 @@ const SystemConfigModule = ({
           {section === "exam-catalog" && (
             <AssessmentsConfigTab sessionId={sessionId} caps={editCaps} category="exam" />
           )}
-          {section === "sections" && <SectionsTab sessionId={sessionId} caps={editCaps} />}
           {section === "periods" && <PeriodsTab sessionId={sessionId} caps={editCaps} />}
           {section === "rooms" && <RoomsTab sessionId={sessionId} caps={editCaps} />}
           {section === "teachers" && <TeacherProfilesTab sessionId={sessionId} caps={editCaps} />}

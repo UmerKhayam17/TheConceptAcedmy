@@ -20,6 +20,7 @@ import {
   type AcademyFeeStructure,
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { sessionLabelFromAcademyClass } from "./studentDisplayUtils";
@@ -258,20 +259,14 @@ export default function FeeStructureTab({ caps, sessionId }: { caps: ModuleActio
           </DialogHeader>
           <div className="space-y-4 py-2">
             {!isEdit && (
-              <div>
-                <Label htmlFor="fee-modal-class">Class</Label>
-                <select
-                  id="fee-modal-class"
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm mt-1"
-                  value={modalForm.classId}
-                  onChange={(e) => setModalForm((f) => ({ ...f, classId: e.target.value }))}
-                >
-                  <option value="">Select class…</option>
-                  {classes.map((c: AcademyClass) => (
-                    <option key={c._id} value={c._id}>{c.className}</option>
-                  ))}
-                </select>
-              </div>
+              <ClassProgramSelect
+                id="fee-modal-class"
+                className="w-full"
+                value={modalForm.classId}
+                onChange={(v) => setModalForm((f) => ({ ...f, classId: v }))}
+                classes={classes}
+                emptyLabel="Select class…"
+              />
             )}
             <div>
               <Label htmlFor="fee-per-subject">Per subject fee (₨)</Label>

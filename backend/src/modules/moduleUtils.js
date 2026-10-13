@@ -4,6 +4,24 @@
  */
 
 const MODULES = require('./moduleConfig');
+const { isSystemAdmin, isAdminRole } = require('../utils/systemAdmin');
+
+function fromMap(map, moduleName) {
+  if (!map) return [];
+  if (map instanceof Map) return map.get(moduleName) || [];
+  return map[moduleName] || [];
+}
+
+function hasExplicitModulePermissions(map) {
+  if (!map) return false;
+  if (map instanceof Map) {
+    for (const actions of map.values()) {
+      if (Array.isArray(actions) && actions.length > 0) return true;
+    }
+    return false;
+  }
+  return Object.values(map).some((actions) => Array.isArray(actions) && actions.length > 0);
+}
 
 /**
  * Check if a user has permission for a specific action on a module
@@ -13,21 +31,23 @@ const MODULES = require('./moduleConfig');
  * @returns {Boolean}
  */
 function hasModulePermission(user, moduleName, action) {
-    if (!user || !moduleName || !action) return false;
+  if (!user || !moduleName || !action) return false;
 
-    // Admin has access to all modules and actions
-    if (user.role?.name === 'admin' || user.roleDoc?.name === 'admin') return true;
+  // Only the seeded system admin bypasses the matrix.
+  if (isSystemAdmin(user)) return true;
 
-    const fromMap = (map) => {
-      if (!map) return [];
-      if (map instanceof Map) return map.get(moduleName) || [];
-      return map[moduleName] || [];
-    };
+  const userActions = fromMap(user.modulePermissions, moduleName);
+  // Secondary admins: only their own dynamic modulePermissions.
+  if (isAdminRole(user)) {
+    return Array.isArray(userActions) && userActions.includes(action);
+  }
 
-    const userActions = fromMap(user.modulePermissions);
-    const roleActions = fromMap(user.roleDoc?.modulePermissions || user.role?.modulePermissions);
-    const actions = [...new Set([...(userActions || []), ...(roleActions || [])])];
-    return Array.isArray(actions) && actions.includes(action);
+  const roleActions = fromMap(user.roleDoc?.modulePermissions || user.role?.modulePermissions, moduleName);
+  if (hasExplicitModulePermissions(user.modulePermissions)) {
+    return Array.isArray(userActions) && userActions.includes(action);
+  }
+  const actions = [...new Set([...(userActions || []), ...(roleActions || [])])];
+  return Array.isArray(actions) && actions.includes(action);
 }
 
 /**
@@ -37,18 +57,23 @@ function hasModulePermission(user, moduleName, action) {
  * @returns {Boolean}
  */
 function hasModuleAccess(user, moduleName) {
-    if (!user || !moduleName) return false;
+  if (!user || !moduleName) return false;
 
-    if (user.role?.name === 'admin' || user.roleDoc?.name === 'admin') return true;
+  if (isSystemAdmin(user)) return true;
 
-    const fromMap = (map) => {
-      if (!map) return [];
-      if (map instanceof Map) return map.get(moduleName) || [];
-      return map[moduleName] || [];
-    };
-    const userModulePerms = fromMap(user.modulePermissions);
-    const roleModulePerms = fromMap(user.roleDoc?.modulePermissions || user.role?.modulePermissions);
-    return [...userModulePerms, ...roleModulePerms].length > 0;
+  const userModulePerms = fromMap(user.modulePermissions, moduleName);
+  if (isAdminRole(user)) {
+    return userModulePerms.length > 0;
+  }
+
+  if (hasExplicitModulePermissions(user.modulePermissions)) {
+    return userModulePerms.length > 0;
+  }
+  const roleModulePerms = fromMap(
+    user.roleDoc?.modulePermissions || user.role?.modulePermissions,
+    moduleName,
+  );
+  return [...userModulePerms, ...roleModulePerms].length > 0;
 }
 
 /**
@@ -59,24 +84,24 @@ function hasModuleAccess(user, moduleName) {
  * @returns {Object} Updated modulePermissions
  */
 function grantModulePermission(user, moduleName, actions) {
-    if (!user || !moduleName || !Array.isArray(actions)) return user.modulePermissions;
+  if (!user || !moduleName || !Array.isArray(actions)) return user.modulePermissions;
 
-    const modulePerms = user.modulePermissions || new Map();
-    const currentActions = modulePerms.get?.(moduleName) || modulePerms[moduleName] || [];
+  const modulePerms = user.modulePermissions || new Map();
+  const currentActions = modulePerms.get?.(moduleName) || modulePerms[moduleName] || [];
 
-    // Merge new actions with existing ones (avoid duplicates)
-    const mergedActions = [...new Set([...currentActions, ...actions])];
+  // Merge new actions with existing ones (avoid duplicates)
+  const mergedActions = [...new Set([...currentActions, ...actions])];
 
-    // Validate actions against module definition
-    const module = MODULES[moduleName];
-    if (module) {
-        const validActions = mergedActions.filter((a) => module.actions.includes(a));
-        modulePerms.set(moduleName, validActions);
-    } else {
-        modulePerms.set(moduleName, mergedActions);
-    }
+  // Validate actions against module definition
+  const module = MODULES[moduleName];
+  if (module) {
+    const validActions = mergedActions.filter((a) => module.actions.includes(a));
+    modulePerms.set(moduleName, validActions);
+  } else {
+    modulePerms.set(moduleName, mergedActions);
+  }
 
-    return modulePerms;
+  return modulePerms;
 }
 
 /**
@@ -87,20 +112,20 @@ function grantModulePermission(user, moduleName, actions) {
  * @returns {Object} Updated modulePermissions
  */
 function revokeModulePermission(user, moduleName, actions) {
-    if (!user || !moduleName || !Array.isArray(actions)) return user.modulePermissions;
+  if (!user || !moduleName || !Array.isArray(actions)) return user.modulePermissions;
 
-    const modulePerms = user.modulePermissions || new Map();
-    const currentActions = modulePerms.get?.(moduleName) || modulePerms[moduleName] || [];
+  const modulePerms = user.modulePermissions || new Map();
+  const currentActions = modulePerms.get?.(moduleName) || modulePerms[moduleName] || [];
 
-    const remainingActions = currentActions.filter((a) => !actions.includes(a));
+  const remainingActions = currentActions.filter((a) => !actions.includes(a));
 
-    if (remainingActions.length === 0) {
-        modulePerms.delete?.(moduleName);
-    } else {
-        modulePerms.set(moduleName, remainingActions);
-    }
+  if (remainingActions.length === 0) {
+    modulePerms.delete?.(moduleName);
+  } else {
+    modulePerms.set(moduleName, remainingActions);
+  }
 
-    return modulePerms;
+  return modulePerms;
 }
 
 /**
@@ -110,15 +135,15 @@ function revokeModulePermission(user, moduleName, actions) {
  * @returns {Array<String>}
  */
 function getModulePermissions(user, moduleName) {
-    if (!user || !moduleName) return [];
+  if (!user || !moduleName) return [];
 
-    if (user.role?.name === 'admin') {
-        const module = MODULES[moduleName];
-        return module ? module.actions : [];
-    }
+  if (isSystemAdmin(user)) {
+    const module = MODULES[moduleName];
+    return module ? module.actions : [];
+  }
 
-    const userModulePerms = user.modulePermissions?.get?.(moduleName) || user.modulePermissions?.[moduleName] || [];
-    return Array.isArray(userModulePerms) ? userModulePerms : [];
+  const userModulePerms = user.modulePermissions?.get?.(moduleName) || user.modulePermissions?.[moduleName] || [];
+  return Array.isArray(userModulePerms) ? userModulePerms : [];
 }
 
 /**
@@ -127,36 +152,35 @@ function getModulePermissions(user, moduleName) {
  * @returns {Object}
  */
 function getAllUserModulePermissions(user) {
-    if (!user) return {};
+  if (!user) return {};
 
-    if (user.role?.name === 'admin') {
-        // Return all modules with all their actions
-        const allPerms = {};
-        Object.keys(MODULES).forEach((moduleName) => {
-            allPerms[moduleName] = MODULES[moduleName].actions;
-        });
-        return allPerms;
-    }
+  if (isSystemAdmin(user)) {
+    const allPerms = {};
+    Object.keys(MODULES).forEach((moduleName) => {
+      allPerms[moduleName] = MODULES[moduleName].actions;
+    });
+    return allPerms;
+  }
 
-    const perms = {};
-    if (user.modulePermissions instanceof Map) {
-        user.modulePermissions.forEach((actions, moduleName) => {
-            perms[moduleName] = actions;
-        });
-    } else {
-        Object.keys(user.modulePermissions || {}).forEach((moduleName) => {
-            perms[moduleName] = user.modulePermissions[moduleName];
-        });
-    }
-    return perms;
+  const perms = {};
+  if (user.modulePermissions instanceof Map) {
+    user.modulePermissions.forEach((actions, moduleName) => {
+      perms[moduleName] = actions;
+    });
+  } else {
+    Object.keys(user.modulePermissions || {}).forEach((moduleName) => {
+      perms[moduleName] = user.modulePermissions[moduleName];
+    });
+  }
+  return perms;
 }
 
 module.exports = {
-    hasModulePermission,
-    hasModuleAccess,
-    grantModulePermission,
-    revokeModulePermission,
-    getModulePermissions,
-    getAllUserModulePermissions,
-    MODULES,
+  hasModulePermission,
+  hasModuleAccess,
+  grantModulePermission,
+  revokeModulePermission,
+  getModulePermissions,
+  getAllUserModulePermissions,
+  MODULES,
 };

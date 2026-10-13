@@ -21,18 +21,21 @@ const SettingsModule = () => {
     perms[role],
     user?.modulePermissions,
     role,
+    user?.isSystemAdmin,
   );
   const catalogCaps = resolveModuleCaps(
     "permission-catalog" as ModuleKey,
     rolePerms["permission-catalog"],
     user?.modulePermissions,
     role,
+    user?.isSystemAdmin,
   );
   const permissionsCaps = resolveModuleCaps(
     "permissions" as ModuleKey,
     rolePerms.permissions,
     user?.modulePermissions,
     role,
+    user?.isSystemAdmin,
   );
 
   const modulePerms = user?.modulePermissions ? Object.entries(user.modulePermissions) : [];

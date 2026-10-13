@@ -528,13 +528,17 @@ export function resolveModuleCaps(
   rolePermLevel: PermLevel,
   backendPerms?: Record<string, string[]>,
   role?: Role,
+  isSystemAdmin?: boolean,
 ): ModuleActionCaps {
-  // Admin always has full UI access to every module (including newly added ones).
-  if (role === "admin") return capsFromPermLevel("full");
+  // Seeded system admin only — full UI access to every module (including newly added ones).
+  if (isSystemAdmin) return capsFromPermLevel("full");
 
-  const explicit = sessionHasExplicitModulePayload(backendPerms);
+  // Secondary admins always use their dynamic matrix (empty = no access).
+  const secondaryAdmin = role === "admin" && !isSystemAdmin;
+  const explicit = secondaryAdmin || sessionHasExplicitModulePayload(backendPerms);
   const backendKey = PANEL_MODULE_TO_BACKEND_KEY[moduleKey];
-  if (explicit && backendPerms) {
+  if (explicit) {
+    if (!backendPerms) return emptyActionCaps();
     if (moduleKey === "fees") {
       return capsForFeesModule(backendPerms);
     }
@@ -570,22 +574,28 @@ function emptyPanelMatrix(): Record<ModuleKey, PermLevel> {
 
 /**
  * Combine default/local role matrix with modulePermissions from `/auth/me`.
- * Admin always gets full access to every entry in MODULES (ignores sparse backend maps).
- * When the API sends real module rows for other roles, the menu is built from that payload.
+ * System admin always gets full access; secondary admins and staff use the backend matrix.
+ * When the API sends real module rows, the menu is built from that payload.
  */
 export function applyBackendModulePermissions(
   rolePerms: Record<ModuleKey, PermLevel>,
   backendPerms?: Record<string, string[]>,
   role?: Role,
+  isSystemAdmin?: boolean,
 ): Record<ModuleKey, PermLevel> {
-  if (role === "admin") return fullAccessMatrix();
+  if (isSystemAdmin) return fullAccessMatrix();
 
-  if (!backendPerms || typeof backendPerms !== "object") return rolePerms;
+  const secondaryAdmin = role === "admin" && !isSystemAdmin;
+  if (!backendPerms || typeof backendPerms !== "object") {
+    return secondaryAdmin ? emptyPanelMatrix() : rolePerms;
+  }
 
   const hasExplicitBackend = Object.entries(backendPerms).some(
     ([, actions]) => Array.isArray(actions) && actions.length > 0,
   );
-  if (!hasExplicitBackend) return rolePerms;
+  if (!hasExplicitBackend) {
+    return secondaryAdmin ? emptyPanelMatrix() : rolePerms;
+  }
 
   const next: Record<ModuleKey, PermLevel> = emptyPanelMatrix();
 

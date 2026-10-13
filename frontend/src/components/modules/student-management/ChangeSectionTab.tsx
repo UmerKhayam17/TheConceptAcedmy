@@ -11,7 +11,6 @@ import {
   Hash,
   Layers,
   Loader2,
-  School,
   Search,
   UserRound,
 } from "lucide-react";
@@ -40,6 +39,7 @@ import {
   type AcademyStudent,
   type AcademySubject,
 } from "@/lib/studentManagementApi";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { classLabel, formatPkr, subjectList } from "./studentDisplayUtils";
 
@@ -490,22 +490,14 @@ Only active students can be moved here — use Assign Section after payment for 
               Choose the class for which you want to change the section.
             </p>
           </div>
-          <div className="relative">
-            <School className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <select
-              className="h-11 w-full rounded-lg border border-input bg-background pl-10 pr-8 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              disabled={!hasScope}
-            >
-              <option value="">Select class…</option>
-              {classes.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.className}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ClassProgramSelect
+            className="w-full"
+            value={classId}
+            onChange={setClassId}
+            classes={classes}
+            emptyLabel="Select class…"
+            disabled={!hasScope}
+          />
         </Card>
 
         <Card className="p-4 sm:p-5 space-y-3">

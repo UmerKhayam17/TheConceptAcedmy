@@ -29,6 +29,7 @@ import {
   type AcademySubject,
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import {
   generateSubjectCode,
@@ -254,24 +255,18 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      <div className="max-w-sm space-y-1">
-        <Label htmlFor="subject-class-select">Select class</Label>
-        <select
-          id="subject-class-select"
-          className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-          value={classId}
-          onChange={(e) => setClassId(e.target.value)}
-          disabled={classesLoading || !hasScope}
-        >
-          <option value="">Choose class…</option>
-          {classes.map((c) => (
-            <option key={c._id} value={c._id}>
-              {c.className}
-              {isAll && sessionLabelFromAcademyClass(c) ? ` (${sessionLabelFromAcademyClass(c)})` : ""}
-            </option>
-          ))}
-        </select>
-      </div>
+      <ClassProgramSelect
+        id="subject-class-select"
+        className="max-w-sm"
+        value={classId}
+        onChange={setClassId}
+        classes={classes}
+        emptyLabel="Choose class…"
+        disabled={classesLoading || !hasScope}
+        optionSuffix={
+          isAll ? (c) => sessionLabelFromAcademyClass(classes.find((x) => x._id === c._id) as never) || undefined : undefined
+        }
+      />
 
       <Card className="overflow-hidden">
         {classId && selectedClass && (

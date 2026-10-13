@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchAcademyClasses, fetchFeeStructureByClass, registerProvisionalStudent } from "@/lib/studentManagementApi";
 import { formatMobileInput, isValidMobile, mobileValidationMessage } from "@/lib/pkFieldFormat";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
 
 const emptyForm = {
@@ -172,20 +173,14 @@ export default function ProvisionalIntakeDialog({
               <option value="other">Other</option>
             </select>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="intake-class">Class</Label>
-            <select
-              id="intake-class"
-              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm font-sans"
-              value={form.classId}
-              onChange={(e) => setForm((f) => ({ ...f, classId: e.target.value }))}
-            >
-              <option value="">Choose class…</option>
-              {classes.map((c) => (
-                <option key={c._id} value={c._id}>{c.className}</option>
-              ))}
-            </select>
-          </div>
+          <ClassProgramSelect
+            id="intake-class"
+            className="w-full"
+            value={form.classId}
+            onChange={(v) => setForm((f) => ({ ...f, classId: v }))}
+            classes={classes}
+            emptyLabel="Choose class…"
+          />
 
           {form.classId && (
             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">

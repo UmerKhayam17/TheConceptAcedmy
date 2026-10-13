@@ -26,6 +26,7 @@ import {
   type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { DefaulterListDownload } from "./DefaulterListDownload";
 import {
   ChallanPrintDialog,
@@ -236,21 +237,14 @@ export default function FeeDefaultersTab({
               onChange={(e) => setYear(e.target.value)}
             />
           </div>
-          <div className="min-w-0">
-            <Label className="text-xs">Class</Label>
-            <select
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-              value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
-            >
-              <option value="">All classes</option>
-              {classes.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.className}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ClassProgramSelect
+            className="min-w-0"
+            value={classFilter}
+            onChange={setClassFilter}
+            classes={classes}
+            allowAll
+            selectClassName="h-9 rounded-md"
+          />
           <div className="relative min-w-0 col-span-2 sm:col-span-3 lg:col-span-2">
             <Label className="text-xs">Search</Label>
             <div className="relative">

@@ -55,12 +55,23 @@ const PanelSidebar = ({ user }: { user: SessionUser }) => {
   const head = roleHeader[user.role];
   const HeadIcon = head.Icon;
   const { perms } = usePermissions();
-  const rolePerms = applyBackendModulePermissions(perms[user.role], user.modulePermissions, user.role);
+  const rolePerms = applyBackendModulePermissions(
+    perms[user.role],
+    user.modulePermissions,
+    user.role,
+    user.isSystemAdmin,
+  );
   const rootPath = panelPathFor(user.role);
 
   const canView = (item: SidebarNavItem) => {
     if (item.moduleKey === "dashboard") return true;
-    const caps = resolveModuleCaps(item.moduleKey, rolePerms[item.moduleKey], user.modulePermissions, user.role);
+    const caps = resolveModuleCaps(
+      item.moduleKey,
+      rolePerms[item.moduleKey],
+      user.modulePermissions,
+      user.role,
+      user.isSystemAdmin,
+    );
     if (!caps.canView) return false;
     if (item.requireManage && !(caps.canEdit || caps.canCreate)) return false;
     // My Schedule is mainly for teachers (and managers who teach)

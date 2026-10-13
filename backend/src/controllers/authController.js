@@ -12,6 +12,7 @@ const {
 } = require('../utils/tokenService');
 const { setRefreshCookie, clearRefreshCookie, setAccessCookie, clearAccessCookie } = require('../utils/authCookies');
 const MODULES = require('../modules/moduleConfig');
+const { isSystemAdmin, isAdminRole } = require('../utils/systemAdmin');
 
 const otpStore = new Map();
 
@@ -32,7 +33,7 @@ function hasExplicitModulePermissions(plain) {
   );
 }
 
-/** Every module from systemModules with all actions — used for admin sessions. */
+/** Every module from systemModules with all actions — used for the seeded system admin only. */
 function allModulesFullPermissions() {
   const out = {};
   Object.keys(MODULES).forEach((key) => {
@@ -41,17 +42,33 @@ function allModulesFullPermissions() {
   return out;
 }
 
+function sessionUserPayload(user, modulePermissions) {
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: (user.role && typeof user.role === 'object' && user.role.name) || user.roleDoc?.name || user.role,
+    profileImage: user.profileImage || null,
+    modulePermissions,
+    /** Bootstrap admin (SEED_ADMIN_EMAIL) — full access; other admins use dynamic perms. */
+    isSystemAdmin: isSystemAdmin(user),
+  };
+}
+
 /** Session module map for the panel: role baseline, unless the user has their own module rows (then use user only — no union with role). */
 function collectSessionModulePermissions(user) {
-  const roleName =
-    (user.role && typeof user.role === 'object' && user.role.name) ||
-    String(user.role || '');
-  // Admin always receives every module (including ones added after account creation).
-  if (String(roleName).toLowerCase() === 'admin') {
+  // Only the seeded system admin bypasses the matrix with every module.
+  if (isSystemAdmin(user)) {
     return allModulesFullPermissions();
   }
   const userModulePermissions = toPlainModulePermissions(user.modulePermissions);
-  const roleModulePermissions = toPlainModulePermissions(user.role?.modulePermissions);
+  // Secondary admins always use their own dynamic matrix (empty = no modules until granted).
+  if (isAdminRole(user)) {
+    return userModulePermissions;
+  }
+  const roleModulePermissions = toPlainModulePermissions(
+    user.roleDoc?.modulePermissions || user.role?.modulePermissions,
+  );
   if (hasExplicitModulePermissions(userModulePermissions)) {
     return userModulePermissions;
   }
@@ -101,32 +118,16 @@ const login = catchAsync(async (req, res) => {
     data: {
       accessToken,
       expiresIn: process.env.JWT_ACCESS_EXPIRES || '12h',
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role?.name,
-        profileImage: user.profileImage || null,
-        modulePermissions,
-      },
+      user: sessionUserPayload(user, modulePermissions),
     },
   });
 });
 
 const me = catchAsync(async (req, res) => {
-  const roleName = req.user.roleDoc?.name || req.user.role?.name;
   const modulePermissions = collectSessionModulePermissions(req.user);
-
   res.json({
     success: true,
-    data: {
-      id: req.user._id,
-      name: req.user.name,
-      email: req.user.email,
-      role: roleName,
-      profileImage: req.user.profileImage || null,
-      modulePermissions,
-    },
+    data: sessionUserPayload(req.user, modulePermissions),
   });
 });
 
@@ -319,12 +320,8 @@ const verifyOtp = catchAsync(async (req, res) => {
     data: {
       accessToken,
       user: {
-        id: user._id,
-        name: user.name,
-        role: user.role?.name,
+        ...sessionUserPayload(user, modulePermissions),
         phone: user.phone,
-        email: user.email,
-        modulePermissions,
       },
     },
   });

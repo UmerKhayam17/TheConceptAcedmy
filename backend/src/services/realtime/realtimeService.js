@@ -5,6 +5,7 @@ const Notification = require('../../models/Notification');
 const User = require('../../models/User');
 const { SYSTEM_MODULES } = require('../../config/systemModules');
 const { hasModuleAccess } = require('../../modules/moduleUtils');
+const { isSystemAdmin } = require('../../utils/systemAdmin');
 
 function getNotificationsNsp() {
   try {
@@ -71,8 +72,8 @@ function collectPermissionNames(user) {
 }
 
 function userMatchesAccess(user, { roles = [], permissions = [], moduleKey, moduleAction }) {
+  if (isSystemAdmin(user)) return true;
   const roleName = roleNameOf(user);
-  if (roleName === 'admin') return true;
   if (roles.length && roles.includes(roleName)) return true;
   if (permissions.length) {
     const names = collectPermissionNames(user);
@@ -171,7 +172,7 @@ function getModuleRoomsForUser(user) {
   const rooms = [`user:${user._id}`];
   const roleName = roleNameOf(user);
   if (roleName) rooms.push(`role:${roleName}`);
-  if (roleName === 'admin') {
+  if (isSystemAdmin(user)) {
     SYSTEM_MODULES.forEach((m) => rooms.push(`mod:${m.key}`));
     return rooms;
   }

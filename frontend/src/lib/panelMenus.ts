@@ -50,8 +50,12 @@ function moduleToMenuItem(
   rolePerms: Record<ModuleKey, PermLevel>,
   backendModulePerms?: Record<string, string[]>,
   role?: Role,
+  isSystemAdmin?: boolean,
 ): MenuItem | null {
-  if (m.key !== "dashboard" && !resolveModuleCaps(m.key, rolePerms[m.key], backendModulePerms, role).canView) {
+  if (
+    m.key !== "dashboard" &&
+    !resolveModuleCaps(m.key, rolePerms[m.key], backendModulePerms, role, isSystemAdmin).canView
+  ) {
     return null;
   }
   return { ...m, Icon: ICONS[m.icon] || LayoutDashboard };
@@ -62,6 +66,7 @@ export const buildMenu = (
   rolePerms: Record<ModuleKey, PermLevel>,
   backendModulePerms?: Record<string, string[]>,
   role?: Role,
+  isSystemAdmin?: boolean,
 ): MenuItem[] => {
   const byKey = Object.fromEntries(MODULES.map((m) => [m.key, m])) as Record<ModuleKey, ModuleDef>;
   const orderedKeys = SIDEBAR_NAV_GROUPS.flatMap((g) => g.modules);
@@ -70,12 +75,12 @@ export const buildMenu = (
   for (const key of orderedKeys) {
     if (seen.has(key)) continue;
     seen.add(key);
-    const item = moduleToMenuItem(byKey[key], rolePerms, backendModulePerms, role);
+    const item = moduleToMenuItem(byKey[key], rolePerms, backendModulePerms, role, isSystemAdmin);
     if (item) items.push(item);
   }
   for (const m of MODULES) {
     if (seen.has(m.key) || m.showInNav === false) continue;
-    const item = moduleToMenuItem(m, rolePerms, backendModulePerms, role);
+    const item = moduleToMenuItem(m, rolePerms, backendModulePerms, role, isSystemAdmin);
     if (item) items.push(item);
   }
   return items;

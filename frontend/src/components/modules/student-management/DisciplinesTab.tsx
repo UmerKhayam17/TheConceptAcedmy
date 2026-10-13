@@ -35,6 +35,7 @@ import {
   type AcademySubject,
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { sessionLabelFromAcademyClass } from "./studentDisplayUtils";
@@ -313,27 +314,18 @@ export default function DisciplinesTab({
 
       <Card className="rounded-2xl border-[#E6EEF8] p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="w-full max-w-[240px] shrink-0 space-y-1.5">
-            <Label htmlFor="disc-class" className="flex items-center gap-1.5 text-sm font-semibold text-[#10244A]">
-              <GraduationCap className="h-4 w-4 text-[#1769E0]" />
-              Class
-            </Label>
-            <select
-              id="disc-class"
-              className="h-11 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm text-slate-600 outline-none transition-colors focus:border-[#1769E0] focus:ring-2 focus:ring-[#1769E0]/15"
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              disabled={classesLoading || !hasScope}
-            >
-              <option value="">All classes</option>
-              {classes.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.className}
-                  {sessionLabelFromAcademyClass(c) ? ` · ${sessionLabelFromAcademyClass(c)}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ClassProgramSelect
+            id="disc-class"
+            className="w-full max-w-[240px] shrink-0"
+            value={classId}
+            onChange={setClassId}
+            classes={classes}
+            allowAll
+            disabled={classesLoading || !hasScope}
+            optionSuffix={(c) =>
+              sessionLabelFromAcademyClass(classes.find((x) => x._id === c._id) as never) || undefined
+            }
+          />
           {caps.canCreate && (
             <div className="flex flex-wrap gap-2 lg:shrink-0">
               <Button
@@ -501,25 +493,19 @@ export default function DisciplinesTab({
           </DialogHeader>
           <div className="space-y-3 py-2">
             {!edit && (
-              <div className="space-y-1.5">
-                <Label>Class</Label>
-                <select
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                  value={createClassId}
-                  onChange={(e) => {
-                    setCreateClassId(e.target.value);
-                    setForm((f) => ({ ...f, subjectIds: [] }));
-                  }}
-                >
-                  <option value="">Select class...</option>
-                  {classes.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.className}
-                      {sessionLabelFromAcademyClass(c) ? ` · ${sessionLabelFromAcademyClass(c)}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <ClassProgramSelect
+                className="w-full"
+                value={createClassId}
+                onChange={(v) => {
+                  setCreateClassId(v);
+                  setForm((f) => ({ ...f, subjectIds: [] }));
+                }}
+                classes={classes}
+                emptyLabel="Select class..."
+                optionSuffix={(c) =>
+                  sessionLabelFromAcademyClass(classes.find((x) => x._id === c._id) as never) || undefined
+                }
+              />
             )}
             <div className="space-y-1.5">
               <Label>Name</Label>

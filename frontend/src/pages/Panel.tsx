@@ -82,14 +82,16 @@ const Dashboard = ({
   role,
   name,
   modulePermissions,
+  isSystemAdmin,
 }: {
   role: Role;
   name: string;
   modulePermissions?: Record<string, string[]>;
+  isSystemAdmin?: boolean;
 }) => {
   const { perms } = usePermissions();
-  const rolePerms = applyBackendModulePermissions(perms[role], modulePermissions, role);
-  const items = buildMenu(rolePerms, modulePermissions, role).filter((m) => m.key !== "dashboard");
+  const rolePerms = applyBackendModulePermissions(perms[role], modulePermissions, role, isSystemAdmin);
+  const items = buildMenu(rolePerms, modulePermissions, role, isSystemAdmin).filter((m) => m.key !== "dashboard");
 
   const today = localTodayYmd();
   const { data: termExams = [] } = useQuery({
@@ -277,7 +279,12 @@ const Panel = () => {
             />
           </LazyModule>
         ) : (
-          <Dashboard role={r} name={session.name} modulePermissions={session.modulePermissions} />
+          <Dashboard
+            role={r}
+            name={session.name}
+            modulePermissions={session.modulePermissions}
+            isSystemAdmin={session.isSystemAdmin}
+          />
         )}
       </>
     );
@@ -291,9 +298,20 @@ const Panel = () => {
   const mod = findModule(slug);
   if (!mod) return <Navigate to={`/panel/${r}`} replace />;
 
-  const rolePerms = applyBackendModulePermissions(perms[r], session.modulePermissions, r);
+  const rolePerms = applyBackendModulePermissions(
+    perms[r],
+    session.modulePermissions,
+    r,
+    session.isSystemAdmin,
+  );
   const perm = rolePerms[mod.key as ModuleKey];
-  const caps = resolveModuleCaps(mod.key as ModuleKey, perm, session.modulePermissions, r);
+  const caps = resolveModuleCaps(
+    mod.key as ModuleKey,
+    perm,
+    session.modulePermissions,
+    r,
+    session.isSystemAdmin,
+  );
 
   if (mod.key === "system-config" && !section) {
     return <Navigate to={systemConfigHref(r)} replace />;

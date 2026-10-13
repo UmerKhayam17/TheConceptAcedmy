@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, Download, Eye, FileSpreadsheet, FileText, Pencil, Plus, Trash2, UserCheck } from "lucide-react";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -252,16 +253,18 @@ export default function RegistrationTab({
             <option value="inactive">Inactive</option>
             <option value="suspended">Suspended</option>
           </select>
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          <ClassProgramSelect
+            className="w-44 shrink-0"
+            label={false}
             value={classFilter}
-            onChange={(e) => { setClassFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All classes</option>
-            {classes.map((c) => (
-              <option key={c._id} value={c._id}>{c.className}</option>
-            ))}
-          </select>
+            onChange={(v) => {
+              setClassFilter(v);
+              setPage(1);
+            }}
+            classes={classes}
+            allowAll
+            selectClassName="rounded-md border-input"
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-1" disabled={!!exporting}>

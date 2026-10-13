@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DefaulterListDownload } from "./DefaulterListDownload";
 import { FeeMetricCards } from "./FeeMetricCards";
+import { ClassProgramOptions } from "@/components/modules/ClassProgramSelect";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -1074,12 +1075,7 @@ export default function AcademyFeesManagement({
                 </FeeFilterField>
                 <FeeFilterField label="Class">
                   <FeeFilterSelect value={classFilter} onChange={setClassFilter}>
-                    <option value="">All classes</option>
-                    {classes.map((c) => (
-                      <option key={c._id} value={c._id}>
-                        {c.className}
-                      </option>
-                    ))}
+                    <ClassProgramOptions classes={classes} allowAll />
                   </FeeFilterSelect>
                 </FeeFilterField>
                 <FeeFilterField label="Section">

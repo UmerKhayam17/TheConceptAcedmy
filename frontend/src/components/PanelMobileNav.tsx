@@ -142,7 +142,12 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
   const { pathname } = useLocation();
   const { setOpenMobile } = useSidebar();
   const { perms } = usePermissions();
-  const rolePerms = applyBackendModulePermissions(perms[user.role], user.modulePermissions, user.role);
+  const rolePerms = applyBackendModulePermissions(
+    perms[user.role],
+    user.modulePermissions,
+    user.role,
+    user.isSystemAdmin,
+  );
   const isAdmin = user.role === "admin";
 
   const canViewItem = (item: SidebarNavItem) => {
@@ -152,6 +157,7 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
       rolePerms[item.moduleKey],
       user.modulePermissions,
       user.role,
+      user.isSystemAdmin,
     );
     if (!caps.canView) return false;
     if (item.requireManage && !(caps.canEdit || caps.canCreate)) return false;

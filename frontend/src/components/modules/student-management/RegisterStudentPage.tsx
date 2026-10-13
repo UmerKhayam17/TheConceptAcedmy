@@ -84,6 +84,7 @@ import {
 } from "./registerStudentForm";
 import { DateDmYInput } from "@/components/ui/date-dmy-input";
 import { AdditionalChargesChecklist } from "./AdditionalChargesChecklist";
+import { ClassProgramOptions } from "@/components/modules/ClassProgramSelect";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
 
 function deriveChoiceSelections(
@@ -1185,10 +1186,7 @@ export default function RegisterStudentPage({
                 setChoiceSelections({});
               }}
             >
-              <option value="">Choose class to enroll…</option>
-              {classes.map((c) => (
-                <option key={c._id} value={c._id}>{c.className}</option>
-              ))}
+              <ClassProgramOptions classes={classes} emptyLabel="Choose class to enroll…" />
             </IconSelect>
           </FormField>
 
