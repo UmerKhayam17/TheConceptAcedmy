@@ -178,6 +178,7 @@ const exportStudents = catchAsync(async (req, res) => {
     limit: 10000,
     search: req.query.search,
     classId: req.query.classId,
+    sectionId: req.query.sectionId,
     status: req.query.status,
     sessionId: req.query.sessionId,
     forExport: true,

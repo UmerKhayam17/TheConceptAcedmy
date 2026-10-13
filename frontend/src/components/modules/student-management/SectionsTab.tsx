@@ -286,11 +286,10 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
   const hasActions = writable && (caps.canEdit || caps.canDelete);
   const colSpan = 5 + (hasActions ? 1 : 0);
   const listTitle = classFilter && selectedClass
-    ? `Sections for ${classDisplayName(selectedClass)}${
-        sessionLabelFromAcademyClass(selectedClass)
-          ? ` · ${sessionLabelFromAcademyClass(selectedClass)}`
-          : ""
-      }`
+    ? `Sections for ${classDisplayName(selectedClass)}${sessionLabelFromAcademyClass(selectedClass)
+      ? ` · ${sessionLabelFromAcademyClass(selectedClass)}`
+      : ""
+    }`
     : "All sections";
 
   return (
@@ -317,7 +316,7 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end flex-1 min-w-0">
           <ClassProgramSelect
-            className="w-full sm:w-56 shrink-0"
+            className="w-full sm:w-[16.5rem] shrink-0"
             value={classFilter}
             onChange={setClassFilter}
             classes={classes}

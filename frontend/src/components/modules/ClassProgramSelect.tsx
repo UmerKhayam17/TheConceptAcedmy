@@ -46,7 +46,7 @@ export default function ClassProgramSelect({
   const classGroups = useMemo(() => groupClassesByProgram(classes), [classes]);
 
   return (
-    <div className={cn("min-w-[140px]", className)}>
+    <div className={cn("min-w-[16.5rem]", className)}>
       {label !== false ? (
         <Label
           htmlFor={id}
@@ -65,6 +65,13 @@ export default function ClassProgramSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        title={
+          allowAll && !value
+            ? allLabel
+            : !value
+              ? emptyLabel
+              : undefined
+        }
       >
         {allowAll ? (
           <option value="">{allLabel}</option>

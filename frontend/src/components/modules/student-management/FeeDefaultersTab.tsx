@@ -238,7 +238,7 @@ export default function FeeDefaultersTab({
             />
           </div>
           <ClassProgramSelect
-            className="min-w-0"
+            className="min-w-[16.5rem]"
             value={classFilter}
             onChange={setClassFilter}
             classes={classes}

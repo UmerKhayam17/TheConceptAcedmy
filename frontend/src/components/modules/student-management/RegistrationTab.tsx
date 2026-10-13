@@ -243,6 +243,7 @@ export default function RegistrationTab({
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("");
+  const [sectionFilter, setSectionFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | AcademyStudentStatus>("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -281,12 +282,18 @@ export default function RegistrationTab({
 
   useEffect(() => {
     setClassFilter("");
+    setSectionFilter("");
     setPage(1);
   }, [sessionId]);
 
   useEffect(() => {
+    setSectionFilter("");
+    setPage(1);
+  }, [classFilter]);
+
+  useEffect(() => {
     setSelectedIds([]);
-  }, [sessionId, page, pageSize, search, classFilter, statusFilter]);
+  }, [sessionId, page, pageSize, search, classFilter, sectionFilter, statusFilter]);
 
   const { data: classes = [] } = useQuery({
     queryKey: ["academy-classes", sessionId],
@@ -319,42 +326,6 @@ export default function RegistrationTab({
           ? "You do not have permission to register students"
           : null;
 
-  const { data: listData, isLoading } = useQuery({
-    queryKey: ["academy-students", sessionId, page, pageSize, search, classFilter, statusFilter],
-    queryFn: () =>
-      fetchAcademyStudents({
-        page,
-        limit: pageSize,
-        search: search || undefined,
-        classId: classFilter || undefined,
-        status: statusFilter || undefined,
-        sessionId: apiSessionId,
-      }),
-    enabled: hasScope,
-  });
-
-  const summaryBase = {
-    page: 1,
-    limit: 1,
-    classId: classFilter || undefined,
-    sessionId: apiSessionId,
-  } as const;
-
-  const { data: totalSummary } = useQuery({
-    queryKey: ["academy-students", "summary", "total", sessionId, classFilter],
-    queryFn: () => fetchAcademyStudents(summaryBase),
-    enabled: hasScope && showHeading,
-  });
-  const { data: activeSummary } = useQuery({
-    queryKey: ["academy-students", "summary", "active", sessionId, classFilter],
-    queryFn: () => fetchAcademyStudents({ ...summaryBase, status: "active" }),
-    enabled: hasScope && showHeading,
-  });
-  const { data: inactiveSummary } = useQuery({
-    queryKey: ["academy-students", "summary", "inactive", sessionId, classFilter],
-    queryFn: () => fetchAcademyStudents({ ...summaryBase, status: "inactive" }),
-    enabled: hasScope && showHeading,
-  });
   const { data: sections = [] } = useQuery({
     queryKey: ["academy-sections", "session", sessionId, apiSessionId, classFilter],
     queryFn: async () => {
@@ -365,6 +336,54 @@ export default function RegistrationTab({
         return String(cid) === classFilter;
       });
     },
+    enabled: hasScope,
+  });
+
+  const { data: listData, isLoading } = useQuery({
+    queryKey: [
+      "academy-students",
+      sessionId,
+      page,
+      pageSize,
+      search,
+      classFilter,
+      sectionFilter,
+      statusFilter,
+    ],
+    queryFn: () =>
+      fetchAcademyStudents({
+        page,
+        limit: pageSize,
+        search: search || undefined,
+        classId: classFilter || undefined,
+        sectionId: sectionFilter || undefined,
+        status: statusFilter || undefined,
+        sessionId: apiSessionId,
+      }),
+    enabled: hasScope,
+  });
+
+  const summaryBase = {
+    page: 1,
+    limit: 1,
+    classId: classFilter || undefined,
+    sectionId: sectionFilter || undefined,
+    sessionId: apiSessionId,
+  } as const;
+
+  const { data: totalSummary } = useQuery({
+    queryKey: ["academy-students", "summary", "total", sessionId, classFilter, sectionFilter],
+    queryFn: () => fetchAcademyStudents(summaryBase),
+    enabled: hasScope && showHeading,
+  });
+  const { data: activeSummary } = useQuery({
+    queryKey: ["academy-students", "summary", "active", sessionId, classFilter, sectionFilter],
+    queryFn: () => fetchAcademyStudents({ ...summaryBase, status: "active" }),
+    enabled: hasScope && showHeading,
+  });
+  const { data: inactiveSummary } = useQuery({
+    queryKey: ["academy-students", "summary", "inactive", sessionId, classFilter, sectionFilter],
+    queryFn: () => fetchAcademyStudents({ ...summaryBase, status: "inactive" }),
     enabled: hasScope && showHeading,
   });
 
@@ -384,6 +403,7 @@ export default function RegistrationTab({
         {
           search: search || undefined,
           classId: classFilter || undefined,
+          sectionId: sectionFilter || undefined,
           status: statusFilter || undefined,
           sessionId: apiSessionId,
         },
@@ -439,8 +459,8 @@ export default function RegistrationTab({
   const classCountForSections = classFilter
     ? 1
     : new Set(
-        sections.map((s) => (typeof s.classId === "object" ? s.classId?._id : s.classId)).filter(Boolean),
-      ).size;
+      sections.map((s) => (typeof s.classId === "object" ? s.classId?._id : s.classId)).filter(Boolean),
+    ).size;
 
   const showingFrom =
     pagination && pagination.total > 0 ? (page - 1) * pagination.limit + 1 : 0;
@@ -529,7 +549,7 @@ export default function RegistrationTab({
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
         <div className="flex flex-wrap items-center gap-2">
           <ClassProgramSelect
-            className="w-[11rem] shrink-0"
+            className="w-[16.5rem] shrink-0"
             label={false}
             value={classFilter}
             onChange={(v) => {
@@ -540,6 +560,24 @@ export default function RegistrationTab({
             allowAll
             selectClassName="rounded-md border-input h-10"
           />
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+            value={sectionFilter}
+            onChange={(e) => {
+              setSectionFilter(e.target.value);
+              setPage(1);
+            }}
+            aria-label="Section filter"
+            disabled={!hasScope || sections.length === 0}
+          >
+            <option value="">All Sections</option>
+            {sections.map((sec) => (
+              <option key={sec._id} value={sec._id}>
+                {sec.sectionName}
+                {!classFilter && sec.className ? ` · ${sec.className}` : ""}
+              </option>
+            ))}
+          </select>
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
             value={statusFilter}

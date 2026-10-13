@@ -1073,7 +1073,7 @@ export default function AcademyFeesManagement({
                     })}
                   </FeeFilterSelect>
                 </FeeFilterField>
-                <FeeFilterField label="Class">
+                <FeeFilterField label="Class" className="min-w-[16.5rem]">
                   <FeeFilterSelect value={classFilter} onChange={setClassFilter}>
                     <ClassProgramOptions classes={classes} allowAll />
                   </FeeFilterSelect>

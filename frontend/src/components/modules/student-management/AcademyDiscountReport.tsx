@@ -67,7 +67,7 @@ export default function AcademyDiscountReport() {
           placeholder="Search student name, ID, phone…"
           className="max-w-md flex-1"
         />
-        <div className="space-y-1 min-w-[180px]">
+        <div className="space-y-1 min-w-[16.5rem]">
           <ClassProgramSelect
             id="discount-class-filter"
             className="w-full"

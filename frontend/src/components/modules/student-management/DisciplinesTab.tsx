@@ -316,7 +316,7 @@ export default function DisciplinesTab({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <ClassProgramSelect
             id="disc-class"
-            className="w-full max-w-[240px] shrink-0"
+            className="w-full max-w-[16.5rem] shrink-0"
             value={classId}
             onChange={setClassId}
             classes={classes}
@@ -439,11 +439,10 @@ export default function DisciplinesTab({
                     <td className="px-3 py-3.5 text-slate-600">{createdByLabel(d.createdBy)}</td>
                     <td className="px-3 py-3.5">
                       <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
-                          d.status === "active"
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${d.status === "active"
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-slate-100 text-slate-500"
-                        }`}
+                          }`}
                       >
                         {d.status}
                       </span>

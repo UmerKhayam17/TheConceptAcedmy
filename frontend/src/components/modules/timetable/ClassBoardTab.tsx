@@ -1054,8 +1054,8 @@ export default function ClassBoardTab({
                                       periodLabel={period.label}
                                       colorClass={colorForSubjectName(
                                         scheduleSlotEntries(slot)[0]?.subject?.name ||
-                                          slot.subject?.name ||
-                                          "",
+                                        slot.subject?.name ||
+                                        "",
                                         subjectColorByKey
                                       )}
                                       draggable={canEditBoard}

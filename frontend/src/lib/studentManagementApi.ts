@@ -906,6 +906,7 @@ export const exportStudents = async (
   params?: {
     search?: string;
     classId?: string;
+    sectionId?: string;
     status?: string;
     sessionId?: string;
   },
@@ -915,6 +916,7 @@ export const exportStudents = async (
   q.set("format", format);
   if (params?.search) q.set("search", params.search);
   if (params?.classId) q.set("classId", params.classId);
+  if (params?.sectionId) q.set("sectionId", params.sectionId);
   if (params?.status) q.set("status", params.status);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
   const res = await authedFetch(`/student-management/students/export?${q}`, { method: "GET" });
