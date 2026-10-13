@@ -50,13 +50,13 @@ async function resolvePeriodTemplate(sessionId) {
   return { template, settings: settings || null };
 }
 
-/** Always use/create a draft — never write auto slots onto published. */
+/** Always use/create a draft — never write auto slots onto published. Prefer newest draft. */
 async function ensureDraftVersion({ sessionId, classId, sectionId, periodTemplateId, userId }) {
   const existingDraft = await TimetableVersion.findOne({
     session: sessionId,
     section: sectionId,
     status: 'draft',
-  });
+  }).sort({ version: -1, updatedAt: -1 });
   if (existingDraft) return existingDraft;
 
   if (!periodTemplateId) {

@@ -590,19 +590,27 @@ export default function ClassBoardTab({
       }
       return upsertSharedLesson(payload);
     },
-    onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ["class-board", sessionId] });
-      qc.invalidateQueries({ queryKey: ["timetable-grid"] });
-      qc.invalidateQueries({ queryKey: ["section-schedule", sessionId] });
-      qc.invalidateQueries({ queryKey: ["my-teacher-schedule", sessionId] });
+    onSuccess: async (result) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["class-board", sessionId] }),
+        qc.invalidateQueries({ queryKey: ["timetable-grid"] }),
+        qc.invalidateQueries({ queryKey: ["section-schedule", sessionId] }),
+        qc.invalidateQueries({ queryKey: ["my-teacher-schedule", sessionId] }),
+      ]);
       setDialog(null);
       toast({
         title: result.combinedGroupId ? "Shared lesson saved" : "Lesson saved",
         description: `${result.sectionCount} section(s) · ${result.days.length} day(s)`,
       });
     },
-    onError: (e: Error) =>
-      toast({ title: "Could not save", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      const msg = e.message || "Schedule conflict";
+      toast({
+        title: "Could not save",
+        description: msg.length > 280 ? `${msg.slice(0, 277)}…` : msg,
+        variant: "destructive",
+      });
+    },
   });
 
   const deleteMut = useMutation({

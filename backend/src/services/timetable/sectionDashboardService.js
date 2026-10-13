@@ -85,12 +85,12 @@ async function getSectionDashboard({ sessionId, classId, program = 'all' }) {
           section: sid,
           isActive: { $ne: false },
         }).select('teacher subject'),
-        TimetableVersion.findOne({ session: sessionId, section: sid, status: 'draft' }).select(
-          '_id version generationMeta'
-        ),
-        TimetableVersion.findOne({ session: sessionId, section: sid, status: 'published' }).select(
-          '_id version'
-        ),
+        TimetableVersion.findOne({ session: sessionId, section: sid, status: 'draft' })
+          .sort({ version: -1, updatedAt: -1 })
+          .select('_id version generationMeta'),
+        TimetableVersion.findOne({ session: sessionId, section: sid, status: 'published' })
+          .sort({ version: -1, updatedAt: -1 })
+          .select('_id version'),
       ]);
 
       const teacherIds = new Set(assignments.map((a) => String(a.teacher)));

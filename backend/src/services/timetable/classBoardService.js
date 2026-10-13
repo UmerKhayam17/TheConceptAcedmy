@@ -100,20 +100,25 @@ async function resolvePeriodTemplate(sessionId) {
   return PeriodTemplate.findOne({ session: sessionId, isActive: true }).sort({ createdAt: 1 });
 }
 
-/** Prefer draft; else edit published in place; else create a new draft. */
+/**
+ * Prefer the newest draft (same as Class Board display).
+ * Multiple drafts can exist per section (unique index only on published).
+ * Writing to an older draft while the board shows the newest looks like
+ * "saved but not displayed".
+ */
 async function ensureEditableVersion({ sessionId, classId, sectionId, periodTemplateId, userId }) {
   const existingDraft = await TimetableVersion.findOne({
     session: sessionId,
     section: sectionId,
     status: 'draft',
-  });
+  }).sort({ version: -1, updatedAt: -1 });
   if (existingDraft) return existingDraft;
 
   const published = await TimetableVersion.findOne({
     session: sessionId,
     section: sectionId,
     status: 'published',
-  });
+  }).sort({ version: -1, updatedAt: -1 });
   if (published) return published;
 
   if (!periodTemplateId) {
@@ -132,11 +137,13 @@ async function ensureEditableVersion({ sessionId, classId, sectionId, periodTemp
 
 /**
  * Pick which TimetableVersion feeds the Class Board projection.
- * - draft: prefer draft (fallback published) — review before publish
+ * - draft: prefer newest draft (fallback published) — review before publish
  * - published: official published only
+ * `versions` must be sorted with drafts first by version desc (see getClassBoard).
  */
 function pickVersionForMode(versions, versionMode) {
-  const draft = versions.find((v) => v.status === 'draft');
+  const drafts = versions.filter((v) => v.status === 'draft');
+  const draft = drafts.sort((a, b) => (b.version || 0) - (a.version || 0))[0] || null;
   const published = versions.find((v) => v.status === 'published');
   if (versionMode === 'published') return published || null;
   return draft || published || null;
