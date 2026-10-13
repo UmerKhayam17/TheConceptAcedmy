@@ -78,8 +78,22 @@ const awardListPdf = catchAsync(async (req, res) => {
 
 const resultPdf = catchAsync(async (req, res) => {
   const result = await Result.findById(req.params.id)
-    .populate('exam')
-    .populate('academyStudent', 'studentId studentName fatherName guardianEmail phone');
+    .populate({
+      path: 'exam',
+      populate: [
+        { path: 'academyClass', select: 'className' },
+        { path: 'sectionId', select: 'sectionName' },
+      ],
+    })
+    .populate({
+      path: 'academyStudent',
+      select: 'studentId studentName fatherName rollNumber phone classId sectionId',
+      populate: [
+        { path: 'classId', select: 'className' },
+        { path: 'sectionId', select: 'sectionName' },
+      ],
+    })
+    .populate('subjectMarks.subject', 'subjectName subjectCode');
   if (!result) throw new ApiError(404, 'Result not found');
 
   const role = roleNameOf(req);
@@ -94,8 +108,14 @@ const resultPdf = catchAsync(async (req, res) => {
   }
 
   const buf = await renderResultCardPdf(result);
+  const safeName = String(result.academyStudent?.studentId || result._id)
+    .replace(/[^\w.-]+/g, '_')
+    .slice(0, 40);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="result-${result._id}.pdf"`);
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="result-card-${safeName}.pdf"`
+  );
   res.send(buf);
 });
 

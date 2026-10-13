@@ -193,21 +193,33 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
 
   const downloadPdf = async (resultId: string) => {
     const token = getAccessToken();
-    const res = await fetch(resultPdfUrl(resultId), {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      credentials: "include",
-    });
-    if (!res.ok) {
+    const preview = window.open("about:blank", "_blank");
+    try {
+      const res = await fetch(resultPdfUrl(resultId), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+      });
+      if (!res.ok) {
+        preview?.close();
+        toast({ title: "PDF failed", variant: "destructive" });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (preview && !preview.closed) {
+        preview.location.replace(url);
+        preview.focus();
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `result-card-${resultId}.pdf`;
+        a.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    } catch {
+      preview?.close();
       toast({ title: "PDF failed", variant: "destructive" });
-      return;
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `result-${resultId}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   return (

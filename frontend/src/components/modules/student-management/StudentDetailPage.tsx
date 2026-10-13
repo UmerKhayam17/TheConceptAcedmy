@@ -658,21 +658,34 @@ function TestsTab({
                     variant="outline"
                     onClick={async () => {
                       const token = getAccessToken();
-                      const res = await fetch(`${getApiRoot()}/results/${r._id}/pdf`, {
-                        headers: token ? { Authorization: `Bearer ${token}` } : {},
-                        credentials: "include",
-                      });
-                      if (!res.ok) return;
-                      const blob = await res.blob();
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `result-${r._id}.pdf`;
-                      a.click();
-                      URL.revokeObjectURL(url);
+                      const preview = window.open("about:blank", "_blank");
+                      try {
+                        const res = await fetch(`${getApiRoot()}/results/${r._id}/pdf`, {
+                          headers: token ? { Authorization: `Bearer ${token}` } : {},
+                          credentials: "include",
+                        });
+                        if (!res.ok) {
+                          preview?.close();
+                          return;
+                        }
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        if (preview && !preview.closed) {
+                          preview.location.replace(url);
+                          preview.focus();
+                        } else {
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `result-card-${r._id}.pdf`;
+                          a.click();
+                        }
+                        window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+                      } catch {
+                        preview?.close();
+                      }
                     }}
                   >
-                    PDF
+                    Result card
                   </Button>
                 </div>
               );
