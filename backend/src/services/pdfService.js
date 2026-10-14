@@ -1,5 +1,9 @@
 const PDFDocument = require('pdfkit');
 const { ACADEMY_BRAND, resolveLogoPath } = require('../config/academyBrand');
+const {
+  drawPdfLetterheadPlain,
+  drawPdfTitlePlain,
+} = require('./academy/academyReportDocument');
 
 const LINE = '#000000';
 const GRAY = '#E8E8E8';
@@ -129,69 +133,89 @@ async function renderResultCardPdf(result) {
       const resultLabel = overallResultLabel(result);
       const isFail = resultLabel === 'Fail';
 
-      // —— Header / brand ——
-      let y = margin;
-      if (logoPath) {
-        try {
-          doc.image(logoPath, margin, y, { width: 48, height: 48 });
-        } catch {
-          /* ignore missing logo decode */
-        }
-      }
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(16)
-        .fillColor(NAVY)
-        .text(ACADEMY_BRAND.name, margin + 58, y + 4, { width: contentW - 58 });
-      doc
-        .font('Helvetica')
-        .fontSize(9)
-        .fillColor(MUTED)
-        .text(ACADEMY_BRAND.tagline, margin + 58, y + 24, { width: contentW - 58 });
-      doc
-        .font('Helvetica')
-        .fontSize(8)
-        .fillColor(MUTED)
-        .text(
-          [ACADEMY_BRAND.address, ACADEMY_BRAND.phones?.join(' · '), ACADEMY_BRAND.email]
-            .filter(Boolean)
-            .join('  |  '),
-          margin + 58,
-          y + 38,
-          { width: contentW - 58 }
-        );
+      // —— Header / brand (same centered letterhead as paid-fee reports) ——
+      let y = drawPdfLetterheadPlain(doc, ACADEMY_BRAND, logoPath);
+      y = drawPdfTitlePlain(
+        doc,
+        {
+          title: 'RESULT CARD',
+          sessionLabel,
+          leftFilter: '',
+          centerFilter: [examTitle, examType].filter(Boolean).join(' · '),
+          rightFilter: '',
+        },
+        y
+      );
 
-      y += 62;
+      const subjectNames = subjects
+        .map((sm) => subjectNameOf(sm))
+        .filter((n) => n && n !== 'Subject')
+        .join(', ');
+      const headerTotalMarks = subjects.reduce(
+        (sum, sm) => sum + (Number(sm.total) || 0),
+        0
+      );
+
+      const barH = 16;
+      doc.save();
+      doc.rect(margin, y, contentW, barH).fill(GRAY);
+      doc.restore();
+      doc.rect(margin, y, contentW, barH).strokeColor(LINE).lineWidth(0.8).stroke();
+      doc.font('Helvetica-Bold').fontSize(8).fillColor('#000');
+      doc.text(`Program/Class/Section : ${program}`, margin + 6, y + 4, { lineBreak: false });
+      y += barH + 8;
+
+      const rowGap = 14;
+      const leftW = contentW * 0.42;
+      const midX = margin + leftW + 8;
+      const midW = contentW * 0.28;
+      const rightX = midX + midW + 8;
+      const rightW = contentW - (leftW + midW + 16);
+      const half = (contentW - 10) / 2;
+
+      const drawField = (label, value, x, fy, w) => {
+        doc.font('Helvetica-Bold').fontSize(8).fillColor('#000');
+        const labelW = doc.widthOfString(label);
+        doc.text(label, x, fy, { lineBreak: false });
+        const lineStart = x + labelW + 3;
+        const lineEnd = x + w;
+        if (value) {
+          doc.font('Helvetica').fontSize(8).fillColor('#000');
+          doc.text(fitText(doc, value, Math.max(0, lineEnd - lineStart - 2)), lineStart, fy, {
+            lineBreak: false,
+          });
+        }
+        doc
+          .moveTo(lineStart, fy + 9)
+          .lineTo(lineEnd, fy + 9)
+          .strokeColor(LINE)
+          .lineWidth(0.7)
+          .stroke();
+      };
+
+      drawField('Subject: ', subjectNames, margin, y, leftW);
+      drawField(
+        'Total Marks: ',
+        headerTotalMarks ? String(headerTotalMarks) : '',
+        midX,
+        y,
+        midW
+      );
+      drawField('Pass Marks: ', '', rightX, y, rightW);
+      y += rowGap;
+      drawField("Examiner's Name: ", '', margin, y, half);
+      drawField("Invigilator's Name: ", '', margin + half + 10, y, half);
+      y += rowGap;
+      drawField(`${examType || 'Exam'}: `, examTitle, margin, y, half);
+      drawField('Test Date: ', formatDate(exam.startDate), margin + half + 10, y, half);
+      y += rowGap + 2;
       doc
         .moveTo(margin, y)
         .lineTo(margin + contentW, y)
         .strokeColor(LINE)
-        .lineWidth(1.2)
+        .lineWidth(1.4)
         .stroke();
-      y += 14;
-
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(14)
-        .fillColor(NAVY)
-        .text('RESULT CARD', margin, y, { width: contentW, align: 'center' });
-      y += 18;
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(11)
-        .fillColor('#000')
-        .text(examTitle, margin, y, { width: contentW, align: 'center' });
-      y += 14;
-      const subLine = [examType, sessionLabel].filter(Boolean).join(' · ');
-      if (subLine) {
-        doc
-          .font('Helvetica')
-          .fontSize(9)
-          .fillColor(MUTED)
-          .text(subLine, margin, y, { width: contentW, align: 'center' });
-        y += 12;
-      }
-      y += 6;
+      y += 8;
 
       // —— Student info box ——
       const infoH = 72;

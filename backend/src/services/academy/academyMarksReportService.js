@@ -1,5 +1,9 @@
 const PDFDocument = require('pdfkit');
 const { ACADEMY_BRAND, resolveLogoPath } = require('../../config/academyBrand');
+const {
+  drawPdfLetterheadPlain,
+  drawPdfTitlePlain,
+} = require('./academyReportDocument');
 const { assessmentTypeLabel } = require('../../config/assessmentTaxonomy');
 const classTestService = require('./academyClassTestService');
 const Exam = require('../../models/Exam');
@@ -14,8 +18,6 @@ const { renderResultCardPdf } = require('../pdfService');
 
 const LINE = '#000000';
 const GRAY = '#D0D0D0';
-const MUTED = '#5A6A7A';
-const NAVY = ACADEMY_BRAND.colors?.navy || '#0B2A4A';
 const FAIL_PCT = 33;
 const OVERALL_FAIL_PCT = 50;
 /** Highlight cells at or below this share of subject total (matches sample sheet). */
@@ -194,48 +196,115 @@ function bufferFromDoc(build, { layout = 'landscape', margin = 18 } = {}) {
   });
 }
 
-function drawReportHeader(doc, meta, margin, contentW) {
+function drawHeaderField(doc, label, value, x, y, totalWidth, fontSize = 8) {
+  doc.font('Helvetica-Bold').fontSize(fontSize).fillColor('#000');
+  const labelW = doc.widthOfString(label);
+  doc.text(label, x, y, { lineBreak: false });
+  const lineStart = x + labelW + 3;
+  const lineEnd = x + totalWidth;
+  if (value) {
+    doc.font('Helvetica').fontSize(fontSize).fillColor('#000');
+    doc.text(fitText(doc, value, Math.max(0, lineEnd - lineStart - 2)), lineStart, y, {
+      lineBreak: false,
+    });
+  }
+  doc
+    .moveTo(lineStart, y + fontSize + 1)
+    .lineTo(lineEnd, y + fontSize + 1)
+    .strokeColor(LINE)
+    .lineWidth(0.7)
+    .stroke();
+}
+
+/**
+ * Centered letterhead (same as paid-fee reports) + award-list style detail fields:
+ * program bar, subjects, total/pass marks, examiner/invigilator, test/exam + date.
+ */
+function drawReportHeader(doc, meta, margin = 36, contentW) {
+  const usableW = contentW != null ? contentW : doc.page.width - margin * 2;
   const logoPath = resolveLogoPath();
-  let y = margin;
-  if (logoPath) {
-    try {
-      doc.image(logoPath, margin, y, { width: 40, height: 40 });
-    } catch {
-      /* ignore */
-    }
+  let y = drawPdfLetterheadPlain(doc, ACADEMY_BRAND, logoPath);
+  y = drawPdfTitlePlain(
+    doc,
+    {
+      title: meta.title || 'MARKS REPORT',
+      sessionLabel: meta.sessionLabel || '',
+      leftFilter: '',
+      centerFilter: meta.examLabel || meta.subtitle || '',
+      rightFilter: '',
+    },
+    y
+  );
+
+  const barH = 16;
+  doc.save();
+  doc.rect(margin, y, usableW, barH).fill(GRAY);
+  doc.restore();
+  doc.rect(margin, y, usableW, barH).strokeColor(LINE).lineWidth(0.8).stroke();
+  doc.font('Helvetica-Bold').fontSize(8).fillColor('#000');
+  const programText = meta.disciplineLabel
+    ? `Program/Class/Section/Discipline : ${meta.programLabel || '—'}`
+    : `Program/Class/Section : ${meta.programLabel || '—'}`;
+  doc.text(fitText(doc, programText, usableW - 12), margin + 6, y + 4, { lineBreak: false });
+  y += barH + 8;
+
+  const rowGap = 14;
+  const leftW = usableW * 0.42;
+  const midX = margin + leftW + 8;
+  const midW = usableW * 0.28;
+  const rightX = midX + midW + 8;
+  const rightW = usableW - (leftW + midW + 16);
+  const subjectsText =
+    meta.subjectsLabel ||
+    meta.subjectName ||
+    String(meta.subjectLabel || '').replace(/^Subject:\s*/i, '') ||
+    '';
+  const totalMarks =
+    meta.totalMarks != null && meta.totalMarks !== ''
+      ? String(meta.totalMarks)
+      : '';
+  const passMarks =
+    meta.passMarks != null && meta.passMarks !== '' ? String(meta.passMarks) : '';
+
+  drawHeaderField(doc, 'Subject: ', subjectsText, margin, y, leftW);
+  drawHeaderField(doc, 'Total Marks: ', totalMarks, midX, y, midW);
+  drawHeaderField(doc, 'Pass Marks: ', passMarks, rightX, y, rightW);
+  y += rowGap;
+
+  if (meta.disciplineLabel) {
+    drawHeaderField(doc, 'Discipline: ', meta.disciplineLabel, margin, y, usableW);
+    y += rowGap;
   }
+
+  const half = (usableW - 10) / 2;
+  drawHeaderField(doc, "Examiner's Name: ", meta.examinerName || '', margin, y, half);
+  drawHeaderField(
+    doc,
+    "Invigilator's Name: ",
+    meta.invigilatorName || '',
+    margin + half + 10,
+    y,
+    half
+  );
+  y += rowGap;
+
+  const typeLabel = meta.testTypeLabel || meta.examTypeLabel || 'Test';
+  const typeValue =
+    meta.testNumber != null && meta.testNumber !== ''
+      ? String(meta.testNumber)
+      : meta.examLabel || '';
+  const dateValue = meta.testDate || meta.dateLabel || '';
+  drawHeaderField(doc, `${typeLabel}: `, typeValue, margin, y, half);
+  drawHeaderField(doc, 'Test Date: ', dateValue, margin + half + 10, y, half);
+  y += rowGap + 2;
+
   doc
-    .font('Helvetica-Bold')
-    .fontSize(13)
-    .fillColor(NAVY)
-    .text(ACADEMY_BRAND.name, margin + 48, y + 2, { width: contentW - 48 });
-  doc
-    .font('Helvetica')
-    .fontSize(8)
-    .fillColor(MUTED)
-    .text(meta.subtitle || 'Marks Report', margin + 48, y + 20, { width: contentW - 48 });
-  y += 48;
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(11)
-    .fillColor('#000')
-    .text(meta.title || 'MARKS REPORT', margin, y, { width: contentW, align: 'center' });
-  y += 16;
-  const bits = [
-    meta.programLabel,
-    meta.examLabel,
-    meta.subjectLabel,
-    meta.dateLabel ? `Date: ${meta.dateLabel}` : '',
-  ].filter(Boolean);
-  if (bits.length) {
-    doc
-      .font('Helvetica')
-      .fontSize(8)
-      .fillColor('#000')
-      .text(bits.join('   ·   '), margin, y, { width: contentW, align: 'center' });
-    y += 12;
-  }
-  return y + 4;
+    .moveTo(margin, y)
+    .lineTo(margin + usableW, y)
+    .strokeColor(LINE)
+    .lineWidth(1.4)
+    .stroke();
+  return y + 6;
 }
 
 /**
@@ -461,14 +530,25 @@ function renderClassMarksheetPdf(payload) {
       });
     }
 
-    let y = drawReportHeader(doc, meta, margin, contentW);
+    const headerMeta = {
+      ...meta,
+      subjectsLabel:
+        meta.subjectsLabel ||
+        subjects.map((s) => s.name).filter(Boolean).join(', '),
+      totalMarks:
+        meta.totalMarks != null && meta.totalMarks !== ''
+          ? meta.totalMarks
+          : String(marksSum),
+    };
+
+    let y = drawReportHeader(doc, headerMeta, margin, contentW);
     y = drawTableHeader(y);
     const usableBottom = pageH - margin - footerH;
     let sr = 1;
     for (const row of rows) {
       if (y + rowH > usableBottom) {
         doc.addPage();
-        y = drawReportHeader(doc, meta, margin, contentW);
+        y = drawReportHeader(doc, headerMeta, margin, contentW);
         y = drawTableHeader(y);
       }
       drawDataRow(y, sr++, row);
@@ -479,7 +559,7 @@ function renderClassMarksheetPdf(payload) {
     doc
       .font('Helvetica')
       .fontSize(7)
-      .fillColor(MUTED)
+      .fillColor('#5A6A7A')
       .text(
         `Generated ${formatDate(new Date())}  ·  ${studentsLabel(rows.length)}  ·  ${ACADEMY_BRAND.name}`,
         margin,
@@ -627,17 +707,20 @@ async function renderExamMarksReportPdf(examId, { view = 'exam', subjectId, stud
   });
   if (!rows.length) throw new ApiError(400, 'No students enrolled for this report');
 
-  const subjectLabel =
-    mode === 'subject' ? `Subject: ${subjects.map((s) => s.name).join(', ')}` : '';
+  const subjectsLabel = subjects.map((s) => s.name).filter(Boolean).join(', ');
+  const totalMarks = subjects.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
 
   return renderClassMarksheetPdf({
     meta: {
       title: mode === 'subject' ? 'SUBJECT-WISE MARKS REPORT' : 'EXAMINATION RESULT SHEET',
-      subtitle: examLabel || 'Examination marks report',
       programLabel,
-      examLabel,
-      subjectLabel,
-      dateLabel: formatDate(exam.startDate),
+      examLabel: [exam.title, exam.type].filter(Boolean).join(' · '),
+      subjectsLabel,
+      totalMarks: String(totalMarks),
+      testTypeLabel: exam.type || 'Exam',
+      testNumber: exam.title || '',
+      testDate: formatDate(exam.startDate),
+      sessionLabel: exam.sessionLabel || '',
     },
     subjects,
     rows,
@@ -692,14 +775,30 @@ async function renderExamStudentWisePdf(exam, students, resultByStudent, student
         });
         const isFail = resultLabel === 'Fail';
 
+        const subjectNames = subjects
+          .map((sm) =>
+            typeof sm.subject === 'object' && sm.subject
+              ? sm.subject.subjectName || sm.subject.subjectCode
+              : ''
+          )
+          .filter(Boolean)
+          .join(', ');
+        const totalMarks = subjects.reduce(
+          (sum, sm) => sum + (Number(sm.total) || 0),
+          0
+        );
         let y = drawReportHeader(
           doc,
           {
             title: 'STUDENT-WISE EXAM REPORT',
-            subtitle: 'Examination result card',
             programLabel: examProgramLabel(exam),
-            examLabel: [exam.title, exam.type, exam.sessionLabel].filter(Boolean).join(' · '),
-            dateLabel: formatDate(exam.startDate),
+            examLabel: [exam.title, exam.type].filter(Boolean).join(' · '),
+            subjectsLabel: subjectNames,
+            totalMarks: String(totalMarks || result.totalMarks || ''),
+            testTypeLabel: exam.type || 'Exam',
+            testNumber: exam.title || '',
+            testDate: formatDate(exam.startDate),
+            sessionLabel: exam.sessionLabel || '',
           },
           margin,
           contentW
@@ -915,6 +1014,7 @@ async function renderClassTestMarksReportPdf(
     if (!rows.length) throw new ApiError(400, 'No students to print');
     return renderClassTestStudentWisePdf(test, rows, {
       programLabel,
+      disciplineLabel: disciplineName,
       subjectName,
     });
   }
@@ -985,24 +1085,27 @@ async function renderClassTestMarksReportPdf(
     test.title ||
     (assessmentTypeLabel(test.assessmentType) || 'Test');
 
+  const subjectsLabel = subjects.map((s) => s.name).filter(Boolean).join(', ');
+  const totalMarksSum = subjects.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+  const testTypeLabel = assessmentTypeLabel(test.assessmentType) || 'Test';
+  const testNumber =
+    test.occurrenceIndex != null && test.occurrenceIndex !== ''
+      ? String(test.occurrenceIndex)
+      : batchTitle || '1';
+
   return renderClassMarksheetPdf({
     meta: {
       title:
         mode === 'subject' ? 'SUBJECT-WISE MARKS REPORT' : 'TEST-WISE MARKS REPORT',
-      subtitle: 'Class test marks report',
       programLabel,
-      examLabel: [
-        batchTitle,
-        assessmentTypeLabel(test.assessmentType) || 'Test',
-        mode === 'subject' ? subjectName : `${subjects.length} subjects`,
-      ]
-        .filter(Boolean)
-        .join(' · '),
-      subjectLabel:
-        mode === 'subject'
-          ? `Subject: ${subjectName || '—'}`
-          : subjects.map((s) => s.name).join(', '),
-      dateLabel: formatDate(test.examDate),
+      disciplineLabel: disciplineName,
+      examLabel: [batchTitle, testTypeLabel].filter(Boolean).join(' · '),
+      subjectsLabel:
+        mode === 'subject' ? subjectName || subjectsLabel : subjectsLabel,
+      totalMarks: String(totalMarksSum),
+      testTypeLabel,
+      testNumber,
+      testDate: formatDate(test.examDate),
     },
     subjects,
     rows: sheetRows,
@@ -1041,11 +1144,17 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
           doc,
           {
             title: 'STUDENT-WISE TEST REPORT',
-            subtitle: 'Class test result',
             programLabel: labels.programLabel,
+            disciplineLabel: labels.disciplineLabel || '',
             examLabel: test.title,
-            subjectLabel: labels.subjectName ? `Subject: ${labels.subjectName}` : '',
-            dateLabel: formatDate(test.examDate),
+            subjectsLabel: labels.subjectName || '',
+            totalMarks: String(total ?? ''),
+            testTypeLabel: assessmentTypeLabel(test.assessmentType) || 'Test',
+            testNumber:
+              test.occurrenceIndex != null && test.occurrenceIndex !== ''
+                ? String(test.occurrenceIndex)
+                : test.title || '1',
+            testDate: formatDate(test.examDate),
           },
           margin,
           contentW
