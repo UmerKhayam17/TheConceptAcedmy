@@ -265,7 +265,7 @@ export default function RegistrationTab({
     (hasActions ? 8 : 7) +
     (showSessionCol ? 1 : 0) +
     (showPhoneCol ? 1 : 0) +
-    (showMonthlyCol ? 1 : 0);
+    (showMonthlyCol ? 2 : 0);
 
   const showIntake = enrollmentFlow === "intake" || enrollmentFlow === "both";
   const showDirectRegister = enrollmentFlow === "direct" || enrollmentFlow === "both";
@@ -685,7 +685,10 @@ export default function RegistrationTab({
                 {showSessionCol && <th className="text-left p-3 font-medium">Session</th>}
                 <th className="text-left p-3 font-medium">Created</th>
                 {showMonthlyCol && (
-                  <th className="text-left p-3 font-medium whitespace-nowrap">Monthly Fee</th>
+                  <>
+                    <th className="text-left p-3 font-medium whitespace-nowrap">Monthly Fee</th>
+                    <th className="text-left p-3 font-medium whitespace-nowrap">Total Payable</th>
+                  </>
                 )}
                 <th className="text-left p-3 font-medium">Status</th>
                 {hasActions && <th className="text-right p-3 font-medium">Actions</th>}
@@ -777,9 +780,21 @@ export default function RegistrationTab({
                       {formatDate(s.createdAt)}
                     </td>
                     {showMonthlyCol && (
-                      <td className="p-3 whitespace-nowrap">
-                        {isPending ? "—" : formatPkr(s.monthlyFee)}
-                      </td>
+                      <>
+                        <td className="p-3 whitespace-nowrap">
+                          {isPending ? "—" : formatPkr(s.monthlyFee)}
+                        </td>
+                        <td className="p-3 whitespace-nowrap font-medium text-[#1a2b4b]">
+                          {isPending
+                            ? "—"
+                            : formatPkr(
+                                Math.max(
+                                  0,
+                                  (Number(s.monthlyFee) || 0) - (Number(s.monthlyFeeDiscount) || 0),
+                                ),
+                              )}
+                        </td>
+                      </>
                     )}
                     <td className="p-3">
                       <span

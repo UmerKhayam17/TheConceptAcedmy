@@ -1129,9 +1129,9 @@ async function changeStudentSection(id, payload) {
     Number(student.monthlyFeeDiscount) > 0 || Number(student.admissionFeeDiscount) > 0;
   const discountOptions = hasSeparateDiscounts
     ? {
-        monthlyFeeDiscount: student.monthlyFeeDiscount,
-        admissionFeeDiscount: student.admissionFeeDiscount,
-      }
+      monthlyFeeDiscount: student.monthlyFeeDiscount,
+      admissionFeeDiscount: student.admissionFeeDiscount,
+    }
     : { discountAmount: student.discountAmount };
   const fees = calculateFeesWithDiscount(feeStructure, {
     selectedSubjectIds: subjectIds,

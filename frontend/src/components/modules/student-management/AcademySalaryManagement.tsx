@@ -13,6 +13,7 @@ import {
   FileText,
   Minus,
   MoreVertical,
+  RefreshCw,
   Search,
   Users,
   Wallet,
@@ -581,7 +582,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
         />
       </div>
 
-      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <select
             className={selectClass}
@@ -639,45 +640,52 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+            {canGenerate ? (
+              <Button
+                className="gap-2 h-10 shrink-0 rounded-md bg-slate-900 text-white hover:bg-slate-800"
+                disabled={genMut.isPending}
+                onClick={() => genMut.mutate()}
+              >
+                <CalendarPlus className="h-4 w-4" />
+                {genMut.isPending ? "Generating…" : "Generate monthly salaries"}
+              </Button>
+            ) : null}
             {canPay && selectedIds.length > 0 ? (
               <Button
                 variant="hero"
-                className="gap-2 h-10 shrink-0"
+                className="gap-2 h-10 shrink-0 rounded-md font-semibold shadow-gold"
                 disabled={bulkPayMut.isPending}
                 onClick={openBulkPay}
               >
                 <Check className="h-4 w-4" />
-                Pay selected
-                {selectedPendingPayable.length > 0
-                  ? ` (${selectedPendingPayable.length})`
-                  : ""}
+                {bulkPayMut.isPending
+                  ? "Paying…"
+                  : `Pay selected${
+                      selectedPendingPayable.length > 0
+                        ? ` (${selectedPendingPayable.length})`
+                        : ""
+                    }`}
               </Button>
             ) : null}
-            {canGenerate && (
-              <>
-                <Button
-                  className="gap-2 h-10 shrink-0"
-                  disabled={genMut.isPending}
-                  onClick={() => genMut.mutate()}
-                >
-                  <CalendarPlus className="h-4 w-4" />
-                  {genMut.isPending ? "Generating…" : "Generate monthly salaries"}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="gap-2 h-10 shrink-0"
-                  disabled={recalcMut.isPending}
-                  onClick={() => recalcMut.mutate()}
-                  title="Recompute pending percentage vouchers from tuition × subject share × teacher cut"
-                >
-                  <Coins className="h-4 w-4" />
-                  {recalcMut.isPending ? "Recalculating…" : "Recalc % from fees"}
-                </Button>
-              </>
-            )}
+            {canGenerate ? (
+              <Button
+                variant="outline"
+                className="gap-2 h-10 shrink-0 rounded-md border-slate-800 text-slate-800 hover:bg-slate-50"
+                disabled={recalcMut.isPending}
+                onClick={() => recalcMut.mutate()}
+                title="Recompute pending percentage vouchers from tuition × subject share × teacher cut"
+              >
+                <RefreshCw className={cn("h-4 w-4", recalcMut.isPending && "animate-spin")} />
+                {recalcMut.isPending ? "Recalculating…" : "Recalc % from fees"}
+              </Button>
+            ) : null}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-1.5 h-10 shrink-0" disabled={exporting}>
+                <Button
+                  variant="outline"
+                  className="gap-1.5 h-10 shrink-0 rounded-md border-slate-800 text-slate-800 hover:bg-slate-50"
+                  disabled={exporting}
+                >
                   <Download className="h-4 w-4" />
                   {exporting ? "Exporting…" : "Export"}
                   <ChevronDown className="h-3.5 w-3.5 opacity-70" />
@@ -696,7 +704,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             </DropdownMenu>
           </div>
         </div>
-      </Card>
+      </div>
 
       <Card className="overflow-hidden shadow-sm border-border/80">
         <div className="overflow-x-auto">

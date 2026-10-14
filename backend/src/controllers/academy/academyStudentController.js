@@ -74,10 +74,12 @@ const assignSection = catchAsync(async (req, res) => {
 const changeSection = catchAsync(async (req, res) => {
   const result = await studentService.changeStudentSection(req.params.id, req.body);
   rt.studentUpdated(result.student);
-  res.json({ success: true, data: result.student, meta: {
-    previousSectionId: result.previousSectionId,
-    newSectionId: result.newSectionId,
-  } });
+  res.json({
+    success: true, data: result.student, meta: {
+      previousSectionId: result.previousSectionId,
+      newSectionId: result.newSectionId,
+    }
+  });
 });
 
 const registerDirect = catchAsync(async (req, res) => {
