@@ -245,7 +245,7 @@ export default function AcademySalaryDetailPage({
 
   return (
     <div className="min-h-full bg-[#f4f7fb] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-5">
+      <div className="w-full space-y-5">
         <Button
           type="button"
           variant="outline"
