@@ -1746,6 +1746,34 @@ export const payAcademySalariesBulk = (body: {
     body: JSON.stringify(body),
   });
 
+export type SalaryReportFormat = "xlsx" | "pdf";
+
+export const exportAcademySalaryReport = async (
+  params?: {
+    month?: number;
+    year?: number;
+    status?: string;
+    roleName?: string;
+    search?: string;
+    ids?: string[];
+  },
+  format: SalaryReportFormat = "xlsx",
+) => {
+  const q = new URLSearchParams();
+  q.set("format", format);
+  if (params?.month) q.set("month", String(params.month));
+  if (params?.year) q.set("year", String(params.year));
+  if (params?.status) q.set("status", params.status);
+  if (params?.roleName) q.set("roleName", params.roleName);
+  if (params?.search) q.set("search", params.search);
+  if (params?.ids?.length) q.set("ids", params.ids.join(","));
+  const res = await authedFetch(`/student-management/salaries/export-report?${q}`, {
+    method: "GET",
+  });
+  if (!res.ok) throw new Error("Export failed");
+  return res.blob();
+};
+
 export const updateAcademySalaryAmount = (id: string, amount: number) =>
   api<AcademySalaryRecord>(`/salaries/${id}/amount`, {
     method: "PATCH",
@@ -2117,6 +2145,62 @@ export async function previewAwardListPdf(testId: string) {
       const a = document.createElement("a");
       a.href = url;
       a.download = `award-list-${testId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (err) {
+    preview?.close();
+    throw err;
+  }
+}
+
+export type ClassTestMarksReportView = "test" | "subject" | "student";
+
+export async function fetchClassTestMarksReportPdf(
+  testId: string,
+  opts?: {
+    view?: ClassTestMarksReportView;
+    studentId?: string;
+    studentIds?: string[];
+  }
+) {
+  const params = new URLSearchParams();
+  params.set("view", opts?.view || "test");
+  if (opts?.studentId) params.set("studentId", opts.studentId);
+  if (opts?.studentIds?.length) params.set("studentIds", opts.studentIds.join(","));
+  const res = await authedFetch(
+    `/student-management/class-tests/${testId}/marks-report.pdf?${params.toString()}`
+  );
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res);
+    throw new Error(body.message || "Failed to load marks report");
+  }
+  return res.blob();
+}
+
+/** Opens filled class-test marks report PDF (test / subject / student wise). */
+export async function previewClassTestMarksReportPdf(
+  testId: string,
+  opts?: {
+    view?: ClassTestMarksReportView;
+    studentId?: string;
+    studentIds?: string[];
+  }
+) {
+  const preview = window.open("about:blank", "_blank");
+  try {
+    const blob = await fetchClassTestMarksReportPdf(testId, opts);
+    const url = URL.createObjectURL(blob);
+    const view = opts?.view || "test";
+    if (preview && !preview.closed) {
+      preview.location.replace(url);
+      preview.focus();
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `marks-report-${view}-${testId}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();

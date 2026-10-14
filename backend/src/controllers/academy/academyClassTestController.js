@@ -1,6 +1,7 @@
 const catchAsync = require('../../utils/catchAsync');
 const classTestService = require('../../services/academy/academyClassTestService');
 const { renderAwardListPdf } = require('../../services/academy/academyAwardListService');
+const { renderClassTestMarksReportPdf } = require('../../services/academy/academyMarksReportService');
 
 const list = catchAsync(async (req, res) => {
   const data = await classTestService.listClassTests(
@@ -69,4 +70,26 @@ const awardListPdf = catchAsync(async (req, res) => {
   res.send(buffer);
 });
 
-module.exports = { list, create, getEntry, saveMarks, uploadTestPaper, remove, awardListPdf };
+const marksReportPdf = catchAsync(async (req, res) => {
+  const view = String(req.query.view || 'test').toLowerCase();
+  const buffer = await renderClassTestMarksReportPdf(req.params.id, req.user, req.query.sessionId, {
+    view,
+    studentId: req.query.studentId ? String(req.query.studentId) : undefined,
+    studentIds: req.query.studentIds ? String(req.query.studentIds) : undefined,
+  });
+  const filename = `marks-report-${view}-${req.params.id}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.send(buffer);
+});
+
+module.exports = {
+  list,
+  create,
+  getEntry,
+  saveMarks,
+  uploadTestPaper,
+  remove,
+  awardListPdf,
+  marksReportPdf,
+};

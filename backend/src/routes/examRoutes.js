@@ -18,6 +18,11 @@ router.get(
   requirePermission('view_results'),
   ctrl.awardListPdf
 );
+router.get(
+  '/exams/:id/marks-report.pdf',
+  requirePermission('view_results'),
+  ctrl.marksReportPdf
+);
 router.post('/exams/:id/results', requirePermission('enter_exam_marks'), validate(schemas.examMarks), ctrl.enterMarks);
 router.get('/exams/:id/results', requirePermission('view_results'), ctrl.getExamResults);
 router.post('/exams/:id/publish-all', requirePermission('publish_results'), ctrl.publishAll);

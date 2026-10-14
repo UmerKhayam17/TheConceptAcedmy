@@ -130,8 +130,18 @@ function formatPdfCellValue(col, value) {
 
 function isPdfTotalRow(row) {
   if (row?._isTotal) return true;
-  const label = String(row?.studentName || row?.name || '').toLowerCase();
+  const label = String(row?.studentName || row?.name || row?.staff || '').toLowerCase();
   return label === 'total' || label === 'grand total';
+}
+
+/** Prefer salary/amount/total so pool breakdown totals align on Salary, not Tuition. */
+function firstTotalAmountIdx(columns) {
+  const preferred = columns.findIndex(
+    (col) => col.key === 'salary' || col.key === 'amount' || col.key === 'total'
+  );
+  if (preferred >= 0) return preferred;
+  const fmt = columns.findIndex((col) => col.numFmt);
+  return fmt >= 0 ? fmt : Math.max(0, columns.length - 1);
 }
 
 function drawPdfColumnLines(doc, columns, startX, y, height, { plain = false, brand, outer = false } = {}) {
@@ -154,10 +164,30 @@ function drawPdfColumnLines(doc, columns, startX, y, height, { plain = false, br
 
 function plainCellAlign(col) {
   if (col.align) return col.align;
-  if (col.key === 'serial' || col.key === 'className' || col.key === 'feeType' || col.key === 'paymentMethod') {
+  if (
+    col.key === 'serial' ||
+    col.key === 'className' ||
+    col.key === 'feeType' ||
+    col.key === 'paymentMethod' ||
+    col.key === 'status' ||
+    col.key === 'payType'
+  ) {
     return 'center';
   }
-  if (col.numFmt || col.key === 'amount' || col.key === 'total') return 'right';
+  if (
+    col.numFmt ||
+    col.key === 'amount' ||
+    col.key === 'total' ||
+    col.key === 'tuition' ||
+    col.key === 'pool' ||
+    col.key === 'salary' ||
+    col.key === 'students' ||
+    col.key === 'sharePct' ||
+    col.key === 'teacherPct' ||
+    col.key === 'rate'
+  ) {
+    return 'right';
+  }
   return 'left';
 }
 
@@ -253,10 +283,7 @@ function drawPdfRow(doc, columns, row, startX, y, zebra, brand, { plain = false 
   doc.fillColor(textColor).font(totalRow ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
 
   if (plain && totalRow) {
-    const amountCols = columns
-      .map((col, idx) => ({ col, idx }))
-      .filter(({ col }) => col.numFmt || col.key === 'amount' || col.key === 'total');
-    const firstAmountIdx = amountCols.length ? amountCols[0].idx : columns.length - 1;
+    const firstAmountIdx = firstTotalAmountIdx(columns);
     const labelWidth = columns.slice(0, firstAmountIdx).reduce((sum, c) => sum + c.pdfWidth, 0);
     if (labelWidth > 0) {
       pdfLine(doc, 'Grand Total', startX + pad, y + (rowH - fontSize) / 2, {
@@ -455,6 +482,21 @@ function drawPdfFooterTextPlain(doc, brand, confidentialLabel, meta, page, pages
   pdfLine(doc, `Page ${page} of ${pages}`, left, y, { width: right - left, align: 'right' });
 }
 
+function scalePdfColumns(columns, usableWidth, plain) {
+  let scaled = columns;
+  const rawWidth = columns.reduce((sum, c) => sum + (Number(c.pdfWidth) || 0), 0);
+  if (plain && rawWidth > 0) {
+    const scale = usableWidth / rawWidth;
+    scaled = columns.map((c) => ({
+      ...c,
+      pdfWidth: Math.max(18, Math.floor((Number(c.pdfWidth) || 0) * scale)),
+    }));
+    const scaledSum = scaled.reduce((sum, c) => sum + c.pdfWidth, 0);
+    scaled[scaled.length - 1].pdfWidth += usableWidth - scaledSum;
+  }
+  return scaled;
+}
+
 async function renderBrandedPdf({
   title,
   subject,
@@ -464,11 +506,11 @@ async function renderBrandedPdf({
   meta = {},
   emptyMessage = 'No records match the selected filters.',
   plain = false,
+  additionalSections = [],
 }) {
   const brand = ACADEMY_BRAND;
   const logoPath = resolveLogoPath();
   const reportMeta = { ...meta, generatedAt: meta.generatedAt || new Date() };
-  const countLabel = meta.countLabel || `${rows.length} record${rows.length === 1 ? '' : 's'}`;
 
   return new Promise((resolve, reject) => {
     try {
@@ -491,37 +533,26 @@ async function renderBrandedPdf({
 
       const pageMargin = plain ? 36 : 32;
       const usableWidth = doc.page.width - pageMargin * 2;
-      // Scale columns to exactly fill the printable width (no side gaps / no clipping).
-      let scaledColumns = columns;
-      const rawWidth = columns.reduce((sum, c) => sum + (Number(c.pdfWidth) || 0), 0);
-      if (plain && rawWidth > 0) {
-        const scale = usableWidth / rawWidth;
-        scaledColumns = columns.map((c) => ({
-          ...c,
-          pdfWidth: Math.max(18, Math.floor((Number(c.pdfWidth) || 0) * scale)),
-        }));
-        const scaledSum = scaledColumns.reduce((sum, c) => sum + c.pdfWidth, 0);
-        scaledColumns[scaledColumns.length - 1].pdfWidth += usableWidth - scaledSum;
-      }
-      const tableWidth = scaledColumns.reduce((sum, c) => sum + c.pdfWidth, 0);
       const startX = pageMargin;
       const bottomLimit = () => doc.page.height - (plain ? 42 : 44);
 
-      const startTablePage = () => {
+      const startTablePage = (pageTitle, pageMeta, scaledColumns) => {
+        const pageCountLabel =
+          pageMeta.countLabel || `${(pageMeta._rowCount ?? 0)} record${(pageMeta._rowCount ?? 0) === 1 ? '' : 's'}`;
         let nextY;
         if (plain) {
           nextY = drawPdfLetterheadPlain(doc, brand, logoPath);
           nextY = drawPdfTitlePlain(
             doc,
             {
-              title,
-              filterLine: meta.filterLine || '',
-              countLabel,
-              extraLine: meta.extraLine,
-              sessionLabel: meta.sessionLabel || '',
-              leftFilter: meta.leftFilter || '',
-              centerFilter: meta.centerFilter || '',
-              rightFilter: meta.rightFilter || '',
+              title: pageTitle,
+              filterLine: pageMeta.filterLine || '',
+              countLabel: pageCountLabel,
+              extraLine: pageMeta.extraLine,
+              sessionLabel: pageMeta.sessionLabel || '',
+              leftFilter: pageMeta.leftFilter || '',
+              centerFilter: pageMeta.centerFilter || '',
+              rightFilter: pageMeta.rightFilter || '',
             },
             nextY
           );
@@ -530,10 +561,10 @@ async function renderBrandedPdf({
           nextY = drawPdfTitle(
             doc,
             {
-              title,
-              filterLine: meta.filterLine || '',
-              countLabel,
-              extraLine: meta.extraLine,
+              title: pageTitle,
+              filterLine: pageMeta.filterLine || '',
+              countLabel: pageCountLabel,
+              extraLine: pageMeta.extraLine,
             },
             brand,
             letterheadBottom + 12
@@ -542,24 +573,46 @@ async function renderBrandedPdf({
         return drawPdfTableHeader(doc, scaledColumns, startX, nextY, brand, { plain });
       };
 
-      let y = startTablePage();
-      if (rows.length === 0) {
-        doc.fillColor(plain ? '#444444' : brand.colors.muted).font('Helvetica-Oblique').fontSize(10);
-        pdfLine(doc, emptyMessage, startX, y + 16, { width: tableWidth, align: 'center' });
-      } else {
-        rows.forEach((row, idx) => {
+      const drawTable = (pageTitle, pageMeta, tableColumns, tableRows, emptyMsg) => {
+        const scaledColumns = scalePdfColumns(tableColumns, usableWidth, plain);
+        const tableWidth = scaledColumns.reduce((sum, c) => sum + c.pdfWidth, 0);
+        const sectionMeta = { ...pageMeta, _rowCount: tableRows.length };
+        let y = startTablePage(pageTitle, sectionMeta, scaledColumns);
+        if (tableRows.length === 0) {
+          doc.fillColor(plain ? '#444444' : brand.colors.muted).font('Helvetica-Oblique').fontSize(10);
+          pdfLine(doc, emptyMsg || emptyMessage, startX, y + 16, {
+            width: tableWidth,
+            align: 'center',
+          });
+          return;
+        }
+        tableRows.forEach((row, idx) => {
           const nextRowH = pdfRowHeight(doc, scaledColumns, row, {
             pad: plain ? 4 : 4,
             minRowH: isPdfTotalRow(row) ? 18 : 16,
           });
           if (y + nextRowH > bottomLimit()) {
             doc.addPage();
-            y = startTablePage();
+            y = startTablePage(pageTitle, sectionMeta, scaledColumns);
           }
           const zebra = idx % 2 === 1 && !isPdfTotalRow(row);
           y = drawPdfRow(doc, scaledColumns, row, startX, y, zebra, brand, { plain });
         });
-      }
+      };
+
+      drawTable(title, meta, columns, rows, emptyMessage);
+
+      (Array.isArray(additionalSections) ? additionalSections : []).forEach((section) => {
+        if (!section?.columns?.length) return;
+        doc.addPage();
+        drawTable(
+          section.title || title,
+          { ...meta, ...(section.meta || {}) },
+          section.columns,
+          section.rows || [],
+          section.emptyMessage || 'No detail rows for the selected filters.'
+        );
+      });
 
       const range = doc.bufferedPageRange();
       for (let i = 0; i < range.count; i += 1) {
@@ -577,7 +630,7 @@ async function renderBrandedPdf({
   });
 }
 
-async function renderBrandedExcel({
+function populateExcelSheet(workbook, {
   title,
   sheetName,
   confidentialLabel,
@@ -585,14 +638,8 @@ async function renderBrandedExcel({
   rows,
   meta = {},
   plain = false,
+  brand,
 }) {
-  const brand = ACADEMY_BRAND;
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = brand.name;
-  workbook.company = brand.legalName;
-  workbook.created = new Date();
-  workbook.modified = new Date();
-
   const headerRows = plain ? 5 : 6;
   const sheet = workbook.addWorksheet(sheetName || 'Report', {
     pageSetup: {
@@ -731,10 +778,7 @@ async function renderBrandedExcel({
       values[col.key] = row[col.key] == null ? '' : row[col.key];
     });
     if (plain && totalRow) {
-      const amountCols = columns
-        .map((col, i) => ({ col, i }))
-        .filter(({ col }) => col.numFmt || col.key === 'amount' || col.key === 'total');
-      const firstAmountIdx = amountCols.length ? amountCols[0].i : columns.length - 1;
+      const firstAmountIdx = firstTotalAmountIdx(columns);
       columns.forEach((col, i) => {
         if (i < firstAmountIdx) values[col.key] = i === 0 ? 'Grand Total' : '';
       });
@@ -742,10 +786,7 @@ async function renderBrandedExcel({
     const excelRow = sheet.addRow(values);
     excelRow.height = 18;
     if (plain && totalRow) {
-      const amountCols = columns
-        .map((col, i) => ({ col, i }))
-        .filter(({ col }) => col.numFmt || col.key === 'amount' || col.key === 'total');
-      const firstAmountIdx = amountCols.length ? amountCols[0].i : columns.length - 1;
+      const firstAmountIdx = firstTotalAmountIdx(columns);
       if (firstAmountIdx > 1) {
         try {
           sheet.mergeCells(excelRow.number, 1, excelRow.number, firstAmountIdx);
@@ -764,7 +805,7 @@ async function renderBrandedExcel({
       };
       cell.alignment = {
         vertical: col?.wrap ? 'top' : 'middle',
-        horizontal: plain ? 'center' : colAlign(col),
+        horizontal: plain ? plainCellAlign(col) : colAlign(col),
         wrapText: Boolean(col?.wrap),
       };
       if (plain) {
@@ -803,8 +844,51 @@ async function renderBrandedExcel({
       )}`;
   sheet.autoFilter = {
     from: { row: headerRows, column: 1 },
-    to: { row: headerRows + rows.length, column: lastCol },
+    to: { row: headerRows + Math.max(rows.length, 1), column: lastCol },
   };
+}
+
+async function renderBrandedExcel({
+  title,
+  sheetName,
+  confidentialLabel,
+  columns,
+  rows,
+  meta = {},
+  plain = false,
+  additionalSheets = [],
+}) {
+  const brand = ACADEMY_BRAND;
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = brand.name;
+  workbook.company = brand.legalName;
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  populateExcelSheet(workbook, {
+    title,
+    sheetName,
+    confidentialLabel,
+    columns,
+    rows,
+    meta,
+    plain,
+    brand,
+  });
+
+  (Array.isArray(additionalSheets) ? additionalSheets : []).forEach((extra, idx) => {
+    if (!extra?.columns?.length) return;
+    populateExcelSheet(workbook, {
+      title: extra.title || title,
+      sheetName: extra.sheetName || `Detail ${idx + 1}`,
+      confidentialLabel: extra.confidentialLabel || confidentialLabel,
+      columns: extra.columns,
+      rows: extra.rows || [],
+      meta: { ...meta, ...(extra.meta || {}) },
+      plain,
+      brand,
+    });
+  });
 
   return workbook.xlsx.writeBuffer();
 }

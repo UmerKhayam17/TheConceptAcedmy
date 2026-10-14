@@ -1,5 +1,6 @@
 const catchAsync = require('../../utils/catchAsync');
 const salaryService = require('../../services/academy/academySalaryService');
+const salaryExportService = require('../../services/academy/academySalaryExportService');
 const rt = require('../../services/realtime/academyRealtime');
 
 const list = catchAsync(async (req, res) => {
@@ -58,4 +59,46 @@ const updateAmount = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
-module.exports = { list, summary, generate, recalculate, pay, payBulk, updateAmount };
+const exportReport = catchAsync(async (req, res) => {
+  const format = String(req.query.format || 'xlsx').toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
+  const ids = String(req.query.ids || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const buffer = await salaryExportService.exportSalaryReport({
+    format,
+    month: req.query.month ? Number(req.query.month) : undefined,
+    year: req.query.year ? Number(req.query.year) : undefined,
+    status: req.query.status || undefined,
+    roleName: req.query.roleName || undefined,
+    staffId: req.query.staffId || undefined,
+    search: req.query.search || undefined,
+    ids: ids.length ? ids : undefined,
+  });
+  const stamp = [
+    req.query.year || 'all',
+    req.query.month ? String(req.query.month).padStart(2, '0') : 'all',
+  ].join('-');
+  if (format === 'pdf') {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="staff-salaries-${stamp}.pdf"`);
+  } else {
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="staff-salaries-${stamp}.xlsx"`);
+  }
+  res.send(Buffer.from(buffer));
+});
+
+module.exports = {
+  list,
+  summary,
+  generate,
+  recalculate,
+  pay,
+  payBulk,
+  updateAmount,
+  exportReport,
+};

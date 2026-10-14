@@ -515,6 +515,7 @@ async function getSalarySummary({ month, year, roleName, staffId }) {
 
 module.exports = {
   listSalaryRecords,
+  enrichBreakdownWithSubjectShares,
   generateMonthlySalaries,
   recalculatePercentageSalaries,
   recalculateUnpaidPercentageSalariesAfterWeightChange,

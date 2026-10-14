@@ -4,6 +4,7 @@ const Result = require('../models/Result');
 const examService = require('../services/exam/examService');
 const { renderResultCardPdf } = require('../services/pdfService');
 const { renderExamAwardListPdf } = require('../services/academy/academyAwardListService');
+const { renderExamMarksReportPdf } = require('../services/academy/academyMarksReportService');
 const { roleNameOf, assertParentOwnsStudent } = require('../utils/parentScope');
 
 const createExam = catchAsync(async (req, res) => {
@@ -76,6 +77,17 @@ const awardListPdf = catchAsync(async (req, res) => {
   res.send(buffer);
 });
 
+const marksReportPdf = catchAsync(async (req, res) => {
+  const view = String(req.query.view || 'exam').toLowerCase();
+  const subjectId = req.query.subjectId ? String(req.query.subjectId) : undefined;
+  const studentId = req.query.studentId ? String(req.query.studentId) : undefined;
+  const buffer = await renderExamMarksReportPdf(req.params.id, { view, subjectId, studentId });
+  const filename = `marks-report-${view}-${req.params.id}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.send(buffer);
+});
+
 const resultPdf = catchAsync(async (req, res) => {
   const result = await Result.findById(req.params.id)
     .populate({
@@ -131,5 +143,6 @@ module.exports = {
   publishResult,
   publishAll,
   awardListPdf,
+  marksReportPdf,
   resultPdf,
 };

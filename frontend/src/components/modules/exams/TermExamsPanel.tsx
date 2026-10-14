@@ -13,6 +13,7 @@ import {
   fetchExam,
   fetchExamResults,
   fetchExamStudents,
+  previewExamMarksReportPdf,
   publishAllExamResults,
   publishResult,
   resultPdfUrl,
@@ -22,6 +23,7 @@ import {
 import { getAccessToken } from "@/lib/auth";
 import AssignAssessmentsPanel from "@/components/modules/exams/AssignAssessmentsPanel";
 import AwardListButton from "@/components/modules/exams/AwardListButton";
+import MarksReportButton from "@/components/modules/exams/MarksReportButton";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import CreatedByLine from "@/components/modules/CreatedByLine";
 import { matchesPanelSearch } from "@/lib/panelSearch";
@@ -161,7 +163,7 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
         if (err) {
           toast({
             title: "Invalid marks",
-            description: `${row.student.studentName} · ${col.label}: ${err}`,
+            description: `${row.student.studentName} · ${col.name}: ${err}`,
             variant: "destructive",
           });
           return;
@@ -265,6 +267,12 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                         : "Award list"
                     }
                   />
+                  <MarksReportButton
+                    examId={selectedExamId}
+                    subjects={markColumns.map((c) => ({ id: c.id, name: c.name }))}
+                    size="sm"
+                    className="h-8"
+                  />
                   {canEnter && (
                     <Button size="sm" variant="outline" className="h-8 px-3" onClick={handleSaveMarks} disabled={saveMarksMut.isPending}>
                       <Save className="h-3.5 w-3.5 mr-1" />
@@ -317,7 +325,7 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                                   <div>{col.name}</div>
                                   <div className="text-[10px] font-normal text-muted-foreground">/ {col.total}</div>
                                   {selectedExamId && (
-                                    <div className="mt-1 flex justify-center">
+                                    <div className="mt-1 flex flex-wrap items-center justify-center gap-1">
                                       <AwardListButton
                                         examId={selectedExamId}
                                         subjectId={col.id}
@@ -326,6 +334,31 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                                         className="h-7 px-2 text-[10px]"
                                         label="Award list"
                                       />
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 px-2 text-[10px]"
+                                        onClick={async () => {
+                                          try {
+                                            await previewExamMarksReportPdf(selectedExamId, {
+                                              view: "subject",
+                                              subjectId: col.id,
+                                            });
+                                          } catch (err) {
+                                            toast({
+                                              title: "Report failed",
+                                              description:
+                                                err instanceof Error
+                                                  ? err.message
+                                                  : "Could not open PDF",
+                                              variant: "destructive",
+                                            });
+                                          }
+                                        }}
+                                      >
+                                        Report
+                                      </Button>
                                     </div>
                                   )}
                                 </th>

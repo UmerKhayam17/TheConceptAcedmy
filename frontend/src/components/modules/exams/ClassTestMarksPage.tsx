@@ -33,6 +33,7 @@ import { classTestSeriesHref, testExamsHref } from "@/lib/testExamsMenus";
 import { createdByLabel } from "@/lib/createdBy";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import AwardListButton from "@/components/modules/exams/AwardListButton";
+import MarksReportButton from "@/components/modules/exams/MarksReportButton";
 import TestPaperCapture from "@/components/modules/exams/TestPaperCapture";
 import PageSizeSelect, {
   DEFAULT_PAGE_SIZE,
@@ -572,6 +573,12 @@ export default function ClassTestMarksPage({
               testId={testId}
               size="default"
               label="Award list"
+              className="h-10"
+            />
+            <MarksReportButton
+              testId={testId}
+              studentIds={selectedIds.length ? selectedIds : undefined}
+              size="default"
               className="h-10"
             />
             {canEnter && (

@@ -8,9 +8,6 @@ import {
   ChevronRight,
   Clock3,
   Coins,
-  Download,
-  FileSpreadsheet,
-  FileText,
   Minus,
   MoreVertical,
   RefreshCw,
@@ -42,14 +39,17 @@ import { cn } from "@/lib/utils";
 import {
   fetchAcademySalaries,
   fetchAcademySalarySummary,
+  exportAcademySalaryReport,
   generateMonthlySalaries,
   payAcademySalary,
   payAcademySalariesBulk,
   recalculatePercentageSalaries,
   type AcademySalaryRecord,
+  type SalaryReportFormat,
 } from "@/lib/studentManagementApi";
 import { MONTH_NAMES } from "./studentDisplayUtils";
 import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import { DefaulterListDownload } from "./DefaulterListDownload";
 
 function formatRs(n?: number) {
   if (n == null || Number.isNaN(n)) return "Rs —";
@@ -208,47 +208,13 @@ function MetricCard({
   );
 }
 
-function downloadTextFile(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
+function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-function recordsToCsv(records: AcademySalaryRecord[]) {
-  const header = [
-    "Voucher",
-    "Staff",
-    "Role",
-    "Period",
-    "Pay type",
-    "Rate / Base",
-    "Amount",
-    "Status",
-  ];
-  const rows = records.map((r) => {
-    const payType = recordPayType(r);
-    const pct = recordPercentage(r);
-    const staff = staffFromRecord(r);
-    const rateOrBase =
-      payType === "percentage" ? `${pct}%` : String(staff?.salary ?? 0);
-    return [
-      r.voucherNumber || "",
-      staffName(r),
-      staffRole(r),
-      periodLabel(r),
-      payType,
-      rateOrBase,
-      String(r.amount ?? 0),
-      r.status,
-    ]
-      .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
-      .join(",");
-  });
-  return [header.join(","), ...rows].join("\n");
 }
 
 const selectClass =
@@ -271,7 +237,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const [paymentMethod, setPaymentMethod] = useState("bank_transfer");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [payAmount, setPayAmount] = useState("");
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<SalaryReportFormat | null>(null);
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
 
   const toggleExpanded = (id: string) => {
@@ -474,32 +440,32 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
     setBulkPayOpen(true);
   };
 
-  const handleExport = async (format: "csv" | "txt") => {
-    setExporting(true);
+  const handleExport = async (format: SalaryReportFormat) => {
+    setExporting(format);
     try {
-      const result = await fetchAcademySalaries({
-        page: 1,
-        limit: 500,
-        search: search.trim() || undefined,
-        status: statusFilter || undefined,
-        ...filterParams,
-      });
-      const list =
-        selectedIds.length > 0
-          ? result.records.filter((r) => selectedIds.includes(r._id))
-          : result.records;
-      if (list.length === 0) {
-        toast({ title: "Nothing to export", description: "No salary records match the filters." });
-        return;
-      }
-      const csv = recordsToCsv(list);
       const stamp = `${year}-${String(month).padStart(2, "0")}`;
-      if (format === "csv") {
-        downloadTextFile(`staff-salaries-${stamp}.csv`, csv, "text/csv;charset=utf-8");
-      } else {
-        downloadTextFile(`staff-salaries-${stamp}.txt`, csv, "text/plain;charset=utf-8");
-      }
-      toast({ title: "Export ready", description: `${list.length} record(s) downloaded.` });
+      const blob = await exportAcademySalaryReport(
+        {
+          month: Number(month),
+          year: Number(year),
+          status: statusFilter || undefined,
+          roleName: roleFilter || undefined,
+          search: search.trim() || undefined,
+          ids: selectedIds.length > 0 ? selectedIds : undefined,
+        },
+        format,
+      );
+      downloadBlob(
+        `staff-salaries-${stamp}.${format === "pdf" ? "pdf" : "xlsx"}`,
+        blob,
+      );
+      toast({
+        title: "Export ready",
+        description:
+          format === "pdf"
+            ? "PDF salary report downloaded."
+            : "Excel salary report downloaded.",
+      });
     } catch (e) {
       toast({
         title: "Export failed",
@@ -507,7 +473,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
         variant: "destructive",
       });
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -670,7 +636,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             {canGenerate ? (
               <Button
                 variant="outline"
-                className="gap-2 h-10 shrink-0 rounded-md border-slate-800 text-slate-800 hover:bg-slate-50"
+                className="gap-2 h-10 shrink-0 rounded-md border-slate-800 bg-white text-slate-800 hover:bg-slate-50 hover:text-slate-900"
                 disabled={recalcMut.isPending}
                 onClick={() => recalcMut.mutate()}
                 title="Recompute pending percentage vouchers from tuition × subject share × teacher cut"
@@ -679,29 +645,13 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                 {recalcMut.isPending ? "Recalculating…" : "Recalc % from fees"}
               </Button>
             ) : null}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="gap-1.5 h-10 shrink-0 rounded-md border-slate-800 text-slate-800 hover:bg-slate-50"
-                  disabled={exporting}
-                >
-                  <Download className="h-4 w-4" />
-                  {exporting ? "Exporting…" : "Export"}
-                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("csv")}>
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Excel / CSV (.csv)
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("txt")}>
-                  <FileText className="h-4 w-4" />
-                  Text report (.txt)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <DefaulterListDownload
+              variant="default"
+              className="h-10 shrink-0"
+              label="Salary report"
+              exporting={exporting}
+              onDownload={(format) => void handleExport(format)}
+            />
           </div>
         </div>
       </div>

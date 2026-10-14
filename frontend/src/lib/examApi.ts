@@ -171,3 +171,57 @@ export async function previewExamAwardListPdf(examId: string, subjectId?: string
     throw err;
   }
 }
+
+export type ExamMarksReportView = "exam" | "subject" | "student";
+
+export async function fetchExamMarksReportPdf(
+  examId: string,
+  opts?: {
+    view?: ExamMarksReportView;
+    subjectId?: string;
+    studentId?: string;
+  }
+) {
+  const params = new URLSearchParams();
+  params.set("view", opts?.view || "exam");
+  if (opts?.subjectId) params.set("subjectId", opts.subjectId);
+  if (opts?.studentId) params.set("studentId", opts.studentId);
+  const res = await authedFetch(`/exams/${examId}/marks-report.pdf?${params.toString()}`);
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res);
+    throw new Error(body.message || "Failed to load marks report");
+  }
+  return res.blob();
+}
+
+/** Opens filled exam marks report PDF (exam / subject / student wise). */
+export async function previewExamMarksReportPdf(
+  examId: string,
+  opts?: {
+    view?: ExamMarksReportView;
+    subjectId?: string;
+    studentId?: string;
+  }
+) {
+  const preview = window.open("about:blank", "_blank");
+  try {
+    const blob = await fetchExamMarksReportPdf(examId, opts);
+    const url = URL.createObjectURL(blob);
+    const view = opts?.view || "exam";
+    if (preview && !preview.closed) {
+      preview.location.replace(url);
+      preview.focus();
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `marks-report-${view}-${examId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (err) {
+    preview?.close();
+    throw err;
+  }
+}
