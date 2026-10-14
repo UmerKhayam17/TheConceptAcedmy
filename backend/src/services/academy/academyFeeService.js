@@ -1577,6 +1577,214 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
   };
 }
 
+function unpaidStatusFromDueDate(dueDate) {
+  if (!dueDate) return 'pending';
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return 'pending';
+  return due < startOfToday ? 'overdue' : 'pending';
+}
+
+function appendFeeNote(existing, line) {
+  const prev = String(existing || '').trim();
+  return [prev, line].filter(Boolean).join(' · ');
+}
+
+/**
+ * Undo a recorded payment (mistake) or mark a refund.
+ * Clears payment fields and restores pending/overdue from dueDate.
+ * kind: 'reverse' | 'refund'
+ */
+async function reversePayment(id, { reason, kind = 'reverse' } = {}, userId) {
+  const record = await AcademyFeeRecord.findById(id);
+  if (!record) throw new ApiError(404, 'Fee record not found');
+  if (record.status !== 'paid') {
+    throw new ApiError(400, 'Only paid fees can be reversed or refunded');
+  }
+
+  const why = String(reason || '').trim();
+  if (!why) throw new ApiError(400, 'Reason is required');
+  if (why.length > 500) throw new ApiError(400, 'Reason must be 500 characters or fewer');
+
+  const action = kind === 'refund' ? 'refund' : 'reverse';
+  const label = action === 'refund' ? 'Refunded' : 'Payment reversed';
+  const when = new Date().toISOString().slice(0, 10);
+  const prevPaid = record.paidAt ? new Date(record.paidAt).toISOString().slice(0, 10) : '—';
+  const noteLine = `${label} ${when} (was paid ${prevPaid}; ₨${Number(record.amount || 0).toLocaleString()}): ${why}`;
+
+  const updated = await AcademyFeeRecord.findOneAndUpdate(
+    { _id: record._id, status: 'paid' },
+    {
+      $set: {
+        status: unpaidStatusFromDueDate(record.dueDate),
+        paymentMethod: 'cash',
+        notes: appendFeeNote(record.notes, noteLine),
+        ...(userId && !record.createdBy ? { createdBy: userId } : {}),
+      },
+      $unset: {
+        paidAt: 1,
+        paymentSlip: 1,
+        paymentSlipNumber: 1,
+        recordedBy: 1,
+      },
+    },
+    { new: true }
+  );
+  if (!updated) throw new ApiError(409, 'Payment changed — please retry');
+  return getFeeRecordById(updated._id);
+}
+
+/**
+ * Move a mistaken payment from one student's voucher to another's
+ * matching month / year / feeType unpaid voucher.
+ */
+async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason } = {}, userId) {
+  const source = await AcademyFeeRecord.findById(id);
+  if (!source) throw new ApiError(404, 'Fee record not found');
+  if (source.status !== 'paid') {
+    throw new ApiError(400, 'Only paid fees can be transferred');
+  }
+
+  const why = String(reason || '').trim();
+  if (!why) throw new ApiError(400, 'Reason is required');
+  if (why.length > 500) throw new ApiError(400, 'Reason must be 500 characters or fewer');
+
+  const targetStudent = await AcademyStudent.findById(targetStudentId).select(
+    '_id studentId studentName status sectionId'
+  );
+  if (!targetStudent) throw new ApiError(404, 'Target student not found');
+  if (String(targetStudent._id) === String(source.studentId)) {
+    throw new ApiError(400, 'Choose a different student to transfer to');
+  }
+
+  let target;
+  if (targetFeeRecordId) {
+    target = await AcademyFeeRecord.findById(targetFeeRecordId);
+    if (!target) throw new ApiError(404, 'Target fee record not found');
+    if (String(target.studentId) !== String(targetStudent._id)) {
+      throw new ApiError(400, 'Target fee does not belong to the selected student');
+    }
+  } else {
+    target = await AcademyFeeRecord.findOne({
+      studentId: targetStudent._id,
+      month: source.month,
+      year: source.year,
+      feeType: source.feeType,
+    });
+    if (!target) {
+      throw new ApiError(
+        404,
+        'Target student has no matching fee voucher for this period and type'
+      );
+    }
+  }
+
+  if (target.status === 'paid') {
+    throw new ApiError(400, 'Target fee is already paid');
+  }
+  if (target.status === 'waived') {
+    throw new ApiError(400, 'Target fee is waived and cannot receive a transfer');
+  }
+  if (!['pending', 'overdue'].includes(target.status)) {
+    throw new ApiError(400, 'Target fee must be pending or overdue');
+  }
+
+  const when = new Date().toISOString().slice(0, 10);
+  const paidAt = source.paidAt || new Date();
+  const paymentMethod = source.paymentMethod || 'cash';
+  const paymentSlip = source.paymentSlip || '';
+  const paymentSlipNumber = source.paymentSlipNumber || '';
+  const receipt =
+    target.receiptNumber ||
+    receiptNumber(target.studentId, target.month, target.year, target.feeType);
+
+  const sourceNote = `Payment transferred to student ${targetStudent.studentId || targetStudent._id} on ${when}: ${why}`;
+  const targetNote = `Payment transferred from fee ${source._id} on ${when}: ${why}`;
+
+  // Snapshot for rollback if the target update fails.
+  const sourceSnapshot = {
+    status: source.status,
+    paidAt: source.paidAt,
+    paymentMethod: source.paymentMethod,
+    paymentSlip: source.paymentSlip,
+    paymentSlipNumber: source.paymentSlipNumber,
+    recordedBy: source.recordedBy,
+    notes: source.notes,
+  };
+
+  const cleared = await AcademyFeeRecord.findOneAndUpdate(
+    { _id: source._id, status: 'paid' },
+    {
+      $set: {
+        status: unpaidStatusFromDueDate(source.dueDate),
+        paymentMethod: 'cash',
+        notes: appendFeeNote(source.notes, sourceNote),
+      },
+      $unset: {
+        paidAt: 1,
+        paymentSlip: 1,
+        paymentSlipNumber: 1,
+        recordedBy: 1,
+      },
+    },
+    { new: true }
+  );
+  if (!cleared) throw new ApiError(409, 'Source payment changed — please retry');
+
+  const paid = await AcademyFeeRecord.findOneAndUpdate(
+    {
+      _id: target._id,
+      status: { $in: ['pending', 'overdue'] },
+    },
+    {
+      $set: {
+        status: 'paid',
+        paidAt,
+        paymentMethod,
+        notes: appendFeeNote(target.notes, targetNote),
+        recordedBy: userId,
+        receiptNumber: receipt,
+        ...(paymentSlip ? { paymentSlip } : {}),
+        ...(paymentSlipNumber ? { paymentSlipNumber } : {}),
+      },
+    },
+    { new: true }
+  );
+
+  if (!paid) {
+    await AcademyFeeRecord.findByIdAndUpdate(source._id, {
+      $set: {
+        status: sourceSnapshot.status,
+        paidAt: sourceSnapshot.paidAt,
+        paymentMethod: sourceSnapshot.paymentMethod || 'cash',
+        paymentSlip: sourceSnapshot.paymentSlip,
+        paymentSlipNumber: sourceSnapshot.paymentSlipNumber,
+        recordedBy: sourceSnapshot.recordedBy,
+        notes: sourceSnapshot.notes,
+      },
+    });
+    throw new ApiError(409, 'Target fee was paid by someone else — please retry');
+  }
+
+  const [from, to] = await Promise.all([
+    getFeeRecordById(source._id),
+    getFeeRecordById(target._id),
+  ]);
+
+  const needsSectionAssignment =
+    to.feeType === 'admission' &&
+    targetStudent.status === 'pending_fee' &&
+    !targetStudent.sectionId;
+
+  return {
+    from,
+    to,
+    needsSectionAssignment: Boolean(needsSectionAssignment),
+    studentId: String(targetStudent._id),
+  };
+}
+
 async function getStudentFeeHistory(studentId) {
   const student = await AcademyStudent.findById(studentId);
   if (!student) throw new ApiError(404, 'Student not found');
@@ -2374,6 +2582,8 @@ module.exports = {
   monthlyBillAmount,
   recordPayment,
   recordPayments,
+  reversePayment,
+  transferPayment,
   getStudentFeeHistory,
   getFeeSummary,
   listFeeDefaulters,

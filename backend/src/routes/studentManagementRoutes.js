@@ -522,6 +522,24 @@ router.patch(
   validate(schemas.academyFeePay),
   feeCtrl.pay
 );
+router.post(
+  '/fees/:id/reverse',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeeReverse),
+  feeCtrl.reverse
+);
+router.post(
+  '/fees/:id/refund',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeeReverse),
+  feeCtrl.refund
+);
+router.post(
+  '/fees/:id/transfer',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeeTransfer),
+  feeCtrl.transfer
+);
 router.patch(
   '/fees/:id',
   requirePermission('manage_academy_fees'),

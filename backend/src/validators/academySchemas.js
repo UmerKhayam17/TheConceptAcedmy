@@ -407,6 +407,16 @@ const academyFeePatch = Joi.object({
   paidAt: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
 }).min(1);
 
+const academyFeeReverse = Joi.object({
+  reason: Joi.string().trim().min(3).max(500).required(),
+});
+
+const academyFeeTransfer = Joi.object({
+  targetStudentId: objectId.required(),
+  targetFeeRecordId: objectId.optional(),
+  reason: Joi.string().trim().min(3).max(500).required(),
+});
+
 const feeDefaultersQuery = Joi.object({
   page: Joi.number().integer().min(1),
   limit: Joi.number().integer().min(1).max(100),
@@ -658,6 +668,8 @@ module.exports = {
   academyFeeResyncCharges,
   academyFeeStationery,
   academyFeePatch,
+  academyFeeReverse,
+  academyFeeTransfer,
   feeDefaultersQuery,
   feePaidExportQuery,
   academySalaryPay,

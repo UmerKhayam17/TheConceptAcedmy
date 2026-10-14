@@ -174,6 +174,38 @@ const payMany = catchAsync(async (req, res) => {
   });
 });
 
+const reverse = catchAsync(async (req, res) => {
+  const data = await feeService.reversePayment(
+    req.params.id,
+    { reason: req.body.reason, kind: 'reverse' },
+    req.user._id
+  );
+  rt.feeCrud('updated', req.params.id);
+  res.json({ success: true, data });
+});
+
+const refund = catchAsync(async (req, res) => {
+  const data = await feeService.reversePayment(
+    req.params.id,
+    { reason: req.body.reason, kind: 'refund' },
+    req.user._id
+  );
+  rt.feeCrud('updated', req.params.id);
+  res.json({ success: true, data });
+});
+
+const transfer = catchAsync(async (req, res) => {
+  const data = await feeService.transferPayment(req.params.id, req.body, req.user._id);
+  rt.feeCrud('updated', req.params.id);
+  if (data.to?._id) rt.feeCrud('updated', data.to._id);
+  res.json({
+    success: true,
+    data,
+    needsSectionAssignment: data.needsSectionAssignment,
+    studentId: data.studentId,
+  });
+});
+
 const studentHistory = catchAsync(async (req, res) => {
   await assertParentOwnsStudent(req, req.params.studentId);
   const data = await feeService.getStudentFeeHistory(req.params.studentId);
@@ -309,6 +341,9 @@ module.exports = {
   update,
   pay,
   payMany,
+  reverse,
+  refund,
+  transfer,
   applyCharges,
   receipt,
   challan,

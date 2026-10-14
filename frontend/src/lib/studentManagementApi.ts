@@ -1364,6 +1364,44 @@ export async function payAcademyFees(body: {
   };
 }
 
+export const reverseAcademyFeePayment = (id: string, reason: string) =>
+  api<AcademyFeeRecord>(`/fees/${id}/reverse`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+export const refundAcademyFeePayment = (id: string, reason: string) =>
+  api<AcademyFeeRecord>(`/fees/${id}/refund`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+export async function transferAcademyFeePayment(
+  id: string,
+  body: { targetStudentId: string; targetFeeRecordId?: string; reason: string }
+) {
+  const res = await authedFetch(`/student-management/fees/${id}/transfer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const parsed = await parseJson<{
+    success?: boolean;
+    data?: { from: AcademyFeeRecord; to: AcademyFeeRecord };
+    needsSectionAssignment?: boolean;
+    studentId?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(parsed.message || `Transfer failed (${res.status})`);
+  if (!parsed.data?.from || !parsed.data?.to) throw new Error("Transfer failed");
+  return {
+    from: parsed.data.from,
+    to: parsed.data.to,
+    needsSectionAssignment: Boolean(parsed.needsSectionAssignment),
+    studentId: parsed.studentId ? String(parsed.studentId) : undefined,
+  };
+}
+
 export type FeeReceiptSize = "a4" | "thermal";
 
 export const fetchFeeReceiptPdf = async (id: string, size: FeeReceiptSize = "a4") => {

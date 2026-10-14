@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowRightLeft,
   CalendarDays,
   ChevronDown,
   Download,
@@ -9,12 +10,15 @@ import {
   FileText,
   ImageIcon,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Printer,
   Receipt,
   RefreshCw,
+  RotateCcw,
   Search,
   Upload,
+  Wallet,
   X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -24,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -32,6 +37,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DefaulterListDownload } from "./DefaulterListDownload";
@@ -57,9 +63,13 @@ import {
   payAcademyFees,
   printFeeChallan,
   printFeeReceipt,
+  refundAcademyFeePayment,
   resyncSeparateFeeCharges,
+  reverseAcademyFeePayment,
+  transferAcademyFeePayment,
   updateAcademyFee,
   type AcademyFeeRecord,
+  type AcademyStudent,
   type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
 import {
@@ -544,6 +554,14 @@ export default function AcademyFeesManagement({
   const [exportingPaidReport, setExportingPaidReport] = useState<DefaulterReportFormat | null>(null);
   const [enrollmentWizardOpen, setEnrollmentWizardOpen] = useState(false);
   const [assignSectionStudentId, setAssignSectionStudentId] = useState<string | null>(null);
+  const [correction, setCorrection] = useState<{
+    record: AcademyFeeRecord;
+    mode: "reverse" | "refund" | "transfer";
+  } | null>(null);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [transferSearch, setTransferSearch] = useState("");
+  const [transferStudent, setTransferStudent] = useState<AcademyStudent | null>(null);
+  const [transferTargetFeeId, setTransferTargetFeeId] = useState("");
 
   const childScoped = Boolean(studentId) || isParent;
   const effectiveStudentId = studentId || (isParent ? selectedParentStudentId || undefined : undefined);
@@ -899,6 +917,127 @@ export default function AcademyFeesManagement({
     },
     onError: (e: Error) =>
       toast({ title: "Could not print", description: e.message, variant: "destructive" }),
+  });
+
+  const transferStudentsQ = useQuery({
+    queryKey: ["academy-students", "fee-transfer", transferSearch, apiSessionId],
+    queryFn: () =>
+      fetchAcademyStudents({
+        search: transferSearch.trim(),
+        limit: 12,
+        sessionId: apiSessionId || undefined,
+      }),
+    enabled:
+      Boolean(correction) &&
+      correction.mode === "transfer" &&
+      transferSearch.trim().length >= 2 &&
+      !transferStudent,
+  });
+
+  const transferHistoryQ = useQuery({
+    queryKey: ["academy-fee-history", "transfer-target", transferStudent?._id],
+    queryFn: () => fetchStudentFeeHistory(transferStudent!._id),
+    enabled: Boolean(correction?.mode === "transfer" && transferStudent?._id),
+  });
+
+  const matchingTransferFees = useMemo(() => {
+    if (!correction || !transferHistoryQ.data?.records) return [];
+    const src = correction.record;
+    return transferHistoryQ.data.records.filter(
+      (f) =>
+        f.feeType === src.feeType &&
+        f.month === src.month &&
+        f.year === src.year &&
+        (f.status === "pending" || f.status === "overdue")
+    );
+  }, [correction, transferHistoryQ.data]);
+
+  useEffect(() => {
+    if (!correction || correction.mode !== "transfer") return;
+    if (matchingTransferFees.length === 1) {
+      setTransferTargetFeeId(matchingTransferFees[0]._id);
+    } else if (
+      transferTargetFeeId &&
+      !matchingTransferFees.some((f) => f._id === transferTargetFeeId)
+    ) {
+      setTransferTargetFeeId("");
+    }
+  }, [correction, matchingTransferFees, transferTargetFeeId]);
+
+  const invalidateFeeQueries = () => {
+    qc.invalidateQueries({ queryKey: ["academy-fees"] });
+    qc.invalidateQueries({ queryKey: ["academy-fees-summary"] });
+    qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
+    qc.invalidateQueries({ queryKey: ["academy-student-record"] });
+    qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
+  };
+
+  const closeCorrection = () => {
+    setCorrection(null);
+    setCorrectionReason("");
+    setTransferSearch("");
+    setTransferStudent(null);
+    setTransferTargetFeeId("");
+  };
+
+  const openCorrection = (
+    record: AcademyFeeRecord,
+    mode: "reverse" | "refund" | "transfer"
+  ) => {
+    if (!writable) {
+      toast({
+        title: "Read-only session",
+        description: "Switch to the active session to update fees.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setCorrection({ record, mode });
+    setCorrectionReason("");
+    setTransferSearch("");
+    setTransferStudent(null);
+    setTransferTargetFeeId("");
+  };
+
+  const correctionMut = useMutation({
+    mutationFn: async () => {
+      if (!correction) throw new Error("Nothing selected");
+      const reason = correctionReason.trim();
+      if (reason.length < 3) throw new Error("Enter a reason (at least 3 characters)");
+      const id = correction.record._id;
+      if (correction.mode === "reverse") return reverseAcademyFeePayment(id, reason);
+      if (correction.mode === "refund") return refundAcademyFeePayment(id, reason);
+      if (!transferStudent?._id) throw new Error("Select the correct student");
+      return transferAcademyFeePayment(id, {
+        targetStudentId: transferStudent._id,
+        targetFeeRecordId: transferTargetFeeId || undefined,
+        reason,
+      });
+    },
+    onSuccess: (result) => {
+      const mode = correction?.mode;
+      invalidateFeeQueries();
+      closeCorrection();
+      if (mode === "transfer" && result && "to" in result) {
+        toast({
+          title: "Payment transferred",
+          description: `${studentName(result.from)} → ${studentName(result.to)} · ${formatPkr(result.to.amount)}`,
+        });
+        if (result.needsSectionAssignment && result.studentId) {
+          setAssignSectionStudentId(result.studentId);
+        }
+        return;
+      }
+      toast({
+        title: mode === "refund" ? "Payment refunded" : "Payment reversed",
+        description:
+          mode === "refund"
+            ? "Fee marked unpaid and noted as refunded."
+            : "Fee is unpaid again so you can correct it.",
+      });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Could not update payment", description: e.message, variant: "destructive" }),
   });
 
   const openPayModal = (r: AcademyFeeRecord, mode: "pay" | "edit" = "pay") => {
@@ -1500,6 +1639,45 @@ export default function AcademyFeesManagement({
                             </DropdownMenu>
                           )
                         )}
+                        {canEditFee && r.status === "paid" && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 shrink-0"
+                                aria-label="Payment corrections"
+                                title="Payment corrections"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() => openCorrection(r, "reverse")}
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                                Reverse payment
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() => openCorrection(r, "refund")}
+                              >
+                                <Wallet className="h-4 w-4" />
+                                Mark refunded
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() => openCorrection(r, "transfer")}
+                              >
+                                <ArrowRightLeft className="h-4 w-4" />
+                                Transfer to student
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1844,6 +2022,207 @@ export default function AcademyFeesManagement({
         }}
         studentId={assignSectionStudentId}
       />
+
+      <Dialog
+        open={Boolean(correction)}
+        onOpenChange={(open) => {
+          if (!open && !correctionMut.isPending) closeCorrection();
+        }}
+      >
+        <DialogContent className="min-w-0 sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {correction?.mode === "refund"
+                ? "Mark payment refunded"
+                : correction?.mode === "transfer"
+                  ? "Transfer payment to another student"
+                  : "Reverse payment"}
+            </DialogTitle>
+            <DialogDescription>
+              {correction?.mode === "refund"
+                ? "Money returned to the payer. This fee becomes unpaid again and the refund is noted."
+                : correction?.mode === "transfer"
+                  ? "Moves this payment onto the correct student's matching unpaid voucher."
+                  : "Undo a mistaken payment mark. The fee becomes unpaid again so you can fix it."}
+            </DialogDescription>
+          </DialogHeader>
+          {correction && (
+            <div className="min-w-0 space-y-3 text-sm">
+              <div className="rounded-md border px-3 py-2 bg-muted/30">
+                <p>
+                  <span className="text-muted-foreground">Student:</span>{" "}
+                  <span className="font-medium">{studentName(correction.record)}</span>
+                  {studentCode(correction.record) ? (
+                    <span className="text-muted-foreground"> · {studentCode(correction.record)}</span>
+                  ) : null}
+                </p>
+                <p className="mt-1">
+                  <span className="text-muted-foreground">Fee:</span>{" "}
+                  <span className="font-medium">
+                    {periodLabel(correction.record)} · {feeTypeLabel(correction.record.feeType)}
+                  </span>
+                  <span className="ml-2 font-semibold tabular-nums">
+                    {formatPkr(correction.record.amount)}
+                  </span>
+                </p>
+              </div>
+
+              {correction.mode === "transfer" && (
+                <div className="space-y-2">
+                  <Label htmlFor="transfer-student-search">Correct student</Label>
+                  {transferStudent ? (
+                    <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{transferStudent.studentName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {transferStudent.studentId}
+                          {transferStudent.fatherName ? ` · ${transferStudent.fatherName}` : ""}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={correctionMut.isPending}
+                        onClick={() => {
+                          setTransferStudent(null);
+                          setTransferTargetFeeId("");
+                          setTransferSearch("");
+                        }}
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Input
+                        id="transfer-student-search"
+                        value={transferSearch}
+                        onChange={(e) => setTransferSearch(e.target.value)}
+                        placeholder="Search by name or student ID"
+                        autoComplete="off"
+                      />
+                      {transferSearch.trim().length >= 2 && (
+                        <ul className="max-h-40 overflow-y-auto rounded-md border divide-y">
+                          {transferStudentsQ.isLoading && (
+                            <li className="px-3 py-2 text-muted-foreground">Searching…</li>
+                          )}
+                          {!transferStudentsQ.isLoading &&
+                            (transferStudentsQ.data?.students || [])
+                              .filter((s) => s._id !== studentMongoId(correction.record))
+                              .map((s) => (
+                                <li key={s._id}>
+                                  <button
+                                    type="button"
+                                    className="w-full px-3 py-2 text-left hover:bg-muted/50"
+                                    onClick={() => {
+                                      setTransferStudent(s);
+                                      setTransferSearch("");
+                                      setTransferTargetFeeId("");
+                                    }}
+                                  >
+                                    <span className="font-medium">{s.studentName}</span>
+                                    <span className="ml-2 text-xs text-muted-foreground">
+                                      {s.studentId}
+                                      {s.fatherName ? ` · ${s.fatherName}` : ""}
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                          {!transferStudentsQ.isLoading &&
+                            (transferStudentsQ.data?.students || []).filter(
+                              (s) => s._id !== studentMongoId(correction.record)
+                            ).length === 0 && (
+                              <li className="px-3 py-2 text-muted-foreground">No students found.</li>
+                            )}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+
+                  {transferStudent && (
+                    <div className="space-y-1.5">
+                      <Label>Matching unpaid voucher</Label>
+                      {transferHistoryQ.isLoading && (
+                        <p className="text-muted-foreground">Loading fees…</p>
+                      )}
+                      {!transferHistoryQ.isLoading && matchingTransferFees.length === 0 && (
+                        <p className="text-destructive text-xs">
+                          No unpaid {feeTypeLabel(correction.record.feeType).toLowerCase()} voucher
+                          for {periodLabel(correction.record)} on this student.
+                        </p>
+                      )}
+                      {!transferHistoryQ.isLoading && matchingTransferFees.length > 0 && (
+                        <select
+                          className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                          value={transferTargetFeeId}
+                          onChange={(e) => setTransferTargetFeeId(e.target.value)}
+                        >
+                          {matchingTransferFees.length > 1 && (
+                            <option value="">Select voucher</option>
+                          )}
+                          {matchingTransferFees.map((f) => (
+                            <option key={f._id} value={f._id}>
+                              {periodLabel(f)} · {feeTypeLabel(f.feeType)} · {formatPkr(f.amount)} ·{" "}
+                              {f.status}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="correction-reason">Reason</Label>
+                <Input
+                  id="correction-reason"
+                  value={correctionReason}
+                  onChange={(e) => setCorrectionReason(e.target.value)}
+                  placeholder={
+                    correction.mode === "transfer"
+                      ? "e.g. Paid under sibling by mistake"
+                      : correction.mode === "refund"
+                        ? "e.g. Cash returned to parent"
+                        : "e.g. Wrong month selected"
+                  }
+                  maxLength={500}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={correctionMut.isPending}
+              onClick={closeCorrection}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="hero"
+              disabled={
+                correctionMut.isPending ||
+                correctionReason.trim().length < 3 ||
+                (correction?.mode === "transfer" &&
+                  (!transferStudent ||
+                    matchingTransferFees.length === 0 ||
+                    (matchingTransferFees.length > 1 && !transferTargetFeeId)))
+              }
+              onClick={() => correctionMut.mutate()}
+            >
+              {correctionMut.isPending
+                ? "Saving…"
+                : correction?.mode === "refund"
+                  ? "Confirm refund"
+                  : correction?.mode === "transfer"
+                    ? "Transfer payment"
+                    : "Reverse payment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

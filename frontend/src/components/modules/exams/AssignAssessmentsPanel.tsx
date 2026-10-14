@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   Loader2,
+  Pencil,
   Plus,
   Send,
   Trash2,
@@ -515,9 +516,13 @@ export default function AssignAssessmentsPanel({
                         />
                       )}
                     <Button size="sm" variant="outline" onClick={() => setConfigAssignment(a)}>
-                      <BookOpen className="h-3.5 w-3.5" />
-                      {a.status === "published" ? "Edit" : "Syllabus"}
-                    </Button>
+                        {a.status === "published" ? (
+                          <Pencil className="h-3.5 w-3.5" />
+                        ) : (
+                          <BookOpen className="h-3.5 w-3.5" />
+                        )}
+                        {a.status === "published" ? "Edit" : "Syllabus"}
+                      </Button>
                     {canManage && a.status === "draft" && isReady(a, teacherSubjectSet) && (
                       <PublishButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
                     )}
