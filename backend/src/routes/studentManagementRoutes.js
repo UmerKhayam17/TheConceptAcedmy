@@ -559,6 +559,12 @@ router.patch(
   validate(schemas.academySalaryAmount),
   salaryCtrl.updateAmount
 );
+router.post(
+  '/salaries/pay-bulk',
+  requirePermission('manage_academy_salaries'),
+  validate(schemas.academySalaryPayBulk),
+  salaryCtrl.payBulk
+);
 router.patch(
   '/salaries/:id/pay',
   requirePermission('manage_academy_salaries'),

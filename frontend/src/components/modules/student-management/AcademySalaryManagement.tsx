@@ -43,6 +43,7 @@ import {
   fetchAcademySalarySummary,
   generateMonthlySalaries,
   payAcademySalary,
+  payAcademySalariesBulk,
   recalculatePercentageSalaries,
   type AcademySalaryRecord,
 } from "@/lib/studentManagementApi";
@@ -265,6 +266,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [payRecord, setPayRecord] = useState<AcademySalaryRecord | null>(null);
+  const [bulkPayOpen, setBulkPayOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("bank_transfer");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [payAmount, setPayAmount] = useState("");
@@ -380,6 +382,48 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const canPay = caps.canEdit || caps.canCreate;
   const canGenerate = caps.canCreate || caps.canEdit;
 
+  const selectedPendingPayable = useMemo(
+    () =>
+      records.filter(
+        (r) => selectedIds.includes(r._id) && r.status === "pending" && Number(r.amount) > 0,
+      ),
+    [records, selectedIds],
+  );
+  const selectedPendingNoAmount = useMemo(
+    () =>
+      records.filter(
+        (r) => selectedIds.includes(r._id) && r.status === "pending" && !(Number(r.amount) > 0),
+      ),
+    [records, selectedIds],
+  );
+  const bulkPayTotal = useMemo(
+    () => selectedPendingPayable.reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
+    [selectedPendingPayable],
+  );
+
+  const bulkPayMut = useMutation({
+    mutationFn: () =>
+      payAcademySalariesBulk({
+        ids: selectedPendingPayable.map((r) => r._id),
+        paymentMethod,
+        notes: paymentNotes.trim() || undefined,
+      }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["academy-salaries"] });
+      qc.invalidateQueries({ queryKey: ["academy-salaries-summary"] });
+      setBulkPayOpen(false);
+      setSelectedIds([]);
+      setPaymentNotes("");
+      toast({
+        title: "Bulk payment complete",
+        description: `${r.paid} paid (${formatRs(r.totalAmount)})${
+          r.skipped ? `, ${r.skipped} skipped` : ""
+        }.`,
+      });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const showingFrom =
     pagination && pagination.total > 0 ? (page - 1) * pagination.limit + 1 : 0;
   const showingTo = pagination ? Math.min(page * pagination.limit, pagination.total) : 0;
@@ -404,10 +448,29 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   };
 
   const openPay = (r: AcademySalaryRecord) => {
+    setBulkPayOpen(false);
     setPayRecord(r);
     setPaymentMethod("bank_transfer");
     setPaymentNotes("");
     setPayAmount(r.amount > 0 ? String(r.amount) : "");
+  };
+
+  const openBulkPay = () => {
+    if (selectedPendingPayable.length === 0) {
+      toast({
+        title: "Nothing to pay",
+        description:
+          selectedPendingNoAmount.length > 0
+            ? "Selected vouchers need an amount set first (pay those individually)."
+            : "Select pending vouchers with an amount greater than zero.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPayRecord(null);
+    setPaymentMethod("bank_transfer");
+    setPaymentNotes("");
+    setBulkPayOpen(true);
   };
 
   const handleExport = async (format: "csv" | "txt") => {
@@ -576,6 +639,20 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+            {canPay && selectedIds.length > 0 ? (
+              <Button
+                variant="hero"
+                className="gap-2 h-10 shrink-0"
+                disabled={bulkPayMut.isPending}
+                onClick={openBulkPay}
+              >
+                <Check className="h-4 w-4" />
+                Pay selected
+                {selectedPendingPayable.length > 0
+                  ? ` (${selectedPendingPayable.length})`
+                  : ""}
+              </Button>
+            ) : null}
             {canGenerate && (
               <>
                 <Button
@@ -1057,6 +1134,87 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             </Button>
             <Button variant="hero" disabled={payMut.isPending} onClick={() => payMut.mutate()}>
               Confirm payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkPayOpen} onOpenChange={(o) => !o && setBulkPayOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pay selected salaries</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>
+              Mark{" "}
+              <span className="font-semibold text-[#1a2b4b]">
+                {selectedPendingPayable.length} voucher
+                {selectedPendingPayable.length === 1 ? "" : "s"}
+              </span>{" "}
+              as paid for a total of{" "}
+              <span className="font-semibold text-[#16A66A]">{formatRs(bulkPayTotal)}</span>.
+            </p>
+            {selectedPendingNoAmount.length > 0 ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                {selectedPendingNoAmount.length} selected voucher
+                {selectedPendingNoAmount.length === 1 ? "" : "s"} have no amount and will be skipped.
+                Pay those individually after setting the amount.
+              </p>
+            ) : null}
+            <ul className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-100">
+              {selectedPendingPayable.map((r) => (
+                <li
+                  key={r._id}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
+                >
+                  <span className="min-w-0 truncate font-medium text-[#1a2b4b]">
+                    {staffName(r)}
+                    <span className="block font-normal text-muted-foreground">
+                      {r.voucherNumber || periodLabel(r)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums text-[#16A66A]">
+                    {formatRs(r.amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="space-y-1.5">
+              <Label>Payment method</Label>
+              <select
+                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="cash">Cash</option>
+                <option value="online">Online</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes (optional)</Label>
+              <Input
+                value={paymentNotes}
+                onChange={(e) => setPaymentNotes(e.target.value)}
+                placeholder="Shared reference for this batch"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkPayOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="hero"
+              disabled={bulkPayMut.isPending || selectedPendingPayable.length === 0}
+              onClick={() => bulkPayMut.mutate()}
+            >
+              {bulkPayMut.isPending
+                ? "Paying…"
+                : `Confirm ${selectedPendingPayable.length} payment${
+                    selectedPendingPayable.length === 1 ? "" : "s"
+                  }`}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -432,6 +432,12 @@ const academySalaryPay = Joi.object({
   amount: Joi.number().min(0).optional(),
 });
 
+const academySalaryPayBulk = Joi.object({
+  ids: Joi.array().items(objectId).min(1).max(200).required(),
+  paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').optional(),
+  notes: Joi.string().allow('').trim().optional(),
+});
+
 const academySalaryAmount = Joi.object({
   amount: Joi.number().min(0).required(),
 });
@@ -655,6 +661,7 @@ module.exports = {
   feeDefaultersQuery,
   feePaidExportQuery,
   academySalaryPay,
+  academySalaryPayBulk,
   academySalaryAmount,
   academySalaryGenerate,
   academyExpenseBody,

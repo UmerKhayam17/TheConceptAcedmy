@@ -1731,6 +1731,21 @@ export const payAcademySalary = (
 ) =>
   api<AcademySalaryRecord>(`/salaries/${id}/pay`, { method: "PATCH", body: JSON.stringify(body || {}) });
 
+export const payAcademySalariesBulk = (body: {
+  ids: string[];
+  paymentMethod?: string;
+  notes?: string;
+}) =>
+  api<{
+    paid: number;
+    skipped: number;
+    totalAmount: number;
+    errors: { id: string; reason: string }[];
+  }>("/salaries/pay-bulk", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
 export const updateAcademySalaryAmount = (id: string, amount: number) =>
   api<AcademySalaryRecord>(`/salaries/${id}/amount`, {
     method: "PATCH",

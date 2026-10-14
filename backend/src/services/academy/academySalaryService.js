@@ -397,6 +397,65 @@ async function recordSalaryPayment(id, { paymentMethod, notes, amount }, userId)
   return record;
 }
 
+/**
+ * Mark many pending vouchers paid in one request.
+ * Skips already paid/cancelled and any voucher still missing a positive amount.
+ */
+async function recordBulkSalaryPayments({ ids, paymentMethod, notes }, userId) {
+  const uniqueIds = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))];
+  if (!uniqueIds.length) throw new ApiError(400, 'Select at least one salary voucher');
+  if (uniqueIds.length > 200) throw new ApiError(400, 'You can pay at most 200 vouchers at once');
+
+  let paid = 0;
+  let skipped = 0;
+  const errors = [];
+  let totalAmount = 0;
+
+  for (const id of uniqueIds) {
+    try {
+      const record = await AcademySalaryRecord.findById(id);
+      if (!record) {
+        skipped += 1;
+        errors.push({ id, reason: 'Not found' });
+        continue;
+      }
+      if (record.status === 'paid') {
+        skipped += 1;
+        errors.push({ id, reason: 'Already paid' });
+        continue;
+      }
+      if (record.status === 'cancelled') {
+        skipped += 1;
+        errors.push({ id, reason: 'Cancelled' });
+        continue;
+      }
+      if (!(Number(record.amount) > 0)) {
+        skipped += 1;
+        errors.push({ id, reason: 'Amount is zero — pay individually' });
+        continue;
+      }
+
+      await recordSalaryPayment(
+        id,
+        { paymentMethod, notes: notes !== undefined ? notes : undefined },
+        userId
+      );
+      paid += 1;
+      totalAmount += Number(record.amount) || 0;
+    } catch (err) {
+      skipped += 1;
+      errors.push({ id, reason: err?.message || 'Failed' });
+    }
+  }
+
+  return {
+    paid,
+    skipped,
+    totalAmount: Math.round(totalAmount * 100) / 100,
+    errors: errors.slice(0, 20),
+  };
+}
+
 /** Update pending voucher amount (mainly for percentage staff). */
 async function updateSalaryAmount(id, amount, userId) {
   const record = await AcademySalaryRecord.findById(id);
@@ -463,6 +522,7 @@ module.exports = {
   safeRefreshUnpaidPercentageSalaries,
   safeRefreshUnpaidPercentageSalariesForStaff,
   recordSalaryPayment,
+  recordBulkSalaryPayments,
   updateSalaryAmount,
   getSalarySummary,
 };

@@ -44,10 +44,18 @@ const pay = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const payBulk = catchAsync(async (req, res) => {
+  const data = await salaryService.recordBulkSalaryPayments(req.body, req.user._id);
+  if (data.paid > 0) {
+    rt.salaryCrud('updated', 'batch');
+  }
+  res.json({ success: true, data });
+});
+
 const updateAmount = catchAsync(async (req, res) => {
   const data = await salaryService.updateSalaryAmount(req.params.id, req.body.amount, req.user._id);
   rt.salaryCrud('updated', req.params.id);
   res.json({ success: true, data });
 });
 
-module.exports = { list, summary, generate, recalculate, pay, updateAmount };
+module.exports = { list, summary, generate, recalculate, pay, payBulk, updateAmount };
