@@ -1,7 +1,9 @@
+const mongoose = require('mongoose');
 const ApiError = require('../../utils/ApiError');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const AcademySection = require('../../models/academy/AcademySection');
+const AcademyStudent = require('../../models/academy/AcademyStudent');
 const { syncSubjectCount } = require('./academyClassService');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { buildChoiceGroupsFromSubjects } = require('./academyEnrollmentSubjectService');
@@ -47,6 +49,84 @@ async function syncGroupPickCount(classId, choiceGroupName, pickCount) {
   );
 }
 
+/**
+ * Active students enrolled in each subject (via selectedSubjects).
+ * Full-package students with an empty selectedSubjects list count toward every subject in the class.
+ * @returns {Map<string, number>}
+ */
+async function enrolledCountBySubjectIds(classId, subjectIds) {
+  const ids = (subjectIds || [])
+    .map((id) => {
+      try {
+        return new mongoose.Types.ObjectId(String(id));
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  if (!ids.length) return new Map();
+
+  let classOid;
+  try {
+    classOid = new mongoose.Types.ObjectId(String(classId));
+  } catch {
+    return new Map();
+  }
+
+  const rows = await AcademyStudent.aggregate([
+    {
+      $match: {
+        classId: classOid,
+        status: 'active',
+        selectedSubjects: { $in: ids },
+      },
+    },
+    { $unwind: '$selectedSubjects' },
+    { $match: { selectedSubjects: { $in: ids } } },
+    { $group: { _id: '$selectedSubjects', count: { $sum: 1 } } },
+  ]);
+
+  const map = new Map(rows.map((r) => [String(r._id), r.count]));
+
+  const fullPkgEmpty = await AcademyStudent.countDocuments({
+    classId: classOid,
+    status: 'active',
+    isFullPackage: true,
+    $or: [{ selectedSubjects: { $exists: false } }, { selectedSubjects: { $size: 0 } }],
+  });
+  if (fullPkgEmpty > 0) {
+    for (const id of ids) {
+      const key = String(id);
+      map.set(key, (map.get(key) || 0) + fullPkgEmpty);
+    }
+  }
+
+  return map;
+}
+
+/** Attach `enrolledStudents` to subject docs/objects for list responses. */
+async function attachEnrolledStudentCounts(subjects, classId) {
+  const list = Array.isArray(subjects) ? subjects : [];
+  if (!list.length || !classId) {
+    return list.map((s) => {
+      const plain = typeof s?.toObject === 'function' ? s.toObject() : { ...(s || {}) };
+      plain.enrolledStudents = Number(plain.enrolledStudents) || 0;
+      return plain;
+    });
+  }
+
+  const counts = await enrolledCountBySubjectIds(
+    classId,
+    list.map((s) => s._id)
+  );
+
+  return list.map((s) => {
+    const plain = typeof s.toObject === 'function' ? s.toObject() : { ...s };
+    plain.enrolledStudents = counts.get(String(s._id)) || 0;
+    return plain;
+  });
+}
+
 async function listByClass(classId, { status, sectionId } = {}) {
   const cls = await AcademyClass.findById(classId);
   if (!cls) throw new ApiError(404, 'Class not found');
@@ -60,13 +140,15 @@ async function listByClass(classId, { status, sectionId } = {}) {
     if (!section.useClassSubjects) {
       const sq = { _id: { $in: section.subjectIds }, classId };
       if (status) sq.status = status;
-      return populateCreatedBy(AcademySubject.find(sq)).sort({ subjectName: 1 });
+      const rows = await populateCreatedBy(AcademySubject.find(sq)).sort({ subjectName: 1 });
+      return attachEnrolledStudentCounts(rows, classId);
     }
   }
 
   const q = { classId };
   if (status) q.status = status;
-  return populateCreatedBy(AcademySubject.find(q)).sort({ subjectName: 1 });
+  const rows = await populateCreatedBy(AcademySubject.find(q)).sort({ subjectName: 1 });
+  return attachEnrolledStudentCounts(rows, classId);
 }
 
 /** Distinct choice groups derived from subjects (for admin dropdowns). */
@@ -335,4 +417,6 @@ module.exports = {
   deleteSubject,
   createStandardSubjects,
   applySalaryWeights,
+  attachEnrolledStudentCounts,
+  enrolledCountBySubjectIds,
 };

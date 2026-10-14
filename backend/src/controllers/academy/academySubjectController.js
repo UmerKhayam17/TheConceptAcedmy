@@ -38,6 +38,10 @@ const listByClass = catchAsync(async (req, res) => {
     );
     data = data.filter((s) => allowed.has(idStr(s._id)));
   }
+  // Discipline layout path skips listByClass — attach enrolled counts here.
+  if (req.query.disciplineId) {
+    data = await subjectService.attachEnrolledStudentCounts(data, req.params.classId);
+  }
   res.json({ success: true, data });
 });
 

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,14 +13,18 @@ import {
 } from "@/components/ui/dialog";
 import {
   BookOpen,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Layers,
   Link2,
   Pencil,
+  Percent,
   Plus,
   Search,
   Sparkles,
   Trash2,
+  Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -65,8 +70,7 @@ import {
 } from "@/components/modules/student-management/SubjectEnrollmentFields";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { sessionLabelFromAcademyClass } from "./studentDisplayUtils";
-
-const PAGE_SIZE = 10;
+import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 
 function ShareBar({ percent, color }: { percent: number; color: string }) {
   const w = Math.min(100, Math.max(0, percent));
@@ -103,6 +107,44 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+function StatCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  iconWrapClass,
+  iconClass,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  icon: ComponentType<{ className?: string }>;
+  iconWrapClass: string;
+  iconClass: string;
+}) {
+  return (
+    <Card className="rounded-2xl border-0 bg-white p-4 shadow-sm ring-1 ring-black/[0.04]">
+      <div className="flex items-center gap-3.5">
+        <span
+          className={cn(
+            "flex h-12 w-12 shrink-0 items-center justify-center rounded-lg",
+            iconWrapClass,
+          )}
+        >
+          <Icon className={cn("h-5 w-5", iconClass)} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-slate-500">{label}</p>
+          <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-[#1a2b4b]">
+            {value}
+          </p>
+          {hint ? <p className="mt-0.5 text-xs font-medium text-slate-500">{hint}</p> : null}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCaps; sessionId: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -125,6 +167,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
   const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const { apiSessionId, writable, hasScope, isAll } = useSessionScope(sessionId);
 
   const { data: classes = [], isLoading: classesLoading } = useQuery({
@@ -141,7 +184,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
 
   useEffect(() => {
     setPage(1);
-  }, [classId, search, statusFilter]);
+  }, [classId, search, statusFilter, pageSize]);
 
   const classIdsKey = classes.map((c) => c._id).join(",");
 
@@ -206,11 +249,11 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
     );
   }, [subjects, search, statusFilter, classNameById]);
 
-  const totalPages = Math.max(1, Math.ceil(subjectsFiltered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(subjectsFiltered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = subjectsFiltered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const showingFrom = subjectsFiltered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
-  const showingTo = Math.min(safePage * PAGE_SIZE, subjectsFiltered.length);
+  const pageSlice = subjectsFiltered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const showingFrom = subjectsFiltered.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const showingTo = Math.min(safePage * pageSize, subjectsFiltered.length);
 
   const resetDialog = () => {
     setForm({
@@ -394,7 +437,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
   });
 
   const hasActions = writable && (caps.canEdit || caps.canDelete);
-  const colCount = (showClassCol ? 1 : 0) + (hasActions ? 7 : 6);
+  const colCount = (showClassCol ? 1 : 0) + (hasActions ? 8 : 7);
   const filterSelectClass =
     "h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-none shrink-0";
 
@@ -416,25 +459,84 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
         siblingSubjectRowsValid(siblingSubjectRows)
       : form.subjectName.trim() && form.subjectCode.trim() && choiceGroupValid(enrollmentForm);
 
+  const stats = useMemo(() => {
+    const total = subjects.length;
+    const active = subjects.filter((s) => s.status === "active").length;
+    const choice = subjects.filter((s) => s.enrollmentType === "choice").length;
+    const withShare = subjects.filter((s) => Number(s.tuitionSharePercent) > 0).length;
+    const activePct = total > 0 ? Math.round((active / total) * 100) : 0;
+    const sharePct = total > 0 ? Math.round((withShare / total) * 100) : 0;
+    const scopeHint = classId
+      ? selectedClass?.className || "Selected class"
+      : "All classes";
+    return { total, active, choice, withShare, activePct, sharePct, scopeHint };
+  }, [subjects, classId, selectedClass?.className]);
+
   return (
     <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      {/* Top banner — matches Assign Subject Teachers */}
-      <div className="flex flex-col gap-4 rounded-xl bg-[#F0F7FF] px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-        <div className="flex min-w-0 items-start gap-4">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-            <BookOpen className="h-5 w-5" />
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">Subjects</h2>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-500 max-w-2xl">
-              Manage and organize all subjects, their codes and details for the academic session.
-              Set subject share on each subject for percentage teacher salaries.
+      {/* Compact theme header */}
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <BookOpen className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Subjects
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                Manage subjects, codes, and subject share for the academic session.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
             </p>
           </div>
         </div>
-        <p className="shrink-0 text-sm italic text-blue-600 sm:max-w-[15rem] sm:pt-1 sm:text-right">
-          Education is the key to a better tomorrow.
-        </p>
+      </div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard
+          label="Total Subjects"
+          value={subjectsLoading ? "…" : stats.total}
+          hint={stats.scopeHint}
+          icon={BookOpen}
+          iconWrapClass="bg-[#dbeafe]"
+          iconClass="text-[#2563eb]"
+        />
+        <StatCard
+          label="Active Subjects"
+          value={subjectsLoading ? "…" : stats.active}
+          hint={subjectsLoading ? undefined : `${stats.activePct}%`}
+          icon={CheckCircle2}
+          iconWrapClass="bg-[#d1fae5]"
+          iconClass="text-[#059669]"
+        />
+        <StatCard
+          label="Choice Subjects"
+          value={subjectsLoading ? "…" : stats.choice}
+          hint="Elective / group"
+          icon={Layers}
+          iconWrapClass="bg-[#ede9fe]"
+          iconClass="text-[#7c3aed]"
+        />
+        <StatCard
+          label="With Subject Share"
+          value={subjectsLoading ? "…" : stats.withShare}
+          hint={subjectsLoading ? undefined : `${stats.sharePct}% configured`}
+          icon={Percent}
+          iconWrapClass="bg-[#ffedd5]"
+          iconClass="text-[#ea580c]"
+        />
       </div>
 
       {/* Filter / action bar — matches registration filter row */}
@@ -555,6 +657,9 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                         Enrollment
                       </th>
                       <th className="text-left px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-[#1A3A5C] whitespace-nowrap">
+                        Students
+                      </th>
+                      <th className="text-left px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-[#1A3A5C] whitespace-nowrap">
                         Subject share
                       </th>
                       <th className="text-left px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-[#1A3A5C]">
@@ -602,7 +707,8 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                       const theme = subjectTheme(s._id, s.subjectName);
                       const Icon = theme.Icon;
                       const share = Number(s.tuitionSharePercent) || 0;
-                      const rowNum = (safePage - 1) * PAGE_SIZE + i + 1;
+                      const enrolled = Number(s.enrolledStudents) || 0;
+                      const rowNum = (safePage - 1) * pageSize + i + 1;
                       return (
                         <tr
                           key={s._id}
@@ -640,6 +746,20 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                             ) : (
                               <span>Standard</span>
                             )}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums",
+                                enrolled > 0
+                                  ? "bg-[#dbeafe] text-[#1d4ed8]"
+                                  : "bg-slate-100 text-slate-500",
+                              )}
+                              title="Active students enrolled in this subject"
+                            >
+                              <Users className="h-3.5 w-3.5 shrink-0" />
+                              {enrolled}
+                            </span>
                           </td>
                           <td className="px-4 py-3.5">
                             <ShareBar percent={share} color={theme.accentHex} />
@@ -683,11 +803,20 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3.5 border-t border-slate-100 bg-slate-50">
-                <p className="text-sm text-slate-500">
-                  {subjectsFiltered.length === 0
-                    ? "Showing 0 subjects"
-                    : `Showing ${showingFrom} to ${showingTo} of ${subjectsFiltered.length} subjects`}
-                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-sm text-slate-500">
+                    {subjectsFiltered.length === 0
+                      ? "Showing 0 subjects"
+                      : `Showing ${showingFrom} to ${showingTo} of ${subjectsFiltered.length} subjects`}
+                  </p>
+                  <PageSizeSelect
+                    value={pageSize}
+                    onChange={(n) => {
+                      setPageSize(n);
+                      setPage(1);
+                    }}
+                  />
+                </div>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"

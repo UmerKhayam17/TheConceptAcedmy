@@ -34,6 +34,8 @@ export interface AcademySubject {
   pickCount?: number;
   /** Share of student tuition for this subject’s teacher pool (e.g. 10, 15, 20). */
   tuitionSharePercent?: number;
+  /** Active students enrolled in this subject (selectedSubjects / full-package). */
+  enrolledStudents?: number;
   createdBy?: CreatedByUser | string;
 }
 
