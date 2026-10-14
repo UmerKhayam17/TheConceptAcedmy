@@ -143,17 +143,35 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
     setPage(1);
   }, [classId, search, statusFilter]);
 
+  const classIdsKey = classes.map((c) => c._id).join(",");
+
   const { data: subjects = [], isLoading: subjectsLoading } = useQuery({
-    queryKey: ["academy-subjects", classId],
-    queryFn: () => fetchSubjectsByClass(classId),
-    enabled: Boolean(classId),
+    queryKey: ["academy-subjects", classId || "all", sessionId, classIdsKey],
+    queryFn: async () => {
+      if (classId) return fetchSubjectsByClass(classId);
+      if (!classes.length) return [] as AcademySubject[];
+      const batches = await Promise.all(classes.map((c) => fetchSubjectsByClass(c._id)));
+      return batches.flat();
+    },
+    enabled: hasScope && (Boolean(classId) || classes.length > 0 || !classesLoading),
   });
 
+  const classNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of classes) map.set(c._id, c.className);
+    return map;
+  }, [classes]);
+
+  const subjectClassId = (s: AcademySubject) =>
+    typeof s.classId === "string" ? s.classId : String((s.classId as { _id?: string })?._id || "");
+
   const { data: choiceGroups = [] } = useQuery({
-    queryKey: ["choice-groups", classId],
-    queryFn: () => fetchSubjectChoiceGroups(classId),
-    enabled: Boolean(classId),
+    queryKey: ["choice-groups", classId || edit?.classId],
+    queryFn: () => fetchSubjectChoiceGroups(classId || subjectClassId(edit!)),
+    enabled: Boolean(classId || edit?._id),
   });
+
+  const showClassCol = !classId;
 
   const bulkGroupCreate = isBulkGroupCreate(enrollmentForm, Boolean(edit));
   const editNewChoiceGroup = isEditNewChoiceGroup(enrollmentForm, Boolean(edit));
@@ -183,9 +201,10 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
         s.subjectCode,
         s.status,
         s.enrollmentType === "choice" ? s.choiceGroupName : "standard",
+        classNameById.get(subjectClassId(s)),
       ),
     );
-  }, [subjects, search, statusFilter]);
+  }, [subjects, search, statusFilter, classNameById]);
 
   const totalPages = Math.max(1, Math.ceil(subjectsFiltered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -208,7 +227,11 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
 
   const openCreate = () => {
     if (!classId) {
-      toast({ title: "Select a class first", description: "Choose a class before adding a subject.", variant: "destructive" });
+      toast({
+        title: "Select a class first",
+        description: "Choose a specific class from the filter before adding a subject.",
+        variant: "destructive",
+      });
       return;
     }
     setEdit(null);
@@ -283,8 +306,8 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
       return createAcademySubject({ ...body, classId });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["academy-subjects", classId] });
-      qc.invalidateQueries({ queryKey: ["choice-groups", classId] });
+      qc.invalidateQueries({ queryKey: ["academy-subjects"] });
+      qc.invalidateQueries({ queryKey: ["choice-groups"] });
       qc.invalidateQueries({ queryKey: ["enrollment-subjects"] });
       qc.invalidateQueries({ queryKey: ["academy-classes"] });
       qc.invalidateQueries({ queryKey: ["academy-salaries"] });
@@ -313,8 +336,8 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
       return createStandardSubjects(classId);
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["academy-subjects", classId] });
-      qc.invalidateQueries({ queryKey: ["choice-groups", classId] });
+      qc.invalidateQueries({ queryKey: ["academy-subjects"] });
+      qc.invalidateQueries({ queryKey: ["choice-groups"] });
       qc.invalidateQueries({ queryKey: ["enrollment-subjects"] });
       qc.invalidateQueries({ queryKey: ["academy-classes"] });
       toast({
@@ -339,7 +362,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
       return applySubjectSalaryWeights(classId);
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["academy-subjects", classId] });
+      qc.invalidateQueries({ queryKey: ["academy-subjects"] });
       qc.invalidateQueries({ queryKey: ["academy-salaries"] });
       qc.invalidateQueries({ queryKey: ["academy-salaries-summary"] });
       const salaryCount = Number(data.salariesRecalculated || 0);
@@ -362,8 +385,8 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
   const delMut = useMutation({
     mutationFn: (id: string) => deleteAcademySubject(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["academy-subjects", classId] });
-      qc.invalidateQueries({ queryKey: ["choice-groups", classId] });
+      qc.invalidateQueries({ queryKey: ["academy-subjects"] });
+      qc.invalidateQueries({ queryKey: ["choice-groups"] });
       qc.invalidateQueries({ queryKey: ["academy-classes"] });
       toast({ title: "Subject deleted" });
     },
@@ -371,9 +394,19 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
   });
 
   const hasActions = writable && (caps.canEdit || caps.canDelete);
-  const colCount = hasActions ? 7 : 6;
+  const colCount = (showClassCol ? 1 : 0) + (hasActions ? 7 : 6);
   const filterSelectClass =
     "h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-none shrink-0";
+
+  const requireClassForAction = (action: string) => {
+    if (classId) return true;
+    toast({
+      title: "Select a class first",
+      description: `Choose a specific class to ${action}.`,
+      variant: "destructive",
+    });
+    return false;
+  };
 
   const canSave = bulkGroupCreate
     ? choiceGroupValid(enrollmentForm) && groupSubjectRowsValid(groupSubjectRows)
@@ -414,7 +447,8 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
             value={classId}
             onChange={setClassId}
             classes={classes}
-            emptyLabel="Choose class…"
+            allowAll
+            allLabel="All classes (School + College)"
             disabled={classesLoading || !hasScope}
             selectClassName={filterSelectClass}
             optionSuffix={
@@ -430,7 +464,6 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as "" | "active" | "inactive")}
             aria-label="Status filter"
-            disabled={!classId}
           >
             <option value="">All statuses</option>
             <option value="active">Active</option>
@@ -444,7 +477,6 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search subjects..."
               className="h-10 pl-9 rounded-md border-slate-200 bg-white shadow-none"
-              disabled={!classId}
             />
           </div>
 
@@ -455,20 +487,24 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                   type="button"
                   variant="outline"
                   className="h-10 gap-2 rounded-md border-slate-800 text-slate-800 hover:bg-slate-50"
-                  disabled={!classId || defaultsMut.isPending}
-                  onClick={() => defaultsMut.mutate()}
+                  disabled={defaultsMut.isPending}
+                  onClick={() => {
+                    if (!requireClassForAction("auto-initialize subjects")) return;
+                    defaultsMut.mutate();
+                  }}
                 >
                   <Sparkles className="h-4 w-4" />
                   {defaultsMut.isPending ? "Initializing…" : "Auto initialize"}
                 </Button>
               ) : null}
-              {caps.canEdit && classId && subjects.length > 0 ? (
+              {caps.canEdit && subjects.length > 0 ? (
                 <Button
                   type="button"
                   variant="outline"
                   className="h-10 gap-2 rounded-md border-slate-800 text-slate-800 hover:bg-slate-50"
                   disabled={weightsMut.isPending}
                   onClick={() => {
+                    if (!requireClassForAction("apply subject share")) return;
                     if (
                       confirm(
                         "Apply default subject share to all subjects in this class?\n\n9th–10th: languages 10%, sciences 15%\n11th–12th: languages 13.333%, sciences 20%\n\nTeacher % is set on each staff profile, not on subjects.",
@@ -486,7 +522,6 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                 <Button
                   className="h-10 gap-2 rounded-md bg-slate-900 text-white hover:bg-slate-800"
                   onClick={openCreate}
-                  disabled={!classId}
                 >
                   <Plus className="h-4 w-4" /> Add Subject
                 </Button>
@@ -498,12 +533,6 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
 
       {/* Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          {!classId ? (
-            <div className="px-6 py-16 text-center text-sm text-slate-400">
-              Select a class to view and manage subjects.
-            </div>
-          ) : (
-            <>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -514,6 +543,11 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                       <th className="text-left px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-[#1A3A5C]">
                         Subject
                       </th>
+                      {showClassCol ? (
+                        <th className="text-left px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-[#1A3A5C]">
+                          Class
+                        </th>
+                      ) : null}
                       <th className="text-left px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-[#1A3A5C]">
                         Code
                       </th>
@@ -544,11 +578,12 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                     {!subjectsLoading && subjects.length === 0 && (
                       <tr>
                         <td colSpan={colCount} className="px-4 py-12 text-center text-slate-400">
-                          No subjects for this class yet.
+                          No subjects yet.
                           {caps.canCreate && writable ? (
                             <>
                               {" "}
-                              Use <span className="font-medium text-slate-600">Auto initialize</span> or
+                              Select a class, then use{" "}
+                              <span className="font-medium text-slate-600">Auto initialize</span> or
                               add subjects one by one.
                             </>
                           ) : null}
@@ -558,7 +593,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                     {!subjectsLoading && subjects.length > 0 && subjectsFiltered.length === 0 && (
                       <tr>
                         <td colSpan={colCount} className="px-4 py-12 text-center text-slate-400">
-                          No subjects match your search.
+                          No subjects match your filters.
                         </td>
                       </tr>
                     )}
@@ -590,6 +625,11 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                               </span>
                             </div>
                           </td>
+                          {showClassCol ? (
+                            <td className="px-4 py-3.5 text-slate-500 whitespace-nowrap">
+                              {classNameById.get(subjectClassId(s)) || "—"}
+                            </td>
+                          ) : null}
                           <td className="px-4 py-3.5 text-slate-500 font-medium">{s.subjectCode}</td>
                           <td className="px-4 py-3.5 text-slate-500">
                             {isChoice ? (
@@ -672,8 +712,6 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                   </button>
                 </div>
               </div>
-            </>
-          )}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -682,9 +720,14 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
             <DialogTitle>
               {edit ? "Edit Subject" : bulkGroupCreate ? "New choice group" : "New Subject"}
             </DialogTitle>
-            {selectedClass && (
+            {(selectedClass || edit) && (
               <p className="text-sm text-muted-foreground">
-                Class: <span className="font-medium text-foreground">{selectedClass.className}</span>
+                Class:{" "}
+                <span className="font-medium text-foreground">
+                  {selectedClass?.className ||
+                    (edit ? classNameById.get(subjectClassId(edit)) : undefined) ||
+                    "—"}
+                </span>
               </p>
             )}
           </DialogHeader>
