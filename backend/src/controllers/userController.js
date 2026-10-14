@@ -341,7 +341,27 @@ const updateUser = catchAsync(async (req, res) => {
     user.modulePermissions = modulePermissionsToMap(modulePermissions);
   }
 
+  const shouldRefreshSalaries =
+    payType === 'percentage' ||
+    payType === 'fixed' ||
+    typeof salaryPercentage === 'number';
+
   await user.save();
+
+  // Unpaid percentage vouchers use this teacher's % — refresh when rate/pay type changes.
+  if (shouldRefreshSalaries) {
+    try {
+      const {
+        recalculateUnpaidPercentageSalariesForStaff,
+      } = require('../services/academy/academySalaryService');
+      await recalculateUnpaidPercentageSalariesForStaff(user._id, req.user._id);
+      const rt = require('../services/realtime/academyRealtime');
+      rt.salaryCrud('updated', 'batch');
+    } catch (err) {
+      console.error('[salary] Failed to refresh unpaid salaries after staff % change:', err);
+    }
+  }
+
   const populatedUser = await User.findById(user._id).populate('role').populate('permissions');
   notifyStaff(req);
   res.json({ success: true, data: serializeUser(populatedUser) });

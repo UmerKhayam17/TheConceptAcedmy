@@ -43,6 +43,7 @@ import {
   fetchAcademySalarySummary,
   generateMonthlySalaries,
   payAcademySalary,
+  recalculatePercentageSalaries,
   type AcademySalaryRecord,
 } from "@/lib/studentManagementApi";
 import { MONTH_NAMES } from "./studentDisplayUtils";
@@ -321,6 +322,26 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const recalcMut = useMutation({
+    mutationFn: () =>
+      recalculatePercentageSalaries({
+        month: Number(month),
+        year: Number(year),
+        roleName: roleFilter || undefined,
+      }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["academy-salaries"] });
+      qc.invalidateQueries({ queryKey: ["academy-salaries-summary"] });
+      toast({
+        title: "Percentage salaries recalculated",
+        description: `${r.updated} updated from tuition pools${
+          r.skipped ? `, ${r.skipped} skipped` : ""
+        }.`,
+      });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const payMut = useMutation({
     mutationFn: () => {
       const needsAmount =
@@ -550,14 +571,26 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
 
           <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
             {canGenerate && (
-              <Button
-                className="gap-2 h-10 shrink-0"
-                disabled={genMut.isPending}
-                onClick={() => genMut.mutate()}
-              >
-                <CalendarPlus className="h-4 w-4" />
-                {genMut.isPending ? "Generating…" : "Generate monthly salaries"}
-              </Button>
+              <>
+                <Button
+                  className="gap-2 h-10 shrink-0"
+                  disabled={genMut.isPending}
+                  onClick={() => genMut.mutate()}
+                >
+                  <CalendarPlus className="h-4 w-4" />
+                  {genMut.isPending ? "Generating…" : "Generate monthly salaries"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2 h-10 shrink-0"
+                  disabled={recalcMut.isPending}
+                  onClick={() => recalcMut.mutate()}
+                  title="Recompute pending percentage vouchers from tuition × subject share × teacher cut"
+                >
+                  <Coins className="h-4 w-4" />
+                  {recalcMut.isPending ? "Recalculating…" : "Recalc % from fees"}
+                </Button>
+              </>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -616,8 +649,9 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
               {!isLoading && records.length === 0 && (
                 <tr>
                   <td colSpan={9} className="p-10 text-center text-muted-foreground">
-                    No salary vouchers for this period. Generate monthly salaries after setting staff
-                    pay type (fixed or percentage) in Staff management.
+                    No salary vouchers for this period. Set staff pay type in Staff management, apply
+                    subject share on Subjects, then generate. Percentage teachers are calculated from
+                    tuition × subject share × teacher %.
                   </td>
                 </tr>
               )}
@@ -653,7 +687,11 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                           <div className="font-semibold text-[#1a2b4b] truncate">{name}</div>
                           <div className="text-xs text-muted-foreground">
                             {payType === "percentage"
-                              ? `Rate: ${pct}%`
+                              ? r.calculationSource === "tuition_pool"
+                                ? `Tuition pool · teacher ${pct}%`
+                                : pct > 0
+                                  ? `Teacher rate: ${pct}%`
+                                  : "Percentage · set teacher % on staff"
                               : `Base: ${formatRs(staff?.salary)}`}
                           </div>
                         </div>
@@ -680,7 +718,17 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                       {payType === "percentage" && !(r.amount > 0) ? (
                         <span className="text-amber-700 text-xs font-medium">Set on pay</span>
                       ) : (
-                        <span className="font-semibold text-[#16A66A]">{formatRs(r.amount)}</span>
+                        <div>
+                          <span className="font-semibold text-[#16A66A]">{formatRs(r.amount)}</span>
+                          {payType === "percentage" &&
+                          r.calculationSource === "tuition_pool" &&
+                          (r.calculationBreakdown?.length ?? 0) > 0 ? (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {r.calculationBreakdown!.length} subject pool
+                              {r.calculationBreakdown!.length === 1 ? "" : "s"}
+                            </div>
+                          ) : null}
+                        </div>
                       )}
                     </td>
                     <td className="p-3">

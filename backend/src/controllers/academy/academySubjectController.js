@@ -86,9 +86,22 @@ const createDefaults = catchAsync(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+const applySalaryWeights = catchAsync(async (req, res) => {
+  const data = await subjectService.applySalaryWeights(req.params.classId, req.user._id);
+  rt.subjectCrud('updated', req.params.classId);
+  if (data.salariesRecalculated > 0) {
+    rt.salaryCrud('updated', 'batch');
+  }
+  res.json({ success: true, data });
+});
+
 const update = catchAsync(async (req, res) => {
+  const weightsTouched = req.body?.tuitionSharePercent !== undefined;
   const data = await subjectService.updateSubject(req.params.id, req.body, req.user._id);
   rt.subjectCrud('updated', data._id);
+  if (weightsTouched) {
+    rt.salaryCrud('updated', 'batch');
+  }
   res.json({ success: true, data });
 });
 
@@ -105,6 +118,7 @@ module.exports = {
   create,
   createBulkChoice,
   createDefaults,
+  applySalaryWeights,
   update,
   remove,
 };

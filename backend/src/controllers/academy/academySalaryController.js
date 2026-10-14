@@ -32,6 +32,12 @@ const generate = catchAsync(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+const recalculate = catchAsync(async (req, res) => {
+  const data = await salaryService.recalculatePercentageSalaries(req.body, req.user._id);
+  rt.salaryCrud('updated', 'batch');
+  res.json({ success: true, data });
+});
+
 const pay = catchAsync(async (req, res) => {
   const data = await salaryService.recordSalaryPayment(req.params.id, req.body, req.user._id);
   rt.salaryCrud('updated', req.params.id);
@@ -44,4 +50,4 @@ const updateAmount = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
-module.exports = { list, summary, generate, pay, updateAmount };
+module.exports = { list, summary, generate, recalculate, pay, updateAmount };

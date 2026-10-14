@@ -435,7 +435,7 @@ const UsersModule = ({
       const salaryNum = Math.max(0, Number(form.salary) || 0);
       const pctNum = Math.min(100, Math.max(0, Number(form.salaryPercentage) || 0));
       if (payType === "percentage" && pctNum <= 0) {
-        throw new Error("Enter a salary percentage greater than 0.");
+        throw new Error("Enter the teacher percentage (greater than 0).");
       }
       if (payType === "fixed" && salaryNum < 0) {
         throw new Error("Salary cannot be negative.");
@@ -743,8 +743,13 @@ const UsersModule = ({
                             />
                             {field.key === "payType" ? (
                               <p className="text-[11px] text-muted-foreground mt-1">
-                                Fixed uses a monthly amount. Percentage staff get a voucher each month; enter the
-                                calculated PKR amount when paying.
+                                Fixed uses a monthly amount. Percentage teachers get tuition × subject share × this
+                                teacher %. Set the % here; subject weightage is configured on Subjects.
+                              </p>
+                            ) : null}
+                            {field.key === "salaryPercentage" ? (
+                              <p className="text-[11px] text-muted-foreground mt-1">
+                                Teacher’s cut of each subject pool (e.g. 60 or 70).
                               </p>
                             ) : null}
                           </div>

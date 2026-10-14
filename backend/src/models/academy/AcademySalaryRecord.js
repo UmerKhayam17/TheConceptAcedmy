@@ -14,6 +14,27 @@ const academySalaryRecordSchema = new mongoose.Schema(
     },
     /** Snapshot of percentage rate (for percentage payType). */
     salaryPercentage: { type: Number, min: 0, max: 100, default: 0 },
+    /**
+     * Auto-calc snapshot for percentage teachers (tuition × subject share × teacher cut).
+     * amount is the rounded total of lines when calculationSource is 'tuition_pool'.
+     */
+    calculationSource: {
+      type: String,
+      enum: ['fixed', 'tuition_pool', 'manual'],
+      default: 'fixed',
+    },
+    calculationBreakdown: [
+      {
+        subjectId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademySubject' },
+        subjectName: { type: String, trim: true },
+        className: { type: String, trim: true },
+        sectionName: { type: String, trim: true },
+        studentCount: { type: Number, default: 0 },
+        pool: { type: Number, default: 0 },
+        teacherCutPercent: { type: Number, default: 60 },
+        salary: { type: Number, default: 0 },
+      },
+    ],
     status: {
       type: String,
       enum: ['pending', 'paid', 'cancelled'],

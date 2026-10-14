@@ -3,6 +3,7 @@ const User = require('../../models/User');
 const Role = require('../../models/Role');
 const AcademySalaryRecord = require('../../models/academy/AcademySalaryRecord');
 const { populateCreatedBy } = require('../../utils/createdBy');
+const { calculateTeacherPercentageSalary } = require('./percentageSalaryCalculator');
 
 function voucherNumber(userDoc, month, year) {
   const code = userDoc._id.toString().slice(-6).toUpperCase();
@@ -15,6 +16,7 @@ function staffPayType(member) {
 
 function staffHasPayroll(member) {
   if (staffPayType(member) === 'percentage') {
+    // Teacher cut % is set on the staff user when creating/editing them.
     return Number(member.salaryPercentage || 0) > 0;
   }
   return Number(member.salary || 0) > 0;
@@ -107,6 +109,27 @@ async function listSalaryRecords({
   };
 }
 
+async function resolvePercentagePayload(member) {
+  const staffPct = Number(member.salaryPercentage || 0);
+  const calc = await calculateTeacherPercentageSalary(member._id, member);
+  const notes =
+    calc.amount > 0
+      ? `Auto: tuition × subject share × teacher ${staffPct}% (${calc.breakdown.length} subject pool${
+          calc.breakdown.length === 1 ? '' : 's'
+        }).`
+      : staffPct > 0
+        ? `Percentage pay (${staffPct}%). No tuition pool yet — enter amount before marking paid.`
+        : 'Percentage pay. Set teacher % on the staff profile, then recalculate.';
+
+  return {
+    amount: calc.amount,
+    salaryPercentage: staffPct,
+    calculationSource: calc.amount > 0 ? 'tuition_pool' : 'manual',
+    calculationBreakdown: calc.breakdown,
+    notes,
+  };
+}
+
 async function generateMonthlySalaries({ month, year, roleName }, userId) {
   const roleIds = await staffRoleIds();
   const userQ = { isActive: true, role: { $in: roleIds } };
@@ -128,17 +151,25 @@ async function generateMonthlySalaries({ month, year, roleName }, userId) {
     }
 
     const payType = staffPayType(member);
-    const pct = Number(member.salaryPercentage || 0);
-    // Fixed: use monthly salary. Percentage: start at 0 — set amount before/when paying.
-    const amount = payType === 'fixed' ? Number(member.salary || 0) : 0;
-    const notes =
-      payType === 'percentage'
-        ? `Percentage pay (${pct}%). Enter calculated amount before marking paid.`
-        : undefined;
+    let amount = 0;
+    let pct = Number(member.salaryPercentage || 0);
+    let notes;
+    let calculationSource = 'fixed';
+    let calculationBreakdown = [];
 
-    if (payType === 'fixed' && amount <= 0) {
-      skipped += 1;
-      continue;
+    if (payType === 'fixed') {
+      amount = Number(member.salary || 0);
+      if (amount <= 0) {
+        skipped += 1;
+        continue;
+      }
+    } else {
+      const resolved = await resolvePercentagePayload(member);
+      amount = resolved.amount;
+      pct = resolved.salaryPercentage;
+      notes = resolved.notes;
+      calculationSource = resolved.calculationSource;
+      calculationBreakdown = resolved.calculationBreakdown;
     }
 
     const exists = await AcademySalaryRecord.findOne({
@@ -157,6 +188,8 @@ async function generateMonthlySalaries({ month, year, roleName }, userId) {
       amount,
       payType,
       salaryPercentage: payType === 'percentage' ? pct : 0,
+      calculationSource: payType === 'percentage' ? calculationSource : 'fixed',
+      calculationBreakdown: payType === 'percentage' ? calculationBreakdown : [],
       status: 'pending',
       dueDate,
       voucherNumber: voucherNumber(member, month, year),
@@ -168,6 +201,81 @@ async function generateMonthlySalaries({ month, year, roleName }, userId) {
   }
 
   return { created, skipped };
+}
+
+/**
+ * Recompute unpaid (pending) percentage vouchers from current tuition / subject weights.
+ * Paid / cancelled vouchers are left unchanged.
+ * @param {{ month?: number, year?: number, roleName?: string }} filters — omit month/year to refresh all unpaid.
+ */
+async function recalculatePercentageSalaries({ month, year, roleName } = {}, userId) {
+  const q = await buildSalaryQuery({
+    month: month || undefined,
+    year: year || undefined,
+    roleName,
+    status: 'pending',
+  });
+  q.payType = 'percentage';
+  const records = await AcademySalaryRecord.find(q);
+  let updated = 0;
+  let skipped = 0;
+
+  for (const record of records) {
+    const member = await User.findById(record.staffId);
+    if (!member) {
+      skipped += 1;
+      continue;
+    }
+    const resolved = await resolvePercentagePayload(member);
+    record.amount = resolved.amount;
+    record.salaryPercentage = resolved.salaryPercentage;
+    record.calculationSource = resolved.calculationSource;
+    record.calculationBreakdown = resolved.calculationBreakdown;
+    record.notes = resolved.notes;
+    if (userId) record.recordedBy = userId;
+    await record.save();
+    updated += 1;
+  }
+
+  return { updated, skipped };
+}
+
+/** After subject weight changes — refresh every unpaid percentage salary voucher. */
+async function recalculateUnpaidPercentageSalariesAfterWeightChange(userId) {
+  return recalculatePercentageSalaries({}, userId);
+}
+
+/** After a teacher's salaryPercentage changes — refresh only that teacher's unpaid vouchers. */
+async function recalculateUnpaidPercentageSalariesForStaff(staffId, userId) {
+  if (!staffId) return { updated: 0, skipped: 0 };
+  const records = await AcademySalaryRecord.find({
+    staffId,
+    status: 'pending',
+    payType: 'percentage',
+  });
+  let updated = 0;
+  let skipped = 0;
+  const member = await User.findById(staffId);
+  if (!member) return { updated: 0, skipped: records.length };
+
+  for (const record of records) {
+    if (staffPayType(member) !== 'percentage' || !(Number(member.salaryPercentage) > 0)) {
+      // Pay type no longer percentage — leave voucher; admin can cancel/edit manually.
+      skipped += 1;
+      continue;
+    }
+    const resolved = await resolvePercentagePayload(member);
+    record.amount = resolved.amount;
+    record.salaryPercentage = resolved.salaryPercentage;
+    record.calculationSource = resolved.calculationSource;
+    record.calculationBreakdown = resolved.calculationBreakdown;
+    record.notes = resolved.notes;
+    if (userId) record.recordedBy = userId;
+    await record.save();
+    updated += 1;
+  }
+
+  return { updated, skipped };
 }
 
 async function recordSalaryPayment(id, { paymentMethod, notes, amount }, userId) {
@@ -182,6 +290,9 @@ async function recordSalaryPayment(id, { paymentMethod, notes, amount }, userId)
   if (amount !== undefined && amount !== null && amount !== '') {
     const n = Number(amount);
     if (Number.isNaN(n) || n < 0) throw new ApiError(400, 'Invalid salary amount');
+    if (record.payType === 'percentage' && n !== record.amount) {
+      record.calculationSource = 'manual';
+    }
     record.amount = n;
   }
 
@@ -214,6 +325,9 @@ async function updateSalaryAmount(id, amount, userId) {
   const n = Number(amount);
   if (Number.isNaN(n) || n < 0) throw new ApiError(400, 'Invalid salary amount');
   record.amount = n;
+  if (record.payType === 'percentage') {
+    record.calculationSource = 'manual';
+  }
   record.recordedBy = userId;
   await record.save();
   return record.populate({
@@ -261,6 +375,9 @@ async function getSalarySummary({ month, year, roleName, staffId }) {
 module.exports = {
   listSalaryRecords,
   generateMonthlySalaries,
+  recalculatePercentageSalaries,
+  recalculateUnpaidPercentageSalariesAfterWeightChange,
+  recalculateUnpaidPercentageSalariesForStaff,
   recordSalaryPayment,
   updateSalaryAmount,
   getSalarySummary,

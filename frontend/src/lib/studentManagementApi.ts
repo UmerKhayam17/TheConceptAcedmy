@@ -32,6 +32,8 @@ export interface AcademySubject {
   enrollmentType?: "required" | "choice";
   choiceGroupName?: string;
   pickCount?: number;
+  /** Share of student tuition for this subject’s teacher pool (e.g. 10, 15, 20). */
+  tuitionSharePercent?: number;
   createdBy?: CreatedByUser | string;
 }
 
@@ -577,6 +579,7 @@ export const createAcademySubject = (body: {
   enrollmentType?: "required" | "choice";
   choiceGroupName?: string;
   pickCount?: number;
+  tuitionSharePercent?: number;
 }) => api<AcademySubject>("/subjects", { method: "POST", body: JSON.stringify(body) });
 
 /** Create standard core subjects for a class (English, Maths, Sciences, …). Idempotent. */
@@ -587,12 +590,21 @@ export const createStandardSubjects = (classId: string) =>
     subjects: AcademySubject[];
   }>(`/classes/${classId}/subjects/defaults`, { method: "POST" });
 
+/** Apply default subject-share rates to all subjects in the class. */
+export const applySubjectSalaryWeights = (classId: string) =>
+  api<{
+    updated: number;
+    subjects: AcademySubject[];
+    salariesRecalculated?: number;
+  }>(`/classes/${classId}/subjects/apply-salary-weights`, { method: "POST" });
+
 export const updateAcademySubject = (
   id: string,
   body: Partial<AcademySubject> & {
     enrollmentType?: "required" | "choice";
     choiceGroupName?: string;
     pickCount?: number;
+    tuitionSharePercent?: number;
   },
 ) => api<AcademySubject>(`/subjects/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 
@@ -1594,6 +1606,17 @@ export const exportPaidFeesReport = async (
 };
 
 // Teacher / staff salary
+export interface AcademySalaryBreakdownLine {
+  subjectId?: string;
+  subjectName?: string;
+  className?: string;
+  sectionName?: string;
+  studentCount?: number;
+  pool?: number;
+  teacherCutPercent?: number;
+  salary?: number;
+}
+
 export interface AcademySalaryRecord {
   _id: string;
   staffId: {
@@ -1612,6 +1635,8 @@ export interface AcademySalaryRecord {
   amount: number;
   payType?: "fixed" | "percentage";
   salaryPercentage?: number;
+  calculationSource?: "fixed" | "tuition_pool" | "manual";
+  calculationBreakdown?: AcademySalaryBreakdownLine[];
   status: "pending" | "paid" | "cancelled";
   dueDate?: string;
   paidAt?: string;
@@ -1679,6 +1704,17 @@ export const generateMonthlySalaries = (body: {
   roleName?: "teacher" | "accountant";
 }) =>
   api<{ created: number; skipped: number }>("/salaries/generate", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+/** Recompute pending percentage vouchers from tuition × subject share × teacher %. */
+export const recalculatePercentageSalaries = (body: {
+  month: number;
+  year: number;
+  roleName?: "teacher" | "accountant";
+}) =>
+  api<{ updated: number; skipped: number }>("/salaries/recalculate", {
     method: "POST",
     body: JSON.stringify(body),
   });

@@ -24,6 +24,7 @@ const academySubjectBody = Joi.object({
   enrollmentType: Joi.string().valid('required', 'choice').default('required'),
   choiceGroupName: Joi.string().trim().optional().allow(''),
   pickCount: Joi.number().integer().min(1).default(1),
+  tuitionSharePercent: Joi.number().min(0).max(100).optional(),
 });
 
 const academySubjectPatch = Joi.object({
@@ -33,6 +34,7 @@ const academySubjectPatch = Joi.object({
   enrollmentType: Joi.string().valid('required', 'choice'),
   choiceGroupName: Joi.string().trim().allow(''),
   pickCount: Joi.number().integer().min(1),
+  tuitionSharePercent: Joi.number().min(0).max(100),
 }).min(1);
 
 const academySubjectBulkChoiceBody = Joi.object({

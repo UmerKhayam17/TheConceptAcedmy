@@ -145,6 +145,11 @@ router.post(
   requirePermission('manage_academy_subjects'),
   subjectCtrl.createDefaults
 );
+router.post(
+  '/classes/:classId/subjects/apply-salary-weights',
+  requirePermission('manage_academy_subjects'),
+  subjectCtrl.applySalaryWeights
+);
 router.get(
   '/classes/:classId/enrollment-subjects',
   requireAnyPermission('view_academy_students', 'manage_academy_students', 'manage_academy_subjects'),
@@ -541,6 +546,12 @@ router.post(
   requirePermission('manage_academy_salaries'),
   validate(schemas.academySalaryGenerate),
   salaryCtrl.generate
+);
+router.post(
+  '/salaries/recalculate',
+  requirePermission('manage_academy_salaries'),
+  validate(schemas.academySalaryGenerate),
+  salaryCtrl.recalculate
 );
 router.patch(
   '/salaries/:id/amount',

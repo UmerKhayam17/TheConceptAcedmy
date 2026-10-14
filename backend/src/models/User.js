@@ -18,7 +18,7 @@ const userSchema = new mongoose.Schema(
     /**
      * Staff payroll type:
      * - fixed → monthly PKR in `salary`
-     * - percentage → share of fees; rate in `salaryPercentage` (amount set each month)
+     * - percentage → tuition pools × `salaryPercentage` (set when creating the teacher)
      */
     payType: {
       type: String,
@@ -27,7 +27,10 @@ const userSchema = new mongoose.Schema(
     },
     /** Monthly / contractual salary for fixed-pay staff (PKR). */
     salary: { type: Number, default: 0, min: 0 },
-    /** Pay rate for percentage staff (0–100). */
+    /**
+     * Teacher cut of each subject tuition pool (0–100).
+     * Used when payType is percentage: Salary = salaryPercentage% × Σ(tuition × subject share).
+     */
     salaryPercentage: { type: Number, default: 0, min: 0, max: 100 },
     profileImage: { type: String },
     /** Linked face ID in AIAttendance (`STF-…`). */

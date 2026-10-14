@@ -20,6 +20,12 @@ const academySubjectSchema = new mongoose.Schema(
     choiceGroupName: { type: String, trim: true },
     /** How many subjects a student must pick from this group (stored on each member). */
     pickCount: { type: Number, default: 1, min: 1 },
+    /**
+     * Share of the student's monthly tuition that goes into this subject's teacher pool.
+     * Excel: 10%/15% (9th–10th) or 13.333%/20% (11th–12th). 0 = not used in salary calc.
+     * Teacher cut % is on the staff user (`salaryPercentage`), not on the subject.
+     */
+    tuitionSharePercent: { type: Number, default: 0, min: 0, max: 100 },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true, collection: 'subjects' }

@@ -5,6 +5,22 @@ const AcademySection = require('../../models/academy/AcademySection');
 const { syncSubjectCount } = require('./academyClassService');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { buildChoiceGroupsFromSubjects } = require('./academyEnrollmentSubjectService');
+const { defaultSalaryWeights } = require('../../utils/subjectSalaryWeights');
+const { applyDefaultWeightsToClass } = require('./percentageSalaryCalculator');
+
+function clampPercent(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(100, Math.max(0, n));
+}
+
+function resolveSalaryWeights(className, payload, subjectName, subjectCode) {
+  const defaults = defaultSalaryWeights(className, subjectName, subjectCode);
+  return {
+    tuitionSharePercent: clampPercent(payload.tuitionSharePercent, defaults.tuitionSharePercent),
+  };
+}
 
 function normalizeChoiceFields(payload) {
   const enrollmentType = payload.enrollmentType === 'choice' ? 'choice' : 'required';
@@ -76,14 +92,17 @@ async function createSubject(payload, userId) {
   if (dup) throw new ApiError(409, 'Subject code already exists for this class');
 
   const choice = normalizeChoiceFields(payload);
+  const name = payload.subjectName.trim();
+  const weights = resolveSalaryWeights(cls.className, payload, name, code);
   const subject = await AcademySubject.create({
-    subjectName: payload.subjectName.trim(),
+    subjectName: name,
     classId: payload.classId,
     subjectCode: code,
     status: payload.status || 'active',
     enrollmentType: choice.enrollmentType,
     choiceGroupName: choice.choiceGroupName,
     pickCount: choice.pickCount,
+    tuitionSharePercent: weights.tuitionSharePercent,
     createdBy: userId,
   });
 
@@ -127,16 +146,22 @@ async function createBulkChoiceSubjects(payload, userId) {
   }
 
   const created = await AcademySubject.insertMany(
-    subjects.map((s) => ({
-      subjectName: String(s.subjectName).trim(),
-      subjectCode: String(s.subjectCode).trim().toUpperCase(),
-      classId,
-      status: 'active',
-      enrollmentType: 'choice',
-      choiceGroupName: groupName,
-      pickCount,
-      createdBy: userId,
-    }))
+    subjects.map((s) => {
+      const subjectName = String(s.subjectName).trim();
+      const subjectCode = String(s.subjectCode).trim().toUpperCase();
+      const weights = resolveSalaryWeights(cls.className, s, subjectName, subjectCode);
+      return {
+        subjectName,
+        subjectCode,
+        classId,
+        status: 'active',
+        enrollmentType: 'choice',
+        choiceGroupName: groupName,
+        pickCount,
+        tuitionSharePercent: weights.tuitionSharePercent,
+        createdBy: userId,
+      };
+    })
   );
 
   await syncSubjectCount(classId);
@@ -148,9 +173,23 @@ async function createBulkChoiceSubjects(payload, userId) {
   };
 }
 
-async function updateSubject(id, payload) {
+async function refreshUnpaidSalariesAfterWeightChange(userId) {
+  const { recalculateUnpaidPercentageSalariesAfterWeightChange } = require('./academySalaryService');
+  try {
+    return await recalculateUnpaidPercentageSalariesAfterWeightChange(userId);
+  } catch (err) {
+    // Subject save already succeeded — don't fail the request if payroll refresh errors.
+    console.error('[salary] Failed to refresh unpaid percentage salaries after weight change:', err);
+    return { updated: 0, skipped: 0, error: true };
+  }
+}
+
+async function updateSubject(id, payload, userId) {
   const doc = await AcademySubject.findById(id);
   if (!doc) throw new ApiError(404, 'Subject not found');
+
+  const prevShare = Number(doc.tuitionSharePercent) || 0;
+
   if (payload.subjectName) doc.subjectName = payload.subjectName.trim();
   if (payload.subjectCode) {
     const code = payload.subjectCode.trim().toUpperCase();
@@ -163,6 +202,13 @@ async function updateSubject(id, payload) {
     doc.subjectCode = code;
   }
   if (payload.status) doc.status = payload.status;
+  if (payload.tuitionSharePercent !== undefined) {
+    doc.tuitionSharePercent = clampPercent(payload.tuitionSharePercent, doc.tuitionSharePercent || 0);
+  }
+
+  const weightsChanged =
+    payload.tuitionSharePercent !== undefined &&
+    (Number(doc.tuitionSharePercent) || 0) !== prevShare;
 
   if (payload.enrollmentType !== undefined || payload.choiceGroupName !== undefined || payload.pickCount !== undefined) {
     const choice = normalizeChoiceFields({
@@ -178,6 +224,9 @@ async function updateSubject(id, payload) {
       await doc.save();
       await syncGroupPickCount(doc.classId, choice.choiceGroupName, choice.pickCount);
       await syncSubjectCount(doc.classId);
+      if (weightsChanged) {
+        await refreshUnpaidSalariesAfterWeightChange(userId);
+      }
       return AcademySubject.findById(id);
     }
     doc.set('choiceGroupName', undefined);
@@ -186,6 +235,9 @@ async function updateSubject(id, payload) {
 
   await doc.save();
   await syncSubjectCount(doc.classId);
+  if (weightsChanged) {
+    await refreshUnpaidSalariesAfterWeightChange(userId);
+  }
   return doc;
 }
 
@@ -238,6 +290,7 @@ async function createStandardSubjects(classId, userId) {
       subjectCode = alt;
     }
 
+    const weights = defaultSalaryWeights(cls.className, subjectName, subjectCode);
     const doc = await AcademySubject.create({
       subjectName,
       subjectCode,
@@ -245,6 +298,7 @@ async function createStandardSubjects(classId, userId) {
       status: 'active',
       enrollmentType: 'required',
       pickCount: 1,
+      tuitionSharePercent: weights.tuitionSharePercent,
       createdBy: userId,
     });
     created.push(doc);
@@ -262,6 +316,16 @@ async function createStandardSubjects(classId, userId) {
   };
 }
 
+/** Apply Excel default tuition-share / teacher-cut rates to every subject in the class. */
+async function applySalaryWeights(classId, userId) {
+  const cls = await AcademyClass.findById(classId);
+  if (!cls) throw new ApiError(404, 'Class not found');
+  const result = await applyDefaultWeightsToClass(classId, cls.className);
+  const salaryRefresh = await refreshUnpaidSalariesAfterWeightChange(userId);
+  const subjects = await listByClass(classId);
+  return { ...result, subjects, salariesRecalculated: salaryRefresh.updated || 0 };
+}
+
 module.exports = {
   listByClass,
   listChoiceGroups,
@@ -270,4 +334,5 @@ module.exports = {
   updateSubject,
   deleteSubject,
   createStandardSubjects,
+  applySalaryWeights,
 };

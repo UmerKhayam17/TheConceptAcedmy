@@ -6,9 +6,9 @@ import {
   Calculator,
   ChartColumn,
   ChartNoAxesCombined,
-  Dna,
   Dumbbell,
   FlaskConical,
+  Leaf,
   Globe2,
   Landmark,
   Languages,
@@ -118,7 +118,7 @@ function theme(
 
 /** Soft pastel subject palettes + icons — matched by subject name. */
 const NAMED_THEMES: Array<{ match: RegExp; theme: SubjectTheme }> = [
-  { match: /\b(bio|biology|botany|zoology)\b/i, theme: theme("biology", "Biology", "blue", Dna) },
+  { match: /\b(bio|biology|botany|zoology)\b/i, theme: theme("biology", "Biology", "green", Leaf) },
   { match: /\b(chem|chemistry)\b/i, theme: theme("chemistry", "Chemistry", "purple", FlaskConical) },
   { match: /\b(ict|information\s*technology)\b/i, theme: theme("ict", "ICT", "blue", Laptop) },
   {
