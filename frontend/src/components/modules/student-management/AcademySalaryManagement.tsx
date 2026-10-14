@@ -50,6 +50,9 @@ import {
 import { MONTH_NAMES } from "./studentDisplayUtils";
 import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import { DefaulterListDownload } from "./DefaulterListDownload";
+import AcademySalaryDetailPage, {
+  StudentPoolTable,
+} from "./AcademySalaryDetailPage";
 
 function formatRs(n?: number) {
   if (n == null || Number.isNaN(n)) return "Rs —";
@@ -239,9 +242,17 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const [payAmount, setPayAmount] = useState("");
   const [exporting, setExporting] = useState<SalaryReportFormat | null>(null);
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [expandedPoolKeys, setExpandedPoolKeys] = useState<string[]>([]);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const togglePoolExpanded = (key: string) => {
+    setExpandedPoolKeys((prev) =>
+      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key],
+    );
   };
 
   const filterParams = useMemo(
@@ -308,9 +319,8 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
       qc.invalidateQueries({ queryKey: ["academy-salaries-summary"] });
       toast({
         title: "Percentage salaries recalculated",
-        description: `${r.updated} updated from tuition pools${
-          r.skipped ? `, ${r.skipped} skipped` : ""
-        }.`,
+        description: `${r.updated} updated from tuition pools${r.skipped ? `, ${r.skipped} skipped` : ""
+          }.`,
       });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -383,9 +393,8 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
       setPaymentNotes("");
       toast({
         title: "Bulk payment complete",
-        description: `${r.paid} paid (${formatRs(r.totalAmount)})${
-          r.skipped ? `, ${r.skipped} skipped` : ""
-        }.`,
+        description: `${r.paid} paid (${formatRs(r.totalAmount)})${r.skipped ? `, ${r.skipped} skipped` : ""
+          }.`,
       });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -476,6 +485,12 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
       setExporting(null);
     }
   };
+
+  if (detailId) {
+    return (
+      <AcademySalaryDetailPage salaryId={detailId} onBack={() => setDetailId(null)} />
+    );
+  }
 
   return (
     <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
@@ -626,11 +641,10 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                 <Check className="h-4 w-4" />
                 {bulkPayMut.isPending
                   ? "Paying…"
-                  : `Pay selected${
-                      selectedPendingPayable.length > 0
-                        ? ` (${selectedPendingPayable.length})`
-                        : ""
-                    }`}
+                  : `Pay selected${selectedPendingPayable.length > 0
+                    ? ` (${selectedPendingPayable.length})`
+                    : ""
+                  }`}
               </Button>
             ) : null}
             {canGenerate ? (
@@ -711,203 +725,237 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                 const isExpanded = expandedIds.includes(r._id);
                 return (
                   <Fragment key={r._id}>
-                  <tr
-                    className={cn(
-                      "border-b last:border-0 hover:bg-muted/20",
-                      isSelected && "bg-muted/40",
-                      isExpanded && "border-b-0",
-                    )}
-                  >
-                    <td className="w-10 p-3 text-center">
-                      <SquareCheckbox
-                        checked={isSelected}
-                        onChange={() => toggleSelectOne(r._id)}
-                        aria-label={`Select ${name}`}
-                      />
-                    </td>
-                    <td className="p-3 font-mono text-xs text-slate-600 whitespace-nowrap">
-                      {r.voucherNumber || "—"}
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <StaffAvatar name={name} profileImage={staff?.profileImage} />
-                        <div className="min-w-0">
-                          <div className="font-semibold text-[#1a2b4b] truncate">{name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {payType === "percentage"
-                              ? r.calculationSource === "tuition_pool"
-                                ? `Tuition pool · teacher percentage ${pct}%`
-                                : pct > 0
-                                  ? `Teacher percentage: ${pct}%`
-                                  : "Percentage · set teacher percentage on staff"
-                              : `Base: ${formatRs(staff?.salary)}`}
+                    <tr
+                      className={cn(
+                        "border-b last:border-0 hover:bg-muted/20",
+                        isSelected && "bg-muted/40",
+                        isExpanded && "border-b-0",
+                      )}
+                    >
+                      <td className="w-10 p-3 text-center">
+                        <SquareCheckbox
+                          checked={isSelected}
+                          onChange={() => toggleSelectOne(r._id)}
+                          aria-label={`Select ${name}`}
+                        />
+                      </td>
+                      <td className="p-3 font-mono text-xs text-slate-600 whitespace-nowrap">
+                        {r.voucherNumber || "—"}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2.5 min-w-0 text-left"
+                          onClick={() => setDetailId(r._id)}
+                          title="Open salary detail"
+                        >
+                          <StaffAvatar name={name} profileImage={staff?.profileImage} />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-[#1a2b4b] truncate hover:underline">
+                              {name}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {payType === "percentage"
+                                ? r.calculationSource === "tuition_pool"
+                                  ? `Tuition pool · teacher percentage ${pct}%`
+                                  : pct > 0
+                                    ? `Teacher percentage: ${pct}%`
+                                    : "Percentage · set teacher percentage on staff"
+                                : `Base: ${formatRs(staff?.salary)}`}
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-3 hidden sm:table-cell">
-                      <span className="inline-flex items-center rounded-full bg-[#dbeafe] px-2.5 py-0.5 text-xs font-semibold capitalize text-[#1d4ed8]">
-                        {staffRole(r)}
-                      </span>
-                    </td>
-                    <td className="p-3 text-slate-600 whitespace-nowrap">{periodLabel(r)}</td>
-                    <td className="p-3">
-                      {payType === "percentage" ? (
-                        <span className="inline-flex items-center rounded-full bg-[#ede9fe] px-2.5 py-0.5 text-xs font-semibold text-[#7c3aed]">
-                          Percentage
+                        </button>
+                      </td>
+                      <td className="p-3 hidden sm:table-cell">
+                        <span className="inline-flex items-center rounded-full bg-[#dbeafe] px-2.5 py-0.5 text-xs font-semibold capitalize text-[#1d4ed8]">
+                          {staffRole(r)}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-[#ccfbf1] px-2.5 py-0.5 text-xs font-semibold text-[#0f766e]">
-                          Fixed
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-3">
-                      {payType === "percentage" && !(r.amount > 0) ? (
-                        <span className="text-amber-700 text-xs font-medium">Set on pay</span>
-                      ) : (
-                        <div>
-                          <span className="font-semibold text-[#16A66A]">{formatRs(r.amount)}</span>
-                          {canExpand ? (
-                            <button
-                              type="button"
-                              onClick={() => toggleExpanded(r._id)}
-                              className="mt-0.5 flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-[#1a2b4b]"
-                            >
-                              {breakdown.length} subject pool
-                              {breakdown.length === 1 ? "" : "s"}
-                              <ChevronDown
-                                className={cn(
-                                  "h-3 w-3 transition-transform",
-                                  isExpanded && "rotate-180",
-                                )}
-                              />
-                            </button>
-                          ) : null}
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-3">
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize",
-                          r.status === "paid" && "bg-emerald-50 text-emerald-700",
-                          r.status === "pending" && "bg-orange-50 text-orange-700",
-                          r.status === "cancelled" && "bg-muted text-muted-foreground",
+                      </td>
+                      <td className="p-3 text-slate-600 whitespace-nowrap">{periodLabel(r)}</td>
+                      <td className="p-3">
+                        {payType === "percentage" ? (
+                          <span className="inline-flex items-center rounded-full bg-[#ede9fe] px-2.5 py-0.5 text-xs font-semibold text-[#7c3aed]">
+                            Percentage
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-[#ccfbf1] px-2.5 py-0.5 text-xs font-semibold text-[#0f766e]">
+                            Fixed
+                          </span>
                         )}
-                      >
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground"
-                            aria-label="Row actions"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {payable && canPay ? (
-                            <DropdownMenuItem onClick={() => openPay(r)}>
-                              Mark paid
+                      </td>
+                      <td className="p-3">
+                        {payType === "percentage" && !(r.amount > 0) ? (
+                          <span className="text-amber-700 text-xs font-medium">Set on pay</span>
+                        ) : (
+                          <div>
+                            <span className="font-semibold text-[#16A66A]">{formatRs(r.amount)}</span>
+                            {canExpand ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpanded(r._id)}
+                                className="mt-0.5 flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-[#1a2b4b]"
+                              >
+                                {breakdown.length} subject pool
+                                {breakdown.length === 1 ? "" : "s"}
+                                <ChevronDown
+                                  className={cn(
+                                    "h-3 w-3 transition-transform",
+                                    isExpanded && "rotate-180",
+                                  )}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize",
+                            r.status === "paid" && "bg-emerald-50 text-emerald-700",
+                            r.status === "pending" && "bg-orange-50 text-orange-700",
+                            r.status === "cancelled" && "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground"
+                              aria-label="Row actions"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {payable && canPay ? (
+                              <DropdownMenuItem onClick={() => openPay(r)}>
+                                Mark paid
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuItem onClick={() => setDetailId(r._id)}>
+                              View full details
                             </DropdownMenuItem>
-                          ) : null}
-                          {canExpand ? (
-                            <DropdownMenuItem onClick={() => toggleExpanded(r._id)}>
-                              {isExpanded ? "Hide breakdown" : "View breakdown"}
-                            </DropdownMenuItem>
-                          ) : null}
-                          {r.status === "paid" && r.paidAt ? (
-                            <DropdownMenuItem disabled>
-                              Paid {new Date(r.paidAt).toLocaleDateString()}
-                            </DropdownMenuItem>
-                          ) : null}
-                          {!payable && r.status !== "paid" ? (
-                            <DropdownMenuItem disabled>No actions</DropdownMenuItem>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
-                  {isExpanded && canExpand ? (
-                    <tr className="border-b bg-slate-50/80">
-                      <td colSpan={9} className="p-0">
-                        <div className="px-4 py-3 overflow-x-auto">
-                          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Tuition pool breakdown · teacher percentage {pct}%
-                          </p>
-                          <p className="mb-2 text-[11px] text-muted-foreground">
-                            Based on monthly tuition only — admission fee is not included.
-                          </p>
-                          <table className="w-full min-w-[40rem] text-xs">
-                            <thead>
-                              <tr className="text-left text-slate-500 border-b border-slate-200">
-                                <th className="pb-2 pr-3 font-medium">Subject</th>
-                                <th className="pb-2 pr-3 font-medium">Class</th>
-                                <th className="pb-2 pr-3 font-medium">Section</th>
-                                <th className="pb-2 pr-3 font-medium text-right">Students</th>
-                                <th className="pb-2 pr-3 font-medium text-right whitespace-nowrap">
-                                  Tuition
-                                </th>
-                                <th className="pb-2 pr-3 font-medium text-right whitespace-nowrap">
-                                  Subject share %
-                                </th>
-                                <th className="pb-2 pr-3 font-medium text-right">Pool</th>
-                                <th className="pb-2 pr-3 font-medium text-right">Teacher %</th>
-                                <th className="pb-2 font-medium text-right">Salary</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {breakdown.map((line, idx) => (
-                                <tr
-                                  key={`${r._id}-bd-${idx}`}
-                                  className="border-b border-slate-100 last:border-0"
-                                >
-                                  <td className="py-2 pr-3 font-medium text-[#1a2b4b]">
-                                    {line.subjectName || "—"}
-                                  </td>
-                                  <td className="py-2 pr-3 text-slate-600">
-                                    {line.className || "—"}
-                                  </td>
-                                  <td className="py-2 pr-3 text-slate-600">
-                                    {line.sectionName || "—"}
-                                  </td>
-                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
-                                    {line.studentCount ?? 0}
-                                  </td>
-                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
-                                    {Number(line.monthlyTuitionTotal) > 0
-                                      ? formatRs(line.monthlyTuitionTotal)
-                                      : "—"}
-                                  </td>
-                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
-                                    {line.tuitionSharePercent != null &&
-                                    !Number.isNaN(Number(line.tuitionSharePercent))
-                                      ? `${Number(line.tuitionSharePercent)}%`
-                                      : "—"}
-                                  </td>
-                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
-                                    {formatRs(line.pool)}
-                                  </td>
-                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
-                                    {line.teacherCutPercent ?? pct}%
-                                  </td>
-                                  <td className="py-2 text-right tabular-nums font-semibold text-[#16A66A]">
-                                    {formatRs(line.salary)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                            {canExpand ? (
+                              <DropdownMenuItem onClick={() => toggleExpanded(r._id)}>
+                                {isExpanded ? "Hide breakdown" : "View breakdown"}
+                              </DropdownMenuItem>
+                            ) : null}
+                            {r.status === "paid" && r.paidAt ? (
+                              <DropdownMenuItem disabled>
+                                Paid {new Date(r.paidAt).toLocaleDateString()}
+                              </DropdownMenuItem>
+                            ) : null}
+                            {!payable && r.status !== "paid" && !canExpand ? (
+                              <DropdownMenuItem disabled>No actions</DropdownMenuItem>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
-                  ) : null}
+                    {isExpanded && canExpand ? (
+                      <tr className="border-b bg-slate-50/80">
+                        <td colSpan={9} className="p-0">
+                          <div className="px-4 py-3 space-y-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                  Tuition pool breakdown · teacher percentage {pct}%
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                  Expand a class/subject for one line per student. Admission fee is
+                                  not included.
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 border-slate-300 bg-white text-slate-800 hover:bg-slate-50 hover:text-slate-900"
+                                onClick={() => setDetailId(r._id)}
+                              >
+                                Open full detail page
+                              </Button>
+                            </div>
+                            <div className="space-y-2">
+                              {breakdown.map((line, idx) => {
+                                const poolKey = `${r._id}-${idx}`;
+                                const poolOpen = expandedPoolKeys.includes(poolKey);
+                                const hasStudents = (line.students?.length || 0) > 0;
+                                return (
+                                  <div
+                                    key={poolKey}
+                                    className="overflow-hidden rounded-lg border border-slate-200 bg-white"
+                                  >
+                                    <button
+                                      type="button"
+                                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50"
+                                      onClick={() => togglePoolExpanded(poolKey)}
+                                    >
+                                      <ChevronDown
+                                        className={cn(
+                                          "h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform",
+                                          poolOpen && "rotate-180",
+                                        )}
+                                      />
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-xs font-semibold text-[#1a2b4b]">
+                                          {line.subjectName || "—"}
+                                          {line.className || line.sectionName
+                                            ? `, ${[line.className, line.sectionName]
+                                                .filter(Boolean)
+                                                .join(" ")}`
+                                            : ""}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground">
+                                          {line.studentCount ?? 0} students · Tuition{" "}
+                                          {formatRs(line.monthlyTuitionTotal)} · Share{" "}
+                                          {line.tuitionSharePercent != null
+                                            ? `${line.tuitionSharePercent}%`
+                                            : "—"}{" "}
+                                          · Pool {formatRs(line.pool)}
+                                        </p>
+                                      </div>
+                                      <span className="text-xs font-semibold tabular-nums text-[#16A66A]">
+                                        {formatRs(line.salary)}
+                                      </span>
+                                    </button>
+                                    {poolOpen ? (
+                                      <div className="border-t border-slate-100 bg-slate-50/60 p-2.5">
+                                        {hasStudents ? (
+                                          <StudentPoolTable
+                                            line={line}
+                                            subjectLabel={line.subjectName || "Subject"}
+                                          />
+                                        ) : (
+                                          <div className="rounded-md border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs text-muted-foreground">
+                                            Student lines are not on this voucher yet.{" "}
+                                            <button
+                                              type="button"
+                                              className="font-semibold text-primary underline-offset-2 hover:underline"
+                                              onClick={() => setDetailId(r._id)}
+                                            >
+                                              Open full detail
+                                            </button>{" "}
+                                            for a live one-line-per-student view, or run Recalc %
+                                            from fees to save them.
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
                   </Fragment>
                 );
               })}
@@ -1000,7 +1048,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                 <span className="text-muted-foreground">Period:</span> {periodLabel(payRecord)}
               </p>
               {recordPayType(payRecord) === "percentage" &&
-              (payRecord.calculationBreakdown?.length ?? 0) > 0 ? (
+                (payRecord.calculationBreakdown?.length ?? 0) > 0 ? (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Subject pools
@@ -1170,9 +1218,8 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             >
               {bulkPayMut.isPending
                 ? "Paying…"
-                : `Confirm ${selectedPendingPayable.length} payment${
-                    selectedPendingPayable.length === 1 ? "" : "s"
-                  }`}
+                : `Confirm ${selectedPendingPayable.length} payment${selectedPendingPayable.length === 1 ? "" : "s"
+                }`}
             </Button>
           </DialogFooter>
         </DialogContent>

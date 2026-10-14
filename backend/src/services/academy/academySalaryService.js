@@ -478,6 +478,57 @@ async function updateSalaryAmount(id, amount, userId) {
   });
 }
 
+/**
+ * Single voucher for the salary detail page.
+ * Percentage vouchers include live per-student pool lines so the UI can show
+ * “one line per student” even for older vouchers that only stored subject totals.
+ */
+async function getSalaryRecordById(id) {
+  const record = await populateCreatedBy(
+    AcademySalaryRecord.findById(id).populate({
+      path: 'staffId',
+      select: 'name email phone salary payType salaryPercentage profileImage',
+      populate: { path: 'role', select: 'name' },
+    })
+  );
+  if (!record) throw new ApiError(404, 'Salary record not found');
+
+  const [enriched] = await enrichBreakdownWithSubjectShares([record]);
+  const staff = enriched.staffId && typeof enriched.staffId === 'object' ? enriched.staffId : null;
+  const isPercentage =
+    enriched.payType === 'percentage' ||
+    enriched.calculationSource === 'tuition_pool' ||
+    staff?.payType === 'percentage';
+
+  if (isPercentage && staff?._id) {
+    const live = await calculateTeacherPercentageSalary(staff._id, staff);
+    const storedAmount = Number(enriched.amount) || 0;
+    const liveAmount = Number(live.amount) || 0;
+    enriched.calculationBreakdown = live.breakdown;
+    enriched.detailMeta = {
+      liveAmount,
+      storedAmount,
+      amountMatchesLive: Math.abs(liveAmount - storedAmount) < 0.02,
+      teacherPercentage:
+        typeof enriched.salaryPercentage === 'number'
+          ? enriched.salaryPercentage
+          : Number(staff.salaryPercentage) || live.salaryPercentage || 0,
+      formula:
+        'Salary = teacher% × Σ (tuition × weight). Full package uses subject share%; part-time splits tuition equally across enrolled subjects. Admission fee is never included.',
+    };
+  } else {
+    enriched.detailMeta = {
+      liveAmount: Number(enriched.amount) || 0,
+      storedAmount: Number(enriched.amount) || 0,
+      amountMatchesLive: true,
+      teacherPercentage: 0,
+      formula: 'Fixed salary from staff profile (or manual amount on the voucher).',
+    };
+  }
+
+  return enriched;
+}
+
 async function getSalarySummary({ month, year, roleName, staffId }) {
   const q = await buildSalaryQuery({ month, year, roleName, staffId });
   const records = await AcademySalaryRecord.find(q).lean();
@@ -515,6 +566,7 @@ async function getSalarySummary({ month, year, roleName, staffId }) {
 
 module.exports = {
   listSalaryRecords,
+  getSalaryRecordById,
   enrichBreakdownWithSubjectShares,
   generateMonthlySalaries,
   recalculatePercentageSalaries,

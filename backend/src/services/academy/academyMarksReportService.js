@@ -5,17 +5,21 @@ const classTestService = require('./academyClassTestService');
 const Exam = require('../../models/Exam');
 const Result = require('../../models/Result');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
+const AcademyClassTest = require('../../models/academy/AcademyClassTest');
+const AcademyAssessment = require('../../models/academy/AcademyAssessment');
 const ApiError = require('../../utils/ApiError');
 const { isEnrolledInSubject } = require('./studentEnrollment');
 const { letterGrade } = require('../exam/examGrading');
 const { renderResultCardPdf } = require('../pdfService');
 
 const LINE = '#000000';
-const GRAY = '#D9D9D9';
+const GRAY = '#D0D0D0';
 const MUTED = '#5A6A7A';
 const NAVY = ACADEMY_BRAND.colors?.navy || '#0B2A4A';
 const FAIL_PCT = 33;
 const OVERALL_FAIL_PCT = 50;
+/** Highlight cells at or below this share of subject total (matches sample sheet). */
+const LOW_MARK_PCT = 40;
 
 function formatDate(value) {
   if (!value) return '';
@@ -26,10 +30,38 @@ function formatDate(value) {
   return `${d}/${m}/${dt.getFullYear()}`;
 }
 
+/** Whole-number % like the Excel marksheet (48%, not 48.0%). */
 function pctOf(obtained, total) {
   const t = Number(total) || 0;
   if (!t) return 0;
-  return Math.round(((Number(obtained) || 0) / t) * 1000) / 10;
+  return Math.round(((Number(obtained) || 0) / t) * 100);
+}
+
+function normalizeLabel(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[#.]/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Batch key so peer subject tests group into one marksheet:
+ * - "Test No. 1" / "Test No1" across subjects
+ * - Same seriesLabel + occurrenceIndex (e.g. Weekly Test week 1 for every subject)
+ * - Exact same title otherwise
+ */
+function testBatchKey(test) {
+  const title = normalizeLabel(test.title);
+  const series = normalizeLabel(test.seriesLabel);
+  const numbered =
+    title.match(/\btest\s*(?:no|number)?\s*(\d+)\b/) ||
+    series.match(/\btest\s*(?:no|number)?\s*(\d+)\b/);
+  if (numbered) return `test-no-${numbered[1]}`;
+  if (series && test.occurrenceIndex != null) {
+    return `${series}::occ-${test.occurrenceIndex}`;
+  }
+  return title || series;
 }
 
 function fitText(doc, text, maxWidth) {
@@ -101,6 +133,17 @@ function isFailMark(obtained, total, remarks) {
   if (Number.isNaN(o)) return true;
   if (t <= 0) return false;
   return (o / t) * 100 < FAIL_PCT;
+}
+
+function shouldHighlightMark(obtained, total, remarks) {
+  if (isAbsent(remarks)) return true;
+  if (obtained == null || obtained === '') return false;
+  const o = Number(obtained);
+  const t = Number(total) || 0;
+  if (Number.isNaN(o)) return true;
+  if (o === 0) return true;
+  if (t > 0 && (o / t) * 100 <= LOW_MARK_PCT) return true;
+  return isFailMark(obtained, total, remarks);
 }
 
 function overallResultLabel({ percentage, grade, subjectCells }) {
@@ -196,20 +239,10 @@ function drawReportHeader(doc, meta, margin, contentW) {
 }
 
 /**
- * Class-wide multi-subject marksheet (exam-wise / subject-wise).
- * @param {{
- *   meta: object,
- *   subjects: Array<{ id: string, name: string, total: number }>,
- *   rows: Array<{
- *     student: object,
- *     cells: Array<{ obtained: number|null, total: number, remarks?: string }|null>,
- *     obtainedTotal?: number,
- *     marksTotal?: number,
- *     percentage?: number,
- *     grade?: string,
- *     result?: string,
- *   }>
- * }} payload
+ * Excel-style class marksheet (matches academy Test/Exam result sheet):
+ * Row1: Subject | Biology | … | Total | Result
+ * Row2: Total Marks | 25 | … | 175 |
+ * Row3: Sr.# | Student Id | Name | Matric % | O.M | %age | … | Obtained | %age |
  */
 function renderClassMarksheetPdf(payload) {
   const { meta, subjects, rows } = payload;
@@ -217,93 +250,130 @@ function renderClassMarksheetPdf(payload) {
   if (!rows.length) throw new ApiError(400, 'No students to print');
 
   return bufferFromDoc((doc) => {
-    const margin = 16;
+    const margin = 12;
     const pageW = doc.page.width;
     const pageH = doc.page.height;
     const contentW = pageW - margin * 2;
-    const headerRow1 = 22;
-    const headerRow2 = 14;
-    const rowH = 15;
-    const footerH = 28;
+    const hSubject = 16;
+    const hTotalMarks = 14;
+    const hCols = 14;
+    const headerH = hSubject + hTotalMarks + hCols;
+    const rowH = 14;
+    const footerH = 22;
 
-    const idW = 78;
-    const nameW = 110;
-    const matricW = 42;
-    const srW = 26;
-    const totalOmW = 48;
-    const totalPctW = 42;
-    const resultW = 42;
-    const fixed =
-      srW + idW + nameW + matricW + totalOmW + totalPctW + resultW;
-    const subjectBudget = Math.max(80, contentW - fixed);
+    const srW = 24;
+    const idW = Math.min(86, Math.max(70, contentW * 0.11));
+    const nameW = Math.min(120, Math.max(90, contentW * 0.14));
+    const matricW = 40;
+    const totalOmW = 44;
+    const totalPctW = 40;
+    const resultW = 40;
+    const identityW = srW + idW + nameW + matricW;
+    const fixedRight = totalOmW + totalPctW + resultW;
+    const subjectBudget = Math.max(70, contentW - identityW - fixedRight);
     const perSubject = subjectBudget / subjects.length;
-    const omW = perSubject * 0.55;
+    const omW = perSubject * 0.52;
     const pctW = perSubject - omW;
+    const marksSum = subjects.reduce((s, sub) => s + (Number(sub.total) || 0), 0);
+    const fs = subjects.length > 6 ? 5.5 : subjects.length > 4 ? 6 : 6.5;
 
     function drawTableHeader(y) {
       let x = margin;
-      const h1 = headerRow1;
-      const h2 = headerRow2;
-      const totalH = h1 + h2;
 
-      const identity = [
+      // —— Row 1: Subject | subject names | Total | Result ——
+      drawCell(doc, 'Subject', x, y, identityW, hSubject, {
+        bold: true,
+        fontSize: 7,
+        fill: GRAY,
+      });
+      x += identityW;
+      subjects.forEach((sub) => {
+        const sw = omW + pctW;
+        drawCell(doc, sub.name, x, y, sw, hSubject, { bold: true, fontSize: fs, fill: GRAY });
+        x += sw;
+      });
+      drawCell(doc, 'Total', x, y, totalOmW + totalPctW, hSubject, {
+        bold: true,
+        fontSize: 7,
+        fill: GRAY,
+      });
+      x += totalOmW + totalPctW;
+      drawCell(doc, 'Result', x, y, resultW, headerH, {
+        bold: true,
+        fontSize: 7,
+        fill: GRAY,
+      });
+
+      // —— Row 2: Total Marks | per-subject totals | grand total ——
+      x = margin;
+      const y2 = y + hSubject;
+      drawCell(doc, 'Total Marks', x, y2, identityW, hTotalMarks, {
+        bold: true,
+        fontSize: 6.5,
+        fill: GRAY,
+      });
+      x += identityW;
+      subjects.forEach((sub) => {
+        drawCell(doc, String(sub.total), x, y2, omW + pctW, hTotalMarks, {
+          bold: true,
+          fontSize: fs,
+          fill: GRAY,
+        });
+        x += omW + pctW;
+      });
+      drawCell(doc, String(marksSum), x, y2, totalOmW + totalPctW, hTotalMarks, {
+        bold: true,
+        fontSize: 7,
+        fill: GRAY,
+      });
+
+      // —— Row 3: identity + O.M / %age ——
+      x = margin;
+      const y3 = y2 + hTotalMarks;
+      const identityCols = [
         { label: 'Sr. #', w: srW },
         { label: 'Student Id', w: idW },
         { label: 'Student Name', w: nameW },
         { label: 'Matric %', w: matricW },
       ];
-      identity.forEach((c) => {
-        drawCell(doc, c.label, x, y, c.w, totalH, { bold: true, fontSize: 7, fill: GRAY });
+      identityCols.forEach((c) => {
+        drawCell(doc, c.label, x, y3, c.w, hCols, { bold: true, fontSize: fs, fill: GRAY });
         x += c.w;
       });
-
-      subjects.forEach((sub) => {
-        const sw = omW + pctW;
-        drawCell(doc, sub.name, x, y, sw, h1 - 8, { bold: true, fontSize: 6.5, fill: GRAY });
-        drawCell(doc, `Total Marks: ${sub.total}`, x, y + h1 - 8, sw, 8, {
+      subjects.forEach(() => {
+        drawCell(doc, 'O.M', x, y3, omW, hCols, { bold: true, fontSize: fs, fill: GRAY });
+        drawCell(doc, '%age', x + omW, y3, pctW, hCols, {
           bold: true,
-          fontSize: 5.5,
+          fontSize: fs,
           fill: GRAY,
         });
-        drawCell(doc, 'O.M', x, y + h1, omW, h2, { bold: true, fontSize: 6.5, fill: GRAY });
-        drawCell(doc, '%age', x + omW, y + h1, pctW, h2, {
-          bold: true,
-          fontSize: 6.5,
-          fill: GRAY,
-        });
-        x += sw;
+        x += omW + pctW;
       });
-
-      const marksSum = subjects.reduce((s, sub) => s + (Number(sub.total) || 0), 0);
-      drawCell(doc, 'Total', x, y, totalOmW, h1 - 8, { bold: true, fontSize: 6.5, fill: GRAY });
-      drawCell(doc, `(${marksSum})`, x, y + h1 - 8, totalOmW, 8, {
+      drawCell(doc, 'Obtained', x, y3, totalOmW, hCols, {
         bold: true,
-        fontSize: 5.5,
-        fill: GRAY,
-      });
-      drawCell(doc, 'Obtained', x, y + h1, totalOmW, h2, {
-        bold: true,
-        fontSize: 6,
+        fontSize: fs,
         fill: GRAY,
       });
       x += totalOmW;
-      drawCell(doc, 'Total', x, y, totalPctW, h1, { bold: true, fontSize: 6.5, fill: GRAY });
-      drawCell(doc, '%age', x, y + h1, totalPctW, h2, { bold: true, fontSize: 6.5, fill: GRAY });
-      x += totalPctW;
-      drawCell(doc, 'Result', x, y, resultW, totalH, { bold: true, fontSize: 7, fill: GRAY });
-      return y + totalH;
+      drawCell(doc, '%age', x, y3, totalPctW, hCols, {
+        bold: true,
+        fontSize: fs,
+        fill: GRAY,
+      });
+
+      return y + headerH;
     }
 
     function drawDataRow(y, sr, row) {
       let x = margin;
       const student = row.student;
-      drawCell(doc, String(sr), x, y, srW, rowH, { fontSize: 6.5 });
+      drawCell(doc, String(sr), x, y, srW, rowH, { fontSize: fs });
       x += srW;
-      drawCell(doc, studentCodeOf(student), x, y, idW, rowH, { fontSize: 6 });
+      drawCell(doc, studentCodeOf(student), x, y, idW, rowH, { fontSize: fs - 0.5 });
       x += idW;
-      drawCell(doc, nameOf(student), x, y, nameW, rowH, { align: 'left', fontSize: 6.5 });
+      drawCell(doc, nameOf(student), x, y, nameW, rowH, { align: 'left', fontSize: fs });
       x += nameW;
-      drawCell(doc, matricPctOf(student), x, y, matricW, rowH, { fontSize: 6.5 });
+      drawCell(doc, matricPctOf(student), x, y, matricW, rowH, { fontSize: fs });
       x += matricW;
 
       let obtainedSum = 0;
@@ -313,8 +383,8 @@ function renderClassMarksheetPdf(payload) {
       subjects.forEach((sub, i) => {
         const cell = row.cells[i];
         if (!cell) {
-          drawCell(doc, '—', x, y, omW, rowH, { fontSize: 6.5, fill: null });
-          drawCell(doc, '—', x + omW, y, pctW, rowH, { fontSize: 6.5, fill: null });
+          drawCell(doc, '', x, y, omW, rowH, { fontSize: fs });
+          drawCell(doc, '', x + omW, y, pctW, rowH, { fontSize: fs });
           x += omW + pctW;
           return;
         }
@@ -323,16 +393,17 @@ function renderClassMarksheetPdf(payload) {
         const hasMark = cell.obtained != null && cell.obtained !== '';
         const omText = absent ? 'Absent' : hasMark ? String(cell.obtained) : '';
         const pct = absent ? 0 : hasMark ? pctOf(cell.obtained, total) : '';
-        const fail =
-          absent ||
-          (hasMark && (isFailMark(cell.obtained, total, cell.remarks) || Number(cell.obtained) === 0));
+        const highlight =
+          hasMark || absent
+            ? shouldHighlightMark(cell.obtained, total, cell.remarks)
+            : false;
         drawCell(doc, omText, x, y, omW, rowH, {
-          fontSize: 6.5,
-          fill: fail ? GRAY : null,
+          fontSize: fs,
+          fill: highlight ? GRAY : null,
         });
         drawCell(doc, pct === '' ? '' : `${pct}%`, x + omW, y, pctW, rowH, {
-          fontSize: 6.5,
-          fill: fail ? GRAY : null,
+          fontSize: fs,
+          fill: highlight ? GRAY : null,
         });
         x += omW + pctW;
         if (hasMark || absent) {
@@ -347,12 +418,12 @@ function renderClassMarksheetPdf(payload) {
       const marksTotal =
         row.marksTotal != null
           ? Number(row.marksTotal)
-          : totalSum || subjects.reduce((s, sub) => s + (Number(sub.total) || 0), 0);
+          : totalSum || marksSum;
       const obtainedTotal =
         row.obtainedTotal != null ? Number(row.obtainedTotal) : anyMarked ? obtainedSum : null;
       const percentage =
         row.percentage != null
-          ? Math.round(Number(row.percentage) * 10) / 10
+          ? Math.round(Number(row.percentage))
           : obtainedTotal != null
             ? pctOf(obtainedTotal, marksTotal)
             : null;
@@ -374,16 +445,16 @@ function renderClassMarksheetPdf(payload) {
         y,
         totalOmW,
         rowH,
-        { fontSize: 6.5, bold: true }
+        { fontSize: fs, bold: true }
       );
       x += totalOmW;
       drawCell(doc, percentage == null ? '' : `${percentage}%`, x, y, totalPctW, rowH, {
-        fontSize: 6.5,
+        fontSize: fs,
         bold: true,
       });
       x += totalPctW;
       drawCell(doc, result, x, y, resultW, rowH, {
-        fontSize: 6.5,
+        fontSize: fs,
         bold: true,
         fill: result ? GRAY : null,
         textColor: isFail ? '#B91C1C' : '#000',
@@ -404,7 +475,7 @@ function renderClassMarksheetPdf(payload) {
       y += rowH;
     }
 
-    y = Math.max(y + 10, pageH - margin - 18);
+    y = Math.max(y + 8, pageH - margin - 16);
     doc
       .font('Helvetica')
       .fontSize(7)
@@ -561,8 +632,8 @@ async function renderExamMarksReportPdf(examId, { view = 'exam', subjectId, stud
 
   return renderClassMarksheetPdf({
     meta: {
-      title: mode === 'subject' ? 'SUBJECT-WISE MARKS REPORT' : 'EXAM-WISE MARKS REPORT',
-      subtitle: 'Examination marks report',
+      title: mode === 'subject' ? 'SUBJECT-WISE MARKS REPORT' : 'EXAMINATION RESULT SHEET',
+      subtitle: examLabel || 'Examination marks report',
       programLabel,
       examLabel,
       subjectLabel,
@@ -731,7 +802,60 @@ async function renderExamStudentWisePdf(exam, students, resultByStudent, student
 }
 
 /**
- * Class-test reports: test-wise / subject-wise (same sheet) and student-wise cards.
+ * Find all subject tests in the same class that belong to the same batch
+ * (e.g. every subject's "Test No. 1") so the marksheet matches the Excel layout.
+ */
+async function findPeerSubjectTests(test) {
+  const classId = test.classId?._id || test.classId;
+  const sectionId = test.sectionId?._id || test.sectionId || null;
+  const disciplineId = test.disciplineId?._id || test.disciplineId || null;
+  const batch = testBatchKey(test);
+  if (!classId || !batch) return [test];
+
+  const q = { classId };
+  if (sectionId) q.sectionId = sectionId;
+  if (disciplineId) q.disciplineId = disciplineId;
+
+  const peers = await AcademyClassTest.find(q)
+    .populate('subjectId', 'subjectName subjectCode')
+    .populate('classId', 'className')
+    .populate('sectionId', 'sectionName')
+    .populate('disciplineId', 'name code')
+    .lean();
+
+  const matched = peers.filter((t) => testBatchKey(t) === batch);
+  if (!matched.length) return [test];
+
+  // One column per subject (prefer earliest examDate if duplicates)
+  const bySubject = new Map();
+  matched.forEach((t) => {
+    const sid = String(t.subjectId?._id || t.subjectId || '');
+    if (!sid) return;
+    const prev = bySubject.get(sid);
+    if (!prev) {
+      bySubject.set(sid, t);
+      return;
+    }
+    const prevTime = new Date(prev.examDate || 0).getTime();
+    const nextTime = new Date(t.examDate || 0).getTime();
+    if (nextTime < prevTime) bySubject.set(sid, t);
+  });
+
+  return [...bySubject.values()].sort((a, b) => {
+    const na =
+      typeof a.subjectId === 'object' && a.subjectId
+        ? a.subjectId.subjectName || ''
+        : '';
+    const nb =
+      typeof b.subjectId === 'object' && b.subjectId
+        ? b.subjectId.subjectName || ''
+        : '';
+    return na.localeCompare(nb);
+  });
+}
+
+/**
+ * Class-test reports: test-wise (all subjects in the batch) / subject-wise / student-wise.
  * @param {'test'|'subject'|'student'} view
  */
 async function renderClassTestMarksReportPdf(
@@ -769,72 +893,97 @@ async function renderClassTestMarksReportPdf(
     ].filter(Boolean)
   );
 
-  // Enrich with academicHistory for Matric %
-  const ids = entry.students.map((r) => r.student._id);
-  const historyRows = await AcademyStudent.find({ _id: { $in: ids } })
-    .select('academicHistory')
-    .lean();
-  const historyById = {};
-  historyRows.forEach((s) => {
-    historyById[String(s._id)] = s.academicHistory || [];
-  });
-
-  let rows = entry.students.map((r) => ({
-    student: {
-      ...r.student,
-      academicHistory: historyById[String(r.student._id)] || [],
-    },
-    assessment: r.assessment,
-  }));
-  if (studentIdFilter.size) {
-    rows = rows.filter((r) => studentIdFilter.has(String(r.student._id)));
-  }
-  if (!rows.length) throw new ApiError(400, 'No students to print');
-
   if (mode === 'student') {
+    const ids = entry.students.map((r) => r.student._id);
+    const historyRows = await AcademyStudent.find({ _id: { $in: ids } })
+      .select('academicHistory')
+      .lean();
+    const historyById = {};
+    historyRows.forEach((s) => {
+      historyById[String(s._id)] = s.academicHistory || [];
+    });
+    let rows = entry.students.map((r) => ({
+      student: {
+        ...r.student,
+        academicHistory: historyById[String(r.student._id)] || [],
+      },
+      assessment: r.assessment,
+    }));
+    if (studentIdFilter.size) {
+      rows = rows.filter((r) => studentIdFilter.has(String(r.student._id)));
+    }
+    if (!rows.length) throw new ApiError(400, 'No students to print');
     return renderClassTestStudentWisePdf(test, rows, {
       programLabel,
       subjectName,
     });
   }
 
-  const subjects = [
-    {
-      id: subjectId || 'subject',
-      name: subjectName || 'Subject',
-      total,
-    },
-  ];
-
-  const sheetRows = sortStudents(rows.map((r) => r.student)).map((student) => {
-    const match = rows.find((r) => String(r.student._id) === String(student._id));
-    const a = match?.assessment;
-    const obtained = a != null ? a.obtainedMarks : null;
-    const remarks = a?.remarks || '';
-    const cell = {
-      obtained,
-      total: a?.totalMarks != null ? a.totalMarks : total,
-      remarks,
-    };
-    const any = obtained != null;
-    const percentage = any ? pctOf(obtained, cell.total) : null;
-    const grade = any ? letterGrade(percentage) : undefined;
+  // Subject-wise → only this test's subject. Test-wise → all peer subjects (Test No. 1 style).
+  const peerTests =
+    mode === 'subject' ? [test] : await findPeerSubjectTests(test);
+  const subjects = peerTests.map((t) => {
+    const sid = String(t.subjectId?._id || t.subjectId || '');
+    const name =
+      typeof t.subjectId === 'object' && t.subjectId
+        ? t.subjectId.subjectName || t.subjectId.subjectCode || 'Subject'
+        : sid === subjectId
+          ? subjectName || 'Subject'
+          : 'Subject';
     return {
-      student,
-      cells: [cell],
-      obtainedTotal: any ? Number(obtained) : null,
-      marksTotal: cell.total,
-      percentage,
-      grade,
-      result: any
-        ? overallResultLabel({
-            percentage: percentage ?? 0,
-            grade,
-            subjectCells: [cell],
-          })
-        : '',
+      id: sid || 'subject',
+      name,
+      total: Number(t.totalMarks) || total || 0,
+      testId: String(t._id),
     };
   });
+
+  const testIds = subjects.map((s) => s.testId).filter(Boolean);
+  const assessments = await AcademyAssessment.find({ classTestId: { $in: testIds } }).lean();
+  const markByTestStudent = {};
+  assessments.forEach((a) => {
+    markByTestStudent[`${a.classTestId}:${a.studentId}`] = a;
+  });
+
+  // Union of enrolled students across peer subjects
+  const classId = test.classId?._id || test.classId;
+  const sectionRef = test.sectionId?._id || test.sectionId;
+  const disciplineRef = test.disciplineId?._id || test.disciplineId;
+  const studentQ = { classId, status: 'active' };
+  if (sectionRef) studentQ.sectionId = sectionRef;
+  if (disciplineRef) studentQ.disciplineId = disciplineRef;
+  const allStudents = await AcademyStudent.find(studentQ)
+    .select(
+      'studentId studentName fatherName rollNumber sectionId disciplineId academicHistory isFullPackage selectedSubjects'
+    )
+    .lean();
+
+  let students = sortStudents(
+    allStudents.filter((stu) => subjects.some((s) => isEnrolledInSubject(stu, s.id)))
+  );
+  if (studentIdFilter.size) {
+    students = students.filter((s) => studentIdFilter.has(String(s._id)));
+  }
+  if (!students.length) throw new ApiError(400, 'No students to print');
+
+  const sheetRows = students.map((student) => {
+    const cells = subjects.map((sub) => {
+      if (!isEnrolledInSubject(student, sub.id)) return null;
+      const a = markByTestStudent[`${sub.testId}:${student._id}`];
+      if (!a) return { obtained: null, total: sub.total, remarks: '' };
+      return {
+        obtained: a.obtainedMarks,
+        total: a.totalMarks != null ? a.totalMarks : sub.total,
+        remarks: a.remarks || '',
+      };
+    });
+    return { student, cells };
+  });
+
+  const batchTitle =
+    test.seriesLabel ||
+    test.title ||
+    (assessmentTypeLabel(test.assessmentType) || 'Test');
 
   return renderClassMarksheetPdf({
     meta: {
@@ -843,13 +992,16 @@ async function renderClassTestMarksReportPdf(
       subtitle: 'Class test marks report',
       programLabel,
       examLabel: [
-        test.title,
+        batchTitle,
         assessmentTypeLabel(test.assessmentType) || 'Test',
-        subjectName,
+        mode === 'subject' ? subjectName : `${subjects.length} subjects`,
       ]
         .filter(Boolean)
         .join(' · '),
-      subjectLabel: `Subject: ${subjectName || '—'}`,
+      subjectLabel:
+        mode === 'subject'
+          ? `Subject: ${subjectName || '—'}`
+          : subjects.map((s) => s.name).join(', '),
       dateLabel: formatDate(test.examDate),
     },
     subjects,

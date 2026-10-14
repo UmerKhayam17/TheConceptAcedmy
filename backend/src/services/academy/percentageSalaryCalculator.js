@@ -58,6 +58,34 @@ function subjectWeightForStudent(student, subject) {
   return share / 100;
 }
 
+/** Human-readable enrolment + counting labels for salary detail UI. */
+function studentPoolExplain(student, subject, weight, tuition) {
+  const n = (student.selectedSubjects || []).length;
+  const subjectName = subject.subjectName || 'Subject';
+  let enrolment = 'Enrolled';
+  let howCounted = '';
+  let mode = 'full_share';
+
+  if (!student.isFullPackage && n > 0) {
+    mode = 'equal_split';
+    enrolment = n === 1 ? `${subjectName} only` : `Part-time · ${n} subjects`;
+    howCounted = `Whole fee: ${tuition.toLocaleString('en-PK')} ÷ ${n}`;
+  } else {
+    const share = Number(subject.tuitionSharePercent) || 0;
+    enrolment = 'Full package';
+    howCounted = `${share}% of ${tuition.toLocaleString('en-PK')}`;
+    mode = 'full_share';
+  }
+
+  return {
+    mode,
+    enrolment,
+    howCounted,
+    weight,
+    contribution: roundMoney(tuition * weight),
+  };
+}
+
 function comboKey(sectionId, subjectId) {
   return `${String(sectionId)}:${String(subjectId)}`;
 }
@@ -175,19 +203,36 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
       monthlyFee: { $gt: 0 },
       selectedSubjects: subj._id,
     })
-      .select('monthlyFee monthlyFeeDiscount selectedSubjects isFullPackage')
+      .select(
+        'studentName registrationNumber monthlyFee monthlyFeeDiscount selectedSubjects isFullPackage'
+      )
       .lean();
 
     let pool = 0;
     let studentCount = 0;
     let monthlyTuitionTotal = 0;
+    const studentLines = [];
     for (const st of students) {
       const tuition = studentMonthlyTuition(st);
       const w = subjectWeightForStudent(st, subj);
       if (w <= 0 || tuition <= 0) continue;
-      pool += tuition * w;
+      const explain = studentPoolExplain(st, subj, w, tuition);
+      pool += explain.contribution;
       monthlyTuitionTotal += tuition;
       studentCount += 1;
+      studentLines.push({
+        studentId: st._id,
+        studentName: st.studentName || '—',
+        registrationNumber: st.registrationNumber || '',
+        tuition,
+        isFullPackage: Boolean(st.isFullPackage),
+        subjectCount: (st.selectedSubjects || []).length,
+        enrolment: explain.enrolment,
+        howCounted: explain.howCounted,
+        weight: explain.weight,
+        contribution: explain.contribution,
+        mode: explain.mode,
+      });
     }
 
     pool = roundMoney(pool);
@@ -207,6 +252,7 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
       pool,
       teacherCutPercent,
       salary,
+      students: studentLines,
     });
 
     total += salary;
@@ -240,6 +286,7 @@ module.exports = {
   roundMoney,
   studentMonthlyTuition,
   subjectWeightForStudent,
+  studentPoolExplain,
   loadTeacherTeachingCombos,
   calculateTeacherPercentageSalary,
   applyDefaultWeightsToClass,

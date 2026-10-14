@@ -65,7 +65,16 @@ import {
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import AwardListButton from "@/components/modules/exams/AwardListButton";
+import MarksReportButton from "@/components/modules/exams/MarksReportButton";
 import { matchesPanelSearch } from "@/lib/panelSearch";
+
+/** First published class-test id on an assignment (for marks report). */
+function firstClassTestIdOf(a: AssessmentAssignment): string | undefined {
+  for (const p of a.papers || []) {
+    if (p.classTestId) return String(p.classTestId);
+  }
+  return undefined;
+}
 
 function idOf(ref: string | { _id: string } | undefined | null): string {
   if (!ref) return "";
@@ -489,6 +498,22 @@ export default function AssignAssessmentsPanel({
                     className="p-2.5 text-right space-x-1 whitespace-nowrap"
                     onClick={(e) => e.stopPropagation()}
                   >
+                    {a.status === "published" && a.category === "exam" && a.examId && (
+                      <MarksReportButton
+                        examId={String(a.examId)}
+                        iconOnly
+                        title="Print exam marks report"
+                      />
+                    )}
+                    {a.status === "published" &&
+                      a.category !== "exam" &&
+                      firstClassTestIdOf(a) && (
+                        <MarksReportButton
+                          testId={firstClassTestIdOf(a)}
+                          iconOnly
+                          title="Print test marks report"
+                        />
+                      )}
                     <Button size="sm" variant="outline" onClick={() => setConfigAssignment(a)}>
                       <BookOpen className="h-3.5 w-3.5" />
                       {a.status === "published" ? "Edit" : "Syllabus"}
@@ -542,6 +567,11 @@ export default function AssignAssessmentsPanel({
                     <span className="text-muted-foreground text-xs mr-1">
                       {formatClassTestSchedule(t)} · {t.totalMarks} marks
                     </span>
+                    <MarksReportButton
+                      testId={t._id}
+                      iconOnly
+                      title="Print test marks report"
+                    />
                     <AwardListButton testId={t._id} />
                     {canManage && (
                       <DeleteClassTestButton test={t} onDone={invalidate} />
@@ -784,6 +814,13 @@ function TestSubjectsDialog({
                     <td className="p-2.5 text-right whitespace-nowrap">
                       {assignment?.category === "exam" && assignment.examId ? (
                         <div className="inline-flex items-center gap-1.5">
+                          <MarksReportButton
+                            examId={String(assignment.examId)}
+                            subjectId={idOf(p.subjectId)}
+                            reportView="subject"
+                            iconOnly
+                            title={`Print ${paperLabel(p)} report`}
+                          />
                           <AwardListButton
                             examId={String(assignment.examId)}
                             subjectId={idOf(p.subjectId)}
@@ -799,6 +836,12 @@ function TestSubjectsDialog({
                         </div>
                       ) : p.classTestId ? (
                         <div className="inline-flex items-center gap-1.5">
+                          <MarksReportButton
+                            testId={String(p.classTestId)}
+                            reportView="subject"
+                            iconOnly
+                            title={`Print ${paperLabel(p)} report`}
+                          />
                           <AwardListButton testId={String(p.classTestId)} />
                           <Button
                             size="sm"

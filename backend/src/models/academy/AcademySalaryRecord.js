@@ -37,6 +37,22 @@ const academySalaryRecordSchema = new mongoose.Schema(
         pool: { type: Number, default: 0 },
         teacherCutPercent: { type: Number, default: 60 },
         salary: { type: Number, default: 0 },
+        /** Per-student contribution lines (for expanded / detail views). */
+        students: [
+          {
+            studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademyStudent' },
+            studentName: { type: String, trim: true },
+            registrationNumber: { type: String, trim: true },
+            tuition: { type: Number, default: 0 },
+            isFullPackage: { type: Boolean, default: false },
+            subjectCount: { type: Number, default: 0 },
+            enrolment: { type: String, trim: true },
+            howCounted: { type: String, trim: true },
+            weight: { type: Number, default: 0 },
+            contribution: { type: Number, default: 0 },
+            mode: { type: String, trim: true },
+          },
+        ],
       },
     ],
     status: {

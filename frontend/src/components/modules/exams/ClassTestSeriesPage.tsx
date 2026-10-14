@@ -8,6 +8,7 @@ import type { Role } from "@/lib/auth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { classTestMarksHref, testExamsHref } from "@/lib/testExamsMenus";
 import AwardListButton from "@/components/modules/exams/AwardListButton";
+import MarksReportButton from "@/components/modules/exams/MarksReportButton";
 import {
   ASSESSMENT_TYPE_LABELS,
   fetchClassTests,
@@ -135,6 +136,12 @@ export default function ClassTestSeriesPage({
                 </Badge>
                 <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
               </Link>
+              <MarksReportButton
+                testId={test._id}
+                iconOnly
+                className="shrink-0"
+                title="Print test marks report"
+              />
               <AwardListButton testId={test._id} className="shrink-0" />
             </li>
           ))}

@@ -1608,6 +1608,20 @@ export const exportPaidFeesReport = async (
 };
 
 // Teacher / staff salary
+export interface AcademySalaryStudentLine {
+  studentId?: string;
+  studentName?: string;
+  registrationNumber?: string;
+  tuition?: number;
+  isFullPackage?: boolean;
+  subjectCount?: number;
+  enrolment?: string;
+  howCounted?: string;
+  weight?: number;
+  contribution?: number;
+  mode?: "equal_split" | "full_share" | string;
+}
+
 export interface AcademySalaryBreakdownLine {
   subjectId?: string;
   subjectName?: string;
@@ -1621,6 +1635,16 @@ export interface AcademySalaryBreakdownLine {
   pool?: number;
   teacherCutPercent?: number;
   salary?: number;
+  /** Per-student contribution lines for expanded / detail views. */
+  students?: AcademySalaryStudentLine[];
+}
+
+export interface AcademySalaryDetailMeta {
+  liveAmount?: number;
+  storedAmount?: number;
+  amountMatchesLive?: boolean;
+  teacherPercentage?: number;
+  formula?: string;
 }
 
 export interface AcademySalaryRecord {
@@ -1649,6 +1673,7 @@ export interface AcademySalaryRecord {
   voucherNumber?: string;
   paymentMethod?: string;
   notes?: string;
+  detailMeta?: AcademySalaryDetailMeta;
 }
 
 export interface AcademySalarySummary {
@@ -1703,6 +1728,9 @@ export const fetchAcademySalarySummary = (params?: {
   const qs = q.toString();
   return api<AcademySalarySummary>(`/salaries/summary${qs ? `?${qs}` : ""}`);
 };
+
+export const fetchAcademySalary = (id: string) =>
+  api<AcademySalaryRecord>(`/salaries/${id}`);
 
 export const generateMonthlySalaries = (body: {
   month: number;

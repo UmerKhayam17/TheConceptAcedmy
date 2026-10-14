@@ -26,19 +26,29 @@ type ExamSubjectOption = { id: string; name: string };
  * Print filled marks reports:
  * - Class tests: test-wise / subject-wise / student-wise
  * - Exams: exam-wise / subject-wise / student-wise
+ *
+ * `iconOnly` → compact printer icon.
+ * Default opens full sheet; set `reportView="subject"` (+ `subjectId` for exams)
+ * to print only the clicked subject.
  */
 export default function MarksReportButton({
   testId,
   examId,
+  subjectId,
   subjects,
   studentIds,
   size = "default",
   variant = "outline",
   className,
   label = "Print report",
+  iconOnly = false,
+  reportView = "full",
+  title = "Print marks report",
 }: {
   testId?: string;
   examId?: string;
+  /** When printing subject-wise for an exam, the subject that was clicked. */
+  subjectId?: string;
   /** Exam date-sheet subjects for subject-wise menu items. */
   subjects?: ExamSubjectOption[];
   /** Optional subset for student-wise (e.g. selected rows on marks page). */
@@ -47,6 +57,11 @@ export default function MarksReportButton({
   variant?: "outline" | "ghost" | "secondary" | "default";
   className?: string;
   label?: string;
+  /** Compact printer icon — one-click PDF. */
+  iconOnly?: boolean;
+  /** `full` = all subjects; `subject` = only this subject row. */
+  reportView?: "full" | "subject";
+  title?: string;
 }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState<string | null>(null);
@@ -76,15 +91,46 @@ export default function MarksReportButton({
       })
     );
 
-  const openExam = (view: ExamMarksReportView, subjectId?: string) =>
-    run(`${view}:${subjectId || "all"}`, () =>
+  const openExam = (view: ExamMarksReportView, sid?: string) =>
+    run(`${view}:${sid || "all"}`, () =>
       previewExamMarksReportPdf(examId!, {
         view,
-        subjectId,
+        subjectId: sid,
         studentId:
           view === "student" && studentIds?.length === 1 ? studentIds[0] : undefined,
       })
     );
+
+  const openIconSheet = () => {
+    if (reportView === "subject") {
+      if (testId) openTest("subject");
+      else if (examId) openExam("subject", subjectId);
+      return;
+    }
+    if (testId) openTest("test");
+    else if (examId) openExam("exam");
+  };
+
+  if (iconOnly) {
+    return (
+      <Button
+        type="button"
+        size={size === "default" ? "sm" : size}
+        variant={variant}
+        title={title}
+        aria-label={title}
+        className={cn("h-8 w-8 p-0", className)}
+        disabled={!canOpen || Boolean(loading)}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openIconSheet();
+        }}
+      >
+        <Printer className={cn("h-3.5 w-3.5", loading && "animate-pulse")} />
+      </Button>
+    );
+  }
 
   return (
     <DropdownMenu>
@@ -111,7 +157,7 @@ export default function MarksReportButton({
         {testId && (
           <>
             <DropdownMenuItem onSelect={() => openTest("test")}>
-              Test-wise report
+              Test-wise (all subjects)
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => openTest("subject")}>
               Subject-wise report
@@ -125,7 +171,7 @@ export default function MarksReportButton({
         {examId && (
           <>
             <DropdownMenuItem onSelect={() => openExam("exam")}>
-              Exam-wise report
+              Exam-wise (all subjects)
             </DropdownMenuItem>
             {subjects && subjects.length > 0 ? (
               <>
@@ -140,10 +186,7 @@ export default function MarksReportButton({
                 ))}
               </>
             ) : (
-              <DropdownMenuItem
-                onSelect={() => openExam("subject")}
-                disabled
-              >
+              <DropdownMenuItem onSelect={() => openExam("subject")} disabled>
                 Subject-wise (add date sheet)
               </DropdownMenuItem>
             )}

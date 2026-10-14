@@ -17,6 +17,11 @@ const list = catchAsync(async (req, res) => {
   res.json({ success: true, data: result.items, pagination: result.pagination });
 });
 
+const getOne = catchAsync(async (req, res) => {
+  const data = await salaryService.getSalaryRecordById(req.params.id);
+  res.json({ success: true, data });
+});
+
 const summary = catchAsync(async (req, res) => {
   const data = await salaryService.getSalarySummary({
     month: req.query.month ? Number(req.query.month) : undefined,
@@ -94,6 +99,7 @@ const exportReport = catchAsync(async (req, res) => {
 
 module.exports = {
   list,
+  getOne,
   summary,
   generate,
   recalculate,

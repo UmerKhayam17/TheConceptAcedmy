@@ -551,6 +551,11 @@ router.get(
   requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
   salaryCtrl.exportReport
 );
+router.get(
+  '/salaries/:id',
+  requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
+  salaryCtrl.getOne
+);
 router.post(
   '/salaries/generate',
   requirePermission('manage_academy_salaries'),
