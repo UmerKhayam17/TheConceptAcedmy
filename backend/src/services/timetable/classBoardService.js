@@ -487,6 +487,28 @@ async function upsertSharedLesson(body, userId) {
     }
   }
 
+  // Keep TeacherAssignment in sync so salary (and Assignments tab) see Class Board teachers.
+  try {
+    const { upsertSubjectTeacher } = require('./teacherAssignmentService');
+    for (const section of sections) {
+      for (const entry of entries) {
+        // eslint-disable-next-line no-await-in-loop
+        await upsertSubjectTeacher(
+          {
+            session: sessionId,
+            class: classId,
+            section: section._id,
+            subject: entry.subject,
+            teacher: entry.teacher,
+          },
+          userId
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[classBoard] Failed to sync teacher assignments after lesson save:', err);
+  }
+
   return {
     combinedGroupId: isShared || existingGroupId ? String(combinedGroupId) : null,
     days: targetDays,

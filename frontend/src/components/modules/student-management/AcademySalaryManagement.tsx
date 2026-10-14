@@ -448,35 +448,36 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   };
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5">
-      <Card className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+    <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      {/* Compact theme header — matches Subjects */}
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]">
-              <Coins className="h-5 w-5 text-white" strokeWidth={2.25} />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <Coins className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-medium text-slate-400">
-                Finance <span className="mx-1 text-slate-300">›</span> Staff Salary
-              </p>
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
                 Staff Salary
-              </h1>
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                Generate, recalculate, and pay staff salaries from tuition pools and fixed rates.
+              </p>
             </div>
           </div>
-          <div className="shrink-0 rounded-lg bg-[#e8f2ff] px-3 py-2 max-w-[15rem]">
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
             <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
-              <span className="mr-1 text-[#3b82f6] not-italic font-serif text-base leading-none">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
                 &ldquo;
               </span>
               A great school builds great futures.
-              <span className="ml-0.5 text-[#3b82f6] not-italic font-serif text-base leading-none">
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
                 &rdquo;
               </span>
             </p>
           </div>
         </div>
-      </Card>
+      </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard

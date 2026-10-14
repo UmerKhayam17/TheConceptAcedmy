@@ -6,15 +6,24 @@
  * tuition    = student.monthlyFee − monthlyFeeDiscount  (admission fee is excluded)
  * Full-package / listed subjects: w = tuitionSharePercent / 100
  * Part-time (!isFullPackage): w = 1 / n  (n = number of selected subjects)
+ *
+ * Teaching scope comes from TeacherAssignment AND Class Board ScheduleSlots
+ * (Class Board alone used to miss salary because it only wrote timetable slots).
  */
 
 const User = require('../../models/User');
 const TeacherAssignment = require('../../models/timetable/TeacherAssignment');
+const ScheduleSlot = require('../../models/timetable/ScheduleSlot');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademySubject = require('../../models/academy/AcademySubject');
 
 function roundMoney(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function idOf(ref) {
+  if (!ref) return '';
+  return String(ref._id || ref);
 }
 
 /** Net monthly tuition only — excludes admission fee and totalFee. */
@@ -49,15 +58,29 @@ function subjectWeightForStudent(student, subject) {
   return share / 100;
 }
 
+function comboKey(sectionId, subjectId) {
+  return `${String(sectionId)}:${String(subjectId)}`;
+}
+
+function putCombo(map, { subject, classDoc, section }) {
+  const subjectId = idOf(subject);
+  const sectionId = idOf(section);
+  if (!subjectId || !sectionId) return;
+  const key = comboKey(sectionId, subjectId);
+  if (map.has(key)) return;
+  map.set(key, {
+    subject,
+    class: classDoc,
+    section,
+  });
+}
+
 /**
- * Compute percentage salary for one teacher from tuition pools × teacher %.
- * @returns {{ amount: number, breakdown: object[], salaryPercentage: number }}
+ * Unique section+subject combos this teacher teaches (assignments + Class Board slots).
  */
-async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
-  const member =
-    teacherDoc ||
-    (await User.findById(teacherId).select('salaryPercentage payType').lean());
-  const teacherCutPercent = Math.min(100, Math.max(0, Number(member?.salaryPercentage) || 0));
+async function loadTeacherTeachingCombos(teacherId) {
+  const tid = String(teacherId);
+  const map = new Map();
 
   const assignments = await TeacherAssignment.find({
     teacher: teacherId,
@@ -68,21 +91,89 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
     .populate({ path: 'section', select: 'sectionName' })
     .lean();
 
+  for (const a of assignments) {
+    putCombo(map, { subject: a.subject, classDoc: a.class, section: a.section });
+  }
+
+  const slots = await ScheduleSlot.find({
+    cancelled: { $ne: true },
+    isSubstitute: { $ne: true },
+    $or: [{ teacher: teacherId }, { 'parallelEntries.teacher': teacherId }],
+  })
+    .populate({ path: 'subject', select: 'subjectName subjectCode tuitionSharePercent status' })
+    .populate({ path: 'class', select: 'className' })
+    .populate({ path: 'section', select: 'sectionName' })
+    .populate({
+      path: 'parallelEntries.subject',
+      select: 'subjectName subjectCode tuitionSharePercent status',
+    })
+    .lean();
+
+  for (const slot of slots) {
+    if (idOf(slot.teacher) === tid) {
+      putCombo(map, { subject: slot.subject, classDoc: slot.class, section: slot.section });
+    }
+    for (const pe of slot.parallelEntries || []) {
+      if (idOf(pe.teacher) !== tid) continue;
+      putCombo(map, {
+        subject: pe.subject,
+        classDoc: slot.class,
+        section: slot.section,
+      });
+    }
+  }
+
+  return [...map.values()];
+}
+
+/**
+ * Compute percentage salary for one teacher from tuition pools × teacher %.
+ * @returns {{ amount: number, breakdown: object[], salaryPercentage: number }}
+ */
+async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
+  const member =
+    teacherDoc ||
+    (await User.findById(teacherId).select('salaryPercentage payType').lean());
+  const teacherCutPercent = Math.min(100, Math.max(0, Number(member?.salaryPercentage) || 0));
+
+  const combos = await loadTeacherTeachingCombos(teacherId);
+
   const breakdown = [];
   let total = 0;
 
-  for (const a of assignments) {
-    const subject = a.subject;
-    if (!subject || subject.status === 'inactive') continue;
+  // Resolve any subject refs that did not populate (e.g. parallelEntries).
+  const missingSubjectIds = [
+    ...new Set(
+      combos
+        .filter((c) => c.subject && !c.subject.subjectName && idOf(c.subject))
+        .map((c) => idOf(c.subject))
+    ),
+  ];
+  if (missingSubjectIds.length) {
+    const found = await AcademySubject.find({ _id: { $in: missingSubjectIds } })
+      .select('subjectName subjectCode tuitionSharePercent status')
+      .lean();
+    const byId = new Map(found.map((s) => [String(s._id), s]));
+    for (const c of combos) {
+      if (c.subject && !c.subject.subjectName) {
+        const full = byId.get(idOf(c.subject));
+        if (full) c.subject = full;
+      }
+    }
+  }
 
-    const sectionId = a.section?._id || a.section;
+  for (const a of combos) {
+    const subj = a.subject;
+    if (!subj || !subj.subjectName || subj.status === 'inactive') continue;
+
+    const sectionId = idOf(a.section);
     if (!sectionId) continue;
 
     const students = await AcademyStudent.find({
       sectionId,
       status: 'active',
       monthlyFee: { $gt: 0 },
-      selectedSubjects: subject._id,
+      selectedSubjects: subj._id,
     })
       .select('monthlyFee monthlyFeeDiscount selectedSubjects isFullPackage')
       .lean();
@@ -92,7 +183,7 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
     let monthlyTuitionTotal = 0;
     for (const st of students) {
       const tuition = studentMonthlyTuition(st);
-      const w = subjectWeightForStudent(st, subject);
+      const w = subjectWeightForStudent(st, subj);
       if (w <= 0 || tuition <= 0) continue;
       pool += tuition * w;
       monthlyTuitionTotal += tuition;
@@ -106,14 +197,13 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
     const salary = roundMoney(pool * (teacherCutPercent / 100));
 
     breakdown.push({
-      subjectId: subject._id,
-      subjectName: subject.subjectName,
+      subjectId: subj._id,
+      subjectName: subj.subjectName,
       className: a.class?.className || '',
       sectionName: a.section?.sectionName || '',
       studentCount,
-      /** Sum of net monthly tuition for students in this pool (admission excluded). */
       monthlyTuitionTotal,
-      tuitionSharePercent: Number(subject.tuitionSharePercent) || 0,
+      tuitionSharePercent: Number(subj.tuitionSharePercent) || 0,
       pool,
       teacherCutPercent,
       salary,
@@ -150,6 +240,7 @@ module.exports = {
   roundMoney,
   studentMonthlyTuition,
   subjectWeightForStudent,
+  loadTeacherTeachingCombos,
   calculateTeacherPercentageSalary,
   applyDefaultWeightsToClass,
 };
