@@ -1,8 +1,8 @@
 import type { ComponentType } from "react";
-import { CalendarDays, ClipboardList, GraduationCap } from "lucide-react";
+import { CalendarDays, ClipboardList, FileBadge, GraduationCap } from "lucide-react";
 import type { Role } from "./auth";
 
-export type TestExamsSection = "enter-tests" | "term-exams" | "date-sheet";
+export type TestExamsSection = "enter-tests" | "term-exams" | "date-sheet" | "report-card";
 
 export const TEST_EXAMS_SECTIONS: {
   key: TestExamsSection;
@@ -12,6 +12,7 @@ export const TEST_EXAMS_SECTIONS: {
   { key: "enter-tests", label: "Test Scheduling", icon: ClipboardList },
   { key: "term-exams", label: "Exams", icon: GraduationCap },
   { key: "date-sheet", label: "Date sheet", icon: CalendarDays },
+  { key: "report-card", label: "Report Card", icon: FileBadge },
 ];
 
 export const DEFAULT_TEST_EXAMS_SECTION: TestExamsSection = "enter-tests";

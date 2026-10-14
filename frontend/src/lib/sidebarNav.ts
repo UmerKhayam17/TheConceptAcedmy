@@ -26,6 +26,7 @@ import {
   ScanFace,
   BarChart3,
   FileText,
+  FileBadge,
   Users,
   UserCog,
   KeyRound,
@@ -333,6 +334,15 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         moduleKey: "exams",
         href: (role) => testExamsHref(role, "date-sheet"),
       },
+      {
+        id: "report-card",
+        label: "Report Card",
+        icon: FileBadge,
+        moduleKey: "exams",
+        href: (role) => testExamsHref(role, "report-card"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/report-card`),
+      },
     ],
   },
   {
@@ -540,6 +550,15 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: Award,
         moduleKey: "exams",
         href: (role) => testExamsHref(role),
+      },
+      {
+        id: "report-card",
+        label: "Report Card",
+        icon: FileBadge,
+        moduleKey: "exams",
+        href: (role) => testExamsHref(role, "report-card"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/report-card`),
       },
       // {
       //   id: "student-progress",

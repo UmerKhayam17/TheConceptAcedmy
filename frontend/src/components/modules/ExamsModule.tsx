@@ -15,6 +15,7 @@ import ClassTestSeriesPage from "./exams/ClassTestSeriesPage";
 import ClassTestsPanel from "./exams/ClassTestsPanel";
 import TermExamsPanel from "./exams/TermExamsPanel";
 import DateSheetPanel from "./exams/DateSheetPanel";
+import ReportCardPanel from "./exams/ReportCardPanel";
 
 const ExamsModule = ({
   perm: _perm,
@@ -69,6 +70,7 @@ const ExamsModule = ({
       {section === "enter-tests" && <ClassTestsPanel caps={caps} />}
       {section === "term-exams" && <TermExamsPanel caps={caps} />}
       {section === "date-sheet" && <DateSheetPanel />}
+      {section === "report-card" && <ReportCardPanel caps={caps} />}
     </div>
   );
 };
