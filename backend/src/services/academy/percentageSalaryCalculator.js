@@ -1,8 +1,9 @@
 /**
- * Percentage teacher salary:
+ * Percentage teacher salary (monthly tuition only — never admission / totalFee):
  *   Salary = teacherPct × Σ (tuition × w)   over that teacher's subject assignments
  *
  * teacherPct = User.salaryPercentage (set when creating/editing the teacher)
+ * tuition    = student.monthlyFee − monthlyFeeDiscount  (admission fee is excluded)
  * Full-package / listed subjects: w = tuitionSharePercent / 100
  * Part-time (!isFullPackage): w = 1 / n  (n = number of selected subjects)
  */
@@ -16,6 +17,13 @@ function roundMoney(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+/** Net monthly tuition only — excludes admission fee and totalFee. */
+function studentMonthlyTuition(student) {
+  const gross = Number(student.monthlyFee) || 0;
+  const discount = Number(student.monthlyFeeDiscount) || 0;
+  return Math.max(0, gross - discount);
+}
+
 function studentTakesSubject(student, subjectId) {
   const ids = (student.selectedSubjects || []).map((s) => String(s._id || s));
   return ids.includes(String(subjectId));
@@ -26,7 +34,7 @@ function studentTakesSubject(student, subjectId) {
  * @returns {number} fraction 0–1
  */
 function subjectWeightForStudent(student, subject) {
-  const tuition = Number(student.monthlyFee) || 0;
+  const tuition = studentMonthlyTuition(student);
   if (tuition <= 0) return 0;
   if (!studentTakesSubject(student, subject._id)) return 0;
 
@@ -76,19 +84,23 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
       monthlyFee: { $gt: 0 },
       selectedSubjects: subject._id,
     })
-      .select('monthlyFee selectedSubjects isFullPackage')
+      .select('monthlyFee monthlyFeeDiscount selectedSubjects isFullPackage')
       .lean();
 
     let pool = 0;
     let studentCount = 0;
+    let monthlyTuitionTotal = 0;
     for (const st of students) {
+      const tuition = studentMonthlyTuition(st);
       const w = subjectWeightForStudent(st, subject);
-      if (w <= 0) continue;
-      pool += (Number(st.monthlyFee) || 0) * w;
+      if (w <= 0 || tuition <= 0) continue;
+      pool += tuition * w;
+      monthlyTuitionTotal += tuition;
       studentCount += 1;
     }
 
     pool = roundMoney(pool);
+    monthlyTuitionTotal = roundMoney(monthlyTuitionTotal);
     if (pool <= 0 && studentCount === 0) continue;
 
     const salary = roundMoney(pool * (teacherCutPercent / 100));
@@ -99,6 +111,9 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
       className: a.class?.className || '',
       sectionName: a.section?.sectionName || '',
       studentCount,
+      /** Sum of net monthly tuition for students in this pool (admission excluded). */
+      monthlyTuitionTotal,
+      tuitionSharePercent: Number(subject.tuitionSharePercent) || 0,
       pool,
       teacherCutPercent,
       salary,
@@ -133,6 +148,7 @@ async function applyDefaultWeightsToClass(classId, className) {
 
 module.exports = {
   roundMoney,
+  studentMonthlyTuition,
   subjectWeightForStudent,
   calculateTeacherPercentageSalary,
   applyDefaultWeightsToClass,

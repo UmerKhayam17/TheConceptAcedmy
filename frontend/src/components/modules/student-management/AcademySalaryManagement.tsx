@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { Fragment, useEffect, useMemo, useState, type ComponentType } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarPlus,
@@ -269,6 +269,11 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const [paymentNotes, setPaymentNotes] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
 
   const filterParams = useMemo(
     () => ({
@@ -662,12 +667,19 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                 const staff = staffFromRecord(r);
                 const isSelected = selectedIds.includes(r._id);
                 const name = staffName(r);
+                const breakdown = r.calculationBreakdown || [];
+                const canExpand =
+                  payType === "percentage" &&
+                  breakdown.length > 0 &&
+                  (r.calculationSource === "tuition_pool" || r.calculationSource === "manual");
+                const isExpanded = expandedIds.includes(r._id);
                 return (
+                  <Fragment key={r._id}>
                   <tr
-                    key={r._id}
                     className={cn(
                       "border-b last:border-0 hover:bg-muted/20",
                       isSelected && "bg-muted/40",
+                      isExpanded && "border-b-0",
                     )}
                   >
                     <td className="w-10 p-3 text-center">
@@ -688,10 +700,10 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                           <div className="text-xs text-muted-foreground">
                             {payType === "percentage"
                               ? r.calculationSource === "tuition_pool"
-                                ? `Tuition pool · teacher ${pct}%`
+                                ? `Tuition pool · teacher percentage ${pct}%`
                                 : pct > 0
-                                  ? `Teacher rate: ${pct}%`
-                                  : "Percentage · set teacher % on staff"
+                                  ? `Teacher percentage: ${pct}%`
+                                  : "Percentage · set teacher percentage on staff"
                               : `Base: ${formatRs(staff?.salary)}`}
                           </div>
                         </div>
@@ -720,13 +732,21 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                       ) : (
                         <div>
                           <span className="font-semibold text-[#16A66A]">{formatRs(r.amount)}</span>
-                          {payType === "percentage" &&
-                          r.calculationSource === "tuition_pool" &&
-                          (r.calculationBreakdown?.length ?? 0) > 0 ? (
-                            <div className="text-[10px] text-muted-foreground mt-0.5">
-                              {r.calculationBreakdown!.length} subject pool
-                              {r.calculationBreakdown!.length === 1 ? "" : "s"}
-                            </div>
+                          {canExpand ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleExpanded(r._id)}
+                              className="mt-0.5 flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-[#1a2b4b]"
+                            >
+                              {breakdown.length} subject pool
+                              {breakdown.length === 1 ? "" : "s"}
+                              <ChevronDown
+                                className={cn(
+                                  "h-3 w-3 transition-transform",
+                                  isExpanded && "rotate-180",
+                                )}
+                              />
+                            </button>
                           ) : null}
                         </div>
                       )}
@@ -761,6 +781,11 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                               Mark paid
                             </DropdownMenuItem>
                           ) : null}
+                          {canExpand ? (
+                            <DropdownMenuItem onClick={() => toggleExpanded(r._id)}>
+                              {isExpanded ? "Hide breakdown" : "View breakdown"}
+                            </DropdownMenuItem>
+                          ) : null}
                           {r.status === "paid" && r.paidAt ? (
                             <DropdownMenuItem disabled>
                               Paid {new Date(r.paidAt).toLocaleDateString()}
@@ -773,6 +798,81 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                       </DropdownMenu>
                     </td>
                   </tr>
+                  {isExpanded && canExpand ? (
+                    <tr className="border-b bg-slate-50/80">
+                      <td colSpan={9} className="p-0">
+                        <div className="px-4 py-3 overflow-x-auto">
+                          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Tuition pool breakdown · teacher percentage {pct}%
+                          </p>
+                          <p className="mb-2 text-[11px] text-muted-foreground">
+                            Based on monthly tuition only — admission fee is not included.
+                          </p>
+                          <table className="w-full min-w-[40rem] text-xs">
+                            <thead>
+                              <tr className="text-left text-slate-500 border-b border-slate-200">
+                                <th className="pb-2 pr-3 font-medium">Subject</th>
+                                <th className="pb-2 pr-3 font-medium">Class</th>
+                                <th className="pb-2 pr-3 font-medium">Section</th>
+                                <th className="pb-2 pr-3 font-medium text-right">Students</th>
+                                <th className="pb-2 pr-3 font-medium text-right whitespace-nowrap">
+                                  Tuition
+                                </th>
+                                <th className="pb-2 pr-3 font-medium text-right whitespace-nowrap">
+                                  Subject share %
+                                </th>
+                                <th className="pb-2 pr-3 font-medium text-right">Pool</th>
+                                <th className="pb-2 pr-3 font-medium text-right">Teacher %</th>
+                                <th className="pb-2 font-medium text-right">Salary</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {breakdown.map((line, idx) => (
+                                <tr
+                                  key={`${r._id}-bd-${idx}`}
+                                  className="border-b border-slate-100 last:border-0"
+                                >
+                                  <td className="py-2 pr-3 font-medium text-[#1a2b4b]">
+                                    {line.subjectName || "—"}
+                                  </td>
+                                  <td className="py-2 pr-3 text-slate-600">
+                                    {line.className || "—"}
+                                  </td>
+                                  <td className="py-2 pr-3 text-slate-600">
+                                    {line.sectionName || "—"}
+                                  </td>
+                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
+                                    {line.studentCount ?? 0}
+                                  </td>
+                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
+                                    {Number(line.monthlyTuitionTotal) > 0
+                                      ? formatRs(line.monthlyTuitionTotal)
+                                      : "—"}
+                                  </td>
+                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
+                                    {line.tuitionSharePercent != null &&
+                                    !Number.isNaN(Number(line.tuitionSharePercent))
+                                      ? `${Number(line.tuitionSharePercent)}%`
+                                      : "—"}
+                                  </td>
+                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
+                                    {formatRs(line.pool)}
+                                  </td>
+                                  <td className="py-2 pr-3 text-right tabular-nums text-slate-700">
+                                    {line.teacherCutPercent ?? pct}%
+                                  </td>
+                                  <td className="py-2 text-right tabular-nums font-semibold text-[#16A66A]">
+                                    {formatRs(line.salary)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -842,7 +942,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
       </Card>
 
       <Dialog open={Boolean(payRecord)} onOpenChange={(o) => !o && setPayRecord(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Record salary payment</DialogTitle>
           </DialogHeader>
@@ -863,6 +963,44 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
               <p>
                 <span className="text-muted-foreground">Period:</span> {periodLabel(payRecord)}
               </p>
+              {recordPayType(payRecord) === "percentage" &&
+              (payRecord.calculationBreakdown?.length ?? 0) > 0 ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Subject pools
+                  </p>
+                  <ul className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {payRecord.calculationBreakdown!.map((line, idx) => (
+                      <li
+                        key={`pay-bd-${idx}`}
+                        className="flex items-start justify-between gap-3 text-xs"
+                      >
+                        <span className="min-w-0 text-slate-700">
+                          <span className="font-medium text-[#1a2b4b]">
+                            {line.subjectName || "Subject"}
+                          </span>
+                          {(line.className || line.sectionName) && (
+                            <span className="text-muted-foreground">
+                              {" "}
+                              · {[line.className, line.sectionName].filter(Boolean).join(" / ")}
+                            </span>
+                          )}
+                          <span className="block text-muted-foreground">
+                            {line.studentCount ?? 0} students
+                            {Number(line.tuitionSharePercent) > 0
+                              ? ` · subject share ${Number(line.tuitionSharePercent)}%`
+                              : ""}
+                            {" · "}pool {formatRs(line.pool)}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-semibold tabular-nums text-[#16A66A]">
+                          {formatRs(line.salary)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               {(recordPayType(payRecord) === "percentage" || !(payRecord.amount > 0)) && (
                 <div className="space-y-1.5">
                   <Label>
@@ -878,7 +1016,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                   />
                   {recordPayType(payRecord) === "percentage" ? (
                     <p className="text-[11px] text-muted-foreground">
-                      Enter the PKR amount for this month based on the agreed percentage of fees.
+                      Pre-filled from tuition × subject share × teacher %. Adjust only if needed.
                     </p>
                   ) : null}
                 </div>

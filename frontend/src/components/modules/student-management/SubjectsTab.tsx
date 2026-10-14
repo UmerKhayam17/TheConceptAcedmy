@@ -472,6 +472,39 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
     return { total, active, choice, withShare, activePct, sharePct, scopeHint };
   }, [subjects, classId, selectedClass?.className]);
 
+  /** Required shares + (avg choice-group share × pickCount) should land near 100%. */
+  const shareBalance = useMemo(() => {
+    if (!classId) return null;
+    const active = subjects.filter((s) => s.status === "active");
+    if (!active.length) return null;
+    let total = 0;
+    const groups = new Map<string, { pickCount: number; shares: number[] }>();
+    for (const s of active) {
+      const share = Number(s.tuitionSharePercent) || 0;
+      if (s.enrollmentType === "choice" && s.choiceGroupName) {
+        const key = s.choiceGroupName.trim().toLowerCase();
+        const g = groups.get(key) || { pickCount: 1, shares: [] as number[] };
+        g.shares.push(share);
+        g.pickCount = Math.max(g.pickCount, Number(s.pickCount) || 1);
+        groups.set(key, g);
+      } else {
+        total += share;
+      }
+    }
+    for (const g of groups.values()) {
+      const avg = g.shares.length ? g.shares.reduce((a, b) => a + b, 0) / g.shares.length : 0;
+      total += avg * g.pickCount;
+    }
+    const totalShare = Math.round(total * 1000) / 1000;
+    const delta = Math.round((totalShare - 100) * 1000) / 1000;
+    return {
+      totalShare,
+      delta,
+      ok: Math.abs(totalShare - 100) <= 1,
+      choiceGroupCount: groups.size,
+    };
+  }, [subjects, classId]);
+
   return (
     <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
       {/* Compact theme header */}
@@ -538,6 +571,36 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
           iconClass="text-[#ea580c]"
         />
       </div>
+
+      {shareBalance && !subjectsLoading ? (
+        <div
+          className={cn(
+            "rounded-xl border px-4 py-3 text-sm",
+            shareBalance.ok
+              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : "border-amber-200 bg-amber-50 text-amber-950",
+          )}
+        >
+          {shareBalance.ok ? (
+            <p>
+              Subject share total for this class is{" "}
+              <span className="font-semibold tabular-nums">{shareBalance.totalShare}%</span>{" "}
+              (target 100% ±1%). Required subjects are summed; each choice group counts as average
+              share × pick count.
+            </p>
+          ) : (
+            <p>
+              Subject share total is{" "}
+              <span className="font-semibold tabular-nums">{shareBalance.totalShare}%</span>
+              {shareBalance.delta > 0
+                ? ` — over-allocated by ${shareBalance.delta}%`
+                : ` — under-allocated by ${Math.abs(shareBalance.delta)}%`}
+              . Adjust subject share values (or use Apply subject share) so a full package lands near
+              100%.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {/* Filter / action bar — matches registration filter row */}
       <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">

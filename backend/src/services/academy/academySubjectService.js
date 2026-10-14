@@ -50,6 +50,47 @@ async function syncGroupPickCount(classId, choiceGroupName, pickCount) {
 }
 
 /**
+ * Full-package style share total for a class:
+ * required subjects sum as-is; each choice group contributes avg(share) × pickCount.
+ * Target is ≈100% (±1).
+ */
+function computeSubjectShareBalance(subjects) {
+  const active = (subjects || []).filter((s) => (s.status || 'active') === 'active');
+  let total = 0;
+  const groups = new Map();
+
+  for (const s of active) {
+    const share = Number(s.tuitionSharePercent) || 0;
+    if (s.enrollmentType === 'choice' && s.choiceGroupName) {
+      const key = String(s.choiceGroupName).trim().toLowerCase();
+      if (!groups.has(key)) groups.set(key, { pickCount: 1, shares: [] });
+      const g = groups.get(key);
+      g.shares.push(share);
+      g.pickCount = Math.max(g.pickCount, Number(s.pickCount) || 1);
+    } else {
+      total += share;
+    }
+  }
+
+  for (const g of groups.values()) {
+    const avg = g.shares.length ? g.shares.reduce((a, b) => a + b, 0) / g.shares.length : 0;
+    total += avg * g.pickCount;
+  }
+
+  const totalShare = Math.round(total * 1000) / 1000;
+  const tolerance = 1;
+  return {
+    totalShare,
+    target: 100,
+    tolerance,
+    ok: Math.abs(totalShare - 100) <= tolerance,
+    delta: Math.round((totalShare - 100) * 1000) / 1000,
+    activeCount: active.length,
+    choiceGroupCount: groups.size,
+  };
+}
+
+/**
  * Active students enrolled in each subject (via selectedSubjects).
  * Full-package students with an empty selectedSubjects list count toward every subject in the class.
  * @returns {Map<string, number>}
@@ -419,4 +460,5 @@ module.exports = {
   applySalaryWeights,
   attachEnrolledStudentCounts,
   enrolledCountBySubjectIds,
+  computeSubjectShareBalance,
 };

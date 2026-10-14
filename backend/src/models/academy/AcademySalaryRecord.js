@@ -30,6 +30,10 @@ const academySalaryRecordSchema = new mongoose.Schema(
         className: { type: String, trim: true },
         sectionName: { type: String, trim: true },
         studentCount: { type: Number, default: 0 },
+        /** Sum of net monthly tuition in this pool (admission / totalFee excluded). */
+        monthlyTuitionTotal: { type: Number, default: 0 },
+        /** Subject share % used for full-package students (tuitionSharePercent). */
+        tuitionSharePercent: { type: Number, default: 0 },
         pool: { type: Number, default: 0 },
         teacherCutPercent: { type: Number, default: 60 },
         salary: { type: Number, default: 0 },

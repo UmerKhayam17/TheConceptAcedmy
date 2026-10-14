@@ -2,8 +2,48 @@ const ApiError = require('../../utils/ApiError');
 const User = require('../../models/User');
 const Role = require('../../models/Role');
 const AcademySalaryRecord = require('../../models/academy/AcademySalaryRecord');
+const AcademySubject = require('../../models/academy/AcademySubject');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { calculateTeacherPercentageSalary } = require('./percentageSalaryCalculator');
+
+/**
+ * Fill missing tuitionSharePercent on stored breakdown lines from live subject docs
+ * (vouchers generated before that field existed). Returns plain objects for JSON.
+ */
+async function enrichBreakdownWithSubjectShares(records) {
+  const list = (Array.isArray(records) ? records : []).map((rec) =>
+    typeof rec?.toObject === 'function' ? rec.toObject() : rec
+  );
+  const needIds = new Set();
+  for (const rec of list) {
+    for (const line of rec.calculationBreakdown || []) {
+      if (line?.subjectId && !(Number(line.tuitionSharePercent) > 0)) {
+        needIds.add(String(line.subjectId));
+      }
+    }
+  }
+  if (!needIds.size) return list;
+
+  const subjects = await AcademySubject.find({ _id: { $in: [...needIds] } })
+    .select('tuitionSharePercent')
+    .lean();
+  const shareById = new Map(
+    subjects.map((s) => [String(s._id), Number(s.tuitionSharePercent) || 0])
+  );
+
+  for (const rec of list) {
+    const lines = rec.calculationBreakdown;
+    if (!lines?.length) continue;
+    for (const line of lines) {
+      if (Number(line.tuitionSharePercent) > 0) continue;
+      const share = shareById.get(String(line.subjectId));
+      if (share != null) {
+        line.tuitionSharePercent = share;
+      }
+    }
+  }
+  return list;
+}
 
 function voucherNumber(userDoc, month, year) {
   const code = userDoc._id.toString().slice(-6).toUpperCase();
@@ -98,8 +138,10 @@ async function listSalaryRecords({
     AcademySalaryRecord.countDocuments(q),
   ]);
 
+  const enrichedItems = await enrichBreakdownWithSubjectShares(items);
+
   return {
-    items,
+    items: enrichedItems,
     pagination: {
       page: Math.max(1, page),
       limit: perPage,
@@ -114,11 +156,11 @@ async function resolvePercentagePayload(member) {
   const calc = await calculateTeacherPercentageSalary(member._id, member);
   const notes =
     calc.amount > 0
-      ? `Auto: tuition × subject share × teacher ${staffPct}% (${calc.breakdown.length} subject pool${
+      ? `Auto: monthly tuition only × subject share × teacher ${staffPct}% (${calc.breakdown.length} subject pool${
           calc.breakdown.length === 1 ? '' : 's'
-        }).`
+        }). Admission fee excluded.`
       : staffPct > 0
-        ? `Percentage pay (${staffPct}%). No tuition pool yet — enter amount before marking paid.`
+        ? `Percentage pay (${staffPct}%). No monthly tuition pool yet — enter amount before marking paid.`
         : 'Percentage pay. Set teacher % on the staff profile, then recalculate.';
 
   return {
@@ -245,6 +287,19 @@ async function recalculateUnpaidPercentageSalariesAfterWeightChange(userId) {
   return recalculatePercentageSalaries({}, userId);
 }
 
+/**
+ * Fire-and-forget safe refresh of all unpaid percentage vouchers.
+ * Used when student tuition / subjects / package change (any teacher pool may shift).
+ */
+async function safeRefreshUnpaidPercentageSalaries(userId, reason = 'tuition') {
+  try {
+    return await recalculatePercentageSalaries({}, userId);
+  } catch (err) {
+    console.error(`[salary] Failed unpaid percentage refresh (${reason}):`, err);
+    return { updated: 0, skipped: 0, error: true };
+  }
+}
+
 /** After a teacher's salaryPercentage changes — refresh only that teacher's unpaid vouchers. */
 async function recalculateUnpaidPercentageSalariesForStaff(staffId, userId) {
   if (!staffId) return { updated: 0, skipped: 0 };
@@ -276,6 +331,33 @@ async function recalculateUnpaidPercentageSalariesForStaff(staffId, userId) {
   }
 
   return { updated, skipped };
+}
+
+/**
+ * Refresh unpaid percentage vouchers for one or more teachers (assignment changes).
+ * Errors are logged and do not fail the parent write.
+ */
+async function safeRefreshUnpaidPercentageSalariesForStaff(staffIds, userId, reason = 'assignment') {
+  const unique = [
+    ...new Set(
+      (Array.isArray(staffIds) ? staffIds : [staffIds])
+        .filter(Boolean)
+        .map((id) => String(id))
+    ),
+  ];
+  let updated = 0;
+  let skipped = 0;
+  for (const staffId of unique) {
+    try {
+      const result = await recalculateUnpaidPercentageSalariesForStaff(staffId, userId);
+      updated += result.updated || 0;
+      skipped += result.skipped || 0;
+    } catch (err) {
+      console.error(`[salary] Failed unpaid refresh for staff ${staffId} (${reason}):`, err);
+      skipped += 1;
+    }
+  }
+  return { updated, skipped, staffCount: unique.length };
 }
 
 async function recordSalaryPayment(id, { paymentMethod, notes, amount }, userId) {
@@ -378,6 +460,8 @@ module.exports = {
   recalculatePercentageSalaries,
   recalculateUnpaidPercentageSalariesAfterWeightChange,
   recalculateUnpaidPercentageSalariesForStaff,
+  safeRefreshUnpaidPercentageSalaries,
+  safeRefreshUnpaidPercentageSalariesForStaff,
   recordSalaryPayment,
   updateSalaryAmount,
   getSalarySummary,

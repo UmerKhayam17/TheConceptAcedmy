@@ -1614,6 +1614,10 @@ export interface AcademySalaryBreakdownLine {
   className?: string;
   sectionName?: string;
   studentCount?: number;
+  /** Sum of net monthly tuition in this pool (admission excluded). */
+  monthlyTuitionTotal?: number;
+  /** Subject share % of tuition (full-package weight). */
+  tuitionSharePercent?: number;
   pool?: number;
   teacherCutPercent?: number;
   salary?: number;

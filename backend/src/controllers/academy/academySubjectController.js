@@ -42,7 +42,11 @@ const listByClass = catchAsync(async (req, res) => {
   if (req.query.disciplineId) {
     data = await subjectService.attachEnrolledStudentCounts(data, req.params.classId);
   }
-  res.json({ success: true, data });
+  res.json({
+    success: true,
+    data,
+    meta: { shareBalance: subjectService.computeSubjectShareBalance(data) },
+  });
 });
 
 const listChoiceGroups = catchAsync(async (req, res) => {

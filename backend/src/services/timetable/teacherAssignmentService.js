@@ -3,6 +3,11 @@ const ApiError = require('../../utils/ApiError');
 const { assertSessionWritable } = require('../session/sessionGuard');
 const { assertTeacherOnSessionRoster } = require('./teacherProfileService');
 
+async function refreshUnpaidSalariesForTeachers(teacherIds, userId, reason = 'teacher_assignment') {
+  const { safeRefreshUnpaidPercentageSalariesForStaff } = require('../academy/academySalaryService');
+  return safeRefreshUnpaidPercentageSalariesForStaff(teacherIds, userId, reason);
+}
+
 function academyClassTransform(doc) {
   if (!doc) return doc;
   const o = typeof doc.toObject === 'function' ? doc.toObject() : doc;
@@ -47,7 +52,9 @@ async function getTeacherAssignment(id) {
 async function createTeacherAssignment(body, userId) {
   await assertSessionWritable(body.session);
   await assertTeacherOnSessionRoster(body.session, body.teacher);
-  return TeacherAssignment.create({ ...body, createdBy: userId });
+  const row = await TeacherAssignment.create({ ...body, createdBy: userId });
+  await refreshUnpaidSalariesForTeachers([body.teacher], userId, 'assignment_create');
+  return row;
 }
 
 /**
@@ -99,6 +106,10 @@ async function bulkSyncTeacherAssignments(body, userId) {
     }
   }
 
+  if (toCreate.length || toDeleteIds.length) {
+    await refreshUnpaidSalariesForTeachers([teacher], userId, 'assignment_bulk_sync');
+  }
+
   return listTeacherAssignments({ sessionId: session, teacherId: teacher });
 }
 
@@ -110,9 +121,12 @@ async function upsertSubjectTeacher(body, userId) {
   const { session, class: classId, section, subject, teacher } = body;
   await assertSessionWritable(session);
 
+  const previous = await TeacherAssignment.find({ session, section, subject }).select('teacher');
+  const affectedTeachers = previous.map((r) => r.teacher);
   await TeacherAssignment.deleteMany({ session, section, subject });
 
   if (!teacher) {
+    await refreshUnpaidSalariesForTeachers(affectedTeachers, userId, 'assignment_clear');
     return { cleared: true, data: null };
   }
 
@@ -129,6 +143,9 @@ async function upsertSubjectTeacher(body, userId) {
     createdBy: userId,
   });
 
+  affectedTeachers.push(teacher);
+  await refreshUnpaidSalariesForTeachers(affectedTeachers, userId, 'assignment_upsert');
+
   return {
     cleared: false,
     data: await TeacherAssignment.findById(row._id).populate(populateOpts),
@@ -144,6 +161,15 @@ async function syncSectionSubjectTeachers(body, userId) {
   await assertSessionWritable(session);
 
   const subjectIds = items.map((i) => i.subject);
+  const previous = subjectIds.length
+    ? await TeacherAssignment.find({
+        session,
+        section,
+        subject: { $in: subjectIds },
+      }).select('teacher')
+    : [];
+  const affectedTeachers = previous.map((r) => r.teacher);
+
   if (subjectIds.length) {
     await TeacherAssignment.deleteMany({
       session,
@@ -168,6 +194,7 @@ async function syncSectionSubjectTeachers(body, userId) {
   for (const row of toCreate) {
     // eslint-disable-next-line no-await-in-loop
     await assertTeacherOnSessionRoster(session, row.teacher);
+    affectedTeachers.push(row.teacher);
   }
 
   if (toCreate.length) {
@@ -177,6 +204,8 @@ async function syncSectionSubjectTeachers(body, userId) {
       if (err?.code !== 11000 && !err?.writeErrors) throw err;
     }
   }
+
+  await refreshUnpaidSalariesForTeachers(affectedTeachers, userId, 'assignment_section_sync');
 
   return listTeacherAssignments({ sessionId: session, sectionId: section });
 }
@@ -188,11 +217,17 @@ async function updateTeacherAssignment(id, body) {
   if (body.teacher) {
     await assertTeacherOnSessionRoster(existing.session, body.teacher);
   }
+  const previousTeacher = existing.teacher;
   const row = await TeacherAssignment.findByIdAndUpdate(id, body, {
     new: true,
     runValidators: true,
   }).populate(populateOpts);
   if (!row) throw new ApiError(404, 'Teacher assignment not found');
+  await refreshUnpaidSalariesForTeachers(
+    [previousTeacher, row.teacher],
+    undefined,
+    'assignment_update'
+  );
   return row;
 }
 
@@ -200,8 +235,10 @@ async function deleteTeacherAssignment(id) {
   const existing = await TeacherAssignment.findById(id);
   if (!existing) throw new ApiError(404, 'Teacher assignment not found');
   await assertSessionWritable(existing.session);
+  const previousTeacher = existing.teacher;
   const row = await TeacherAssignment.findByIdAndDelete(id);
   if (!row) throw new ApiError(404, 'Teacher assignment not found');
+  await refreshUnpaidSalariesForTeachers([previousTeacher], undefined, 'assignment_delete');
   return { deleted: true };
 }
 

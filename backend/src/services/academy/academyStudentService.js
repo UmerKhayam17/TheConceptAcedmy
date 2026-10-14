@@ -28,6 +28,12 @@ const STUDENT_PHOTO_DIR = path.join(__dirname, '../../../uploads/students');
 const DEFAULT_PARENT_PASSWORD = 'Concept@1234';
 const PARENT_EMAIL_DOMAIN = 'concept.edu.pk';
 
+/** Refresh pending percentage salary vouchers after tuition / enrollment pool changes. */
+async function refreshUnpaidSalariesAfterStudentTuitionChange(userId, reason = 'student_tuition') {
+  const { safeRefreshUnpaidPercentageSalaries } = require('./academySalaryService');
+  return safeRefreshUnpaidPercentageSalaries(userId, reason);
+}
+
 /** Matches frontend PARENT_DEFAULT_MODULE_PERMISSIONS / seeded parent role. */
 const PARENT_DEFAULT_MODULE_PERMISSIONS = {
   student: ['view'],
@@ -324,6 +330,7 @@ async function registerStudent(payload, userId) {
 async function updateStudent(id, payload) {
   const student = await AcademyStudent.findById(id);
   if (!student) throw new ApiError(404, 'Student not found');
+  const previousStatus = student.status;
 
   if (student.status === 'pending_fee') {
     if (payload.studentName) student.studentName = payload.studentName.trim();
@@ -425,6 +432,15 @@ async function updateStudent(id, payload) {
   // Do not force defaultChargeIds onto existing vouchers — charges stay opt-in at pay/print.
   if (needsFeeRecalc && student.status === 'active') {
     await syncUnpaidChallansForStudent(student);
+  }
+
+  const tuitionPoolChanged =
+    (needsFeeRecalc && (student.status === 'active' || previousStatus === 'active')) ||
+    (payload.status &&
+      payload.status !== previousStatus &&
+      (student.status === 'active' || previousStatus === 'active'));
+  if (tuitionPoolChanged) {
+    await refreshUnpaidSalariesAfterStudentTuitionChange(undefined, 'student_update');
   }
 
   return student.populate([
@@ -609,6 +625,7 @@ async function deleteStudent(id) {
   const { studentAiEmployeeId } = require('../aiAttendance/aiAttendanceIds');
   const personKey = student.aiEmployeeId || studentAiEmployeeId(student);
 
+  const wasActive = student.status === 'active';
   await Promise.all([
     AcademyFeeRecord.deleteMany({ studentId: id }),
     AcademyAttendance.deleteMany({ studentId: id }),
@@ -616,6 +633,9 @@ async function deleteStudent(id) {
     personKey ? AiFaceEnrollment.deleteOne({ personKey }) : Promise.resolve(),
   ]);
   await student.deleteOne();
+  if (wasActive) {
+    await refreshUnpaidSalariesAfterStudentTuitionChange(undefined, 'student_delete');
+  }
   return { deleted: true, studentId: student.studentId };
 }
 
@@ -926,6 +946,7 @@ async function activateStudent(id, payload, userId) {
 
   const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
   await createEnrollmentFeeVouchers(student, fees, userId, { asOf });
+  await refreshUnpaidSalariesAfterStudentTuitionChange(userId, 'student_activate');
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
@@ -1128,6 +1149,7 @@ async function changeStudentSection(id, payload) {
 
   await student.save();
   await syncUnpaidChallansForStudent(student);
+  await refreshUnpaidSalariesAfterStudentTuitionChange(undefined, 'student_section_change');
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
@@ -1229,6 +1251,7 @@ async function assignSectionAfterPayment(id, payload, userId) {
   student.activatedBy = userId;
   student.enrolledAt = student.enrolledAt || new Date();
   await student.save();
+  await refreshUnpaidSalariesAfterStudentTuitionChange(userId, 'student_assign_section');
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
@@ -1337,6 +1360,7 @@ async function registerDirectStudent(payload, userId) {
 
   const asOf = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
   await createEnrollmentFeeVouchers(student, fees, userId, { asOf });
+  await refreshUnpaidSalariesAfterStudentTuitionChange(userId, 'student_direct_register');
 
   const populated = await student.populate([
     { path: 'classId', select: 'className' },
