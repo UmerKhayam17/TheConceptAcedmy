@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
+  Eye,
   Loader2,
   Pencil,
   Plus,
@@ -496,44 +497,69 @@ export default function AssignAssessmentsPanel({
                     </Badge>
                   </td>
                   <td
-                    className="p-2.5 text-right space-x-1 whitespace-nowrap"
+                    className="p-2.5 text-right whitespace-nowrap"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {a.status === "published" && a.category === "exam" && a.examId && (
-                      <MarksReportButton
-                        examId={String(a.examId)}
-                        iconOnly
-                        title="Print exam marks report"
-                      />
-                    )}
-                    {a.status === "published" &&
-                      a.category !== "exam" &&
-                      firstClassTestIdOf(a) && (
+                    <div className="inline-flex items-center gap-1">
+                      {a.status === "published" && a.category === "exam" && a.examId && (
                         <MarksReportButton
-                          testId={firstClassTestIdOf(a)}
+                          examId={String(a.examId)}
                           iconOnly
-                          title="Print test marks report"
+                          title="Print exam marks report"
                         />
                       )}
-                    <Button size="sm" variant="outline" onClick={() => setConfigAssignment(a)}>
-                        {a.status === "published" ? (
-                          <Pencil className="h-3.5 w-3.5" />
-                        ) : (
-                          <BookOpen className="h-3.5 w-3.5" />
+                      {a.status === "published" &&
+                        a.category !== "exam" &&
+                        firstClassTestIdOf(a) && (
+                          <MarksReportButton
+                            testId={firstClassTestIdOf(a)}
+                            iconOnly
+                            title="Print test marks report"
+                          />
                         )}
-                        {a.status === "published" ? "Edit" : "Syllabus"}
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                        title="View assessment"
+                        aria-label="View assessment"
+                        onClick={() => setSubjectsAssignment(a)}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
                       </Button>
-                    {canManage && a.status === "draft" && isReady(a, teacherSubjectSet) && (
-                      <PublishButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
-                    )}
-                    {canManage && (
-                      <DeleteButton
-                        sessionId={effectiveSessionId}
-                        assignmentId={a._id}
-                        published={a.status === "published"}
-                        onDone={invalidate}
-                      />
-                    )}
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-sky-600 hover:bg-sky-50 hover:text-sky-700"
+                        title={a.status === "published" ? "Edit assessment" : "Edit syllabus"}
+                        aria-label={a.status === "published" ? "Edit assessment" : "Edit syllabus"}
+                        onClick={() => setConfigAssignment(a)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setConfigAssignment(a)}
+                      >
+                        <BookOpen className="h-3.5 w-3.5" />
+                        Syllabus
+                      </Button>
+                      {canManage && (
+                        <DeleteButton
+                          sessionId={effectiveSessionId}
+                          assignmentId={a._id}
+                          published={a.status === "published"}
+                          onDone={invalidate}
+                        />
+                      )}
+                      {canManage && a.status === "draft" && isReady(a, teacherSubjectSet) && (
+                        <PublishButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
+                      )}
+                    </div>
                   </td>
                 </tr>
                 );
@@ -695,9 +721,13 @@ function DeleteButton({
   });
   return (
     <Button
+      type="button"
       size="sm"
       variant="ghost"
+      className="h-8 w-8 p-0 text-destructive hover:bg-red-50 hover:text-red-700"
       disabled={mut.isPending}
+      title={published ? "Delete assessment" : "Delete draft"}
+      aria-label={published ? "Delete assessment" : "Delete draft"}
       onClick={() => {
         const msg = published
           ? "Delete this published test and its papers/marks?"
