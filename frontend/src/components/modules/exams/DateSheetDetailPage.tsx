@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SyllabusText } from "@/components/ui/syllabus-text";
 import {
   fetchSessions,
   fetchAssessmentDateSheet,
@@ -296,9 +297,13 @@ export default function DateSheetDetailPage({
                     <td className="p-3 tabular-nums">{r.totalMarks}</td>
                     <td className="p-3 text-muted-foreground max-w-xs">
                       {r.syllabus ? (
-                        <span className="inline-flex gap-1">
-                          <BookOpen className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                          {r.syllabus}
+                        <span className="inline-flex gap-1.5 items-start">
+                          <BookOpen className="h-3.5 w-3.5 mt-1 shrink-0" />
+                          <SyllabusText
+                            text={r.syllabus}
+                            className="block whitespace-pre-wrap"
+                            empty={null}
+                          />
                         </span>
                       ) : (
                         "—"

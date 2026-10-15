@@ -14,6 +14,12 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         display: ['"Playfair Display"', 'Georgia', 'serif'],
+        urdu: [
+          '"Jameel Noori Nastaleeq"',
+          '"Jameel Noori Nastaleeq Kasheeda"',
+          '"Noto Nastaliq Urdu"',
+          'serif',
+        ],
       },
       colors: {
         border: "hsl(var(--border))",

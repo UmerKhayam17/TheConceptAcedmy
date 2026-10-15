@@ -20,7 +20,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SyllabusText } from "@/components/ui/syllabus-text";
 import PanelStatCard from "@/components/modules/PanelStatCard";
+import { cn } from "@/lib/utils";
+import { containsUrduScript } from "@/lib/urduText";
 import {
   Select,
   SelectContent,
@@ -916,7 +919,7 @@ function TestSubjectsDialog({
                     <td className="p-2.5 whitespace-nowrap">{formatPaperDate(p.examDate)}</td>
                     <td className="p-2.5">{p.totalMarks ?? "—"}</td>
                     <td className="p-2.5 text-muted-foreground max-w-[240px]">
-                      {p.syllabus || "—"}
+                      <SyllabusText text={p.syllabus} className="block whitespace-pre-wrap" />
                     </td>
                     <td className="p-2.5 text-right whitespace-nowrap">
                       {assignment?.category === "exam" && assignment.examId ? (
@@ -1413,7 +1416,12 @@ function ConfigureAssignmentDialog({
                         </td>
                         <td className="p-2">
                           <Textarea
-                            className="min-h-[2.5rem] text-sm"
+                            className={cn(
+                              "min-h-[2.5rem] text-sm",
+                              containsUrduScript(row.syllabus) && "font-urdu text-right"
+                            )}
+                            dir={containsUrduScript(row.syllabus) ? "rtl" : "auto"}
+                            lang={containsUrduScript(row.syllabus) ? "ur" : undefined}
                             rows={1}
                             value={row.syllabus}
                             disabled={!canEditPapers}

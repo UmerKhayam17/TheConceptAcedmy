@@ -122,6 +122,28 @@
 }
 
 @layer utilities {
+  /* Urdu syllabus: prefer installed Jameel Noori Nastaleeq, else Noto Nastaliq */
+  .font-urdu {
+    font-family: "Jameel Noori Nastaleeq", "Jameel Noori Nastaleeq Kasheeda",
+      "Noto Nastaliq Urdu", serif;
+    font-size: 1.15em;
+    line-height: 2;
+    letter-spacing: 0;
+  }
+
+  /* Beat CMS portal font-sans override on syllabus fields */
+  .cms-root .font-urdu,
+  .cms-portal .font-urdu,
+  .cms-root textarea.font-urdu,
+  .cms-portal textarea.font-urdu,
+  body.cms-active [role="dialog"] .font-urdu,
+  body.cms-active [role="dialog"] textarea.font-urdu {
+    font-family: "Jameel Noori Nastaleeq", "Jameel Noori Nastaleeq Kasheeda",
+      "Noto Nastaliq Urdu", serif;
+    font-size: 1.15em;
+    line-height: 2;
+  }
+
   .bg-hero-gradient { background: var(--gradient-hero); }
   .bg-gold-gradient { background: var(--gradient-gold); }
   .bg-overlay-gradient { background: var(--gradient-overlay); }
