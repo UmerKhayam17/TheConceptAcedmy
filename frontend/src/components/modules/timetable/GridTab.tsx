@@ -82,6 +82,21 @@ import TimetableSlotCard from "./TimetableSlotCard";
 
 type BoardViewMode = "week" | "day";
 type DayApplyMode = "single" | "fullWeek" | "custom";
+
+const WEEKDAY_FROM_JS: Weekday[] = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
+
+function todayWeekday(): Weekday {
+  return WEEKDAY_FROM_JS[new Date().getDay()] || "monday";
+}
+
 type SlotSubjectOption =
   | { key: string; kind: "single"; label: string; subjectIds: [string] }
   | { key: string; kind: "choice"; label: string; groupName: string; subjectIds: string[] };
@@ -166,7 +181,7 @@ export default function GridTab({
   const [sectionId, setSectionId] = useState("");
   const [versionId, setVersionId] = useState("");
   const [viewMode, setViewMode] = useState<BoardViewMode>("week");
-  const [focusDay, setFocusDay] = useState<Weekday>("monday");
+  const [focusDay, setFocusDay] = useState<Weekday>(() => todayWeekday());
   const [weekStart, setWeekStart] = useState(() => startOfWeekMonday(new Date()));
   const [slotDialog, setSlotDialog] = useState<{
     day: Weekday;
@@ -194,7 +209,7 @@ export default function GridTab({
     setVersionId("");
     setEditingLive(false);
     setViewMode("week");
-    setFocusDay("monday");
+    setFocusDay(todayWeekday());
     setWeekStart(startOfWeekMonday(new Date()));
     autoDraftForSectionRef.current = null;
   }, [sessionId]);
@@ -398,12 +413,35 @@ export default function GridTab({
       toast({ title: "Could not move lesson", description: e.message, variant: "destructive" }),
   });
 
+  const [validationErrors, setValidationErrors] = useState<
+    { code: string; message: string; day?: string; subjectId?: string }[]
+  >([]);
+
   const validateMut = useMutation({
     mutationFn: () => validateTimetableVersion(activeVersionId, false),
     onSuccess: (r) => {
-      if (r.valid) toast({ title: "Validation passed", description: `${r.warnings.length} warnings` });
-      else toast({ title: "Validation failed", description: `${r.errors.length} errors`, variant: "destructive" });
+      if (r.valid) {
+        setValidationErrors([]);
+        toast({
+          title: "Validation passed",
+          description: r.warnings.length ? `${r.warnings.length} warning(s)` : "No issues found",
+        });
+        return;
+      }
+      setValidationErrors(r.errors || []);
+      const first = r.errors?.[0];
+      const where = first?.day ? `${DAY_FULL_LABELS[first.day as Weekday] || first.day}: ` : "";
+      const detail = first?.message ? `${where}${first.message}` : null;
+      toast({
+        title: "Validation failed",
+        description: detail
+          ? `${detail}${r.errors.length > 1 ? ` (+${r.errors.length - 1} more — see list below)` : ""}`
+          : `${r.errors.length} error(s)`,
+        variant: "destructive",
+      });
     },
+    onError: (e: Error) =>
+      toast({ title: "Validation failed", description: e.message, variant: "destructive" }),
   });
 
   const publishMut = useMutation({
@@ -425,8 +463,16 @@ export default function GridTab({
   const workingDays = normalizeWorkingDays(grid?.workingDays);
   const lecturePeriods = (grid?.periods || []).filter((p) => p.type === "lecture");
   const displayDays = viewMode === "day" ? [focusDay] : workingDays;
-  const sharedDay =
-    viewMode === "day" ? focusDay : workingDays[0] || focusDay;
+  /** Day used for the side “lessons” list — today in week view when possible. */
+  const lessonsDay = useMemo(() => {
+    if (viewMode === "day") return focusDay;
+    const today = todayWeekday();
+    if (workingDays.includes(today)) return today;
+    return workingDays[0] || focusDay;
+  }, [viewMode, focusDay, workingDays]);
+  const isLessonsToday = lessonsDay === todayWeekday();
+  /** Kept for any legacy shared-day references in week chrome. */
+  const sharedDay = lessonsDay;
   const selectedSection = sections.find((s) => s._id === sectionId);
   const selectedClass = classes.find((c) => c._id === classId);
 
@@ -448,13 +494,14 @@ export default function GridTab({
     }
   }, [workingDays, focusDay]);
 
+  /** Lessons for the selected class (not school-wide). */
   const { data: classBoard } = useQuery({
-    queryKey: ["class-board", sessionId, classId || "all", sharedDay, "draft"],
+    queryKey: ["class-board", sessionId, classId || "none", lessonsDay, "draft"],
     queryFn: () =>
       fetchClassBoard({
         sessionId,
         classId: classId || undefined,
-        day: sharedDay,
+        day: lessonsDay,
         versionMode: "draft",
       }),
     enabled: !!sessionId && !!classId,
@@ -471,16 +518,57 @@ export default function GridTab({
       sections: string[];
       shared: boolean;
     };
+    if (!classId) return [];
+
     const map = new Map<string, Item>();
+    const rows = (classBoard?.sections || []).filter((row) => {
+      const rowClassId = String(row.class?._id || "");
+      if (rowClassId !== String(classId)) return false;
+      if (sectionId) return String(row.section?._id || "") === String(sectionId);
+      return true;
+    });
+    const boardPeriods = (classBoard?.periods || []).filter((p) => p.type === "lecture");
+
+    for (const row of rows) {
+      for (const slot of row.slots) {
+        const entries = scheduleSlotEntries(slot);
+        if (!entries.length) continue;
+        const period =
+          boardPeriods.find((p) => slotMatchesPeriod(slot, p._id)) ||
+          lecturePeriods.find((p) => slotMatchesPeriod(slot, p._id));
+        const label = classSectionBoardLabel(
+          row.class?.name,
+          row.section?.name,
+          row.section?.label,
+        );
+        const shared = Boolean(slot.combinedGroupId);
+        const key = shared ? `shared:${slot.combinedGroupId}` : `slot:${slot._id}`;
+        const existing = map.get(key);
+        if (existing) {
+          if (!existing.sections.includes(label)) existing.sections.push(label);
+          continue;
+        }
+        map.set(key, {
+          id: key,
+          title: scheduleSlotTitle(slot),
+          subjectName: entries[0]?.subject?.name || "",
+          teachers: entries.map((e) => e.teacher?.name || "—").join(" / ") || "—",
+          periodLabel: period?.label || `P${period?.order || ""}`,
+          periodOrder: period?.order ?? 999,
+          sections: [label],
+          shared,
+        });
+      }
+    }
+
+    // Include current section grid slots (covers publish mode / board loading).
     const boardSectionLabel = classSectionBoardLabel(
       selectedClass?.name || selectedClass?.className,
       selectedSection?.name,
-      undefined
+      undefined,
     );
-
-    // Current section lessons for the focused / shared day
     for (const slot of grid?.slots || []) {
-      if (slot.day !== sharedDay) continue;
+      if (slot.day !== lessonsDay) continue;
       const entries = scheduleSlotEntries(slot);
       if (!entries.length) continue;
       const period = lecturePeriods.find((p) => slotMatchesPeriod(slot, p._id));
@@ -499,43 +587,22 @@ export default function GridTab({
       });
     }
 
-    // Enrich shared groups with sibling section labels from class board
-    const rows = classBoard?.sections || [];
-    const boardPeriods = (classBoard?.periods || []).filter((p) => p.type === "lecture");
-    for (const row of rows) {
-      for (const slot of row.slots) {
-        if (!slot.combinedGroupId) continue;
-        const key = `shared:${slot.combinedGroupId}`;
-        const label = classSectionBoardLabel(
-          row.class?.name,
-          row.section?.name,
-          row.section?.label
-        );
-        const existing = map.get(key);
-        if (existing) {
-          if (!existing.sections.includes(label)) existing.sections.push(label);
-          continue;
-        }
-        const entries = scheduleSlotEntries(slot);
-        if (!entries.length) continue;
-        const period = boardPeriods.find((p) => slotMatchesPeriod(slot, p._id));
-        map.set(key, {
-          id: key,
-          title: scheduleSlotTitle(slot),
-          subjectName: entries[0]?.subject?.name || "",
-          teachers: entries.map((e) => e.teacher?.name || "—").join(" / ") || "—",
-          periodLabel: period?.label || `P${period?.order || ""}`,
-          periodOrder: period?.order ?? 999,
-          sections: [label],
-          shared: true,
-        });
-      }
-    }
-
-    return [...map.values()]
-      .sort((a, b) => a.periodOrder - b.periodOrder || a.title.localeCompare(b.title))
-      .slice(0, 5);
-  }, [grid?.slots, classBoard, sharedDay, lecturePeriods, selectedClass, selectedSection]);
+    return [...map.values()].sort(
+      (a, b) =>
+        a.periodOrder - b.periodOrder ||
+        a.sections[0]?.localeCompare(b.sections[0] || "") ||
+        a.title.localeCompare(b.title),
+    );
+  }, [
+    classId,
+    sectionId,
+    grid?.slots,
+    classBoard,
+    lessonsDay,
+    lecturePeriods,
+    selectedClass,
+    selectedSection,
+  ]);
 
   const getSlot = (day: Weekday, periodId: string) =>
     grid?.slots.find((s) => s.day === day && slotMatchesPeriod(s, periodId));
@@ -829,6 +896,7 @@ export default function GridTab({
                   setSectionId("");
                   setVersionId("");
                   setEditingLive(false);
+                  setValidationErrors([]);
                   autoDraftForSectionRef.current = null;
                 }}
               >
@@ -853,6 +921,7 @@ export default function GridTab({
                   setSectionId(e.target.value);
                   setVersionId("");
                   setEditingLive(false);
+                  setValidationErrors([]);
                   autoDraftForSectionRef.current = null;
                 }}
                 disabled={!classId}
@@ -963,6 +1032,46 @@ export default function GridTab({
               >
                 <Pencil className="h-4 w-4" /> Edit this timetable
               </Button>
+            </div>
+          )}
+
+          {validationErrors.length > 0 && (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-semibold text-destructive">
+                  Validation errors ({validationErrors.length})
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setValidationErrors([])}
+                >
+                  Dismiss
+                </Button>
+              </div>
+              <ul className="space-y-1.5 text-sm text-destructive/90">
+                {validationErrors.slice(0, 12).map((err, i) => (
+                  <li key={`${err.code}-${err.day || ""}-${i}`} className="flex gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>
+                      {err.day
+                        ? `${DAY_FULL_LABELS[err.day as Weekday] || err.day}: `
+                        : ""}
+                      {err.message}
+                      {err.code ? (
+                        <span className="ml-1 text-xs text-muted-foreground">({err.code})</span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {validationErrors.length > 12 && (
+                <p className="text-xs text-muted-foreground">
+                  +{validationErrors.length - 12} more not shown
+                </p>
+              )}
             </div>
           )}
 
@@ -1221,18 +1330,28 @@ export default function GridTab({
 
           <Card className="rounded-2xl border p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <h3 className="text-sm font-semibold">Upcoming Lessons</h3>
+              <h3 className="text-sm font-semibold">
+                {isLessonsToday ? "Today's Lessons" : "Day Lessons"}
+              </h3>
               <span className="text-[11px] text-muted-foreground">
-                {selectedClass ? classDisplayName(selectedClass) : "Class"} ·{" "}
-                {DAY_FULL_LABELS[sharedDay]}
+                {selectedClass
+                  ? `${classDisplayName(selectedClass)}${
+                      selectedSection?.name ? ` · ${selectedSection.name}` : ""
+                    }`
+                  : "Select a class"}{" "}
+                · {DAY_FULL_LABELS[lessonsDay]}
               </span>
             </div>
-            {upcomingLessons.length === 0 ? (
+            {!classId ? (
+              <p className="text-xs text-muted-foreground py-2">
+                Select a class to see its lessons for this day.
+              </p>
+            ) : upcomingLessons.length === 0 ? (
               <p className="text-xs text-muted-foreground py-2">
                 No lessons for this class on this day yet.
               </p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-2 max-h-[28rem] overflow-y-auto pr-0.5">
                 {upcomingLessons.map((item) => {
                   const Icon = subjectIcon(item.subjectName);
                   return (

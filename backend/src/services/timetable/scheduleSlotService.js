@@ -225,7 +225,8 @@ async function upsertSlot(timetableVersionId, body, { excludeSlotId, userId } = 
         validation.errors.forEach((e) => {
           let msg = e.message || 'schedule conflict';
           if (e.code === 'TEACHER_CONFLICT') {
-            msg = `teacher is already assigned in another class at this time`;
+            const who = e.teacherName || 'Teacher';
+            msg = `${who} is already assigned in another class at this time`;
           }
           conflictDetails.push({
             ...e,

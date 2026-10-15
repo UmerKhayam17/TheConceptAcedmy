@@ -1,14 +1,18 @@
 const PDFDocument = require('pdfkit');
 const { ACADEMY_BRAND, resolveLogoPath } = require('../config/academyBrand');
-const {
-  drawPdfLetterheadPlain,
-  drawPdfTitlePlain,
-} = require('./academy/academyReportDocument');
+const { letterGrade } = require('./exam/examGrading');
 
-const LINE = '#000000';
-const GRAY = '#E8E8E8';
-const MUTED = '#5A6A7A';
+const LINE = '#C5CED9';
+const LINE_STRONG = '#0E2A4E';
+const MUTED = ACADEMY_BRAND.colors.muted;
 const NAVY = ACADEMY_BRAND.colors.navy;
+const NAVY_DARK = ACADEMY_BRAND.colors.navyDark;
+const GOLD = ACADEMY_BRAND.colors.gold;
+const ZEBRA = ACADEMY_BRAND.colors.zebra;
+const WHITE = ACADEMY_BRAND.colors.white;
+const FAIL_BG = '#FDECEC';
+const FAIL_TEXT = '#B91C1C';
+const PASS_TEXT = '#166534';
 
 function formatDate(value) {
   if (!value) return '—';
@@ -60,48 +64,164 @@ function fitText(doc, text, maxWidth) {
   return t.length ? `${t}…` : '';
 }
 
+function ordinal(n) {
+  const num = Number(n);
+  if (!Number.isFinite(num) || num <= 0) return '—';
+  const v = num % 100;
+  if (v >= 11 && v <= 13) return `${num}th`;
+  switch (num % 10) {
+    case 1:
+      return `${num}st`;
+    case 2:
+      return `${num}nd`;
+    case 3:
+      return `${num}rd`;
+    default:
+      return `${num}th`;
+  }
+}
+
+function drawRoundedRect(doc, x, y, w, h, r, opts = {}) {
+  const radius = Math.min(r, w / 2, h / 2);
+  doc.save();
+  doc.moveTo(x + radius, y);
+  doc.lineTo(x + w - radius, y);
+  doc.quadraticCurveTo(x + w, y, x + w, y + radius);
+  doc.lineTo(x + w, y + h - radius);
+  doc.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  doc.lineTo(x + radius, y + h);
+  doc.quadraticCurveTo(x, y + h, x, y + h - radius);
+  doc.lineTo(x, y + radius);
+  doc.quadraticCurveTo(x, y, x + radius, y);
+  doc.closePath();
+  if (opts.fill && opts.stroke) {
+    doc.fillColor(opts.fill).strokeColor(opts.stroke).lineWidth(opts.lineWidth || 0.8);
+    doc.fillAndStroke();
+  } else if (opts.fill) {
+    doc.fillColor(opts.fill).fill();
+  } else if (opts.stroke) {
+    doc.strokeColor(opts.stroke).lineWidth(opts.lineWidth || 0.8).stroke();
+  }
+  doc.restore();
+}
+
 function drawCell(doc, text, x, y, w, h, opts = {}) {
   const {
     align = 'center',
     bold = false,
     fontSize = 9,
     fill = null,
-    textColor = '#000000',
-    valign = 'middle',
+    textColor = '#111111',
+    stroke = LINE,
+    lineWidth = 0.5,
   } = opts;
 
   if (fill) {
+    doc.save();
     doc.rect(x, y, w, h).fill(fill);
+    doc.restore();
   }
-  doc.rect(x, y, w, h).strokeColor(LINE).lineWidth(0.6).stroke();
+  doc.save();
+  doc.rect(x, y, w, h).strokeColor(stroke).lineWidth(lineWidth).stroke();
+  doc.restore();
 
   doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize).fillColor(textColor);
-  const shown = fitText(doc, text, w - 6);
-  const textH = fontSize;
-  const ty =
-    valign === 'top' ? y + 3 : valign === 'bottom' ? y + h - textH - 3 : y + (h - textH) / 2;
-  doc.text(shown, x + 3, ty, {
-    width: w - 6,
+  const shown = fitText(doc, text, w - 8);
+  const ty = y + (h - fontSize) / 2;
+  doc.text(shown, x + 4, ty, {
+    width: w - 8,
     align,
     lineBreak: false,
   });
 }
 
-function infoRow(doc, label, value, x, y, labelW, valueW) {
-  doc.font('Helvetica-Bold').fontSize(9).fillColor('#000');
+function drawInfoPair(doc, label, value, x, y, labelW, valueW) {
+  doc.font('Helvetica').fontSize(8).fillColor(MUTED);
   doc.text(label, x, y, { width: labelW, lineBreak: false });
-  doc.font('Helvetica').fontSize(9).fillColor('#000');
-  const shown = fitText(doc, value || '—', valueW - 2);
-  doc.text(shown, x + labelW, y, { width: valueW, lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#111111');
+  doc.text(fitText(doc, value || '—', valueW), x + labelW, y - 0.5, {
+    width: valueW,
+    lineBreak: false,
+  });
+}
+
+function drawLetterhead(doc, brand, logoPath, margin) {
+  const pageW = doc.page.width;
+  const contentW = pageW - margin * 2;
+  const top = 28;
+  const logoSize = 52;
+
+  // Top accent bar
+  doc.save();
+  doc.rect(0, 0, pageW, 6).fill(NAVY);
+  doc.rect(0, 6, pageW, 2).fill(GOLD);
+  doc.restore();
+
+  let textLeft = margin;
+  if (logoPath) {
+    try {
+      doc.image(logoPath, margin, top, { fit: [logoSize, logoSize] });
+      textLeft = margin + logoSize + 12;
+    } catch {
+      /* skip broken logo */
+    }
+  }
+
+  const textTop = top + 2;
+  doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(16);
+  doc.text(brand.name, textLeft, textTop, { lineBreak: false });
+
+  if (brand.tagline) {
+    doc.fillColor(GOLD).font('Helvetica-Oblique').fontSize(8);
+    doc.text(brand.tagline, textLeft, textTop + 20, { lineBreak: false });
+  }
+
+  if (brand.legalName && brand.legalName !== brand.name) {
+    doc.fillColor(MUTED).font('Helvetica').fontSize(7.5);
+    doc.text(brand.legalName, textLeft, textTop + 34, { lineBreak: false });
+  }
+
+  const rightX = margin + contentW / 2 + 20;
+  const rightW = contentW / 2 - 20;
+  doc.fillColor(MUTED).font('Helvetica').fontSize(7.5);
+  const contactLines = [
+    brand.address,
+    Array.isArray(brand.phones) ? brand.phones.join('  ·  ') : brand.phones,
+    brand.email,
+  ].filter(Boolean);
+  contactLines.forEach((line, i) => {
+    doc.text(line, rightX, textTop + 4 + i * 12, {
+      width: rightW,
+      align: 'right',
+      lineBreak: false,
+    });
+  });
+
+  const bottom = Math.max(top + logoSize, textTop + 48) + 8;
+  doc
+    .moveTo(margin, bottom)
+    .lineTo(margin + contentW, bottom)
+    .strokeColor(LINE)
+    .lineWidth(0.8)
+    .stroke();
+  doc
+    .moveTo(margin, bottom + 2.5)
+    .lineTo(margin + contentW, bottom + 2.5)
+    .strokeColor(GOLD)
+    .lineWidth(1.2)
+    .stroke();
+
+  return bottom + 12;
 }
 
 /**
- * Single-student result card PDF (subject rows + totals), styled like a mark sheet card.
+ * Single-student report card PDF — branded academic result card.
  */
 async function renderResultCardPdf(result) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      // margin: 0 so branded footer can sit at the page edge without auto page-break
+      const doc = new PDFDocument({ size: 'A4', margin: 0 });
       const chunks = [];
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -109,8 +229,10 @@ async function renderResultCardPdf(result) {
 
       const margin = 40;
       const pageW = doc.page.width;
+      const pageH = doc.page.height;
       const contentW = pageW - margin * 2;
       const logoPath = resolveLogoPath();
+      const footerReserve = 28;
 
       const student = result.academyStudent || result.student || {};
       const exam = result.exam || {};
@@ -125,7 +247,8 @@ async function renderResultCardPdf(result) {
       const studentName = String(student.studentName || '').trim().toUpperCase() || '—';
       const studentId = String(student.studentId || student.rollNumber || '').trim() || '—';
       const fatherName = String(student.fatherName || '').trim() || '—';
-      const program = [className, sectionName].filter(Boolean).join(' · ') || '—';
+      const rollNumber = String(student.rollNumber || '').trim() || '—';
+      const program = [className, sectionName].filter(Boolean).join(' / ') || '—';
       const examTitle = String(exam.title || 'Examination').trim();
       const examType = String(exam.type || '').trim();
       const sessionLabel = String(exam.sessionLabel || '').trim();
@@ -133,147 +256,94 @@ async function renderResultCardPdf(result) {
       const resultLabel = overallResultLabel(result);
       const isFail = resultLabel === 'Fail';
 
-      // —— Header / brand (same centered letterhead as paid-fee reports) ——
-      let y = drawPdfLetterheadPlain(doc, ACADEMY_BRAND, logoPath);
-      y = drawPdfTitlePlain(
-        doc,
-        {
-          title: 'RESULT CARD',
-          sessionLabel,
-          leftFilter: '',
-          centerFilter: [examTitle, examType].filter(Boolean).join(' · '),
-          rightFilter: '',
-        },
-        y
-      );
+      // —— Letterhead ——
+      let y = drawLetterhead(doc, ACADEMY_BRAND, logoPath, margin);
 
-      const subjectNames = subjects
-        .map((sm) => subjectNameOf(sm))
-        .filter((n) => n && n !== 'Subject')
-        .join(', ');
-      const headerTotalMarks = subjects.reduce(
-        (sum, sm) => sum + (Number(sm.total) || 0),
-        0
-      );
+      // —— Document title ——
+      const title = 'REPORT CARD';
+      doc.font('Helvetica-Bold').fontSize(12);
+      const titleW = doc.widthOfString(title);
+      const titleBoxW = titleW + 36;
+      const titleBoxH = 24;
+      const titleBoxX = margin + (contentW - titleBoxW) / 2;
+      drawRoundedRect(doc, titleBoxX, y, titleBoxW, titleBoxH, 3, {
+        fill: NAVY,
+      });
+      doc.fillColor(WHITE).font('Helvetica-Bold').fontSize(11);
+      doc.text(title, titleBoxX, y + 6.5, { width: titleBoxW, align: 'center', lineBreak: false });
+      y += titleBoxH + 6;
 
-      const barH = 16;
+      // Exam / session subtitle
+      const subtitleParts = [examTitle, examType, sessionLabel ? `Session ${sessionLabel}` : '']
+        .filter(Boolean)
+        .join('  ·  ');
+      doc.fillColor(MUTED).font('Helvetica').fontSize(9);
+      doc.text(subtitleParts, margin, y, { width: contentW, align: 'center', lineBreak: false });
+      y += 12;
+
+      const periodText = `Examination Period: ${formatDate(exam.startDate)} – ${formatDate(exam.endDate)}`;
+      doc.fillColor('#333333').font('Helvetica').fontSize(8);
+      doc.text(periodText, margin, y, { width: contentW, align: 'center', lineBreak: false });
+      y += 14;
+
+      // —— Student particulars ——
+      const infoH = 74;
+      drawRoundedRect(doc, margin, y, contentW, infoH, 4, {
+        fill: ZEBRA,
+        stroke: LINE,
+        lineWidth: 0.7,
+      });
+
+      // Left accent
       doc.save();
-      doc.rect(margin, y, contentW, barH).fill(GRAY);
+      doc.rect(margin, y, 4, infoH).fill(GOLD);
       doc.restore();
-      doc.rect(margin, y, contentW, barH).strokeColor(LINE).lineWidth(0.8).stroke();
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('#000');
-      doc.text(`Program/Class/Section : ${program}`, margin + 6, y + 4, { lineBreak: false });
-      y += barH + 8;
 
-      const rowGap = 14;
-      const leftW = contentW * 0.42;
-      const midX = margin + leftW + 8;
-      const midW = contentW * 0.28;
-      const rightX = midX + midW + 8;
-      const rightW = contentW - (leftW + midW + 16);
-      const half = (contentW - 10) / 2;
+      doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(8);
+      doc.text('STUDENT PARTICULARS', margin + 14, y + 8, { lineBreak: false });
 
-      const drawField = (label, value, x, fy, w) => {
-        doc.font('Helvetica-Bold').fontSize(8).fillColor('#000');
-        const labelW = doc.widthOfString(label);
-        doc.text(label, x, fy, { lineBreak: false });
-        const lineStart = x + labelW + 3;
-        const lineEnd = x + w;
-        if (value) {
-          doc.font('Helvetica').fontSize(8).fillColor('#000');
-          doc.text(fitText(doc, value, Math.max(0, lineEnd - lineStart - 2)), lineStart, fy, {
-            lineBreak: false,
-          });
-        }
-        doc
-          .moveTo(lineStart, fy + 9)
-          .lineTo(lineEnd, fy + 9)
-          .strokeColor(LINE)
-          .lineWidth(0.7)
-          .stroke();
-      };
-
-      drawField('Subject: ', subjectNames, margin, y, leftW);
-      drawField(
-        'Total Marks: ',
-        headerTotalMarks ? String(headerTotalMarks) : '',
-        midX,
-        y,
-        midW
-      );
-      drawField('Pass Marks: ', '', rightX, y, rightW);
-      y += rowGap;
-      drawField("Examiner's Name: ", '', margin, y, half);
-      drawField("Invigilator's Name: ", '', margin + half + 10, y, half);
-      y += rowGap;
-      drawField(`${examType || 'Exam'}: `, examTitle, margin, y, half);
-      drawField('Test Date: ', formatDate(exam.startDate), margin + half + 10, y, half);
-      y += rowGap + 2;
-      doc
-        .moveTo(margin, y)
-        .lineTo(margin + contentW, y)
-        .strokeColor(LINE)
-        .lineWidth(1.4)
-        .stroke();
-      y += 8;
-
-      // —— Student info box ——
-      const infoH = 72;
-      doc.rect(margin, y, contentW, infoH).strokeColor(LINE).lineWidth(0.8).stroke();
-      const col1 = margin + 10;
-      const col2 = margin + contentW / 2 + 10;
-      const labelW = 78;
-      const valueW = contentW / 2 - 30;
-      let iy = y + 10;
-      infoRow(doc, 'Student Name:', studentName, col1, iy, labelW, valueW);
-      infoRow(doc, 'Student ID:', studentId, col2, iy, labelW, valueW);
+      const col1 = margin + 14;
+      const col2 = margin + contentW / 2 + 8;
+      const labelW = 72;
+      const valueW = contentW / 2 - 36;
+      let iy = y + 24;
+      drawInfoPair(doc, 'Student Name', studentName, col1, iy, labelW, valueW);
+      drawInfoPair(doc, 'Student ID', studentId, col2, iy, labelW, valueW);
       iy += 16;
-      infoRow(doc, 'Father Name:', fatherName, col1, iy, labelW, valueW);
-      infoRow(doc, 'Class / Sec:', program, col2, iy, labelW, valueW);
+      drawInfoPair(doc, "Father's Name", fatherName, col1, iy, labelW, valueW);
+      drawInfoPair(doc, 'Roll No.', rollNumber, col2, iy, labelW, valueW);
       iy += 16;
-      infoRow(
+      drawInfoPair(doc, 'Class / Section', program, col1, iy, labelW, valueW);
+      drawInfoPair(
         doc,
-        'Exam period:',
-        `${formatDate(exam.startDate)} – ${formatDate(exam.endDate)}`,
-        col1,
-        iy,
-        labelW,
-        valueW
-      );
-      infoRow(
-        doc,
-        'Position:',
-        result.position != null ? String(result.position) : '—',
+        'Class Position',
+        result.position != null ? ordinal(result.position) : '—',
         col2,
         iy,
         labelW,
         valueW
       );
-      iy += 16;
-      infoRow(doc, 'Grade:', result.grade || '—', col1, iy, labelW, valueW);
-      infoRow(
-        doc,
-        'GPA:',
-        result.gpa != null ? Number(result.gpa).toFixed(1) : '—',
-        col2,
-        iy,
-        labelW,
-        valueW
-      );
-      y += infoH + 16;
+      y += infoH + 12;
 
-      // —— Subject marks table (vertical card layout from mark sheet columns) ——
-      const headers = ['Sr. #', 'Subject', 'Total Marks', 'O.M', '%age', 'Grade'];
-      const colWs = [36, contentW - 36 - 72 - 56 - 56 - 56, 72, 56, 56, 56];
-      const rowH = 22;
-      const headerH = 24;
+      // —— Marks table ——
+      const headers = ['Sr.', 'Subject', 'Total', 'Obtained', '%age', 'Grade'];
+      const colWs = [32, contentW - 32 - 58 - 62 - 52 - 48, 58, 62, 52, 48];
+      const rowH = 20;
+      const headerH = 22;
+
+      doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(8);
+      doc.text('ACADEMIC PERFORMANCE', margin, y, { lineBreak: false });
+      y += 10;
 
       let x = margin;
       headers.forEach((h, i) => {
         drawCell(doc, h, x, y, colWs[i], headerH, {
           bold: true,
-          fontSize: 9,
-          fill: GRAY,
+          fontSize: 8.5,
+          fill: NAVY,
+          textColor: WHITE,
+          stroke: NAVY_DARK,
+          lineWidth: 0.6,
         });
         x += colWs[i];
       });
@@ -282,15 +352,40 @@ async function renderResultCardPdf(result) {
       if (!subjects.length) {
         drawCell(doc, 'No subject marks recorded', margin, y, contentW, 28, {
           fontSize: 9,
-          fill: '#FAFAFA',
+          fill: '#FAFBFC',
+          textColor: MUTED,
         });
         y += 28;
       } else {
         subjects.forEach((sm, idx) => {
-          if (y + rowH > doc.page.height - 100) {
+          if (y + rowH > pageH - footerReserve - 150) {
             doc.addPage();
-            y = margin;
+            // Mini header on continuation pages
+            doc.save();
+            doc.rect(0, 0, pageW, 4).fill(NAVY);
+            doc.rect(0, 4, pageW, 1.5).fill(GOLD);
+            doc.restore();
+            y = 36;
+            doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9);
+            doc.text(`${studentName}  ·  ${examTitle} (continued)`, margin, y, {
+              width: contentW,
+              lineBreak: false,
+            });
+            y += 18;
+            x = margin;
+            headers.forEach((h, i) => {
+              drawCell(doc, h, x, y, colWs[i], headerH, {
+                bold: true,
+                fontSize: 8.5,
+                fill: NAVY,
+                textColor: WHITE,
+                stroke: NAVY_DARK,
+              });
+              x += colWs[i];
+            });
+            y += headerH;
           }
+
           const obtained = sm.obtained;
           const total = sm.total;
           const rem = String(sm.remarks || '');
@@ -298,7 +393,10 @@ async function renderResultCardPdf(result) {
           const omText = absent ? 'Absent' : obtained != null ? String(obtained) : '—';
           const pct = absent ? 0 : pctOf(obtained, total);
           const failCell = isFailMark(obtained, total, rem);
-          const grade = sm.grade || (absent ? '—' : '');
+          const grade =
+            sm.grade ||
+            (absent ? '—' : Number.isFinite(pct) ? letterGrade(pct) : '—');
+          const zebra = idx % 2 === 1 ? ZEBRA : WHITE;
 
           const cells = [
             String(idx + 1),
@@ -312,9 +410,10 @@ async function renderResultCardPdf(result) {
           cells.forEach((text, i) => {
             const highlight = failCell && (i === 3 || i === 4 || i === 5);
             drawCell(doc, text, x, y, colWs[i], rowH, {
-              bold: i === 1,
+              bold: i === 1 || highlight,
               fontSize: 9,
-              fill: highlight ? GRAY : null,
+              fill: highlight ? FAIL_BG : zebra,
+              textColor: highlight ? FAIL_TEXT : '#111111',
               align: i === 1 ? 'left' : 'center',
             });
             x += colWs[i];
@@ -323,9 +422,10 @@ async function renderResultCardPdf(result) {
         });
       }
 
-      // —— Totals / Result footer ——
+      // —— Summary strip ——
       y += 10;
-      const totalMarks = Number(result.totalMarks) || subjects.reduce((s, sm) => s + (Number(sm.total) || 0), 0);
+      const totalMarks =
+        Number(result.totalMarks) || subjects.reduce((s, sm) => s + (Number(sm.total) || 0), 0);
       const obtainedMarks =
         Number(result.obtainedMarks) ||
         subjects.reduce((s, sm) => s + (Number(sm.obtained) || 0), 0);
@@ -333,93 +433,157 @@ async function renderResultCardPdf(result) {
         result.percentage != null
           ? Math.round(Number(result.percentage) * 10) / 10
           : pctOf(obtainedMarks, totalMarks);
+      const overallGrade = result.grade || letterGrade(overallPct);
+      const gpaText = result.gpa != null ? Number(result.gpa).toFixed(1) : '—';
 
-      const summaryH = 28;
+      const summaryH = 42;
       const sCols = [
-        { label: 'Total Marks', value: String(totalMarks), w: contentW * 0.2 },
-        { label: 'Obtained', value: String(obtainedMarks), w: contentW * 0.2 },
-        { label: '%age', value: `${overallPct}%`, w: contentW * 0.2 },
-        { label: 'Result', value: resultLabel, w: contentW * 0.4 },
+        { label: 'TOTAL MARKS', value: String(totalMarks) },
+        { label: 'MARKS OBTAINED', value: String(obtainedMarks) },
+        { label: 'PERCENTAGE', value: `${overallPct}%` },
+        { label: 'GRADE', value: overallGrade || '—' },
+        { label: 'GPA', value: gpaText },
+        { label: 'RESULT', value: resultLabel.toUpperCase(), isResult: true },
       ];
-      x = margin;
-      sCols.forEach((c) => {
-        doc.rect(x, y, c.w, summaryH).strokeColor(LINE).lineWidth(0.8).stroke();
-        if (c.label === 'Result') {
-          doc.rect(x, y, c.w, summaryH).fillAndStroke(GRAY, LINE);
-        }
-        doc
-          .font('Helvetica')
-          .fontSize(7)
-          .fillColor(MUTED)
-          .text(c.label, x + 4, y + 3, { width: c.w - 8, align: 'center' });
-        doc
-          .font('Helvetica-Bold')
-          .fontSize(11)
-          .fillColor(c.label === 'Result' && isFail ? '#B91C1C' : NAVY)
-          .text(c.value, x + 4, y + 12, { width: c.w - 8, align: 'center' });
-        x += c.w;
-      });
-      y += summaryH + 18;
+      const sColW = contentW / sCols.length;
 
+      drawRoundedRect(doc, margin, y, contentW, summaryH, 4, {
+        fill: WHITE,
+        stroke: LINE,
+        lineWidth: 0.8,
+      });
+
+      sCols.forEach((c, i) => {
+        const cx = margin + i * sColW;
+        if (i > 0) {
+          doc
+            .moveTo(cx, y + 6)
+            .lineTo(cx, y + summaryH - 6)
+            .strokeColor(LINE)
+            .lineWidth(0.5)
+            .stroke();
+        }
+        doc.font('Helvetica').fontSize(6.5).fillColor(MUTED);
+        doc.text(c.label, cx + 4, y + 7, { width: sColW - 8, align: 'center', lineBreak: false });
+
+        if (c.isResult) {
+          const badgeW = Math.min(64, sColW - 12);
+          const badgeH = 15;
+          const badgeX = cx + (sColW - badgeW) / 2;
+          const badgeY = y + 20;
+          drawRoundedRect(doc, badgeX, badgeY, badgeW, badgeH, 8, {
+            fill: isFail ? FAIL_BG : '#E8F5E9',
+            stroke: isFail ? FAIL_TEXT : PASS_TEXT,
+            lineWidth: 0.7,
+          });
+          doc
+            .font('Helvetica-Bold')
+            .fontSize(8.5)
+            .fillColor(isFail ? FAIL_TEXT : PASS_TEXT)
+            .text(c.value, badgeX, badgeY + 3, {
+              width: badgeW,
+              align: 'center',
+              lineBreak: false,
+            });
+        } else {
+          doc
+            .font('Helvetica-Bold')
+            .fontSize(11)
+            .fillColor(NAVY)
+            .text(c.value, cx + 4, y + 20, {
+              width: sColW - 8,
+              align: 'center',
+              lineBreak: false,
+            });
+        }
+      });
+      y += summaryH + 10;
+
+      // —— Remarks ——
       if (result.remarks) {
-        doc.font('Helvetica-Bold').fontSize(9).fillColor('#000').text('Remarks:', margin, y);
-        doc
-          .font('Helvetica')
-          .fontSize(9)
-          .fillColor('#000')
-          .text(String(result.remarks), margin + 55, y, { width: contentW - 55 });
-        y += 16;
+        const remarksH = 32;
+        drawRoundedRect(doc, margin, y, contentW, remarksH, 3, {
+          fill: '#FAFBFC',
+          stroke: LINE,
+        });
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor(NAVY);
+        doc.text('REMARKS', margin + 10, y + 6, { lineBreak: false });
+        doc.font('Helvetica').fontSize(8.5).fillColor('#222222');
+        doc.text(fitText(doc, String(result.remarks), contentW - 20), margin + 10, y + 17, {
+          width: contentW - 20,
+          lineBreak: false,
+        });
+        y += remarksH + 8;
       }
 
+      // —— Grade key (compact) ——
+      doc.font('Helvetica').fontSize(6.5).fillColor(MUTED);
+      doc.text(
+        'Grading: A+ ≥95  ·  A ≥85  ·  B ≥75  ·  C ≥60  ·  D ≥50  ·  F <50    |    Subject fail below 33%',
+        margin,
+        y,
+        { width: contentW, align: 'center', lineBreak: false }
+      );
+      y += 14;
+
+      // —— Signatures (pinned above footer) ——
+      const sigBlockH = 52;
+      // Keep signatures above the branded footer; float down when content is short
+      const sigY = Math.min(y + 6, pageH - footerReserve - sigBlockH - 8);
+      const sigW = 150;
+      const leftSigX = margin + 10;
+      const rightSigX = margin + contentW - 10 - sigW;
+
+      doc
+        .moveTo(leftSigX, sigY + 22)
+        .lineTo(leftSigX + sigW, sigY + 22)
+        .strokeColor(LINE_STRONG)
+        .lineWidth(0.7)
+        .stroke();
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(NAVY);
+      doc.text('Controller of Examinations', leftSigX, sigY + 28, {
+        width: sigW,
+        align: 'center',
+        lineBreak: false,
+      });
+      doc.font('Helvetica').fontSize(7).fillColor(MUTED);
+      doc.text(ACADEMY_BRAND.name, leftSigX, sigY + 40, {
+        width: sigW,
+        align: 'center',
+        lineBreak: false,
+      });
+
+      doc
+        .moveTo(rightSigX, sigY + 22)
+        .lineTo(rightSigX + sigW, sigY + 22)
+        .strokeColor(LINE_STRONG)
+        .lineWidth(0.7)
+        .stroke();
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(NAVY);
+      doc.text('Principal', rightSigX, sigY + 28, {
+        width: sigW,
+        align: 'center',
+        lineBreak: false,
+      });
+      doc.font('Helvetica').fontSize(7).fillColor(MUTED);
+      doc.text(ACADEMY_BRAND.name, rightSigX, sigY + 40, {
+        width: sigW,
+        align: 'center',
+        lineBreak: false,
+      });
+
       // —— Footer ——
-      y = Math.max(y + 8, doc.page.height - 70);
-      doc
-        .moveTo(margin, y)
-        .lineTo(margin + contentW, y)
-        .strokeColor(LINE)
-        .lineWidth(0.6)
-        .stroke();
-      y += 10;
-      doc
-        .font('Helvetica')
-        .fontSize(8)
-        .fillColor(MUTED)
-        .text(
-          `Generated on ${formatDate(new Date())}  ·  ${ACADEMY_BRAND.legalName || ACADEMY_BRAND.name}`,
-          margin,
-          y,
-          { width: contentW, align: 'center' }
-        );
-      y += 20;
-      const sigW = 140;
-      doc
-        .moveTo(margin + 20, y + 24)
-        .lineTo(margin + 20 + sigW, y + 24)
-        .strokeColor(LINE)
-        .lineWidth(0.7)
-        .stroke();
-      doc
-        .font('Helvetica')
-        .fontSize(8)
-        .fillColor('#000')
-        .text('Controller of Examinations', margin + 20, y + 28, {
-          width: sigW,
-          align: 'center',
-        });
-      doc
-        .moveTo(margin + contentW - 20 - sigW, y + 24)
-        .lineTo(margin + contentW - 20, y + 24)
-        .strokeColor(LINE)
-        .lineWidth(0.7)
-        .stroke();
-      doc
-        .font('Helvetica')
-        .fontSize(8)
-        .fillColor('#000')
-        .text('Principal', margin + contentW - 20 - sigW, y + 28, {
-          width: sigW,
-          align: 'center',
-        });
+      doc.save();
+      doc.rect(0, pageH - 22, pageW, 22).fill(NAVY);
+      doc.rect(0, pageH - 24, pageW, 2).fill(GOLD);
+      doc.restore();
+      doc.fillColor(WHITE).font('Helvetica').fontSize(7);
+      doc.text(
+        `${ACADEMY_BRAND.legalName || ACADEMY_BRAND.name}  ·  Generated ${formatDate(new Date())}  ·  Confidential`,
+        margin,
+        pageH - 14,
+        { width: contentW, align: 'center', lineBreak: false }
+      );
 
       doc.end();
     } catch (e) {

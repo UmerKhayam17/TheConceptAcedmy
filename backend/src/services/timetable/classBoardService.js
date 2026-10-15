@@ -530,7 +530,9 @@ async function publishClassDrafts({ sessionId, classId }, userId) {
   await assertSessionWritable(sessionId);
   const q = { session: sessionId, status: 'draft' };
   if (classId) q.class = classId;
-  const drafts = await TimetableVersion.find(q);
+  const drafts = await TimetableVersion.find(q)
+    .populate('class', 'className')
+    .populate('section', 'sectionName');
   const published = [];
   const failed = [];
   for (const draft of drafts) {
@@ -539,11 +541,33 @@ async function publishClassDrafts({ sessionId, classId }, userId) {
       const v = await publishVersion(draft._id, userId);
       published.push(v);
     } catch (err) {
+      const className =
+        draft.class && typeof draft.class === 'object' ? draft.class.className : null;
+      const sectionName =
+        draft.section && typeof draft.section === 'object' ? draft.section.sectionName : null;
+      const place = [className, sectionName].filter(Boolean).join(' · ') || 'Section';
+      const rawDetails = Array.isArray(err.details) ? err.details : [];
+      const reasons = rawDetails
+        .map((d) => {
+          if (typeof d === 'string') return d;
+          if (!d || typeof d !== 'object') return null;
+          const day = d.day ? String(d.day) : '';
+          const msg = d.message || d.code;
+          if (!msg) return null;
+          return day ? `${day}: ${msg}` : String(msg);
+        })
+        .filter(Boolean);
+      const summary = err.message || 'Publish failed';
       failed.push({
         versionId: draft._id,
-        sectionId: draft.section,
-        message: err.message || 'Publish failed',
-        details: err.details,
+        sectionId: draft.section?._id || draft.section,
+        classId: draft.class?._id || draft.class,
+        className: className || undefined,
+        sectionName: sectionName || undefined,
+        place,
+        message: summary,
+        reasons: reasons.length ? reasons : [summary],
+        details: rawDetails,
       });
     }
   }

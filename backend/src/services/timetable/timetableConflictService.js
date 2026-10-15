@@ -36,13 +36,26 @@ function excludeIdList(excludeSlotId, excludeSlotIds) {
 
 /** One teacher period counts once, even when a shared lesson writes a slot per section. */
 async function countTeacherPeriods(sessionId, teacherId, { day, excludeSlotIds, combinedGroupId } = {}) {
+  // Only live sheets (draft + published). Archived leftovers must not inflate the count.
+  const liveVersions = await TimetableVersion.find({
+    session: sessionId,
+    status: { $in: ['draft', 'published'] },
+  })
+    .select('_id')
+    .lean();
+  const liveVersionIds = liveVersions.map((v) => v._id);
+  if (!liveVersionIds.length) return 0;
+
   const query = {
     session: sessionId,
+    timetableVersion: { $in: liveVersionIds },
     cancelled: { $ne: true },
     $or: [{ teacher: teacherId }, { 'parallelEntries.teacher': teacherId }],
   };
   if (day) query.day = day;
-  const slots = await ScheduleSlot.find(query).select('_id day periodId combinedGroupId').lean();
+  const slots = await ScheduleSlot.find(query)
+    .select('_id day periodId combinedGroupId section timetableVersion')
+    .lean();
   const skip = new Set(excludeSlotIds || []);
   const keys = new Set();
   for (const slot of slots) {
@@ -54,7 +67,8 @@ async function countTeacherPeriods(sessionId, teacherId, { day, excludeSlotIds, 
     ) {
       continue;
     }
-    keys.add(`${slot.day}|${String(slot.periodId)}`);
+    // Same teacher in two sections at the same period = two lectures unless shared group.
+    keys.add(`${slot.day}|${String(slot.periodId)}|${String(slot.section)}`);
   }
   return keys.size;
 }
@@ -151,13 +165,34 @@ async function validateSlot({
     teacherConflictQuery.timetableVersion = timetableVersionId;
   }
 
-  const teacherConflicts = await ScheduleSlot.find(teacherConflictQuery).select('_id combinedGroupId');
+  const teacherDoc = teacherId
+    ? await User.findById(teacherId).select('name').lean()
+    : null;
+  const teacherName = teacherDoc?.name?.trim() || 'This teacher';
+
+  const teacherConflicts = await ScheduleSlot.find(teacherConflictQuery)
+    .select('_id combinedGroupId class section')
+    .populate('class', 'className')
+    .populate('section', 'sectionName');
   const blockingTeacher = teacherConflicts.find((s) => !isSameCombinedGroup(s, combinedGroupId));
   if (blockingTeacher) {
+    const conflictClass =
+      blockingTeacher.class && typeof blockingTeacher.class === 'object'
+        ? blockingTeacher.class.className
+        : null;
+    const conflictSection =
+      blockingTeacher.section && typeof blockingTeacher.section === 'object'
+        ? blockingTeacher.section.sectionName
+        : null;
+    const where = [conflictClass, conflictSection].filter(Boolean).join(' · ');
     errors.push({
       code: 'TEACHER_CONFLICT',
-      message: 'Teacher is already assigned at this day and period',
+      message: where
+        ? `${teacherName} is already assigned at this day and period (${where})`
+        : `${teacherName} is already assigned at this day and period`,
       slotId: blockingTeacher._id,
+      teacherId: String(teacherId),
+      teacherName,
     });
   }
 
@@ -206,12 +241,16 @@ async function validateSlot({
   if (!validTeacher) {
     errors.push({
       code: 'INVALID_TEACHER',
-      message: 'Selected user is not an active teacher',
+      message: `${teacherName} is not an active teacher`,
+      teacherId: teacherId ? String(teacherId) : undefined,
+      teacherName,
     });
   } else if (!profile) {
     errors.push({
       code: 'NO_TEACHER_PROFILE',
-      message: 'This teacher has no profile for the current session. Add them under System Config → Teachers.',
+      message: `${teacherName} has no profile for the current session. Add them under System Config → Teachers.`,
+      teacherId: String(teacherId),
+      teacherName,
     });
   }
 
@@ -219,7 +258,9 @@ async function validateSlot({
   if (profile && !teacherCanTeachPeriod(profile, day, periodId)) {
     errors.push({
       code: 'TEACHER_UNAVAILABLE',
-      message: 'Teacher is not available at this period',
+      message: `${teacherName} is not available at this period`,
+      teacherId: String(teacherId),
+      teacherName,
     });
   }
 
@@ -235,7 +276,9 @@ async function validateSlot({
       if (dayCount >= profile.maxLecturesPerDay) {
         errors.push({
           code: 'TEACHER_DAILY_LIMIT',
-          message: `Teacher exceeds max ${profile.maxLecturesPerDay} lectures per day`,
+          message: `${teacherName} already has ${dayCount} lecture(s) this day across all classes (max ${profile.maxLecturesPerDay})`,
+          teacherId: String(teacherId),
+          teacherName,
         });
       }
     }
@@ -247,7 +290,9 @@ async function validateSlot({
       if (weekCount >= profile.maxLecturesPerWeek) {
         errors.push({
           code: 'TEACHER_WEEKLY_LIMIT',
-          message: `Teacher exceeds max ${profile.maxLecturesPerWeek} lectures per week`,
+          message: `${teacherName} exceeds max ${profile.maxLecturesPerWeek} lectures per week`,
+          teacherId: String(teacherId),
+          teacherName,
         });
       }
     }

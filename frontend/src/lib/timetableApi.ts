@@ -11,15 +11,34 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     details?: unknown;
   }>(res);
   if (!res.ok) {
-    const details = Array.isArray(body.details)
-      ? (body.details as { message?: string; code?: string; day?: string; className?: string; sectionName?: string }[])
-      : null;
-    // Prefer the server summary message (already includes class · section); fall back to detail lines
+    const details = Array.isArray(body.details) ? body.details : null;
+    // Joi returns string[]; conflict checks return { message, code, ... }[]
     const detailMsg = details
-      ?.map((d) => d.message || d.code)
+      ?.map((d) => {
+        if (typeof d === "string") return d;
+        if (d && typeof d === "object") {
+          const row = d as {
+            message?: string;
+            code?: string;
+            day?: string;
+            sectionName?: string;
+          };
+          const where = [row.day, row.sectionName].filter(Boolean).join(" ");
+          const msg = row.message || row.code;
+          return where && msg ? `${where}: ${msg}` : msg || null;
+        }
+        return null;
+      })
       .filter(Boolean)
       .join(" · ");
-    throw new Error(body.message || detailMsg || `Request failed (${res.status})`);
+    // Prefer concrete detail lines over a bare "Validation failed"
+    const summary = String(body.message || "").trim();
+    const preferDetails =
+      detailMsg &&
+      (!summary || /^validation failed$/i.test(summary) || /^request failed/i.test(summary));
+    throw new Error(
+      preferDetails ? detailMsg! : summary || detailMsg || `Request failed (${res.status})`,
+    );
   }
   return body.data as T;
 }
@@ -484,11 +503,23 @@ export const upsertSharedLesson = (body: {
 export const deleteCombinedGroup = (combinedGroupId: string) =>
   api<{ deleted: number }>(`/class-board/combined/${combinedGroupId}`, { method: "DELETE" });
 
+export type PublishClassDraftFailure = {
+  versionId: string;
+  sectionId: string;
+  classId?: string;
+  className?: string;
+  sectionName?: string;
+  place?: string;
+  message: string;
+  reasons?: string[];
+  details?: { code?: string; message?: string; day?: string; teacherName?: string }[];
+};
+
 export const publishClassDrafts = (body: { sessionId: string; classId?: string }) =>
-  api<{ published: number; failed: { versionId: string; sectionId: string; message: string }[] }>(
-    "/class-board/publish",
-    { method: "POST", body: JSON.stringify(body) }
-  );
+  api<{ published: number; failed: PublishClassDraftFailure[] }>("/class-board/publish", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 
 export const moveClassBoardLesson = (body: {
   slotId: string;

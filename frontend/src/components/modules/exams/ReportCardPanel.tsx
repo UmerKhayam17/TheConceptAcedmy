@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileBadge, Loader2, Printer, Search, X } from "lucide-react";
+import { FileBadge, Loader2, Printer, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { getAccessToken } from "@/lib/auth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchSessions } from "@/lib/configApi";
-import { ClassProgramOptions } from "@/components/modules/ClassProgramSelect";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
+import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import {
   TEST_TYPE_KEYS,
   assessmentTypeLabel,
@@ -39,10 +38,8 @@ import { cn } from "@/lib/utils";
 
 type ReportKind = "test" | "exam";
 
-const filterLabelClass =
-  "mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
 const filterSelectClass =
-  "h-9 w-full cursor-pointer appearance-none rounded-md border border-border bg-background px-2.5 text-sm text-foreground outline-none transition-colors hover:border-primary/30 focus:border-primary focus:ring-2 focus:ring-primary/10";
+  "h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0";
 
 function idOf(ref: string | { _id: string } | undefined | null): string {
   if (!ref) return "";
@@ -109,7 +106,6 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
     [sessions]
   );
 
-  const [sessionId, setSessionId] = useState("");
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
   const [kind, setKind] = useState<ReportKind>("exam");
@@ -120,7 +116,8 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
   const [student, setStudent] = useState<AcademyStudent | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
 
-  const effectiveSessionId = sessionId || activeSessionId;
+  // Always scoped to the active academic session (no session picker on this screen)
+  const effectiveSessionId = activeSessionId;
 
   useEffect(() => {
     setClassId("");
@@ -399,8 +396,8 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
             Report Card
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5 max-w-xl">
-            Filter by session, class, section, and test/exam, then select a student to print their
-            report card.
+            Pick class and exam or test, then search and select a student to print their report
+            card.
           </p>
         </div>
         <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
@@ -427,213 +424,173 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
         </div>
       </div>
 
-      <Card className="p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
           {!isParent && (
-            <div className="min-w-0">
-              <label className={filterLabelClass}>Session</label>
-              <select
-                className={filterSelectClass}
-                value={effectiveSessionId}
-                onChange={(e) => setSessionId(e.target.value)}
-              >
-                {sessions.map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.name}
-                    {s.isActive ? " (active)" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <ClassProgramSelect
+              className="w-[16.5rem] shrink-0"
+              label={false}
+              value={classId}
+              onChange={setClassId}
+              classes={classes}
+              allowAll
+              selectClassName="rounded-md border-input h-10"
+            />
           )}
 
           {!isParent && (
-            <div className="min-w-0">
-              <label className={filterLabelClass}>Class</label>
-              <select
-                className={filterSelectClass}
-                value={classId}
-                onChange={(e) => setClassId(e.target.value)}
-              >
-                <ClassProgramOptions classes={classes} emptyLabel="Select class" />
-              </select>
-            </div>
-          )}
-
-          {!isParent && (
-            <div className="min-w-0">
-              <label className={filterLabelClass}>Section</label>
-              <select
-                className={filterSelectClass}
-                value={sectionId}
-                disabled={!classId}
-                onChange={(e) => setSectionId(e.target.value)}
-              >
-                <option value="">All sections</option>
-                {sections.map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.sectionName}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              className={cn(filterSelectClass, "w-[10rem]")}
+              value={sectionId}
+              disabled={!classId || sections.length === 0}
+              onChange={(e) => setSectionId(e.target.value)}
+              aria-label="Section filter"
+            >
+              <option value="">All Sections</option>
+              {sections.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.sectionName}
+                </option>
+              ))}
+            </select>
           )}
 
           {kind === "test" && (
-            <div className="min-w-0">
-              <label className={filterLabelClass}>Test type</label>
-              <select
-                className={filterSelectClass}
-                value={assessmentType}
-                onChange={(e) => {
-                  setAssessmentType(e.target.value);
-                  setTestNumber("");
-                }}
-              >
-                <option value="">All types</option>
-                {TEST_TYPE_KEYS.map((k) => (
-                  <option key={k} value={k}>
-                    {assessmentTypeLabel(k)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              className={cn(filterSelectClass, "w-[11rem]")}
+              value={assessmentType}
+              onChange={(e) => {
+                setAssessmentType(e.target.value);
+                setTestNumber("");
+              }}
+              aria-label="Test type filter"
+            >
+              <option value="">All types</option>
+              {TEST_TYPE_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {assessmentTypeLabel(k)}
+                </option>
+              ))}
+            </select>
           )}
 
           {kind === "test" && (
-            <div className="min-w-0">
-              <label className={filterLabelClass}>Test number</label>
-              <select
-                className={filterSelectClass}
-                value={testNumber}
-                disabled={!classId}
-                onChange={(e) => setTestNumber(e.target.value)}
-              >
-                <option value="">All tests</option>
-                {testNumberOptions.map((n) => (
-                  <option key={n} value={n}>
-                    Test No. {n}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              className={cn(filterSelectClass, "w-[10rem]")}
+              value={testNumber}
+              disabled={!classId}
+              onChange={(e) => setTestNumber(e.target.value)}
+              aria-label="Test number filter"
+            >
+              <option value="">All tests</option>
+              {testNumberOptions.map((n) => (
+                <option key={n} value={n}>
+                  Test No. {n}
+                </option>
+              ))}
+            </select>
           )}
 
           {kind === "exam" && (
-            <div className="min-w-0 sm:col-span-2 lg:col-span-1 xl:col-span-2">
-              <label className={filterLabelClass}>Exam</label>
-              <select
-                className={filterSelectClass}
-                value={examId}
-                disabled={!classId}
-                onChange={(e) => setExamId(e.target.value)}
+            <select
+              className={cn(filterSelectClass, "min-w-[14rem] max-w-[20rem]")}
+              value={examId}
+              disabled={!classId}
+              onChange={(e) => setExamId(e.target.value)}
+              aria-label="Exam filter"
+            >
+              <option value="">All exams</option>
+              {examOptions.map((e: Exam) => (
+                <option key={e._id} value={e._id}>
+                  {e.title}
+                  {e.type ? ` · ${e.type}` : ""}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {!student ? (
+            <PanelSearchBar
+              value={studentSearch}
+              onChange={setStudentSearch}
+              placeholder="Search by name, roll no or registration no..."
+              className="min-w-[12rem] flex-1 max-w-md"
+            />
+          ) : (
+            <div className="flex min-w-[12rem] flex-1 max-w-xl items-center gap-2 rounded-md border border-input bg-muted/20 px-3 h-10">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium truncate leading-tight">{student.studentName}</p>
+                <p className="text-[11px] text-muted-foreground truncate leading-tight">
+                  {[
+                    student.studentId,
+                    classNameOfStudent(student),
+                    sectionNameOfStudent(student),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-8 shrink-0 px-2"
+                onClick={clearStudent}
               >
-                <option value="">All exams</option>
-                {examOptions.map((e: Exam) => (
-                  <option key={e._id} value={e._id}>
-                    {e.title}
-                    {e.type ? ` · ${e.type}` : ""}
-                    {e.sessionLabel ? ` · ${e.sessionLabel}` : ""}
-                  </option>
-                ))}
-              </select>
+                <X className="h-3.5 w-3.5 mr-1" />
+                Change
+              </Button>
             </div>
           )}
         </div>
-        {!isParent && !classId && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Select a class to load students, sections, and {kind === "test" ? "tests" : "exams"}.
-          </p>
-        )}
-      </Card>
 
-      <Card className="p-4 space-y-3">
-        <Label className={filterLabelClass}>Student</Label>
-        {student ? (
-          <div className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2.5 bg-muted/20">
-            <div className="min-w-0 flex-1">
-              <p className="font-medium truncate">{student.studentName}</p>
-              <p className="text-xs text-muted-foreground truncate">
-                {[
-                  student.studentId,
-                  student.fatherName,
-                  classNameOfStudent(student),
-                  sectionNameOfStudent(student),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            </div>
-            <Button type="button" size="sm" variant="outline" onClick={clearStudent}>
-              <X className="h-3.5 w-3.5 mr-1" />
-              Change
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="relative max-w-xl">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={studentSearch}
-                onChange={(e) => setStudentSearch(e.target.value)}
-                placeholder={
-                  classId
-                    ? "Search student in this class…"
-                    : "Search by name or student ID (or select a class first)…"
-                }
-                className="pl-9 h-9"
-                autoComplete="off"
-              />
-            </div>
-            {(classId || studentSearch.trim().length >= 2) && (
-              <ul className="max-h-64 overflow-y-auto rounded-md border divide-y">
-                {studentsQ.isLoading && (
-                  <li className="px-3 py-3 text-sm text-muted-foreground flex items-center gap-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Loading students…
-                  </li>
-                )}
-                {!studentsQ.isLoading &&
-                  studentList.map((s) => (
-                    <li key={s._id}>
-                      <button
-                        type="button"
-                        className="w-full px-3 py-2.5 text-left hover:bg-muted/50 transition-colors"
-                        onClick={() => {
-                          setStudent(s);
-                          setStudentSearch("");
-                          if (!classId) {
-                            const cid = idOf(s.classId);
-                            if (cid) setClassId(cid);
-                          }
-                          if (!sectionId) {
-                            const sid = idOf(s.sectionId);
-                            if (sid) setSectionId(sid);
-                          }
-                        }}
-                      >
-                        <span className="font-medium">{s.studentName}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {[
-                            s.studentId,
-                            s.fatherName,
-                            classNameOfStudent(s),
-                            sectionNameOfStudent(s),
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                {!studentsQ.isLoading && studentList.length === 0 && (
-                  <li className="px-3 py-3 text-sm text-muted-foreground">
-                    No students match these filters.
-                  </li>
-                )}
-              </ul>
+        {!student && (classId || studentSearch.trim().length >= 2) && (
+          <ul className="max-h-64 overflow-y-auto rounded-md border divide-y">
+            {studentsQ.isLoading && (
+              <li className="px-3 py-3 text-sm text-muted-foreground flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading students…
+              </li>
             )}
-          </div>
+            {!studentsQ.isLoading &&
+              studentList.map((s) => (
+                <li key={s._id}>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2.5 text-left hover:bg-muted/50 transition-colors"
+                    onClick={() => {
+                      setStudent(s);
+                      setStudentSearch("");
+                      if (!classId) {
+                        const cid = idOf(s.classId);
+                        if (cid) setClassId(cid);
+                      }
+                      if (!sectionId) {
+                        const sid = idOf(s.sectionId);
+                        if (sid) setSectionId(sid);
+                      }
+                    }}
+                  >
+                    <span className="font-medium">{s.studentName}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {[
+                        s.studentId,
+                        s.fatherName,
+                        classNameOfStudent(s),
+                        sectionNameOfStudent(s),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            {!studentsQ.isLoading && studentList.length === 0 && (
+              <li className="px-3 py-3 text-sm text-muted-foreground">
+                No students match these filters.
+              </li>
+            )}
+          </ul>
         )}
       </Card>
 
