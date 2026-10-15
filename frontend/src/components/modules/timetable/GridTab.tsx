@@ -53,7 +53,6 @@ import {
   type PeriodSlot,
   type ScheduleSlot,
 } from "@/lib/timetableApi";
-import type { SchoolSubject } from "@/lib/configApi";
 import {
   DAY_FULL_LABELS,
   DAY_LABELS,
@@ -79,6 +78,13 @@ import {
   weekDates,
 } from "./my-schedule/dateUtils";
 import TimetableSlotCard from "./TimetableSlotCard";
+import {
+  buildSlotSubjectOptions,
+  isTimetableOnlyCombine,
+  optionKeyForSlot,
+  slotEntrySubjectIds,
+  type SlotSubjectOption,
+} from "./slotSubjectOptions";
 
 type BoardViewMode = "week" | "day";
 type DayApplyMode = "single" | "fullWeek" | "custom";
@@ -95,77 +101,6 @@ const WEEKDAY_FROM_JS: Weekday[] = [
 
 function todayWeekday(): Weekday {
   return WEEKDAY_FROM_JS[new Date().getDay()] || "monday";
-}
-
-type SlotSubjectOption =
-  | { key: string; kind: "single"; label: string; subjectIds: [string] }
-  | { key: string; kind: "choice"; label: string; groupName: string; subjectIds: string[] };
-
-function buildSlotSubjectOptions(subjects: SchoolSubject[]): SlotSubjectOption[] {
-  const byGroup = new Map<string, SchoolSubject[]>();
-  const singles: SchoolSubject[] = [];
-
-  for (const s of subjects) {
-    if (!s?._id) continue;
-    const groupName = s.choiceGroupName?.trim();
-    if (s.enrollmentType === "choice" && groupName) {
-      const key = groupName.toLowerCase();
-      if (!byGroup.has(key)) byGroup.set(key, []);
-      byGroup.get(key)!.push(s);
-    } else {
-      singles.push(s);
-    }
-  }
-
-  const options: SlotSubjectOption[] = [];
-
-  for (const group of byGroup.values()) {
-    const sorted = [...group].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    if (sorted.length >= 2) {
-      const groupName = sorted[0].choiceGroupName!.trim();
-      options.push({
-        key: `choice:${groupName.toLowerCase()}`,
-        kind: "choice",
-        groupName,
-        subjectIds: sorted.map((s) => s._id),
-        label: sorted.map((s) => s.name || "Untitled").join(" / "),
-      });
-    } else {
-      singles.push(...sorted);
-    }
-  }
-
-  for (const s of singles) {
-    options.push({
-      key: s._id,
-      kind: "single",
-      subjectIds: [s._id],
-      label: s.name || "Untitled",
-    });
-  }
-
-  return options.sort((a, b) => a.label.localeCompare(b.label));
-}
-
-function optionKeyForSlot(slot: ScheduleSlot | undefined, options: SlotSubjectOption[]): string {
-  if (!slot) return "";
-  const entryIds = scheduleSlotEntries(slot)
-    .map((e) => e.subject)
-    .filter((s): s is NonNullable<typeof s> => Boolean(s) && !isDeletedSubject(s))
-    .map((s) => s._id)
-    .filter((id): id is string => Boolean(id));
-  if (entryIds.length > 1) {
-    const match = options.find(
-      (o) =>
-        o.kind === "choice" &&
-        o.subjectIds.length === entryIds.length &&
-        o.subjectIds.every((id) => entryIds.includes(id))
-    );
-    if (match) return match.key;
-  }
-  const subjectId = entryIds[0];
-  if (!subjectId) return "";
-  return options.find((o) => o.kind === "single" && o.subjectIds[0] === subjectId)?.key || subjectId;
 }
 
 export default function GridTab({
@@ -189,12 +124,22 @@ export default function GridTab({
     existing?: ScheduleSlot;
   } | null>(null);
   const [form, setForm] = useState<{
+    combineSubjects: boolean;
     optionKey: string;
+    customSubjectIds: string[];
     teachersBySubject: Record<string, string>;
     roomId: string;
     dayApplyMode: DayApplyMode;
     selectedDays: Weekday[];
-  }>({ optionKey: "", teachersBySubject: {}, roomId: "", dayApplyMode: "single", selectedDays: [] });
+  }>({
+    combineSubjects: false,
+    optionKey: "",
+    customSubjectIds: [],
+    teachersBySubject: {},
+    roomId: "",
+    dayApplyMode: "single",
+    selectedDays: [],
+  });
   const [draggingSlotId, setDraggingSlotId] = useState<string | null>(null);
   const [dropOver, setDropOver] = useState<{ day: Weekday; periodId: string } | null>(null);
   const [editingLive, setEditingLive] = useState(false);
@@ -341,9 +286,14 @@ export default function GridTab({
   const saveSlotMut = useMutation({
     mutationFn: () => {
       if (!slotDialog || !activeVersionId) throw new Error("No slot selected");
-      const option = subjectOptions.find((o) => o.key === form.optionKey);
-      if (!option) throw new Error("Select a subject");
-      const entries = option.subjectIds.map((subjectId) => {
+      const subjectIds = form.combineSubjects
+        ? form.customSubjectIds
+        : subjectOptions.find((o) => o.key === form.optionKey)?.subjectIds;
+      if (!subjectIds?.length) throw new Error("Select a subject");
+      if (form.combineSubjects && subjectIds.length < 2) {
+        throw new Error("Select at least two subjects to combine");
+      }
+      const entries = subjectIds.map((subjectId) => {
         const teacher = form.teachersBySubject[subjectId];
         if (!teacher) throw new Error("Select a teacher for each subject");
         return { subject: subjectId, teacher };
@@ -647,6 +597,10 @@ export default function GridTab({
   const subjectOptions = useMemo(() => buildSlotSubjectOptions(subjects), [subjects]);
 
   const selectedOption = subjectOptions.find((o) => o.key === form.optionKey);
+  const activeSubjectIds = form.combineSubjects
+    ? form.customSubjectIds
+    : selectedOption?.subjectIds || [];
+  const multiSubjectLesson = activeSubjectIds.length > 1;
 
   /** Session roster only. Teachers who can teach this subject are listed first. */
   const teachersForSubject = (subjectId: string) =>
@@ -732,11 +686,24 @@ export default function GridTab({
   const openCell = (day: Weekday, period: PeriodSlot) => {
     if (!canEditGrid) return;
     const existing = getSlot(day, period._id);
-    const optionKey = optionKeyForSlot(existing, subjectOptions);
+    const combineSubjects = isTimetableOnlyCombine(existing, subjectOptions);
+    const optionKey = combineSubjects ? "" : optionKeyForSlot(existing, subjectOptions);
     const option = subjectOptions.find((o) => o.key === optionKey);
+    const teachersBySubject: Record<string, string> = {};
+    if (existing) {
+      for (const e of scheduleSlotEntries(existing)) {
+        if (e.subject?._id && e.teacher?._id && !isDeletedSubject(e.subject)) {
+          teachersBySubject[e.subject._id] = e.teacher._id;
+        }
+      }
+    } else if (option) {
+      Object.assign(teachersBySubject, teachersBySubjectForOption(option, existing));
+    }
     setForm({
+      combineSubjects,
       optionKey,
-      teachersBySubject: teachersBySubjectForOption(option, existing),
+      customSubjectIds: combineSubjects ? slotEntrySubjectIds(existing) : [],
+      teachersBySubject,
       roomId: existing?.room?._id || "",
       dayApplyMode: "single",
       selectedDays: [day],
@@ -745,8 +712,9 @@ export default function GridTab({
   };
 
   const canSaveSlot =
-    Boolean(selectedOption) &&
-    (selectedOption?.subjectIds.every((id) => form.teachersBySubject[id]) ?? false) &&
+    activeSubjectIds.length > 0 &&
+    (!form.combineSubjects || activeSubjectIds.length >= 2) &&
+    activeSubjectIds.every((id) => form.teachersBySubject[id]) &&
     (form.dayApplyMode !== "custom" || form.selectedDays.length > 0);
 
   const sectionLabel = selectedSection;
@@ -1394,76 +1362,153 @@ export default function GridTab({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div>
-              <Label>Subject</Label>
-              <select
-                className="w-full h-10 rounded-md border px-3 text-sm"
-                value={form.optionKey}
-                onChange={(e) => {
-                  const key = e.target.value;
-                  const option = subjectOptions.find((o) => o.key === key);
-                  setForm({
-                    optionKey: key,
-                    teachersBySubject: teachersBySubjectForOption(option),
-                    roomId: "",
-                    dayApplyMode: form.dayApplyMode,
-                    selectedDays: form.selectedDays,
-                  });
-                }}
-              >
-                <option value="">Select subject</option>
-                {subjectOptions.map((o) => (
-                  <option key={o.key} value={o.key}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              {selectedOption?.kind === "choice" && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Choice group — students split across these subjects in the same period. Assign one
-                  teacher for each.
-                </p>
-              )}
+            <div className="space-y-2 rounded-md border p-3">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={form.combineSubjects}
+                  onCheckedChange={(v) => {
+                    const on = v === true;
+                    setForm((f) => {
+                      if (!on) {
+                        return {
+                          ...f,
+                          combineSubjects: false,
+                          customSubjectIds: [],
+                          teachersBySubject: {},
+                        };
+                      }
+                      const seed =
+                        f.customSubjectIds.length >= 2
+                          ? f.customSubjectIds
+                          : selectedOption?.subjectIds ||
+                            (f.optionKey ? [f.optionKey] : []);
+                      return {
+                        ...f,
+                        combineSubjects: true,
+                        optionKey: "",
+                        customSubjectIds: seed.filter(Boolean),
+                        teachersBySubject: f.teachersBySubject,
+                      };
+                    });
+                  }}
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Combine subjects in this period
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Timetable only (e.g. Pst / Isl) — does not change admission choice groups.
+                  </span>
+                </span>
+              </label>
             </div>
 
-            {selectedOption &&
-              selectedOption.subjectIds.map((subjectId) => {
-                const sub = subjects.find((s) => s._id === subjectId);
-                const label =
-                  selectedOption.kind === "choice"
-                    ? `Teacher · ${sub?.name || "Subject"}`
-                    : "Teacher";
-                return (
-                  <div key={subjectId}>
-                    <Label>{label}</Label>
-                    <select
-                      className="w-full h-10 rounded-md border px-3 text-sm"
-                      value={form.teachersBySubject[subjectId] || ""}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          teachersBySubject: {
-                            ...f.teachersBySubject,
-                            [subjectId]: e.target.value,
-                          },
-                        }))
-                      }
-                    >
-                      <option value="">Select teacher</option>
-                      {teachersForSubject(subjectId).map((t) => (
-                        <option key={t._id} value={t._id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                    {teacherProfiles.length === 0 && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Add this person under System Config → Teachers for the current session.
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
+            {form.combineSubjects ? (
+              <div className="space-y-2 rounded-md border p-3">
+                <Label>Subjects (pick 2 or more)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Each subject needs a different teacher. Cell shows as Subject / Subject.
+                </p>
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                  {subjects.map((s) => {
+                    if (!s._id) return null;
+                    const checked = form.customSubjectIds.includes(s._id);
+                    return (
+                      <label key={s._id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            setForm((f) => {
+                              const next = new Set(f.customSubjectIds);
+                              if (v) next.add(s._id);
+                              else next.delete(s._id);
+                              const customSubjectIds = [...next];
+                              const teachersBySubject = { ...f.teachersBySubject };
+                              for (const id of Object.keys(teachersBySubject)) {
+                                if (!next.has(id)) delete teachersBySubject[id];
+                              }
+                              return { ...f, customSubjectIds, teachersBySubject };
+                            });
+                          }}
+                        />
+                        {s.name || "Untitled"}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <Label>Subject</Label>
+                <select
+                  className="w-full h-10 rounded-md border px-3 text-sm"
+                  value={form.optionKey}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    const option = subjectOptions.find((o) => o.key === key);
+                    setForm((f) => ({
+                      ...f,
+                      combineSubjects: false,
+                      optionKey: key,
+                      customSubjectIds: [],
+                      teachersBySubject: teachersBySubjectForOption(option),
+                      roomId: f.roomId,
+                    }));
+                  }}
+                >
+                  <option value="">Select subject</option>
+                  {subjectOptions.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedOption?.kind === "choice" && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Admission choice group — students pick from these subjects. Assign one teacher
+                    each.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {activeSubjectIds.map((subjectId) => {
+              const sub = subjects.find((s) => s._id === subjectId);
+              const label = multiSubjectLesson
+                ? `Teacher · ${sub?.name || "Subject"}`
+                : "Teacher";
+              return (
+                <div key={subjectId}>
+                  <Label>{label}</Label>
+                  <select
+                    className="w-full h-10 rounded-md border px-3 text-sm"
+                    value={form.teachersBySubject[subjectId] || ""}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        teachersBySubject: {
+                          ...f.teachersBySubject,
+                          [subjectId]: e.target.value,
+                        },
+                      }))
+                    }
+                  >
+                    <option value="">Select teacher</option>
+                    {teachersForSubject(subjectId).map((t) => (
+                      <option key={t._id} value={t._id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  {teacherProfiles.length === 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Add this person under System Config → Teachers for the current session.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
 
             <div className="space-y-2 rounded-md border p-3">
               <Label className="text-sm font-medium">Apply schedule to</Label>
