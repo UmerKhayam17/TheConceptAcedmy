@@ -29,7 +29,6 @@ import {
   fetchClassTestEntry,
   fetchClassTests,
   fetchSectionsByClass,
-  formatClassTestSchedule,
   type AcademyClassTest,
   type ClassTestEntryRow,
 } from "@/lib/studentManagementApi";
@@ -40,6 +39,7 @@ import {
 } from "@/lib/examApi";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { cn } from "@/lib/utils";
+import { dateSheetDateRangeParts, formatDateSheetDate } from "./dateSheetBatch";
 
 type ReportKind = "all" | "test" | "exam";
 
@@ -118,9 +118,35 @@ type PublishedTestBatch = {
   tests: AcademyClassTest[];
   subjectNames: string[];
   studentCount: number;
-  /** Prefer the earliest exam date among peers for display. */
-  examDate: string | undefined;
+  /** Earliest exam date among peer subjects. */
+  dateFrom: string | undefined;
+  /** Latest exam date among peer subjects. */
+  dateTo: string | undefined;
 };
+
+function formatBatchDateRangeLabel(dateFrom?: string, dateTo?: string) {
+  const parts = dateSheetDateRangeParts(dateFrom, dateTo);
+  if (!parts) return "—";
+  return parts.to ? `${parts.from} – ${parts.to}` : parts.from;
+}
+
+function BatchDateRangeCell({
+  dateFrom,
+  dateTo,
+}: {
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  const parts = dateSheetDateRangeParts(dateFrom, dateTo);
+  if (!parts) return <>{"—"}</>;
+  if (!parts.to) return <>{parts.from}</>;
+  return (
+    <span className="inline-flex flex-col leading-snug">
+      <span>{parts.from}</span>
+      <span>{parts.to}</span>
+    </span>
+  );
+}
 
 function classNameOfExam(exam: Exam) {
   const c = exam.academyClass;
@@ -263,6 +289,7 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
             new Date(a.test.examDate || 0).getTime() - new Date(b.test.examDate || 0).getTime()
         );
         const primary = byDate[0]?.test || sorted[0].test;
+        const lastByDate = byDate[byDate.length - 1]?.test || primary;
         const studentIds = new Set<string>();
         group.forEach((g) => {
           (g.entry?.students || []).forEach((s) => {
@@ -275,12 +302,13 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
           tests: sorted.map((g) => g.test),
           subjectNames: sorted.map((g) => testSubjectName(g.test)).filter((n) => n && n !== "—"),
           studentCount: studentIds.size || Math.max(...group.map((g) => g.studentCount), 0),
-          examDate: primary.examDate,
+          dateFrom: primary.examDate,
+          dateTo: lastByDate.examDate,
         };
       })
       .sort(
         (a, b) =>
-          new Date(b.examDate || 0).getTime() - new Date(a.examDate || 0).getTime()
+          new Date(b.dateFrom || 0).getTime() - new Date(a.dateFrom || 0).getTime()
       );
   }, [publishedTestsQ.data]);
 
@@ -295,7 +323,7 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
         testSectionName(test),
         assessmentTypeLabel(test.assessmentType) || test.assessmentType,
         batch.subjectNames.join(" "),
-        formatClassTestSchedule(test),
+        formatBatchDateRangeLabel(batch.dateFrom, batch.dateTo),
       ]);
     });
   }, [publishedTestBatches, search]);
@@ -570,10 +598,13 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
                             <td
                               className={cn(
                                 tableCellClass,
-                                "whitespace-nowrap text-xs text-muted-foreground"
+                                "whitespace-nowrap text-muted-foreground"
                               )}
                             >
-                              {formatClassTestSchedule(test) || "—"}
+                              <BatchDateRangeCell
+                                dateFrom={batch.dateFrom}
+                                dateTo={batch.dateTo}
+                              />
                             </td>
                             <td className={tableCellClass}>
                               <Badge variant="secondary" className="text-[10px]">
@@ -665,12 +696,10 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
                             <td
                               className={cn(
                                 tableCellClass,
-                                "whitespace-nowrap text-xs text-muted-foreground"
+                                "whitespace-nowrap text-muted-foreground"
                               )}
                             >
-                              {exam.startDate
-                                ? new Date(exam.startDate).toLocaleDateString()
-                                : "—"}
+                              {exam.startDate ? formatDateSheetDate(exam.startDate) : "—"}
                             </td>
                             <td className={tableCellClass}>
                               <Badge variant="secondary" className="text-[10px]">

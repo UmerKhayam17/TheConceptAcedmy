@@ -34,6 +34,7 @@ import {
   buildDateSheetBatches,
   dateSheetBatchKey,
   dateSheetPrintParams,
+  dateSheetDateRangeParts,
   formatDateSheetDate,
   type DateSheetBatch,
 } from "./dateSheetBatch";
@@ -299,12 +300,7 @@ export default function DateSheetPanel() {
                   <tbody>
                     {batches.map((batch) => {
                       const href = role ? dateSheetBatchHref(role, batch.routeId) : "#";
-                      const dateRange =
-                        batch.dateFrom &&
-                          batch.dateTo &&
-                          formatDateSheetDate(batch.dateFrom) !== formatDateSheetDate(batch.dateTo)
-                          ? `${formatDateSheetDate(batch.dateFrom)} – ${formatDateSheetDate(batch.dateTo)}`
-                          : formatDateSheetDate(batch.dateFrom);
+                      const dateParts = dateSheetDateRangeParts(batch.dateFrom, batch.dateTo);
                       const subtitle =
                         batch.title && batch.title !== batch.testNumber
                           ? batch.title.replace(/^test\s*\d+\s*[—\-:]?\s*/i, "").trim() ||
@@ -343,8 +339,19 @@ export default function DateSheetPanel() {
                               {batch.subjectNames.length === 1 ? "subject" : "subjects"}
                             </span>
                           </td>
-                          <td className="p-3 whitespace-nowrap text-muted-foreground text-xs">
-                            {dateRange || "—"}
+                          <td className="p-3 whitespace-nowrap text-muted-foreground">
+                            {dateParts ? (
+                              dateParts.to ? (
+                                <span className="inline-flex flex-col leading-snug">
+                                  <span>{dateParts.from}</span>
+                                  <span>{dateParts.to}</span>
+                                </span>
+                              ) : (
+                                dateParts.from
+                              )
+                            ) : (
+                              "—"
+                            )}
                           </td>
                           <td className="p-3 tabular-nums whitespace-nowrap">{batch.totalMarks}</td>
                           <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>

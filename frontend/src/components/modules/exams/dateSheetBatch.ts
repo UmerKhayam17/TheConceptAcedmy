@@ -13,6 +13,15 @@ export function formatDateSheetDate(value: string) {
   }
 }
 
+/** Start/end labels for stacked date cells (one line each when they differ). */
+export function dateSheetDateRangeParts(dateFrom?: string, dateTo?: string) {
+  if (!dateFrom) return null;
+  const from = formatDateSheetDate(dateFrom);
+  const to = dateTo ? formatDateSheetDate(dateTo) : "";
+  if (!to || to === from) return { from, to: null as string | null };
+  return { from, to };
+}
+
 function normalizeLabel(value: string | undefined | null) {
   return String(value || "")
     .trim()
