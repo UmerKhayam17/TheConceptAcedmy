@@ -554,11 +554,47 @@ export default function AssignAssessmentsPanel({
                     className="p-2.5 text-right whitespace-nowrap"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <div className="inline-flex items-center gap-1">
+                    <div className="flex justify-end gap-0.5">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        title="View assessment"
+                        aria-label="View assessment"
+                        onClick={() => setSubjectsAssignment(a)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-sky-600 hover:text-sky-700"
+                        title="Edit"
+                        aria-label="Edit"
+                        onClick={() => setConfigAssignment(a)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-violet-600 hover:text-violet-700"
+                        title="Syllabus"
+                        aria-label="Syllabus"
+                        onClick={() => setConfigAssignment(a)}
+                      >
+                        <BookOpen className="h-4 w-4" />
+                      </Button>
                       {a.status === "published" && a.category === "exam" && a.examId && (
                         <MarksReportButton
                           examId={String(a.examId)}
                           iconOnly
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-amber-600 hover:text-amber-700"
                           title="Print exam marks report"
                         />
                       )}
@@ -568,40 +604,15 @@ export default function AssignAssessmentsPanel({
                           <MarksReportButton
                             testId={firstClassTestIdOf(a)}
                             iconOnly
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-amber-600 hover:text-amber-700"
                             title="Print test marks report"
                           />
                         )}
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                        title="View assessment"
-                        aria-label="View assessment"
-                        onClick={() => setSubjectsAssignment(a)}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-sky-600 hover:bg-sky-50 hover:text-sky-700"
-                        title={a.status === "published" ? "Edit assessment" : "Edit syllabus"}
-                        aria-label={a.status === "published" ? "Edit assessment" : "Edit syllabus"}
-                        onClick={() => setConfigAssignment(a)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setConfigAssignment(a)}
-                      >
-                        <BookOpen className="h-3.5 w-3.5" />
-                        Syllabus
-                      </Button>
+                      {canManage && a.status === "draft" && isReady(a, teacherSubjectSet) && (
+                        <PublishButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
+                      )}
                       {canManage && (
                         <DeleteButton
                           sessionId={effectiveSessionId}
@@ -609,9 +620,6 @@ export default function AssignAssessmentsPanel({
                           published={a.status === "published"}
                           onDone={invalidate}
                         />
-                      )}
-                      {canManage && a.status === "draft" && isReady(a, teacherSubjectSet) && (
-                        <PublishButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
                       )}
                     </div>
                   </td>
@@ -746,9 +754,21 @@ function PublishButton({
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
   return (
-    <Button size="sm" onClick={() => mut.mutate()} disabled={mut.isPending}>
-      {mut.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Send className="h-3.5 w-3.5 mr-1" />}
-      Publish
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      className="h-8 w-8 text-emerald-600 hover:text-emerald-700"
+      title="Publish"
+      aria-label="Publish"
+      onClick={() => mut.mutate()}
+      disabled={mut.isPending}
+    >
+      {mut.isPending ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Send className="h-4 w-4" />
+      )}
     </Button>
   );
 }
@@ -776,9 +796,9 @@ function DeleteButton({
   return (
     <Button
       type="button"
-      size="sm"
+      size="icon"
       variant="ghost"
-      className="h-8 w-8 p-0 text-destructive hover:bg-red-50 hover:text-red-700"
+      className="h-8 w-8"
       disabled={mut.isPending}
       title={published ? "Delete assessment" : "Delete draft"}
       aria-label={published ? "Delete assessment" : "Delete draft"}
@@ -791,9 +811,9 @@ function DeleteButton({
       }}
     >
       {mut.isPending ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <Loader2 className="h-4 w-4 animate-spin text-destructive" />
       ) : (
-        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+        <Trash2 className="h-4 w-4 text-destructive" />
       )}
     </Button>
   );
@@ -818,8 +838,12 @@ function DeleteClassTestButton({
   });
   return (
     <Button
-      size="sm"
+      type="button"
+      size="icon"
       variant="ghost"
+      className="h-8 w-8"
+      title="Delete test"
+      aria-label="Delete test"
       disabled={mut.isPending}
       onClick={() => {
         const series = Boolean(test.seriesId && test.occurrenceCount && test.occurrenceCount > 1);
@@ -829,9 +853,9 @@ function DeleteClassTestButton({
       }}
     >
       {mut.isPending ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <Loader2 className="h-4 w-4 animate-spin text-destructive" />
       ) : (
-        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+        <Trash2 className="h-4 w-4 text-destructive" />
       )}
     </Button>
   );

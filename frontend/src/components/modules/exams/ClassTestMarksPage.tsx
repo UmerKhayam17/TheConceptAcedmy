@@ -9,10 +9,8 @@ import {
   ChevronRight,
   ClipboardList,
   FileText,
-  Filter,
   Minus,
   MoreVertical,
-  RotateCcw,
   Save,
   Search,
   Users,
@@ -33,7 +31,6 @@ import { classTestSeriesHref, testExamsHref } from "@/lib/testExamsMenus";
 import { createdByLabel } from "@/lib/createdBy";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import AwardListButton from "@/components/modules/exams/AwardListButton";
-import MarksReportButton from "@/components/modules/exams/MarksReportButton";
 import TestPaperCapture from "@/components/modules/exams/TestPaperCapture";
 import PageSizeSelect, {
   DEFAULT_PAGE_SIZE,
@@ -193,9 +190,7 @@ export default function ClassTestMarksPage({
   const canEnter = caps.canEdit || caps.canCreate;
   const listHref = testExamsHref(role, "enter-tests");
 
-  const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
-  const [sectionDraft, setSectionDraft] = useState("");
   const [sectionFilter, setSectionFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -377,20 +372,6 @@ export default function ClassTestMarksPage({
     saveMut.mutate(entries);
   };
 
-  const applyFilters = () => {
-    setSearch(searchDraft.trim());
-    setSectionFilter(sectionDraft);
-    setPage(1);
-  };
-
-  const resetFilters = () => {
-    setSearchDraft("");
-    setSearch("");
-    setSectionDraft("");
-    setSectionFilter("");
-    setPage(1);
-  };
-
   const pageIds = pageRows.map((r) => r.student._id);
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
   const somePageSelected = pageIds.some((id) => selectedIds.includes(id));
@@ -538,19 +519,16 @@ export default function ClassTestMarksPage({
           <div className="relative min-w-[14rem] flex-1 max-w-xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") applyFilters();
-              }}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, ID, father, roll, phone..."
               className="h-10 pl-9"
             />
           </div>
           <select
             className={selectClass}
-            value={sectionDraft}
-            onChange={(e) => setSectionDraft(e.target.value)}
+            value={sectionFilter}
+            onChange={(e) => setSectionFilter(e.target.value)}
             aria-label="Section filter"
           >
             <option value="">All Sections</option>
@@ -561,24 +539,10 @@ export default function ClassTestMarksPage({
             ))}
           </select>
           <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
-            <Button variant="outline" className="gap-2 h-10" onClick={applyFilters}>
-              <Filter className="h-4 w-4" />
-              Filter
-            </Button>
-            <Button variant="outline" className="gap-2 h-10" onClick={resetFilters}>
-              <RotateCcw className="h-4 w-4" />
-              Reset
-            </Button>
             <AwardListButton
               testId={testId}
               size="default"
               label="Award list"
-              className="h-10"
-            />
-            <MarksReportButton
-              testId={testId}
-              studentIds={selectedIds.length ? selectedIds : undefined}
-              size="default"
               className="h-10"
             />
             {canEnter && (

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Award, FileDown, Save, Send } from "lucide-react";
+import { ArrowLeft, Award, FileDown, Loader2, Save, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import type { AcademySubject } from "@/lib/studentManagementApi";
@@ -281,14 +281,20 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                   )}
                   {canPublish && (
                     <Button
-                      size="sm"
-                      variant="hero"
-                      className="h-8"
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-emerald-600 hover:text-emerald-700"
+                      title="Publish all"
+                      aria-label="Publish all"
                       onClick={() => publishAllMut.mutate(selectedExamId!)}
                       disabled={publishAllMut.isPending}
                     >
-                      <Send className="h-3.5 w-3.5 mr-1" />
-                      Publish all
+                      {publishAllMut.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
                     </Button>
                   )}
                 </div>
@@ -463,23 +469,37 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                                 {r.isPublished ? "Published" : "Draft"}
                               </Badge>
                             </td>
-                            <td className="p-2 text-right space-x-1">
-                              <Button size="sm" variant="ghost" onClick={() => downloadPdf(r._id)}>
-                                <FileDown className="h-3.5 w-3.5" />
-                              </Button>
-                              {canPublish && !r.isPublished && (
+                            <td className="p-2 text-right">
+                              <div className="flex justify-end gap-0.5">
                                 <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={async () => {
-                                    await publishResult(r._id);
-                                    refetchResults();
-                                    toast({ title: "Published" });
-                                  }}
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-amber-600 hover:text-amber-700"
+                                  title="Download result card"
+                                  aria-label="Download result card"
+                                  onClick={() => downloadPdf(r._id)}
                                 >
-                                  Publish
+                                  <FileDown className="h-4 w-4" />
                                 </Button>
-                              )}
+                                {canPublish && !r.isPublished && (
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-emerald-600 hover:text-emerald-700"
+                                    title="Publish"
+                                    aria-label="Publish"
+                                    onClick={async () => {
+                                      await publishResult(r._id);
+                                      refetchResults();
+                                      toast({ title: "Published" });
+                                    }}
+                                  >
+                                    <Send className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}

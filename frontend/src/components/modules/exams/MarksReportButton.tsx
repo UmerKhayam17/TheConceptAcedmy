@@ -115,11 +115,11 @@ export default function MarksReportButton({
     return (
       <Button
         type="button"
-        size={size === "default" ? "sm" : size}
-        variant={variant}
+        size="icon"
+        variant={variant === "outline" ? "ghost" : variant}
         title={title}
         aria-label={title}
-        className={cn("h-8 w-8 p-0", className)}
+        className={cn("h-8 w-8 text-amber-600 hover:text-amber-700", className)}
         disabled={!canOpen || Boolean(loading)}
         onClick={(e) => {
           e.preventDefault();
@@ -127,7 +127,7 @@ export default function MarksReportButton({
           openIconSheet();
         }}
       >
-        <Printer className={cn("h-3.5 w-3.5", loading && "animate-pulse")} />
+        <Printer className={cn("h-4 w-4", loading && "animate-pulse")} />
       </Button>
     );
   }
