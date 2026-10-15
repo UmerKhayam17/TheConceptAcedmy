@@ -29,6 +29,15 @@ function modulePermissionsToMap(input) {
   return m;
 }
 
+/** Mongoose Map replacement is not always detected — always markModified after assign. */
+function setUserModulePermissions(user, inputOrMap) {
+  const next =
+    inputOrMap instanceof Map ? inputOrMap : modulePermissionsToMap(inputOrMap);
+  user.modulePermissions = next;
+  user.markModified('modulePermissions');
+  return next;
+}
+
 function serializeUser(user) {
   const o = user.toObject ? user.toObject({ flattenMaps: true }) : { ...user };
   if (o.modulePermissions instanceof Map) {
@@ -188,6 +197,12 @@ const createUser = catchAsync(async (req, res) => {
   const exists = await User.findOne({ email });
   if (exists) throw new ApiError(409, 'Email already in use');
   const hash = await bcrypt.hash(password, 12);
+  // Only fall back to role defaults when the client omitted the field entirely.
+  // An explicit `{}` / partial matrix from Users/Permissions must be respected.
+  const modulePermissionsProvided = Object.prototype.hasOwnProperty.call(
+    req.body,
+    'modulePermissions',
+  );
   let userModulePerms = modulePermissionsToMap(modulePermissions);
 
   const resolvedPayType = payType === 'percentage' ? 'percentage' : 'fixed';
@@ -209,7 +224,7 @@ const createUser = catchAsync(async (req, res) => {
   // Secondary admins keep the request matrix (or empty) — they never inherit full admin-role access.
   if (
     (roleName === 'teacher' || roleName === 'accountant' || roleName === 'parent') &&
-    (!userModulePerms || userModulePerms.size === 0)
+    !modulePermissionsProvided
   ) {
     if (roleName === 'teacher') {
       const { teacherModulePermissionsMap } = require('../config/teacherDefaults');
@@ -339,7 +354,7 @@ const updateUser = catchAsync(async (req, res) => {
     modulePermissions !== undefined &&
     typeof modulePermissions === 'object'
   ) {
-    user.modulePermissions = modulePermissionsToMap(modulePermissions);
+    setUserModulePermissions(user, modulePermissions);
   }
 
   const shouldRefreshSalaries =
@@ -427,7 +442,7 @@ const patchModulePermissions = catchAsync(async (req, res) => {
     modulePerms.delete(moduleName);
   }
 
-  user.modulePermissions = modulePerms;
+  setUserModulePermissions(user, modulePerms);
   await user.save();
 
   const updatedUser = await User.findById(user._id).populate('role').populate('permissions');
@@ -450,7 +465,7 @@ const revokeModulePermissions = catchAsync(async (req, res) => {
 
   const modulePerms = user.modulePermissions || new Map();
   modulePerms.delete(moduleName);
-  user.modulePermissions = modulePerms;
+  setUserModulePermissions(user, modulePerms);
   await user.save();
 
   const updatedUser = await User.findById(user._id).populate('role').populate('permissions');

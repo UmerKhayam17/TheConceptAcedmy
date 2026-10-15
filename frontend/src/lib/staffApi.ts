@@ -126,7 +126,8 @@ export const TEACHER_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   homework: ["view", "create", "edit", "delete"],
   studyMaterials: ["view", "create", "edit", "delete"],
   lessonPlans: ["view", "create", "edit"],
-  exam: ["view", "create", "edit"],
+  /** View-only by default — grant create/edit on the matrix to manage tests & marks. */
+  exam: ["view"],
   studentProgress: ["view"],
   chat: ["view", "create", "participate"],
   announcement: ["view", "create", "edit"],
