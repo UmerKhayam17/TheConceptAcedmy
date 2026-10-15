@@ -521,9 +521,8 @@ export default function ReportCardDetailPage({
             <p className="text-xs text-slate-500">
               {studentsLoading
                 ? "Loading students…"
-                : `${listCount} student${listCount === 1 ? "" : "s"}${
-                    studentSearch.trim() ? " matching search" : " ready to view or print"
-                  }.`}
+                : `${listCount} student${listCount === 1 ? "" : "s"}${studentSearch.trim() ? " matching search" : " ready to view or print"
+                }.`}
             </p>
           </div>
           {studentsLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}

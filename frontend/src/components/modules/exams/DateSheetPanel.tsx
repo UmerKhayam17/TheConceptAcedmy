@@ -301,14 +301,14 @@ export default function DateSheetPanel() {
                       const href = role ? dateSheetBatchHref(role, batch.routeId) : "#";
                       const dateRange =
                         batch.dateFrom &&
-                        batch.dateTo &&
-                        formatDateSheetDate(batch.dateFrom) !== formatDateSheetDate(batch.dateTo)
+                          batch.dateTo &&
+                          formatDateSheetDate(batch.dateFrom) !== formatDateSheetDate(batch.dateTo)
                           ? `${formatDateSheetDate(batch.dateFrom)} – ${formatDateSheetDate(batch.dateTo)}`
                           : formatDateSheetDate(batch.dateFrom);
                       const subtitle =
                         batch.title && batch.title !== batch.testNumber
                           ? batch.title.replace(/^test\s*\d+\s*[—\-:]?\s*/i, "").trim() ||
-                            batch.typeLabel
+                          batch.typeLabel
                           : batch.typeLabel;
                       return (
                         <tr

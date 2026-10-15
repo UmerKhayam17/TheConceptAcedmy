@@ -1,7 +1,14 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Loader2, Printer } from "lucide-react";
+import {
+  BookOpen,
+  CalendarCheck2,
+  CalendarDays,
+  ClipboardList,
+  Layers,
+  Loader2,
+  Printer,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +17,9 @@ import {
   printAssessmentDateSheetPdf,
 } from "@/lib/configApi";
 import type { Role } from "@/lib/auth";
-import { testExamsHref } from "@/lib/testExamsMenus";
+import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import PanelStatCard from "@/components/modules/PanelStatCard";
+import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useToast } from "@/hooks/use-toast";
 import {
   dateSheetPrintParams,
@@ -20,13 +29,14 @@ import {
 
 export default function DateSheetDetailPage({
   paperId,
-  role,
+  role: _role,
 }: {
   paperId: string;
   role: Role;
 }) {
   const { toast } = useToast();
   const [printing, setPrinting] = useState(false);
+  const [search, setSearch] = useState("");
 
   const { data: sessions = [] } = useQuery({
     queryKey: ["academic-sessions"],
@@ -50,6 +60,31 @@ export default function DateSheetDetailPage({
     [data?.rows, paperId]
   );
 
+  const syllabusCount = useMemo(() => {
+    if (!batch) return 0;
+    return batch.papers.filter((p) => String(p.syllabus || "").trim()).length;
+  }, [batch]);
+
+  const avgMarks = useMemo(() => {
+    if (!batch?.papers.length) return 0;
+    return Math.round((batch.totalMarks / batch.papers.length) * 10) / 10;
+  }, [batch]);
+
+  const filteredPapers = useMemo(() => {
+    if (!batch) return [];
+    if (!search.trim()) return batch.papers;
+    return batch.papers.filter((r) =>
+      matchesPanelSearch(search, [
+        r.subjectName,
+        r.className,
+        r.sectionName,
+        r.syllabus,
+        r.assessmentTypeLabel,
+        formatDateSheetDate(r.examDate),
+      ])
+    );
+  }, [batch, search]);
+
   const printBatch = async () => {
     if (!sessionId || !batch) return;
     setPrinting(true);
@@ -67,66 +102,148 @@ export default function DateSheetDetailPage({
     }
   };
 
+  const headingTitle = batch
+    ? `${batch.testNumber}${batch.typeLabel ? ` — ${batch.typeLabel}` : ""}`
+    : isLoading
+      ? "Date Sheet"
+      : "Date sheet not found";
+
+  const dateRange =
+    batch?.dateFrom
+      ? batch.dateTo &&
+        formatDateSheetDate(batch.dateFrom) !== formatDateSheetDate(batch.dateTo)
+        ? `${formatDateSheetDate(batch.dateFrom)} – ${formatDateSheetDate(batch.dateTo)}`
+        : formatDateSheetDate(batch.dateFrom)
+      : "";
+
+  const headingMeta = batch
+    ? [
+        `Class ${batch.className}`,
+        `Section ${batch.sectionName}`,
+        batch.disciplineName ? `Discipline ${batch.disciplineName}` : "",
+        dateRange,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "Published subject schedule for this assessment.";
+
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/80 flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <Link
-              to={testExamsHref(role, "date-sheet")}
-              className="text-xs text-primary hover:underline mb-0.5 inline-block"
-            >
-              ← Back to assessments
-            </Link>
-            {isLoading ? (
-              <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading date sheet…
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <CalendarDays className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                {batch ? (
+                  <Badge variant="secondary" className="text-[10px] capitalize">
+                    {batch.category === "exam" ? "Term exam" : "Class test"}
+                  </Badge>
+                ) : null}
+              </div>
+              <h2 className="mt-0.5 text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight truncate">
+                {headingTitle}
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 line-clamp-2 max-w-2xl">
+                {headingMeta}
               </p>
-            ) : batch ? (
-              <>
-                <p className="text-sm font-semibold text-[#1a2b4b] truncate">
-                  {batch.testNumber}
-                  {batch.typeLabel ? ` — ${batch.typeLabel}` : ""}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {[
-                    `Class ${batch.className}`,
-                    `Section ${batch.sectionName}`,
-                    batch.disciplineName ? `Discipline ${batch.disciplineName}` : "",
-                    `${batch.papers.length} subject${batch.papers.length === 1 ? "" : "s"}`,
-                    `${batch.totalMarks} total marks`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </>
-            ) : (
-              <p className="text-sm font-semibold text-[#1a2b4b]">Date sheet not found</p>
-            )}
-          </div>
-          {batch && (
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Badge variant="secondary" className="text-[10px] capitalize">
-                {batch.category}
-              </Badge>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8"
-                aria-label="Print date sheet"
-                title="Print"
-                disabled={printing}
-                onClick={() => void printBatch()}
-              >
-                {printing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Printer className="h-4 w-4" />
-                )}
-              </Button>
             </div>
-          )}
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <PanelStatCard
+          label="Papers"
+          value={isLoading ? "…" : batch?.papers.length ?? 0}
+          hint="Scheduled subjects"
+          icon={CalendarCheck2}
+          iconWrapClass="bg-[#dbeafe]"
+          iconClass="text-[#2563eb]"
+        />
+        <PanelStatCard
+          label="Total marks"
+          value={isLoading ? "…" : batch?.totalMarks ?? 0}
+          hint="Across all subjects"
+          icon={Layers}
+          iconWrapClass="bg-[#ede9fe]"
+          iconClass="text-[#7c3aed]"
+        />
+        <PanelStatCard
+          label="Avg marks"
+          value={isLoading ? "…" : avgMarks}
+          hint="Per subject paper"
+          icon={BookOpen}
+          iconWrapClass="bg-[#d1fae5]"
+          iconClass="text-[#059669]"
+        />
+        <PanelStatCard
+          label="With syllabus"
+          value={isLoading ? "…" : syllabusCount}
+          hint={
+            batch?.papers.length
+              ? `${batch.papers.length - syllabusCount} still empty`
+              : "Syllabus entered"
+          }
+          icon={ClipboardList}
+          iconWrapClass="bg-[#ffedd5]"
+          iconClass="text-[#ea580c]"
+        />
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <PanelSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search subject, syllabus…"
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-10 gap-1.5 ml-auto"
+            disabled={!batch || printing}
+            onClick={() => void printBatch()}
+          >
+            {printing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Printer className="h-3.5 w-3.5" />
+            )}
+            Print
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-[#1a2b4b]">Subject schedule</p>
+            <p className="text-xs text-slate-500">
+              {isLoading
+                ? "Loading date sheet…"
+                : batch
+                  ? `${filteredPapers.length} subject${filteredPapers.length === 1 ? "" : "s"}${
+                      search.trim() ? " matching search" : " on this assessment"
+                    }.`
+                  : "Assessment not found."}
+            </p>
+          </div>
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
 
         {isError && (
@@ -141,7 +258,15 @@ export default function DateSheetDetailPage({
           </p>
         )}
 
-        {batch && (
+        {batch && filteredPapers.length === 0 && (
+          <p className="p-6 text-sm text-muted-foreground">
+            {search.trim()
+              ? "No subjects match your search."
+              : "No subjects scheduled for this assessment."}
+          </p>
+        )}
+
+        {batch && filteredPapers.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
               <thead>
@@ -156,7 +281,7 @@ export default function DateSheetDetailPage({
                 </tr>
               </thead>
               <tbody>
-                {batch.papers.map((r, idx) => (
+                {filteredPapers.map((r, idx) => (
                   <tr
                     key={`${r.subjectId}-${r.examDate}-${idx}`}
                     className="border-t border-slate-100 align-top hover:bg-slate-50/60"

@@ -89,11 +89,11 @@ export function buildDateSheetBatches(rows: DateSheetRow[]): DateSheetBatch[] {
         .filter((t) => Number.isFinite(t) && t > 0);
       const dateFrom = dates.length
         ? sorted.find((p) => new Date(p.examDate || 0).getTime() === Math.min(...dates))?.examDate ||
-          ""
+        ""
         : first?.examDate || "";
       const dateTo = dates.length
         ? sorted.find((p) => new Date(p.examDate || 0).getTime() === Math.max(...dates))?.examDate ||
-          ""
+        ""
         : first?.examDate || "";
       const routeId =
         sorted.map(dateSheetPaperRouteId).find(Boolean) ||
