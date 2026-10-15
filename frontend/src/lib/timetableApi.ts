@@ -503,6 +503,29 @@ export const upsertSharedLesson = (body: {
 export const deleteCombinedGroup = (combinedGroupId: string) =>
   api<{ deleted: number }>(`/class-board/combined/${combinedGroupId}`, { method: "DELETE" });
 
+export const clearClassBoard = (body: {
+  sessionId: string;
+  classId?: string;
+  includeLocked?: boolean;
+}) =>
+  api<{
+    deleted: number;
+    versionsCleared: number;
+    draftVersions?: number;
+    publishedVersions?: number;
+    classId: string | null;
+    includeLocked: boolean;
+  }>("/class-board/clear", { method: "POST", body: JSON.stringify(body) });
+
+export const clearVersionSlots = (
+  versionId: string,
+  body: { includeLocked?: boolean } = {}
+) =>
+  api<{ deleted: number; versionId: string; includeLocked: boolean }>(
+    `/versions/${versionId}/clear-slots`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+
 export type PublishClassDraftFailure = {
   versionId: string;
   sectionId: string;

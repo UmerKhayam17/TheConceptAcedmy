@@ -13,9 +13,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   AlertCircle,
   Circle,
   DoorOpen,
+  Eraser,
   FileDown,
   FileSpreadsheet,
   GripVertical,
@@ -44,6 +55,7 @@ import {
   sortClassesByLevel,
 } from "@/lib/configApi";
 import {
+  clearClassBoard,
   deleteCombinedGroup,
   deleteScheduleSlot,
   fetchClassBoard,
@@ -249,6 +261,7 @@ export default function ClassBoardTab({
   const [draggingSlotId, setDraggingSlotId] = useState<string | null>(null);
   const [dropOver, setDropOver] = useState<{ sectionId: string; periodId: string } | null>(null);
   const [autoGenOpen, setAutoGenOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const draggingSlotIdRef = useRef<string | null>(null);
   const skipClickRef = useRef(false);
 
@@ -626,6 +639,35 @@ export default function ClassBoardTab({
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const clearMut = useMutation({
+    mutationFn: () =>
+      clearClassBoard({
+        sessionId,
+        ...(classId ? { classId } : {}),
+        includeLocked: true,
+      }),
+    onSuccess: async (result) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["class-board", sessionId] }),
+        qc.invalidateQueries({ queryKey: ["timetable-grid"] }),
+        qc.invalidateQueries({ queryKey: ["section-schedule", sessionId] }),
+        qc.invalidateQueries({ queryKey: ["my-teacher-schedule", sessionId] }),
+        qc.invalidateQueries({ queryKey: ["timetable-versions"] }),
+      ]);
+      setClearOpen(false);
+      toast({
+        title: result.deleted ? "Board cleared" : "Nothing to clear",
+        description: result.deleted
+          ? `Removed ${result.deleted} lesson${result.deleted === 1 ? "" : "s"} from ${
+              result.versionsCleared
+            } section sheet${result.versionsCleared === 1 ? "" : "s"} (draft + published).`
+          : "No lessons found for this scope.",
+      });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Could not clear", description: e.message, variant: "destructive" }),
+  });
+
   const publishMut = useMutation({
     mutationFn: () =>
       publishClassDrafts({
@@ -723,6 +765,9 @@ export default function ClassBoardTab({
     : selectedOption?.subjectIds || [];
   const multiSubjectLesson = activeSubjectIds.length > 1;
   const draftCount = sectionRows.filter((r) => r.version?.status === "draft").length;
+  const boardLessonCount = sectionRows.reduce((n, row) => n + (row.slots?.length || 0), 0);
+  /** Active whenever manager can clear — draft and published sheets are both wiped. */
+  const canClearBoard = canManage && Boolean(sessionId);
   const isDragActive = Boolean(draggingSlotId || draggingSlotIdRef.current);
   const dialogSectionRows = dialog
     ? sectionRows.filter((row) => String(row.class?._id || classId) === String(dialog.classId))
@@ -730,6 +775,7 @@ export default function ClassBoardTab({
   const dayOptions = workingDays.length ? workingDays : DAY_ORDER;
   const selectedClass = classes.find((c) => c._id === classId);
   const selectedClassName = selectedClass ? classDisplayName(selectedClass) : undefined;
+  const clearScopeLabel = selectedClassName || "all classes";
   const boardTitle = selectedClassName
     ? `Class Board · ${selectedClassName}`
     : "Class Board · All classes";
@@ -802,44 +848,72 @@ export default function ClassBoardTab({
         <span className="text-foreground font-medium">Class Board</span>
       </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <LayoutGrid className="h-5 w-5" />
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <LayoutGrid className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Class Board
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                One timetable per section — edit here, then publish. Use Auto Generate to fill all
+                classes at once.
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-display text-xl font-semibold tracking-tight">Class Board</h2>
-            <p className="text-sm text-muted-foreground max-w-xl">
-              One timetable per section — edit here, then publish. Use Auto Generate to fill
-              all classes at once.
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canManage && (
-            <Button size="sm" variant="default" onClick={() => setAutoGenOpen(true)}>
-              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-              Auto Generate All
-            </Button>
-          )}
-          {canManage && versionMode === "draft" && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!draftCount || publishMut.isPending}
-              onClick={() => publishMut.mutate()}
-            >
-              <Send className="h-3.5 w-3.5 mr-1.5" />
-              Publish{draftCount ? ` (${draftCount})` : ""}
-            </Button>
-          )}
-          {canEditBoard && (
-            <Button size="sm" variant="outline" onClick={openSharedLessonBuilder}>
-              <Plus className="h-3.5 w-3.5 mr-1.5" />
-              Add Shared Lesson
-            </Button>
-          )}
-        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {canManage && (
+          <Button size="sm" variant="default" onClick={() => setAutoGenOpen(true)}>
+            <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+            Auto Generate All
+          </Button>
+        )}
+        {canManage && versionMode === "draft" && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!draftCount || publishMut.isPending}
+            onClick={() => publishMut.mutate()}
+          >
+            <Send className="h-3.5 w-3.5 mr-1.5" />
+            Publish{draftCount ? ` (${draftCount})` : ""}
+          </Button>
+        )}
+        {canEditBoard && (
+          <Button size="sm" variant="outline" onClick={openSharedLessonBuilder}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Add Shared Lesson
+          </Button>
+        )}
+        {canManage && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+            disabled={!canClearBoard || clearMut.isPending}
+            onClick={() => setClearOpen(true)}
+          >
+            <Eraser className="h-3.5 w-3.5 mr-1.5" />
+            Clear Board
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
@@ -1277,6 +1351,23 @@ export default function ClassBoardTab({
                 </span>
               </button>
             )}
+            {canManage && (
+              <button
+                type="button"
+                disabled={!canClearBoard || clearMut.isPending}
+                onClick={() => setClearOpen(true)}
+                className="flex w-full items-start gap-3 rounded-xl border border-destructive/20 px-3 py-2.5 text-left hover:bg-destructive/5 transition-colors disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Eraser className="h-4 w-4 mt-0.5 text-destructive shrink-0" />
+                <span>
+                  <span className="block text-sm font-medium text-destructive">Clear Board</span>
+                  <span className="text-xs text-muted-foreground">
+                    Empty draft + published
+                    {classId ? ` for ${clearScopeLabel}` : " for every class"}
+                  </span>
+                </span>
+              </button>
+            )}
             <button
               type="button"
               disabled={!canExportBoard}
@@ -1685,6 +1776,47 @@ export default function ClassBoardTab({
           qc.invalidateQueries({ queryKey: ["section-schedule", sessionId] });
         }}
       />
+
+      <AlertDialog open={clearOpen} onOpenChange={setClearOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear the full board?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  This permanently empties{" "}
+                  <span className="font-medium text-foreground">{clearScopeLabel}</span>
+                  {boardLessonCount
+                    ? ` (about ${boardLessonCount} lesson${boardLessonCount === 1 ? "" : "s"} visible today)`
+                    : ""}
+                  .
+                </p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>
+                    <span className="font-medium text-foreground">Draft and published</span> sheets
+                    are both cleared.
+                  </li>
+                  <li>Locked lessons are removed too — the board becomes fully empty.</li>
+                  <li>Rebuild with Auto Generate or place lessons again afterward.</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearMut.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={clearMut.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                clearMut.mutate();
+              }}
+            >
+              {clearMut.isPending ? "Clearing…" : "Clear full board"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

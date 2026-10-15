@@ -390,6 +390,30 @@ async function deleteSlot(slotId) {
   return { deleted: true };
 }
 
+/**
+ * Clear every lesson on a draft or published timetable version (section sheet).
+ * Locked lessons are kept unless includeLocked is true.
+ */
+async function clearVersionSlots(versionId, { includeLocked = true } = {}) {
+  const version = await TimetableVersion.findById(versionId);
+  if (!version) throw new ApiError(404, 'Timetable version not found');
+  if (version.status !== 'draft' && version.status !== 'published') {
+    throw new ApiError(400, 'Can only clear draft or published timetables');
+  }
+  await assertSessionWritable(version.session);
+
+  const slotQuery = { timetableVersion: versionId };
+  if (!includeLocked) slotQuery.locked = { $ne: true };
+
+  const result = await ScheduleSlot.deleteMany(slotQuery);
+  return {
+    deleted: result.deletedCount || 0,
+    versionId: String(versionId),
+    status: version.status,
+    includeLocked: Boolean(includeLocked),
+  };
+}
+
 function teacherInSlotQuery(teacherId) {
   return {
     $or: [{ teacher: teacherId }, { 'parallelEntries.teacher': teacherId }],
@@ -567,6 +591,7 @@ module.exports = {
   upsertSlot,
   moveSlot,
   deleteSlot,
+  clearVersionSlots,
   getTeacherSchedule,
   getRoomSchedule,
   createSubstitution,

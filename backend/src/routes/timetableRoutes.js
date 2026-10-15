@@ -130,6 +130,12 @@ router.patch(
   tt.moveSlot
 );
 router.delete('/slots/:slotId', canManage, tt.deleteSlot);
+router.post(
+  '/versions/:versionId/clear-slots',
+  canManage,
+  validate(schemas.clearVersionSlotsBody),
+  tt.clearVersionSlots
+);
 
 // ─── Auto Generate All Timetables (scheduler → draft slots) ─────
 router.post(
@@ -156,6 +162,12 @@ router.post(
   tt.upsertSharedLesson
 );
 router.delete('/class-board/combined/:combinedGroupId', canManage, tt.deleteCombinedGroup);
+router.post(
+  '/class-board/clear',
+  canManage,
+  validate(schemas.clearClassBoardBody),
+  tt.clearClassBoard
+);
 router.post(
   '/class-board/publish',
   canPublish,

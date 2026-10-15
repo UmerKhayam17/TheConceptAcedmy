@@ -7,11 +7,22 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   AlertCircle,
   Check,
   ChevronLeft,
   ChevronRight,
   Circle,
+  Eraser,
   FileDown,
   FileSpreadsheet,
   LayoutGrid,
@@ -36,6 +47,7 @@ import {
   sortClassesByLevel,
 } from "@/lib/configApi";
 import {
+  clearVersionSlots,
   createTimetableVersion,
   deleteScheduleSlot,
   fetchClassBoard,
@@ -143,6 +155,7 @@ export default function GridTab({
   const [draggingSlotId, setDraggingSlotId] = useState<string | null>(null);
   const [dropOver, setDropOver] = useState<{ day: Weekday; periodId: string } | null>(null);
   const [editingLive, setEditingLive] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const skipClickRef = useRef(false);
   /** Sync ref so dragOver/drop work before React re-renders after dragStart. */
   const draggingSlotIdRef = useRef<string | null>(null);
@@ -282,6 +295,45 @@ export default function GridTab({
     caps.canCreate,
     createVersionMut.isPending,
   ]);
+
+  const clearVersionMut = useMutation({
+    mutationFn: async () => {
+      if (!sectionId) throw new Error("Select a section first");
+      // Clear both draft and published sheets for this section so it is fully empty.
+      const targets = versions.filter(
+        (v) => v.status === "draft" || v.status === "published"
+      );
+      if (!targets.length) {
+        if (!activeVersionId) throw new Error("No timetable selected");
+        return clearVersionSlots(activeVersionId, { includeLocked: true });
+      }
+      let deleted = 0;
+      for (const v of targets) {
+        // eslint-disable-next-line no-await-in-loop
+        const r = await clearVersionSlots(v._id, { includeLocked: true });
+        deleted += r.deleted || 0;
+      }
+      return { deleted, versionId: activeVersionId, includeLocked: true as const };
+    },
+    onSuccess: async (result) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["timetable-grid"] }),
+        qc.invalidateQueries({ queryKey: ["timetable-versions", sessionId, sectionId] }),
+        qc.invalidateQueries({ queryKey: ["class-board", sessionId] }),
+        qc.invalidateQueries({ queryKey: ["section-schedule", sessionId] }),
+        qc.invalidateQueries({ queryKey: ["my-teacher-schedule", sessionId] }),
+      ]);
+      setClearOpen(false);
+      toast({
+        title: result.deleted ? "Timetable cleared" : "Nothing to clear",
+        description: result.deleted
+          ? `Removed ${result.deleted} lesson${result.deleted === 1 ? "" : "s"} from this section (draft + published).`
+          : "No lessons found for this section.",
+      });
+    },
+    onError: (e: Error) =>
+      toast({ title: "Could not clear", description: e.message, variant: "destructive" }),
+  });
 
   const saveSlotMut = useMutation({
     mutationFn: () => {
@@ -639,6 +691,12 @@ export default function GridTab({
     canManageGrid &&
     activeVersion &&
     (activeVersion.status === "draft" || activeVersion.status === "archived");
+  const gridLessonCount = grid?.slots?.length || 0;
+  const canShowClearTimetable = canManageGrid && Boolean(sectionId);
+  const canClearTimetable = canShowClearTimetable && Boolean(sessionId);
+  const clearSectionLabel = selectedClass
+    ? `${classDisplayName(selectedClass)}${selectedSection?.name ? ` · ${selectedSection.name}` : ""}`
+    : "this section";
 
   const handleCellClick = (day: Weekday, period: PeriodSlot) => {
     if (skipClickRef.current) {
@@ -788,67 +846,102 @@ export default function GridTab({
         <span className="text-foreground font-medium">Timetable builder</span>
       </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <LayoutGrid className="h-5 w-5" />
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <LayoutGrid className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Timetable Builder
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                Plan and manage one timetable per section — edit the sheet, then publish when ready.
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-display text-xl font-semibold tracking-tight text-primary">
-              Timetable Builder
-            </h2>
-            <p className="text-sm text-muted-foreground max-w-2xl">
-              Plan and manage one timetable per section. Edit the same sheet, then publish when ready.
-              Click any cell to add or edit a lesson.
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {sectionId && caps.canCreate && !draftVersion && !publishedVersion && (
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {sectionId && caps.canCreate && !draftVersion && !publishedVersion && (
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={() => createVersionMut.mutate()}
+            disabled={createVersionMut.isPending}
+          >
+            <Plus className="h-3.5 w-3.5" /> Create timetable
+          </Button>
+        )}
+        {activeVersionId && canManageGrid && (
+          <>
+            {isPublished && !editingLive && (
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  if (publishedVersion?._id) setVersionId(publishedVersion._id);
+                  setEditingLive(true);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" /> Edit timetable
+              </Button>
+            )}
+            {isPublished && editingLive && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setEditingLive(false)}
+              >
+                <Check className="h-3.5 w-3.5" /> Done editing
+              </Button>
+            )}
             <Button
               size="sm"
+              variant="outline"
               className="gap-1.5"
-              onClick={() => createVersionMut.mutate()}
-              disabled={createVersionMut.isPending}
+              onClick={() => validateMut.mutate()}
             >
-              <Plus className="h-3.5 w-3.5" /> Create timetable
+              <AlertCircle className="h-3.5 w-3.5" /> Validate
             </Button>
-          )}
-          {activeVersionId && canManageGrid && (
-            <>
-              {isPublished && !editingLive && (
-                <Button
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => {
-                    if (publishedVersion?._id) setVersionId(publishedVersion._id);
-                    setEditingLive(true);
-                  }}
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit timetable
-                </Button>
-              )}
-              {isPublished && editingLive && (
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditingLive(false)}>
-                  <Check className="h-3.5 w-3.5" /> Done editing
-                </Button>
-              )}
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => validateMut.mutate()}>
-                <AlertCircle className="h-3.5 w-3.5" /> Validate
+            {canPublishVersion && grid && (
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => publishMut.mutate()}
+                disabled={publishMut.isPending}
+              >
+                <Send className="h-3.5 w-3.5" /> Publish
               </Button>
-              {canPublishVersion && grid && (
-                <Button
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => publishMut.mutate()}
-                  disabled={publishMut.isPending}
-                >
-                  <Send className="h-3.5 w-3.5" /> Publish
-                </Button>
-              )}
-            </>
-          )}
-        </div>
+            )}
+            {canShowClearTimetable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                disabled={!canClearTimetable || clearVersionMut.isPending}
+                onClick={() => setClearOpen(true)}
+                title="Clear all draft and published lessons for this section"
+              >
+                <Eraser className="h-3.5 w-3.5" /> Clear timetable
+              </Button>
+            )}
+          </>
+        )}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
@@ -1251,6 +1344,24 @@ export default function GridTab({
         <aside className="space-y-4 xl:sticky xl:top-4">
           <Card className="rounded-2xl border p-4 shadow-sm space-y-2">
             <h3 className="text-sm font-semibold mb-2">Quick Actions</h3>
+            {canShowClearTimetable && (
+              <button
+                type="button"
+                disabled={!canClearTimetable || clearVersionMut.isPending}
+                onClick={() => setClearOpen(true)}
+                className="flex w-full items-start gap-3 rounded-xl border border-destructive/20 px-3 py-2.5 text-left hover:bg-destructive/5 transition-colors disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Eraser className="h-4 w-4 mt-0.5 text-destructive shrink-0" />
+                <span>
+                  <span className="block text-sm font-medium text-destructive">
+                    Clear timetable
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Empty draft + published for this section
+                  </span>
+                </span>
+              </button>
+            )}
             <button
               type="button"
               disabled={!canExportGrid}
@@ -1641,6 +1752,47 @@ export default function GridTab({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={clearOpen} onOpenChange={setClearOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear this section timetable?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  This permanently empties{" "}
+                  <span className="font-medium text-foreground">{clearSectionLabel}</span>
+                  {gridLessonCount
+                    ? ` (${gridLessonCount} lesson${gridLessonCount === 1 ? "" : "s"} on the open sheet)`
+                    : ""}
+                  .
+                </p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>
+                    <span className="font-medium text-foreground">Draft and published</span> sheets
+                    for this section are both cleared.
+                  </li>
+                  <li>Locked lessons are removed too — the sheet becomes fully empty.</li>
+                  <li>Other sections are not changed.</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearVersionMut.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={clearVersionMut.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                clearVersionMut.mutate();
+              }}
+            >
+              {clearVersionMut.isPending ? "Clearing…" : "Clear full timetable"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

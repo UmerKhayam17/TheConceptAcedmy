@@ -526,6 +526,51 @@ async function deleteCombinedGroup(combinedGroupId) {
   return { deleted: result.deletedCount || 0 };
 }
 
+/**
+ * Clear all timetable lessons for a session (optionally one class).
+ * Empties both draft and published section sheets so the board is fully empty.
+ */
+async function clearClassBoard({ sessionId, classId, includeLocked = true }, userId) {
+  if (!sessionId) throw new ApiError(400, 'sessionId is required');
+  await assertSessionWritable(sessionId);
+
+  const versionQuery = {
+    session: sessionId,
+    status: { $in: ['draft', 'published'] },
+  };
+  if (classId) versionQuery.class = classId;
+
+  const versions = await TimetableVersion.find(versionQuery).select('_id class section status');
+  if (!versions.length) {
+    return {
+      deleted: 0,
+      versionsCleared: 0,
+      draftVersions: 0,
+      publishedVersions: 0,
+      classId: classId || null,
+      includeLocked: Boolean(includeLocked),
+    };
+  }
+
+  const versionIds = versions.map((d) => d._id);
+  const slotQuery = { timetableVersion: { $in: versionIds } };
+  if (!includeLocked) slotQuery.locked = { $ne: true };
+
+  const result = await ScheduleSlot.deleteMany(slotQuery);
+  const draftVersions = versions.filter((v) => v.status === 'draft').length;
+  const publishedVersions = versions.filter((v) => v.status === 'published').length;
+
+  return {
+    deleted: result.deletedCount || 0,
+    versionsCleared: versionIds.length,
+    draftVersions,
+    publishedVersions,
+    classId: classId || null,
+    includeLocked: Boolean(includeLocked),
+    clearedBy: userId || null,
+  };
+}
+
 async function publishClassDrafts({ sessionId, classId }, userId) {
   await assertSessionWritable(sessionId);
   const q = { session: sessionId, status: 'draft' };
@@ -704,6 +749,7 @@ module.exports = {
   getClassBoard,
   upsertSharedLesson,
   deleteCombinedGroup,
+  clearClassBoard,
   publishClassDrafts,
   moveClassBoardLesson,
 };

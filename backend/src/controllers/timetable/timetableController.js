@@ -136,6 +136,16 @@ const deleteCombinedGroup = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const clearClassBoard = catchAsync(async (req, res) => {
+  const data = await classBoardService.clearClassBoard(req.body, req.user._id);
+  res.json({ success: true, data });
+});
+
+const clearVersionSlots = catchAsync(async (req, res) => {
+  const data = await scheduleSlotService.clearVersionSlots(req.params.versionId, req.body || {});
+  res.json({ success: true, data });
+});
+
 const publishClassDrafts = catchAsync(async (req, res) => {
   const data = await classBoardService.publishClassDrafts(req.body, req.user._id);
   res.json({ success: true, data });
@@ -182,6 +192,8 @@ module.exports = {
   getClassBoard,
   upsertSharedLesson,
   deleteCombinedGroup,
+  clearClassBoard,
+  clearVersionSlots,
   publishClassDrafts,
   moveClassBoardLesson,
   autoGenerateAll,

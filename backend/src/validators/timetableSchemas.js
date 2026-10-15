@@ -254,6 +254,19 @@ const publishClassDraftsBody = Joi.object({
   classId: objectId.allow('', null),
 });
 
+/** Clear Class Board / timetable lessons (draft + published). */
+const clearClassBoardBody = Joi.object({
+  sessionId: objectId.required(),
+  classId: objectId.allow('', null),
+  /** Default true — full empty board including locked lessons. */
+  includeLocked: Joi.boolean().default(true),
+});
+
+const clearVersionSlotsBody = Joi.object({
+  /** Default true — full empty section sheet including locked lessons. */
+  includeLocked: Joi.boolean().default(true),
+});
+
 const classBoardMoveBody = Joi.object({
   slotId: objectId.required(),
   toSectionId: objectId.required(),
@@ -311,6 +324,8 @@ module.exports = {
   classBoardQuery,
   sharedLessonBody,
   publishClassDraftsBody,
+  clearClassBoardBody,
+  clearVersionSlotsBody,
   classBoardMoveBody,
   autoGenerateAllBody,
   sectionDashboardQuery,
