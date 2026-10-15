@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import {
+  CheckCircle2,
+  ClipboardList,
+  FileStack,
+  GraduationCap,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +38,7 @@ import {
   type AssessmentPlanItem,
 } from "@/lib/configApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import PanelStatCard from "@/components/modules/PanelStatCard";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 
 /**
@@ -50,6 +59,7 @@ export default function AssessmentsConfigTab({
   const canManage = caps.canCreate || caps.canEdit;
   const noun = category === "test" ? "test" : "exam";
   const nounTitle = category === "test" ? "Tests" : "Exams";
+  const HeaderIcon = category === "test" ? ClipboardList : GraduationCap;
 
   const [typeFilter, setTypeFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -119,7 +129,9 @@ export default function AssessmentsConfigTab({
     setForm({
       name: "",
       assessmentType:
-        typeFilter && typeOptions.includes(typeFilter as CanonicalAssessmentType) ? (typeFilter as CanonicalAssessmentType) : typeOptions[0],
+        typeFilter && typeOptions.includes(typeFilter as CanonicalAssessmentType)
+          ? (typeFilter as CanonicalAssessmentType)
+          : typeOptions[0],
     });
     setDialogOpen(true);
   };
@@ -161,75 +173,115 @@ export default function AssessmentsConfigTab({
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{nounTitle}</p>
-          <p className="text-lg font-semibold text-primary">{isLoading ? "…" : items.length}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Class assignments</p>
-          <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">
-            {isLoading ? "…" : assignedCount}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Published</p>
-          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
-            {isLoading ? "…" : publishedCount}
-          </p>
-        </Card>
-      </div>
-
-      <Card className="p-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0 flex-1">
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <HeaderIcon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
             <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Search</Label>
-              <PanelSearchBar
-                value={search}
-                onChange={setSearch}
-                placeholder={`Search ${noun} name or type…`}
-                className="max-w-none w-full min-w-0"
-                inputClassName="h-9"
-              />
-            </div>
-            <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Type</Label>
-              <select
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-              >
-                <option value="">All types</option>
-                {typeOptions.map((key) => (
-                  <option key={key} value={key}>
-                    {ASSESSMENT_TYPES[key].label}
-                  </option>
-                ))}
-              </select>
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                {category === "test" ? "Test Catalog" : "Exam Catalog"}
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                Define {noun} names and types for this session. Assign them to classes from Examination.
+              </p>
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {canManage && (
-              <Button size="sm" variant="gold" className="whitespace-nowrap" onClick={openCreate}>
-                <Plus className="h-4 w-4" />
-                Add {noun}
-              </Button>
-            )}
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
           </div>
         </div>
-      </Card>
+      </div>
 
-      <Card className="overflow-hidden">
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+        <PanelStatCard
+          label={nounTitle}
+          value={isLoading ? "…" : items.length}
+          hint={`In this session ${noun} catalog`}
+          icon={HeaderIcon}
+          iconWrapClass="bg-[#dbeafe]"
+          iconClass="text-[#2563eb]"
+        />
+        <PanelStatCard
+          label="Class assignments"
+          value={isLoading ? "…" : assignedCount}
+          hint="Linked to classes"
+          icon={FileStack}
+          iconWrapClass="bg-[#ede9fe]"
+          iconClass="text-[#7c3aed]"
+        />
+        <PanelStatCard
+          label="Published"
+          value={isLoading ? "…" : publishedCount}
+          hint="Ready for marks"
+          icon={CheckCircle2}
+          iconWrapClass="bg-[#d1fae5]"
+          iconClass="text-[#059669]"
+        />
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <PanelSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder={`Search ${noun} name or type…`}
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            aria-label="Type filter"
+          >
+            <option value="">All types</option>
+            {typeOptions.map((key) => (
+              <option key={key} value={key}>
+                {ASSESSMENT_TYPES[key].label}
+              </option>
+            ))}
+          </select>
+          {canManage && (
+            <Button size="sm" className="h-10 gap-2 ml-auto whitespace-nowrap" onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              Add {noun}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-[#1a2b4b]">Catalog items</p>
+            <p className="text-xs text-slate-500">
+              {isLoading
+                ? `Loading ${noun}s…`
+                : `${filtered.length} ${noun}${filtered.length === 1 ? "" : "s"}${
+                    search.trim() || typeFilter ? " matching filters" : " in catalog"
+                  }.`}
+            </p>
+          </div>
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 border-b">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left p-2.5 font-medium">Name</th>
-                <th className="text-left p-2.5 font-medium">Type</th>
-                <th className="text-left p-2.5 font-medium">Classes</th>
-                {canManage && <th className="text-right p-2.5 font-medium">Action</th>}
+                <th className="text-left p-3 font-medium text-slate-600">Name</th>
+                <th className="text-left p-3 font-medium text-slate-600">Type</th>
+                <th className="text-left p-3 font-medium text-slate-600">Classes</th>
+                {canManage && <th className="text-right p-3 font-medium text-slate-600">Action</th>}
               </tr>
             </thead>
             <tbody>
@@ -257,32 +309,47 @@ export default function AssessmentsConfigTab({
                 </tr>
               )}
               {filtered.map((item) => (
-                <tr key={item._id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="p-2.5 font-medium">{item.name}</td>
-                  <td className="p-2.5 text-muted-foreground">
+                <tr key={item._id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/80">
+                  <td className="p-3 font-medium text-[#1a2b4b]">{item.name}</td>
+                  <td className="p-3 text-muted-foreground">
                     {ASSESSMENT_TYPE_LABELS[item.assessmentType as AssessmentType] || item.assessmentType}
                   </td>
-                  <td className="p-2.5">{item.assignmentCount ?? 0}</td>
+                  <td className="p-3">{item.assignmentCount ?? 0}</td>
                   {canManage && (
-                    <td className="p-2.5 text-right space-x-1">
-                      <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive"
-                        disabled={deleteMut.isPending && deleteMut.variables === item._id}
-                        onClick={() => {
-                          if (window.confirm(`Remove "${item.name}" from the catalog?`)) {
-                            deleteMut.mutate(item._id);
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
-                      </Button>
+                    <td className="p-3 text-right">
+                      <div className="flex justify-end gap-0.5">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-sky-600 hover:text-sky-700"
+                          title="Edit"
+                          aria-label="Edit"
+                          onClick={() => openEdit(item)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          title="Delete"
+                          aria-label="Delete"
+                          disabled={deleteMut.isPending && deleteMut.variables === item._id}
+                          onClick={() => {
+                            if (window.confirm(`Remove "${item.name}" from the catalog?`)) {
+                              deleteMut.mutate(item._id);
+                            }
+                          }}
+                        >
+                          {deleteMut.isPending && deleteMut.variables === item._id ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-destructive" />
+                          ) : (
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          )}
+                        </Button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -290,7 +357,7 @@ export default function AssessmentsConfigTab({
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => !saving && setDialogOpen(open)}>
         <DialogContent className="sm:max-w-md">
@@ -309,26 +376,26 @@ export default function AssessmentsConfigTab({
             </div>
             <div className="space-y-1.5">
               <Label>Type</Label>
-                <select
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={form.assessmentType}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, assessmentType: e.target.value as CanonicalAssessmentType }))
-                  }
-                >
-                  {formTypes.map((key) => (
-                    <option key={key} value={key}>
-                      {ASSESSMENT_TYPES[key].label}
-                    </option>
-                  ))}
-                </select>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={form.assessmentType}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, assessmentType: e.target.value as CanonicalAssessmentType }))
+                }
+              >
+                {formTypes.map((key) => (
+                  <option key={key} value={key}>
+                    {ASSESSMENT_TYPES[key].label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDialogOpen(false)} disabled={saving}>
               Cancel
             </Button>
-            <Button variant="gold" onClick={save} disabled={saving || !form.name.trim()}>
+            <Button className="gap-2" onClick={save} disabled={saving || !form.name.trim()}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {editing ? "Save" : "Add"}
             </Button>
