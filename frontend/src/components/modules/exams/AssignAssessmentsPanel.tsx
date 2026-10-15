@@ -469,13 +469,13 @@ export default function AssignAssessmentsPanel({
             </div>
           </div>
           {canManage && branch === "test" && isTeacher && (
-            <Button size="sm" variant="gold" className="h-10 whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady || !scopeRows.length}>
+            <Button size="sm" className="h-10 gap-2 whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady || !scopeRows.length}>
               <Plus className="h-4 w-4" />
               Create {noun}
             </Button>
           )}
           {canManage && !(branch === "test" && isTeacher) && (
-            <Button size="sm" variant="gold" className="h-10 whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady}>
+            <Button size="sm" className="h-10 gap-2 whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady}>
               <Plus className="h-4 w-4" />
               Create {noun}
             </Button>

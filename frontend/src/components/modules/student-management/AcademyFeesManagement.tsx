@@ -520,8 +520,8 @@ export default function AcademyFeesManagement({
   const paidOnlyView = lockedStatus === "paid";
 
   const now = new Date();
-  const [month, setMonth] = useState(() => (paidOnlyView ? "" : String(now.getMonth() + 1)));
-  const [year, setYear] = useState(() => (paidOnlyView ? "" : String(now.getFullYear())));
+  const [month, setMonth] = useState(() => String(now.getMonth() + 1));
+  const [year, setYear] = useState(() => String(now.getFullYear()));
   const [statusFilter, setStatusFilter] = useState(() =>
     lockedStatus || (user?.role === "parent" ? "paid" : "")
   );
