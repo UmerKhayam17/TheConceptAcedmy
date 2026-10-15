@@ -82,6 +82,7 @@ import { resolveUploadUrl } from "@/lib/api";
 import { academyStudentRoutes, type AcademyStudentRoutes } from "@/lib/studentManagementMenus";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
+import { FreeStudentBadge, isFreeFeeStudent } from "./FeeModeSelector";
 import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import { cn } from "@/lib/utils";
 import {
@@ -1447,18 +1448,21 @@ export default function AcademyFeesManagement({
                     <td className="p-2.5 font-mono text-xs">{r.receiptNumber || "—"}</td>
                     {!childScoped && (
                       <td className="p-2.5">
-                        {detailHref ? (
-                          <Link
-                            to={detailHref}
-                            className={`font-medium hover:underline ${payable ? "text-red-700 dark:text-red-300" : "text-primary"}`}
-                          >
-                            {studentName(r)}
-                          </Link>
-                        ) : (
-                          <div className={`font-medium ${payable ? "text-red-700 dark:text-red-300" : ""}`}>
-                            {studentName(r)}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {detailHref ? (
+                            <Link
+                              to={detailHref}
+                              className={`font-medium hover:underline ${payable ? "text-red-700 dark:text-red-300" : "text-primary"}`}
+                            >
+                              {studentName(r)}
+                            </Link>
+                          ) : (
+                            <div className={`font-medium ${payable ? "text-red-700 dark:text-red-300" : ""}`}>
+                              {studentName(r)}
+                            </div>
+                          )}
+                          {isFreeFeeStudent(r, studentFromRecord(r)) && <FreeStudentBadge />}
+                        </div>
                         <p className={`text-xs ${payable ? "text-red-700/80 dark:text-red-300/80" : "text-muted-foreground"}`}>
                           {studentCode(r)}
                         </p>

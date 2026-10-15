@@ -56,6 +56,7 @@ import {
   subjectName,
   WEEKDAY_NAMES,
 } from "./studentDisplayUtils";
+import { FreeStudentBadge, isFullFeeWaiver } from "./FeeModeSelector";
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="text-sm font-semibold text-primary border-b pb-1.5 mb-3">{children}</h3>;
@@ -255,7 +256,12 @@ function ProfileTab({ student, hideSensitive = false }: { student: AcademyStuden
 
       {!hideSensitive && (
         <section className="rounded-lg border p-4 space-y-3">
-          <SectionTitle>Fee structure at registration</SectionTitle>
+          <SectionTitle>
+            <span className="inline-flex flex-wrap items-center gap-2">
+              Fee structure at registration
+              {isFullFeeWaiver(student) && <FreeStudentBadge />}
+            </span>
+          </SectionTitle>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
             <DetailRow label="Class" value={classLabel(student.classId)} />
             {student.disciplineId && (

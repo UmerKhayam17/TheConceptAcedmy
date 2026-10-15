@@ -207,6 +207,21 @@ function monthlyBillAmount(student) {
   return Math.max(0, fee - discount);
 }
 
+const FULL_WAIVER_NOTE = 'Full fee waiver — free student (auto-settled)';
+
+function applyFullWaiverSettlement(record, userId) {
+  record.amount = 0;
+  record.status = 'paid';
+  record.paidAt = record.paidAt || new Date();
+  record.paymentMethod = record.paymentMethod || 'other';
+  record.recordedBy = userId;
+  const notes = String(record.notes || '').trim();
+  if (!notes.includes('Full fee waiver')) {
+    record.notes = [notes, FULL_WAIVER_NOTE].filter(Boolean).join(' · ');
+  }
+  return record;
+}
+
 function roundMoney(n) {
   return Math.round(Number(n) * 100) / 100;
 }
@@ -387,18 +402,23 @@ async function syncUnpaidChallansForStudent(student, { chargeIds } = {}) {
 
     const amountChanged = Math.abs(nextAmount - oldAmount) > 0.009;
     const componentsChanged = !componentsEqual(record.components, bill.components);
-    if (!amountChanged && !componentsChanged) {
+    const becomesFree = nextAmount <= 0 && record.status !== 'paid';
+    if (!amountChanged && !componentsChanged && !becomesFree) {
       skipped += 1;
       continue;
     }
 
-    record.amount = nextAmount;
     record.components = bill.components;
-    if (alreadyPaid > 0) {
-      const creditNote = `Revised bill ₨${bill.amount.toLocaleString()}; credit ₨${alreadyPaid.toLocaleString()} for prior partial payment.`;
-      const notes = String(record.notes || '');
-      if (!notes.includes('Revised bill')) {
-        record.notes = [notes.trim(), creditNote].filter(Boolean).join(' · ');
+    if (nextAmount <= 0) {
+      applyFullWaiverSettlement(record, student.updatedBy || student.createdBy);
+    } else {
+      record.amount = nextAmount;
+      if (alreadyPaid > 0) {
+        const creditNote = `Revised bill ₨${bill.amount.toLocaleString()}; credit ₨${alreadyPaid.toLocaleString()} for prior partial payment.`;
+        const notes = String(record.notes || '');
+        if (!notes.includes('Revised bill')) {
+          record.notes = [notes.trim(), creditNote].filter(Boolean).join(' · ');
+        }
       }
     }
     await record.save();
@@ -484,7 +504,14 @@ async function createEnrollmentFeeVouchers(
     components.push({ name: 'Admission', amount: roundMoney(admissionAmount), kind: 'admission' });
   }
   const totalDue = roundMoney(components.reduce((sum, line) => sum + line.amount, 0));
-  if (totalDue <= 0) return [];
+  const isFree = totalDue <= 0;
+  // Full waiver: still show Tuition + Admission as ₨ 0 lines on one enrollment voucher.
+  const enrollmentComponents = isFree
+    ? [
+        { name: 'Tuition', amount: 0, kind: 'tuition' },
+        { name: 'Admission', amount: 0, kind: 'admission' },
+      ]
+    : components;
 
   const existingAdm = await AcademyFeeRecord.findOne({
     studentId: student._id,
@@ -497,41 +524,59 @@ async function createEnrollmentFeeVouchers(
       return [existingAdm];
     }
     if (replacePending && ['pending', 'overdue'].includes(existingAdm.status)) {
-      existingAdm.amount = totalDue;
-      existingAdm.components = components;
+      existingAdm.components = enrollmentComponents;
       existingAdm.dueDate = dueDate;
-      existingAdm.notes = 'First month: monthly fee + admission fee (after discounts)';
       existingAdm.recordedBy = userId;
+      if (isFree) {
+        applyFullWaiverSettlement(existingAdm, userId);
+        existingAdm.components = enrollmentComponents;
+      } else {
+        existingAdm.amount = totalDue;
+        existingAdm.notes = 'First month: monthly fee + admission fee (after discounts)';
+      }
       await existingAdm.save();
       return [existingAdm];
     }
     return [existingAdm];
   }
 
-  // Avoid a leftover monthly-only voucher for the enrollment month.
+  // Avoid a leftover monthly-only voucher for the enrollment month
+  // (including auto-settled free monthly rows).
   await AcademyFeeRecord.deleteMany({
     studentId: student._id,
     month,
     year,
     feeType: 'monthly',
-    status: { $in: ['pending', 'overdue'] },
+    $or: [
+      { status: { $in: ['pending', 'overdue'] } },
+      { status: 'paid', amount: { $lte: 0 } },
+    ],
   });
 
-  const record = await AcademyFeeRecord.create({
+  const recordPayload = {
     studentId: student._id,
     month,
     year,
-    amount: totalDue,
+    amount: isFree ? 0 : totalDue,
     feeType: 'admission',
-    status: 'pending',
+    status: isFree ? 'paid' : 'pending',
     dueDate,
     receiptNumber: receiptNumber(student, month, year, 'admission'),
-    notes: 'First month: monthly fee + admission fee (after discounts)',
-    components,
+    notes: isFree
+      ? `${FULL_WAIVER_NOTE} · First month (monthly + admission)`
+      : 'First month: monthly fee + admission fee (after discounts)',
+    components: enrollmentComponents,
     createdBy: userId,
     recordedBy: userId,
-    pendingNoticeAt: new Date(),
-  });
+  };
+  if (isFree) {
+    recordPayload.paidAt = new Date();
+    recordPayload.paymentMethod = 'other';
+  } else {
+    recordPayload.pendingNoticeAt = new Date();
+  }
+
+  const record = await AcademyFeeRecord.create(recordPayload);
 
   return [record];
 }
@@ -899,7 +944,8 @@ async function listFeeRecords({
       ? populateCreatedBy(
         AcademyFeeRecord.find({ _id: { $in: ids } }).populate({
           path: 'studentId',
-          select: 'studentId studentName fatherName phone classId monthlyFee',
+          select:
+            'studentId studentName fatherName phone classId monthlyFee admissionFee monthlyFeeDiscount admissionFeeDiscount',
           populate: {
             path: 'classId',
             select: 'className sessionId',
@@ -981,19 +1027,17 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
   let repaired = 0;
 
   for (const student of students) {
-    const listAdmission = Math.max(0, Number(student.admissionFee) || 0);
-
-    // Legacy enrollments billed admission+first-month tuition as one large admission
-    // voucher. Waive any unpaid monthly duplicate for that same period.
-    const legacyAdmission = await AcademyFeeRecord.findOne({
+    // First month is billed on the enrollment (admission) voucher — monthly + admission
+    // combined. Never create a second monthly challan for that same period.
+    const enrollmentVoucher = await AcademyFeeRecord.findOne({
       studentId: student._id,
       month,
       year,
       feeType: 'admission',
-      amount: { $gt: listAdmission + 0.5 },
     });
-    if (legacyAdmission) {
-      const dup = await AcademyFeeRecord.findOneAndUpdate(
+    if (enrollmentVoucher) {
+      const coverNote = 'Waived: enrollment month already covered by admission voucher';
+      const unpaidDup = await AcademyFeeRecord.findOneAndUpdate(
         {
           studentId: student._id,
           month,
@@ -1004,13 +1048,34 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
         {
           $set: {
             status: 'waived',
-            notes: 'Waived: enrollment month already covered by combined admission voucher',
+            notes: coverNote,
             recordedBy: userId,
           },
         },
         { new: true }
       );
-      if (dup) repaired += 1;
+      if (unpaidDup) repaired += 1;
+
+      // Free-student auto-paid monthly rows for the enrollment month are also duplicates.
+      const freeDup = await AcademyFeeRecord.findOne({
+        studentId: student._id,
+        month,
+        year,
+        feeType: 'monthly',
+        amount: { $lte: 0 },
+        status: 'paid',
+      });
+      if (freeDup) {
+        freeDup.status = 'waived';
+        freeDup.recordedBy = userId;
+        const notes = String(freeDup.notes || '').trim();
+        if (!notes.includes('enrollment month already covered')) {
+          freeDup.notes = [notes, coverNote].filter(Boolean).join(' · ');
+        }
+        await freeDup.save();
+        repaired += 1;
+      }
+
       skipped.push(student._id);
       continue;
     }
@@ -1035,24 +1100,22 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       monthlyBillAmount(student),
       { chargeIds: [] }
     );
-    if (amount <= 0) {
-      skipped.push(student._id);
-      continue;
-    }
-
+    const isFree = amount <= 0;
     const record = await AcademyFeeRecord.create({
       studentId: student._id,
       month,
       year,
-      amount,
-      components,
+      amount: isFree ? 0 : amount,
+      components: isFree ? [{ name: 'Tuition', amount: 0, kind: 'tuition' }] : components,
       feeType: 'monthly',
-      status: 'pending',
+      status: isFree ? 'paid' : 'pending',
       dueDate,
       receiptNumber: receiptNumber(student, month, year, 'monthly'),
       recordedBy: userId,
       createdBy: userId,
-      pendingNoticeAt: new Date(),
+      ...(isFree
+        ? { paidAt: new Date(), paymentMethod: 'other', notes: FULL_WAIVER_NOTE }
+        : { pendingNoticeAt: new Date() }),
     });
     await absorbUnpaidStationeryIntoMonthly(student._id, month, year, userId);
     const refreshed = await AcademyFeeRecord.findById(record._id);
@@ -1061,17 +1124,18 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
     else record.studentId = student;
   }
 
-  if (created.length) {
+  const unpaidCreated = created.filter((r) => r.status === 'pending' || r.status === 'overdue');
+  if (unpaidCreated.length) {
     const label = periodText(month, year, 'monthly');
     await safeNotify(() => notifyFeeStaff({
       type: 'fee_challan',
-      title: created.length === 1 ? 'Fee challan issued' : `${created.length} fee challans issued`,
-      body: `${label} is unpaid for ${unpaidSummary(created)}.`,
+      title: unpaidCreated.length === 1 ? 'Fee challan issued' : `${unpaidCreated.length} fee challans issued`,
+      body: `${label} is unpaid for ${unpaidSummary(unpaidCreated)}.`,
       path: '/fees',
       moduleKey: 'fee',
       resource: 'fees',
-      resourceId: `issued-${year}-${month}-${created[0]._id}`,
-      meta: { month, year, count: created.length },
+      resourceId: `issued-${year}-${month}-${unpaidCreated[0]._id}`,
+      meta: { month, year, count: unpaidCreated.length },
     }));
   }
 

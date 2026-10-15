@@ -37,6 +37,11 @@ import { formatPkr } from "./studentDisplayUtils";
 import { cn } from "@/lib/utils";
 import { AdditionalChargesChecklist } from "./AdditionalChargesChecklist";
 import {
+  FeeModeSelector,
+  FreeStudentBadge,
+  type FeeMode,
+} from "./FeeModeSelector";
+import {
   ChallanPrintDialog,
   type ChallanPrintRequest,
 } from "./ChallanPrintDialog";
@@ -75,6 +80,7 @@ export function EnrollmentVoucherWizard({
   const [disciplineId, setDisciplineId] = useState("");
   const [monthlyDiscount, setMonthlyDiscount] = useState("0");
   const [admissionDiscount, setAdmissionDiscount] = useState("0");
+  const [feeMode, setFeeMode] = useState<FeeMode>("normal");
   const [voucher, setVoucher] = useState<AcademyFeeRecord | null>(null);
   const [fees, setFees] = useState<FeePreview | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -94,6 +100,7 @@ export function EnrollmentVoucherWizard({
     setDisciplineId("");
     setMonthlyDiscount("0");
     setAdmissionDiscount("0");
+    setFeeMode("normal");
     setVoucher(null);
     setFees(null);
     setPaymentMethod("cash");
@@ -174,6 +181,14 @@ export function EnrollmentVoucherWizard({
       (isFullPackage || selectedSubjects.length > 0),
   });
 
+  useEffect(() => {
+    if (feeMode !== "waiver" || !preview) return;
+    const monthly = String(preview.monthlyFee || 0);
+    const admission = String(preview.admissionFee || 0);
+    if (monthlyDiscount !== monthly) setMonthlyDiscount(monthly);
+    if (admissionDiscount !== admission) setAdmissionDiscount(admission);
+  }, [feeMode, preview, monthlyDiscount, admissionDiscount]);
+
   const { data: sections = [], isLoading: sectionsLoading } = useQuery({
     queryKey: ["enrollment-sections", classId],
     queryFn: () => fetchSectionsByClass(classId, { status: "active" }),
@@ -209,10 +224,16 @@ export function EnrollmentVoucherWizard({
       setStep("voucher");
       qc.invalidateQueries({ queryKey: ["academy-fees"] });
       qc.invalidateQueries({ queryKey: ["academy-students"] });
+      const free =
+        result.voucher &&
+        (Number(result.voucher.amount) || 0) === 0 &&
+        (result.voucher.status === "paid" || result.voucher.status === "waived");
       toast({
-        title: "Unpaid voucher generated",
+        title: free ? "Free student voucher created" : "Unpaid voucher generated",
         description: result.voucher
-          ? `Challan ${result.voucher.receiptNumber || result.voucher._id} · ${formatPkr(result.voucher.amount)}`
+          ? `Challan ${result.voucher.receiptNumber || result.voucher._id} · ${formatPkr(result.voucher.amount)}${
+              free ? " · Paid (full waiver)" : ""
+            }`
           : "Enrollment fee locked for this student.",
       });
     },
@@ -502,6 +523,28 @@ export function EnrollmentVoucherWizard({
                   ) : null}
                 </div>
 
+                <FeeModeSelector
+                  value={feeMode}
+                  onChange={(mode) => {
+                    setFeeMode(mode);
+                    if (mode === "waiver" && preview) {
+                      setMonthlyDiscount(String(preview.monthlyFee || 0));
+                      setAdmissionDiscount(String(preview.admissionFee || 0));
+                    } else if (mode === "normal") {
+                      setMonthlyDiscount("0");
+                      setAdmissionDiscount("0");
+                    }
+                  }}
+                  disabled={!preview}
+                />
+
+                {feeMode === "waiver" && (
+                  <div className="flex items-center gap-2 rounded-md border border-emerald-600/30 bg-emerald-500/10 px-3 py-2">
+                    <FreeStudentBadge />
+                    <span className="text-xs text-emerald-900">Full waiver — first voucher ₨ 0 (Paid)</span>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <Label>Monthly discount</Label>
@@ -509,7 +552,11 @@ export function EnrollmentVoucherWizard({
                       type="number"
                       min={0}
                       value={monthlyDiscount}
-                      onChange={(e) => setMonthlyDiscount(e.target.value)}
+                      disabled={feeMode === "waiver"}
+                      onChange={(e) => {
+                        setFeeMode("normal");
+                        setMonthlyDiscount(e.target.value);
+                      }}
                       className="mt-1"
                     />
                   </div>
@@ -519,7 +566,11 @@ export function EnrollmentVoucherWizard({
                       type="number"
                       min={0}
                       value={admissionDiscount}
-                      onChange={(e) => setAdmissionDiscount(e.target.value)}
+                      disabled={feeMode === "waiver"}
+                      onChange={(e) => {
+                        setFeeMode("normal");
+                        setAdmissionDiscount(e.target.value);
+                      }}
                       className="mt-1"
                     />
                   </div>
@@ -537,7 +588,17 @@ export function EnrollmentVoucherWizard({
                     </div>
                     <div className="flex justify-between font-semibold">
                       <span>First voucher</span>
-                      <span>{formatPkr((preview.monthlyFee || 0) + (preview.admissionFee || 0))}</span>
+                      <span>
+                        {formatPkr(
+                          Math.max(
+                            0,
+                            (preview.monthlyFee || 0) +
+                              (preview.admissionFee || 0) -
+                              (Number(monthlyDiscount) || 0) -
+                              (Number(admissionDiscount) || 0),
+                          ),
+                        )}
+                      </span>
                     </div>
                   </div>
                 ) : null}
@@ -549,15 +610,32 @@ export function EnrollmentVoucherWizard({
         {step === "voucher" ? (
           <div className="space-y-3 text-sm">
             {student ? <p className="font-medium">{studentLabel(student)}</p> : null}
-            <div className="rounded-md border bg-amber-50 border-amber-100 px-3 py-3 space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Unpaid</p>
-              <p className="text-lg font-bold text-[#0B2347]">
-                {formatPkr(voucher?.amount ?? fees?.totalFee ?? 0)}
-              </p>
-              {voucher?.receiptNumber ? (
-                <p className="text-xs text-slate-500">Receipt {voucher.receiptNumber}</p>
-              ) : null}
-            </div>
+            {voucher &&
+            (Number(voucher.amount) || 0) === 0 &&
+            (voucher.status === "paid" || voucher.status === "waived") ? (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <FreeStudentBadge />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                    Paid — full waiver
+                  </p>
+                </div>
+                <p className="text-lg font-bold text-[#0B2347]">{formatPkr(0)}</p>
+                {voucher.receiptNumber ? (
+                  <p className="text-xs text-slate-500">Receipt {voucher.receiptNumber}</p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-md border bg-amber-50 border-amber-100 px-3 py-3 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Unpaid</p>
+                <p className="text-lg font-bold text-[#0B2347]">
+                  {formatPkr(voucher?.amount ?? fees?.totalFee ?? 0)}
+                </p>
+                {voucher?.receiptNumber ? (
+                  <p className="text-xs text-slate-500">Receipt {voucher.receiptNumber}</p>
+                ) : null}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -568,16 +646,24 @@ export function EnrollmentVoucherWizard({
                 {printMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Print challan
               </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  setSelectedChargeIds([]);
-                  setStep("pay");
-                }}
-                disabled={!voucher}
-              >
-                Mark as paid
-              </Button>
+              {voucher &&
+              (Number(voucher.amount) || 0) === 0 &&
+              (voucher.status === "paid" || voucher.status === "waived") ? (
+                <Button type="button" disabled={!voucher} onClick={() => setStep("section")}>
+                  Continue to section
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setSelectedChargeIds([]);
+                    setStep("pay");
+                  }}
+                  disabled={!voucher}
+                >
+                  Mark as paid
+                </Button>
+              )}
             </div>
           </div>
         ) : null}
@@ -681,7 +767,7 @@ export function EnrollmentVoucherWizard({
           {step === "subjects" ? (
             <Button type="button" disabled={!canGenerate} onClick={() => generateMut.mutate()}>
               {generateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Generate unpaid voucher
+              {feeMode === "waiver" ? "Generate free voucher" : "Generate unpaid voucher"}
             </Button>
           ) : null}
 

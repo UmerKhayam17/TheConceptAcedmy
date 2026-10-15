@@ -86,6 +86,12 @@ import { DateDmYInput } from "@/components/ui/date-dmy-input";
 import { AdditionalChargesChecklist } from "./AdditionalChargesChecklist";
 import { ClassProgramOptions } from "@/components/modules/ClassProgramSelect";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
+import {
+  FeeModeSelector,
+  FreeStudentBadge,
+  isFullFeeWaiver,
+  type FeeMode,
+} from "./FeeModeSelector";
 
 function deriveChoiceSelections(
   layout: EnrollmentSubjectLayout,
@@ -275,6 +281,7 @@ export default function RegisterStudentPage({
   const { user } = useAuth();
   const [form, setForm] = useState(defaultRegisterForm);
   const [feePreview, setFeePreview] = useState<FeePreview | null>(null);
+  const [feeMode, setFeeMode] = useState<FeeMode>("normal");
   const [formReady, setFormReady] = useState(!studentId);
   const [choiceSelections, setChoiceSelections] = useState<Record<string, string>>({});
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -288,6 +295,8 @@ export default function RegisterStudentPage({
   const autoPackageSectionRef = useRef<string | null>(null);
   /** When true, next fee preview fills payables to list price (after subject/class change). */
   const defaultPayablesRef = useRef(true);
+  const feeModeRef = useRef<FeeMode>("normal");
+  feeModeRef.current = feeMode;
 
   const routes =
     routesProp ?? (user?.role ? academyStudentRoutes(user.role, "registration") : null);
@@ -319,6 +328,7 @@ export default function RegisterStudentPage({
     if (existingStudent) {
       defaultPayablesRef.current = false;
       setForm(mapStudentToForm(existingStudent));
+      setFeeMode(isFullFeeWaiver(existingStudent) ? "waiver" : "normal");
       setPhotoFile(null);
       setPhotoPreview(
         existingStudent.photoImage ? resolveUploadUrl(existingStudent.photoImage) : null,
@@ -465,7 +475,7 @@ export default function RegisterStudentPage({
 
   const subjectsKey = form.selectedSubjects.slice().sort().join(",");
 
-  // New registrations: when class/subjects change, next preview resets payables to list fees.
+  // New registrations: when class/subjects change, next preview resets payables for the active fee mode.
   useEffect(() => {
     if (isEdit || isActivate) return;
     defaultPayablesRef.current = true;
@@ -477,6 +487,33 @@ export default function RegisterStudentPage({
       admissionFeeDiscount: "0",
     }));
   }, [form.classId, form.isFullPackage, subjectsKey, isEdit, isActivate]);
+
+  const applyFeeMode = (mode: FeeMode, listMonthly: number, listAdmission: number) => {
+    if (mode === "waiver") {
+      return {
+        monthlyPayable: "0",
+        admissionPayable: "0",
+        monthlyFeeDiscount: String(listMonthly),
+        admissionFeeDiscount: String(listAdmission),
+      };
+    }
+    return {
+      monthlyPayable: String(listMonthly),
+      admissionPayable: String(listAdmission),
+      monthlyFeeDiscount: "0",
+      admissionFeeDiscount: "0",
+    };
+  };
+
+  const handleFeeModeChange = (mode: FeeMode) => {
+    setFeeMode(mode);
+    const listMonthly = feePreview?.monthlyFee ?? 0;
+    const listAdmission = feePreview?.admissionFee ?? 0;
+    setForm((f) => ({
+      ...f,
+      ...applyFeeMode(mode, listMonthly, listAdmission),
+    }));
+  };
 
   useEffect(() => {
     if (!form.classId) {
@@ -510,16 +547,27 @@ export default function RegisterStudentPage({
           setForm((f) => {
             const listMonthly = preview.monthlyFee || 0;
             const listAdmission = preview.admissionFee || 0;
+            const mode = feeModeRef.current;
 
             if (defaultPayablesRef.current) {
               defaultPayablesRef.current = false;
               return {
                 ...f,
-                monthlyPayable: String(listMonthly),
-                admissionPayable: String(listAdmission),
-                monthlyFeeDiscount: "0",
-                admissionFeeDiscount: "0",
+                ...applyFeeMode(mode, listMonthly, listAdmission),
               };
+            }
+
+            if (mode === "waiver") {
+              const waived = applyFeeMode("waiver", listMonthly, listAdmission);
+              if (
+                waived.monthlyPayable === f.monthlyPayable &&
+                waived.admissionPayable === f.admissionPayable &&
+                waived.monthlyFeeDiscount === f.monthlyFeeDiscount &&
+                waived.admissionFeeDiscount === f.admissionFeeDiscount
+              ) {
+                return f;
+              }
+              return { ...f, ...waived };
             }
 
             const monthlyPayable = String(
@@ -1453,6 +1501,21 @@ export default function RegisterStudentPage({
             </div>
           )}
 
+          <FeeModeSelector
+            value={feeMode}
+            onChange={handleFeeModeChange}
+            disabled={!feePreview}
+          />
+
+          {feeMode === "waiver" && (
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-500/10 px-3 py-2">
+              <FreeStudentBadge />
+              <span className="text-sm text-emerald-900 dark:text-emerald-200">
+                Full waiver — monthly and admission payable are ₨ 0
+              </span>
+            </div>
+          )}
+
           <div className="grid sm:grid-cols-2 gap-4">
             <FormField label="Monthly total payable (PKR)">
               <IconInput
@@ -1463,10 +1526,12 @@ export default function RegisterStudentPage({
                 max={feePreview?.monthlyFee}
                 placeholder={feePreview ? String(feePreview.monthlyFee) : "0"}
                 value={form.monthlyPayable}
+                disabled={feeMode === "waiver"}
                 onChange={(e) => {
                   const raw = e.target.value;
                   const list = feePreview?.monthlyFee ?? 0;
                   const payable = Math.min(Math.max(0, Number(raw) || 0), list || Number(raw) || 0);
+                  setFeeMode("normal");
                   setForm((f) => ({
                     ...f,
                     monthlyPayable: raw,
@@ -1492,10 +1557,12 @@ export default function RegisterStudentPage({
                 max={feePreview?.admissionFee}
                 placeholder={feePreview ? String(feePreview.admissionFee) : "0"}
                 value={form.admissionPayable}
+                disabled={feeMode === "waiver"}
                 onChange={(e) => {
                   const raw = e.target.value;
                   const list = feePreview?.admissionFee ?? 0;
                   const payable = Math.min(Math.max(0, Number(raw) || 0), list || Number(raw) || 0);
+                  setFeeMode("normal");
                   setForm((f) => ({
                     ...f,
                     admissionPayable: raw,
