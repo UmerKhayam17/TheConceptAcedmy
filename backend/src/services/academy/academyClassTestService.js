@@ -161,7 +161,7 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
   // Award list / marks: only students enrolled in this subject (full package or selectedSubjects)
   const studentsRaw = await AcademyStudent.find(studentQ)
     .select(
-      'studentId studentName fatherName rollNumber sectionId isFullPackage selectedSubjects disciplineId'
+      'studentId studentName fatherName rollNumber phone contactPhoneRes sectionId isFullPackage selectedSubjects disciplineId'
     )
     .populate('sectionId', 'sectionName')
     .populate('disciplineId', 'name code')
@@ -198,6 +198,8 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
         studentName: student.studentName,
         fatherName: student.fatherName,
         rollNumber: student.rollNumber,
+        phone: student.phone || '',
+        contactPhoneRes: student.contactPhoneRes || '',
         sectionName:
           typeof student.sectionId === 'object' && student.sectionId
             ? student.sectionId.sectionName

@@ -115,6 +115,11 @@ router.get(
   planSessionPerm,
   assessmentPlanCtrl.dateSheet
 );
+router.get(
+  '/sessions/:sessionId/assessment-plan/date-sheet.pdf',
+  planSessionPerm,
+  assessmentPlanCtrl.dateSheetPdf
+);
 
 router.get('/classes', requireAnyPermission('manage_classes', 'view_timetables', 'view_students', 'mark_attendance'), ctrl.listClasses);
 router.post('/classes', requirePermission('manage_classes'), validate(schemas.classBody), ctrl.createClass);

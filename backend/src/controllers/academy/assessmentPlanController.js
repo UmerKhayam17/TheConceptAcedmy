@@ -112,6 +112,22 @@ const dateSheet = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const dateSheetPdf = catchAsync(async (req, res) => {
+  const dateSheetPdfService = require('../../services/academy/academyDateSheetPdfService');
+  const buf = await dateSheetPdfService.renderDateSheetPdf(req.params.sessionId, {
+    classId: req.query.classId,
+    sectionId: req.query.sectionId,
+    assignmentId: req.query.assignmentId,
+    testName: req.query.testName,
+  });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="date-sheet-${req.params.sessionId}.pdf"`
+  );
+  res.send(buf);
+});
+
 module.exports = {
   getPlan,
   addItem,
@@ -126,4 +142,5 @@ module.exports = {
   deleteAssignment,
   publishAssignment,
   dateSheet,
+  dateSheetPdf,
 };

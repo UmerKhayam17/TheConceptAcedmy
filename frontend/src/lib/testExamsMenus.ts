@@ -45,6 +45,21 @@ export function classTestMarksHref(role: Role, testId: string) {
   return `/panel/${role}/exams/enter-tests/${testId}`;
 }
 
+/** Report card student list for one class-test batch. */
+export function reportCardTestHref(role: Role, testId: string) {
+  return `/panel/${role}/exams/report-card/test/${testId}`;
+}
+
+/** Report card student list for one published term exam. */
+export function reportCardExamHref(role: Role, examId: string) {
+  return `/panel/${role}/exams/report-card/exam/${examId}`;
+}
+
+/** Date sheet subject schedule for one assessment batch (paper id). */
+export function dateSheetBatchHref(role: Role, paperId: string) {
+  return `/panel/${role}/exams/date-sheet/batch/${paperId}`;
+}
+
 export function findTestExamsSection(section: string | undefined): TestExamsSection {
   return isTestExamsSection(section) ? section : DEFAULT_TEST_EXAMS_SECTION;
 }

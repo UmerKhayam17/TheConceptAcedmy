@@ -2,8 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Award,
   BookOpen,
+  CheckCircle2,
+  ClipboardList,
   Eye,
+  FileStack,
   Loader2,
   Pencil,
   Plus,
@@ -16,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import PanelStatCard from "@/components/modules/PanelStatCard";
 import {
   Select,
   SelectContent,
@@ -312,33 +317,82 @@ export default function AssignAssessmentsPanel({
       </Card>
     );
   }
+  const HeaderIcon = branch === "test" ? ClipboardList : Award;
+
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
-            {branch === "test" ? "Tests" : "Exams"}
-          </p>
-          <p className="text-lg font-semibold text-primary">{isLoading ? "…" : assignments.length}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Draft</p>
-          <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">{isLoading ? "…" : draftCount}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Published</p>
-          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
-            {isLoading ? "…" : publishedCount}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Catalog</p>
-          <p className="text-lg font-semibold text-primary">{isLoading ? "…" : catalogItems.length}</p>
-        </Card>
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <HeaderIcon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                {branch === "test" ? "Tests" : "Exams"}
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                {branch === "test"
+                  ? "Create and manage class tests — publish papers, enter marks, and print reports."
+                  : "Create and manage term exams — date sheet, marks entry, and publish results."}
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <PanelStatCard
+          label={branch === "test" ? "Total Tests" : "Total Exams"}
+          value={isLoading ? "…" : assignments.length}
+          hint="This session"
+          icon={branch === "test" ? ClipboardList : Award}
+          iconWrapClass="bg-[#dbeafe]"
+          iconClass="text-[#2563eb]"
+        />
+        <PanelStatCard
+          label="Draft"
+          value={isLoading ? "…" : draftCount}
+          hint="Not published yet"
+          icon={Pencil}
+          iconWrapClass="bg-[#ffedd5]"
+          iconClass="text-[#ea580c]"
+        />
+        <PanelStatCard
+          label="Published"
+          value={isLoading ? "…" : publishedCount}
+          hint={
+            isLoading || !assignments.length
+              ? undefined
+              : `${Math.round((publishedCount / Math.max(assignments.length, 1)) * 100)}%`
+          }
+          icon={CheckCircle2}
+          iconWrapClass="bg-[#d1fae5]"
+          iconClass="text-[#059669]"
+        />
+        <PanelStatCard
+          label="Catalog"
+          value={isLoading ? "…" : catalogItems.length}
+          hint="Available types"
+          icon={FileStack}
+          iconWrapClass="bg-[#ede9fe]"
+          iconClass="text-[#7c3aed]"
+        />
       </div>
 
       {!planLoading && !catalogReady && (
-        <Card className="p-5 space-y-3 border-dashed">
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 space-y-3 shadow-sm">
           <p className="text-sm text-muted-foreground">
             No {noun}s in the catalog for this session yet.
             {isTeacher
@@ -352,26 +406,26 @@ export default function AssignAssessmentsPanel({
               </Link>
             </Button>
           )}
-        </Card>
+        </div>
       )}
 
-      <Card className="p-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 min-w-0 flex-1">
             <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Search</Label>
+              <Label className="mb-1 block text-xs text-slate-500">Search</Label>
               <PanelSearchBar
                 value={search}
                 onChange={setSearch}
                 placeholder={`Search ${noun}, class…`}
                 className="max-w-none w-full min-w-0"
-                inputClassName="h-9"
+                inputClassName="h-10"
               />
             </div>
             <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Session</Label>
+              <Label className="mb-1 block text-xs text-slate-500">Session</Label>
               <select
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                 value={effectiveSessionId}
                 onChange={(e) => {
                   setSessionId(e.target.value);
@@ -387,9 +441,9 @@ export default function AssignAssessmentsPanel({
               </select>
             </div>
             <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Class</Label>
+              <Label className="mb-1 block text-xs text-slate-500">Class</Label>
               <select
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                 value={classFilter}
                 onChange={(e) => setClassFilter(e.target.value)}
               >
@@ -402,9 +456,9 @@ export default function AssignAssessmentsPanel({
               </select>
             </div>
             <div className="min-w-0">
-              <Label className="mb-1 block text-xs">Status</Label>
+              <Label className="mb-1 block text-xs text-slate-500">Status</Label>
               <select
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
@@ -415,24 +469,24 @@ export default function AssignAssessmentsPanel({
             </div>
           </div>
           {canManage && branch === "test" && isTeacher && (
-            <Button size="sm" variant="gold" className="whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady || !scopeRows.length}>
+            <Button size="sm" variant="gold" className="h-10 whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady || !scopeRows.length}>
               <Plus className="h-4 w-4" />
               Create {noun}
             </Button>
           )}
           {canManage && !(branch === "test" && isTeacher) && (
-            <Button size="sm" variant="gold" className="whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady}>
+            <Button size="sm" variant="gold" className="h-10 whitespace-nowrap" onClick={() => setAssignOpen(true)} disabled={!catalogReady}>
               <Plus className="h-4 w-4" />
               Create {noun}
             </Button>
           )}
         </div>
-      </Card>
+      </div>
 
-      <Card className="overflow-hidden">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 border-b">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="text-left p-2.5 font-medium">Name</th>
                 <th className="text-left p-2.5 font-medium">Type</th>
@@ -613,7 +667,7 @@ export default function AssignAssessmentsPanel({
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <TestSubjectsDialog
         assignment={subjectsAssignment}

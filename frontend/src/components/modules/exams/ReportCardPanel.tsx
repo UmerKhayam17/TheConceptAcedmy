@@ -1,67 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { FileBadge, Loader2, Printer, X } from "lucide-react";
+import {
+  Award,
+  CheckCircle2,
+  ClipboardList,
+  Eye,
+  FileBadge,
+  Loader2,
+  Users,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { getAccessToken } from "@/lib/auth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchSessions } from "@/lib/configApi";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import PanelStatCard from "@/components/modules/PanelStatCard";
 import {
-  TEST_TYPE_KEYS,
+  reportCardExamHref,
+  reportCardTestHref,
+} from "@/lib/testExamsMenus";
+import {
   assessmentTypeLabel,
   fetchAcademyClasses,
-  fetchAcademyStudents,
+  fetchClassTestEntry,
   fetchClassTests,
   fetchSectionsByClass,
-  fetchStudentAssessments,
   formatClassTestSchedule,
-  previewClassTestMarksReportPdf,
-  type AcademyAssessmentRecord,
   type AcademyClassTest,
-  type AcademyStudent,
+  type ClassTestEntryRow,
 } from "@/lib/studentManagementApi";
 import {
+  fetchExamResults,
   fetchExams,
-  fetchStudentExamResults,
-  previewExamMarksReportPdf,
-  resultPdfUrl,
   type Exam,
-  type ExamResult,
 } from "@/lib/examApi";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { cn } from "@/lib/utils";
 
-type ReportKind = "test" | "exam";
+type ReportKind = "all" | "test" | "exam";
 
 const filterSelectClass =
-  "h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0";
+  "h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0";
 
 function idOf(ref: string | { _id: string } | undefined | null): string {
   if (!ref) return "";
   return typeof ref === "object" ? String(ref._id) : String(ref);
-}
-
-function classTestIdOf(a: AcademyAssessmentRecord): string {
-  const ct = a.classTestId;
-  if (!ct) return "";
-  return typeof ct === "object" ? String(ct._id || "") : String(ct);
-}
-
-function classNameOfStudent(student: AcademyStudent) {
-  const c = student.classId;
-  if (typeof c === "object" && c && "className" in c) return c.className || "—";
-  return "—";
-}
-
-function sectionNameOfStudent(student: AcademyStudent) {
-  const s = student.sectionId;
-  if (typeof s === "object" && s && "sectionName" in s) return s.sectionName || "";
-  return "";
 }
 
 function testSubjectName(test: AcademyClassTest) {
@@ -73,28 +60,77 @@ function testSectionId(test: AcademyClassTest) {
   return idOf(test.sectionId);
 }
 
-function examTitleOf(r: ExamResult) {
-  const e = r.exam;
-  if (typeof e === "object" && e) return e.title || "Exam";
-  return "Exam";
+function testClassName(test: AcademyClassTest) {
+  const c = test.classId;
+  return typeof c === "object" && c ? c.className || "—" : "—";
 }
 
-function examMetaOf(r: ExamResult) {
-  const e = r.exam;
-  if (typeof e !== "object" || !e) return "";
-  return [e.type, e.sessionLabel].filter(Boolean).join(" · ");
+function testSectionName(test: AcademyClassTest) {
+  const s = test.sectionId;
+  return typeof s === "object" && s && "sectionName" in s
+    ? String((s as { sectionName?: string }).sectionName || "—")
+    : "—";
 }
 
-function examIdOf(r: ExamResult) {
-  const e = r.exam;
-  if (typeof e === "object" && e) return e._id;
-  if (typeof e === "string") return e;
-  return "";
+const tableHeadClass = "p-3 font-medium text-slate-600 text-left";
+const tableCellClass = "p-3 border-t border-slate-100";
+
+function normalizeTestLabel(value: string | undefined | null) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[#.]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+/** Same batch key as backend — groups peer subjects (Test No. 1 Chemistry + Biology). */
+function testBatchKey(test: AcademyClassTest) {
+  const title = normalizeTestLabel(test.title);
+  const series = normalizeTestLabel(test.seriesLabel);
+  const numbered =
+    title.match(/\btest\s*(?:no|number)?\s*(\d+)\b/) ||
+    series.match(/\btest\s*(?:no|number)?\s*(\d+)\b/);
+  if (numbered) return `test-no-${numbered[1]}`;
+  if (series && test.occurrenceIndex != null) {
+    return `${series}::occ-${test.occurrenceIndex}`;
+  }
+  return title || series || test._id;
+}
+
+function testBatchGroupKey(test: AcademyClassTest) {
+  return [
+    idOf(test.classId),
+    idOf(test.sectionId) || "all",
+    idOf(test.disciplineId) || "all",
+    testBatchKey(test),
+  ].join("|");
+}
+
+type PublishedTestRow = {
+  test: AcademyClassTest;
+  studentCount: number;
+  entry: { students?: ClassTestEntryRow[] };
+};
+
+type PublishedTestBatch = {
+  key: string;
+  primaryTest: AcademyClassTest;
+  tests: AcademyClassTest[];
+  subjectNames: string[];
+  studentCount: number;
+  /** Prefer the earliest exam date among peers for display. */
+  examDate: string | undefined;
+};
+
+function classNameOfExam(exam: Exam) {
+  const c = exam.academyClass;
+  return typeof c === "object" && c ? c.className || "—" : "—";
 }
 
 export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCaps }) {
-  const { toast } = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const role = user?.role;
   const isParent = user?.role === "parent";
 
   const { data: sessions = [] } = useQuery({
@@ -106,44 +142,23 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
     [sessions]
   );
 
+  const [kind, setKind] = useState<ReportKind>("all");
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
-  const [kind, setKind] = useState<ReportKind>("exam");
-  const [assessmentType, setAssessmentType] = useState("");
-  const [testNumber, setTestNumber] = useState("");
-  const [examId, setExamId] = useState("");
-  const [studentSearch, setStudentSearch] = useState("");
-  const [student, setStudent] = useState<AcademyStudent | null>(null);
-  const [printingId, setPrintingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
-  // Always scoped to the active academic session (no session picker on this screen)
   const effectiveSessionId = activeSessionId;
+  const showTests = kind === "all" || kind === "test";
+  const showExams = kind === "all" || kind === "exam";
 
   useEffect(() => {
     setClassId("");
     setSectionId("");
-    setStudent(null);
-    setExamId("");
-    setTestNumber("");
-    setAssessmentType("");
   }, [effectiveSessionId]);
 
   useEffect(() => {
     setSectionId("");
-    setStudent(null);
-    setExamId("");
-    setTestNumber("");
   }, [classId]);
-
-  useEffect(() => {
-    setStudent(null);
-  }, [sectionId]);
-
-  useEffect(() => {
-    setExamId("");
-    setTestNumber("");
-    setAssessmentType("");
-  }, [kind]);
 
   const { data: classes = [] } = useQuery({
     queryKey: ["academy-classes", effectiveSessionId, "report-card"],
@@ -157,589 +172,538 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
     enabled: Boolean(classId) && !isParent,
   });
 
-  const studentsQ = useQuery({
-    queryKey: [
-      "academy-students",
-      "report-card",
-      effectiveSessionId,
-      classId,
-      sectionId,
-      studentSearch,
-    ],
-    queryFn: () =>
-      fetchAcademyStudents({
-        search: studentSearch.trim() || undefined,
-        limit: 50,
-        classId: classId || undefined,
-        sectionId: sectionId || undefined,
-        sessionId: effectiveSessionId || undefined,
-        status: isParent ? undefined : "active",
-      }),
-    enabled: !student && (studentSearch.trim().length >= 2 || Boolean(classId)),
-  });
-
-  const classTestsQ = useQuery({
-    queryKey: ["class-tests", classId, effectiveSessionId, "report-card"],
-    queryFn: () => fetchClassTests(classId || undefined, undefined, effectiveSessionId),
-    enabled: kind === "test" && Boolean(classId),
-  });
-
-  const examsQ = useQuery({
-    queryKey: ["exams", classId, "report-card"],
-    queryFn: () => fetchExams(classId || undefined),
-    enabled: kind === "exam" && Boolean(classId),
-  });
-
-  const assessmentsQ = useQuery({
-    queryKey: ["student-assessments", student?._id, "report-card"],
-    queryFn: () => fetchStudentAssessments(student!._id),
-    enabled: Boolean(student?._id) && kind === "test",
-  });
-
-  const examResultsQ = useQuery({
-    queryKey: ["student-exam-results", student?._id, "report-card"],
-    queryFn: () => fetchStudentExamResults(student!._id),
-    enabled: Boolean(student?._id) && kind === "exam",
-  });
-
-  const filteredClassTests = useMemo(() => {
-    let rows = classTestsQ.data || [];
-    if (sectionId) {
-      rows = rows.filter((t) => !testSectionId(t) || testSectionId(t) === sectionId);
-    }
-    if (assessmentType) rows = rows.filter((t) => t.assessmentType === assessmentType);
-    if (testNumber) {
-      rows = rows.filter((t) => String(t.occurrenceIndex ?? "") === testNumber);
-    }
-    return rows;
-  }, [classTestsQ.data, sectionId, assessmentType, testNumber]);
-
-  const testNumberOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of classTestsQ.data || []) {
-      if (sectionId && testSectionId(t) && testSectionId(t) !== sectionId) continue;
-      if (assessmentType && t.assessmentType !== assessmentType) continue;
-      if (t.occurrenceIndex != null) set.add(String(t.occurrenceIndex));
-    }
-    return [...set].sort((a, b) => Number(a) - Number(b));
-  }, [classTestsQ.data, sectionId, assessmentType]);
-
-  const examOptions = useMemo(() => examsQ.data || [], [examsQ.data]);
-
-  const studentList = useMemo(() => {
-    const rows = studentsQ.data?.students || [];
-    if (!studentSearch.trim()) return rows;
-    return rows.filter((s) =>
-      matchesPanelSearch(studentSearch, s.studentName, s.studentId, s.fatherName)
-    );
-  }, [studentsQ.data, studentSearch]);
-
-  const examsForStudent = useMemo(() => {
-    if (!student || kind !== "exam") return [];
-    let rows = examResultsQ.data || [];
-    if (examId) rows = rows.filter((r) => examIdOf(r) === examId);
-    if (classId && examOptions.length) {
-      const allowed = new Set(examOptions.map((e) => e._id));
-      rows = rows.filter((r) => allowed.has(examIdOf(r)));
-    }
-    return [...rows].sort((a, b) => {
-      const ae = typeof a.exam === "object" && a.exam ? a.exam.startDate : "";
-      const be = typeof b.exam === "object" && b.exam ? b.exam.startDate : "";
-      return new Date(be || 0).getTime() - new Date(ae || 0).getTime();
-    });
-  }, [student, kind, examResultsQ.data, examId, classId, examOptions]);
-
-  const displayTests = useMemo(() => {
-    if (!student || kind !== "test") return [];
-    const marked = new Set((assessmentsQ.data || []).map(classTestIdOf).filter(Boolean));
-    if (!marked.size) return [];
-
-    if (classId && filteredClassTests.length) {
-      return filteredClassTests
-        .filter((t) => marked.has(t._id))
-        .map((t) => {
-          const a = (assessmentsQ.data || []).find((x) => classTestIdOf(x) === t._id);
-          return {
-            testId: t._id,
-            title: t.title,
-            assessmentType: t.assessmentType,
-            examDate: t.examDate,
-            subjectName: testSubjectName(t),
-            obtained: a ? Number(a.obtainedMarks) || 0 : 0,
-            total: a
-              ? Number(a.totalMarks) || Number(t.totalMarks) || 0
-              : Number(t.totalMarks) || 0,
-            occurrenceIndex: t.occurrenceIndex,
-            schedule: formatClassTestSchedule(t),
-          };
-        });
-    }
-
-    // No class filter / no class tests loaded — build from student assessments.
-    return (assessmentsQ.data || [])
-      .filter((a) => classTestIdOf(a))
-      .filter((a) => !assessmentType || a.assessmentType === assessmentType)
-      .reduce<
-        {
-          testId: string;
-          title: string;
-          assessmentType: string;
-          examDate: string;
-          subjectName: string;
-          obtained: number;
-          total: number;
-          occurrenceIndex?: number;
-          schedule: string;
-        }[]
-      >((acc, a) => {
-        const testId = classTestIdOf(a);
-        if (!testId || acc.some((x) => x.testId === testId)) return acc;
-        const subject =
-          a.subjectId && typeof a.subjectId === "object"
-            ? a.subjectId.subjectName || a.subjectId.subjectCode || ""
-            : "";
-        acc.push({
-          testId,
-          title: a.title,
-          assessmentType: a.assessmentType,
-          examDate: a.examDate,
-          subjectName: subject || "—",
-          obtained: Number(a.obtainedMarks) || 0,
-          total: Number(a.totalMarks) || 0,
-          schedule: a.examDate ? new Date(a.examDate).toLocaleDateString() : "",
-        });
-        return acc;
-      }, [])
-      .sort((a, b) => new Date(b.examDate).getTime() - new Date(a.examDate).getTime());
-  }, [student, kind, classId, filteredClassTests, assessmentsQ.data, assessmentType]);
-
-  const clearStudent = () => {
-    setStudent(null);
-    setStudentSearch("");
-  };
-
-  const printExamCard = async (result: ExamResult) => {
-    const eid = examIdOf(result);
-    setPrintingId(result._id);
-    try {
-      if (result.isPublished) {
-        const token = getAccessToken();
-        const preview = window.open("about:blank", "_blank");
-        const res = await fetch(resultPdfUrl(result._id), {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          credentials: "include",
-        });
-        if (!res.ok) {
-          preview?.close();
-          throw new Error("Could not open result card");
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        if (preview && !preview.closed) {
-          preview.location.replace(url);
-          preview.focus();
-        } else {
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `result-card-${result._id}.pdf`;
-          a.click();
-        }
-        window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
-      } else if (eid && student) {
-        await previewExamMarksReportPdf(eid, {
-          view: "student",
-          studentId: student._id,
-        });
-      } else {
-        throw new Error("Exam result is not published yet");
+  /** Published class tests with recorded marks (session-wide by default). */
+  const publishedTestsQ = useQuery({
+    queryKey: ["report-card-published-tests", classId || "all", sectionId || "all", effectiveSessionId],
+    queryFn: async () => {
+      let tests = await fetchClassTests(classId || undefined, undefined, effectiveSessionId);
+      if (classId) {
+        tests = tests.filter((t) => idOf(t.classId) === classId);
       }
-    } catch (err) {
-      toast({
-        title: "Report failed",
-        description: err instanceof Error ? err.message : "Could not open PDF",
-        variant: "destructive",
-      });
-    } finally {
-      setPrintingId(null);
-    }
-  };
+      if (sectionId) {
+        tests = tests.filter((t) => !testSectionId(t) || testSectionId(t) === sectionId);
+      }
+      const rows = await Promise.all(
+        tests.map(async (test) => {
+          try {
+            const entry = await fetchClassTestEntry(test._id);
+            const withMarks = (entry.students || []).filter((row) => row.assessment);
+            if (!withMarks.length) return null;
+            return { test, studentCount: withMarks.length, entry };
+          } catch {
+            return null;
+          }
+        })
+      );
+      return rows
+        .filter((r): r is NonNullable<typeof r> => Boolean(r))
+        .sort(
+          (a, b) =>
+            new Date(b.test.examDate || 0).getTime() - new Date(a.test.examDate || 0).getTime()
+        );
+    },
+    enabled: showTests && Boolean(effectiveSessionId) && !isParent,
+  });
 
-  const printTestCard = async (testId: string) => {
-    if (!student) return;
-    setPrintingId(testId);
-    try {
-      await previewClassTestMarksReportPdf(testId, {
-        view: "test",
-        studentIds: [student._id],
-      });
-    } catch (err) {
-      toast({
-        title: "Report failed",
-        description: err instanceof Error ? err.message : "Could not open PDF",
-        variant: "destructive",
-      });
-    } finally {
-      setPrintingId(null);
-    }
-  };
+  /** Term exams with at least one published result (all classes by default). */
+  const publishedExamsQ = useQuery({
+    queryKey: [
+      "report-card-published-exams",
+      classId || "all",
+      effectiveSessionId,
+      classes.map((c) => c._id).join(","),
+    ],
+    queryFn: async () => {
+      let exams = await fetchExams(classId || undefined);
+      if (classId) {
+        exams = exams.filter((e) => idOf(e.academyClass) === classId);
+      } else if (classes.length) {
+        const classIds = new Set(classes.map((c) => String(c._id)));
+        exams = exams.filter((e) => classIds.has(idOf(e.academyClass)));
+      }
+      const rows = await Promise.all(
+        exams.map(async (exam) => {
+          try {
+            const results = await fetchExamResults(exam._id);
+            const published = (results || []).filter((r) => r.isPublished);
+            if (!published.length) return null;
+            return { exam, results: published, studentCount: published.length };
+          } catch {
+            return null;
+          }
+        })
+      );
+      return rows
+        .filter((r): r is NonNullable<typeof r> => Boolean(r))
+        .sort(
+          (a, b) =>
+            new Date(b.exam.startDate || 0).getTime() - new Date(a.exam.startDate || 0).getTime()
+        );
+    },
+    enabled: showExams && Boolean(effectiveSessionId) && !isParent,
+  });
 
-  const loadingList =
-    (kind === "test" && (assessmentsQ.isLoading || (classId && classTestsQ.isLoading))) ||
-    (kind === "exam" && examResultsQ.isLoading);
+  /** Group peer subject tests into one list row (e.g. Test 1 · Chemistry, Biology). */
+  const publishedTestBatches = useMemo((): PublishedTestBatch[] => {
+    const rows = (publishedTestsQ.data || []) as PublishedTestRow[];
+    const map = new Map<string, PublishedTestRow[]>();
+    rows.forEach((row) => {
+      const key = testBatchGroupKey(row.test);
+      const list = map.get(key) || [];
+      list.push(row);
+      map.set(key, list);
+    });
+    return [...map.entries()]
+      .map(([key, group]) => {
+        const sorted = [...group].sort((a, b) =>
+          testSubjectName(a.test).localeCompare(testSubjectName(b.test))
+        );
+        const byDate = [...group].sort(
+          (a, b) =>
+            new Date(a.test.examDate || 0).getTime() - new Date(b.test.examDate || 0).getTime()
+        );
+        const primary = byDate[0]?.test || sorted[0].test;
+        const studentIds = new Set<string>();
+        group.forEach((g) => {
+          (g.entry?.students || []).forEach((s) => {
+            if (s.assessment) studentIds.add(String(s.student._id));
+          });
+        });
+        return {
+          key,
+          primaryTest: primary,
+          tests: sorted.map((g) => g.test),
+          subjectNames: sorted.map((g) => testSubjectName(g.test)).filter((n) => n && n !== "—"),
+          studentCount: studentIds.size || Math.max(...group.map((g) => g.studentCount), 0),
+          examDate: primary.examDate,
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.examDate || 0).getTime() - new Date(a.examDate || 0).getTime()
+      );
+  }, [publishedTestsQ.data]);
+
+  const filteredTestBatches = useMemo(() => {
+    if (!search.trim()) return publishedTestBatches;
+    return publishedTestBatches.filter((batch) => {
+      const test = batch.primaryTest;
+      return matchesPanelSearch(search, [
+        test.title,
+        test.occurrenceIndex != null ? `Test ${test.occurrenceIndex}` : "",
+        testClassName(test),
+        testSectionName(test),
+        assessmentTypeLabel(test.assessmentType) || test.assessmentType,
+        batch.subjectNames.join(" "),
+        formatClassTestSchedule(test),
+      ]);
+    });
+  }, [publishedTestBatches, search]);
+
+  const filteredExams = useMemo(() => {
+    const list = publishedExamsQ.data || [];
+    if (!search.trim()) return list;
+    return list.filter(({ exam }) =>
+      matchesPanelSearch(search, [
+        exam.title,
+        classNameOfExam(exam),
+        exam.type,
+        exam.sessionLabel,
+      ])
+    );
+  }, [publishedExamsQ.data, search]);
+
+  const listLoading =
+    (showTests && publishedTestsQ.isLoading) || (showExams && publishedExamsQ.isLoading);
+
+  const publishedTestCount = publishedTestBatches.length;
+  const publishedExamCount = (publishedExamsQ.data || []).length;
+  const visibleTestCount = filteredTestBatches.length;
+  const visibleExamCount = filteredExams.length;
+  const reportStudentsReady = useMemo(() => {
+    const testStudentsCount = publishedTestBatches.reduce((sum, b) => sum + b.studentCount, 0);
+    const examStudentsCount = (publishedExamsQ.data || []).reduce(
+      (sum, r) => sum + (r.studentCount || 0),
+      0
+    );
+    return testStudentsCount + examStudentsCount;
+  }, [publishedTestBatches, publishedExamsQ.data]);
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-            <FileBadge className="h-5 w-5 text-primary" />
-            Report Card
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5 max-w-xl">
-            Pick class and exam or test, then search and select a student to print their report
-            card.
-          </p>
-        </div>
-        <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
-          <button
-            type="button"
-            className={cn(
-              "px-3 py-1.5 text-sm rounded-sm transition-colors",
-              kind === "exam" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"
-            )}
-            onClick={() => setKind("exam")}
-          >
-            Term exam
-          </button>
-          <button
-            type="button"
-            className={cn(
-              "px-3 py-1.5 text-sm rounded-sm transition-colors",
-              kind === "test" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"
-            )}
-            onClick={() => setKind("test")}
-          >
-            Class test
-          </button>
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <FileBadge className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Report Card
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                All published tests and exams are listed by default. Pick one to print report cards.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
         </div>
       </div>
 
-      <Card className="p-3 sm:p-4 shadow-sm border-border/80 space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {!isParent && (
-            <ClassProgramSelect
-              className="w-[16.5rem] shrink-0"
-              label={false}
-              value={classId}
-              onChange={setClassId}
-              classes={classes}
-              allowAll
-              selectClassName="rounded-md border-input h-10"
+      {isParent ? (
+        <Card className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-muted-foreground shadow-sm">
+          Report cards for parents are available from your child&apos;s results once the academy
+          publishes them.
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+            <PanelStatCard
+              label="Published Tests"
+              value={listLoading && showTests ? "…" : publishedTestCount}
+              hint={classId ? "Selected class" : "All classes"}
+              icon={ClipboardList}
+              iconWrapClass="bg-[#dbeafe]"
+              iconClass="text-[#2563eb]"
             />
-          )}
-
-          {!isParent && (
-            <select
-              className={cn(filterSelectClass, "w-[10rem]")}
-              value={sectionId}
-              disabled={!classId || sections.length === 0}
-              onChange={(e) => setSectionId(e.target.value)}
-              aria-label="Section filter"
-            >
-              <option value="">All Sections</option>
-              {sections.map((s) => (
-                <option key={s._id} value={s._id}>
-                  {s.sectionName}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {kind === "test" && (
-            <select
-              className={cn(filterSelectClass, "w-[11rem]")}
-              value={assessmentType}
-              onChange={(e) => {
-                setAssessmentType(e.target.value);
-                setTestNumber("");
-              }}
-              aria-label="Test type filter"
-            >
-              <option value="">All types</option>
-              {TEST_TYPE_KEYS.map((k) => (
-                <option key={k} value={k}>
-                  {assessmentTypeLabel(k)}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {kind === "test" && (
-            <select
-              className={cn(filterSelectClass, "w-[10rem]")}
-              value={testNumber}
-              disabled={!classId}
-              onChange={(e) => setTestNumber(e.target.value)}
-              aria-label="Test number filter"
-            >
-              <option value="">All tests</option>
-              {testNumberOptions.map((n) => (
-                <option key={n} value={n}>
-                  Test No. {n}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {kind === "exam" && (
-            <select
-              className={cn(filterSelectClass, "min-w-[14rem] max-w-[20rem]")}
-              value={examId}
-              disabled={!classId}
-              onChange={(e) => setExamId(e.target.value)}
-              aria-label="Exam filter"
-            >
-              <option value="">All exams</option>
-              {examOptions.map((e: Exam) => (
-                <option key={e._id} value={e._id}>
-                  {e.title}
-                  {e.type ? ` · ${e.type}` : ""}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {!student ? (
-            <PanelSearchBar
-              value={studentSearch}
-              onChange={setStudentSearch}
-              placeholder="Search by name, roll no or registration no..."
-              className="min-w-[12rem] flex-1 max-w-md"
+            <PanelStatCard
+              label="Published Exams"
+              value={listLoading && showExams ? "…" : publishedExamCount}
+              hint={classId ? "Selected class" : "All classes"}
+              icon={Award}
+              iconWrapClass="bg-[#ede9fe]"
+              iconClass="text-[#7c3aed]"
             />
-          ) : (
-            <div className="flex min-w-[12rem] flex-1 max-w-xl items-center gap-2 rounded-md border border-input bg-muted/20 px-3 h-10">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate leading-tight">{student.studentName}</p>
-                <p className="text-[11px] text-muted-foreground truncate leading-tight">
-                  {[
-                    student.studentId,
-                    classNameOfStudent(student),
-                    sectionNameOfStudent(student),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-8 shrink-0 px-2"
-                onClick={clearStudent}
-              >
-                <X className="h-3.5 w-3.5 mr-1" />
-                Change
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {!student && (classId || studentSearch.trim().length >= 2) && (
-          <ul className="max-h-64 overflow-y-auto rounded-md border divide-y">
-            {studentsQ.isLoading && (
-              <li className="px-3 py-3 text-sm text-muted-foreground flex items-center gap-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Loading students…
-              </li>
-            )}
-            {!studentsQ.isLoading &&
-              studentList.map((s) => (
-                <li key={s._id}>
-                  <button
-                    type="button"
-                    className="w-full px-3 py-2.5 text-left hover:bg-muted/50 transition-colors"
-                    onClick={() => {
-                      setStudent(s);
-                      setStudentSearch("");
-                      if (!classId) {
-                        const cid = idOf(s.classId);
-                        if (cid) setClassId(cid);
-                      }
-                      if (!sectionId) {
-                        const sid = idOf(s.sectionId);
-                        if (sid) setSectionId(sid);
-                      }
-                    }}
-                  >
-                    <span className="font-medium">{s.studentName}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {[
-                        s.studentId,
-                        s.fatherName,
-                        classNameOfStudent(s),
-                        sectionNameOfStudent(s),
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            {!studentsQ.isLoading && studentList.length === 0 && (
-              <li className="px-3 py-3 text-sm text-muted-foreground">
-                No students match these filters.
-              </li>
-            )}
-          </ul>
-        )}
-      </Card>
-
-      {student && (
-        <Card className="overflow-hidden">
-          <div className="px-4 py-3 border-b bg-muted/30 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-sm font-medium">
-                {kind === "exam" ? "Exam report cards" : "Class test report cards"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {student.studentName}
-                {kind === "test" && testNumber ? ` · Test No. ${testNumber}` : ""}
-                {kind === "test" && assessmentType
-                  ? ` · ${assessmentTypeLabel(assessmentType)}`
-                  : ""}
-                {kind === "exam" && examId
-                  ? ` · ${examOptions.find((e) => e._id === examId)?.title || "Selected exam"}`
-                  : ""}
-              </p>
-            </div>
-            {loadingList && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            <PanelStatCard
+              label="Ready to Print"
+              value={listLoading ? "…" : publishedTestCount + publishedExamCount}
+              hint="Assessments with results"
+              icon={CheckCircle2}
+              iconWrapClass="bg-[#d1fae5]"
+              iconClass="text-[#059669]"
+            />
+            <PanelStatCard
+              label="Student Cards"
+              value={listLoading ? "…" : reportStudentsReady}
+              hint="Across listed assessments"
+              icon={Users}
+              iconWrapClass="bg-[#ffedd5]"
+              iconClass="text-[#ea580c]"
+            />
           </div>
 
-          {kind === "exam" && !loadingList && examsForStudent.length === 0 && (
-            <p className="p-6 text-sm text-muted-foreground">
-              No exam results for this student with the current filters.
-            </p>
-          )}
-
-          {kind === "test" && !loadingList && displayTests.length === 0 && (
-            <p className="p-6 text-sm text-muted-foreground">
-              No class-test marks for this student with the current filters.
-            </p>
-          )}
-
-          {kind === "exam" && examsForStudent.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 border-b">
-                  <tr>
-                    <th className="text-left p-2.5 font-medium">Exam</th>
-                    <th className="text-left p-2.5 font-medium">Score</th>
-                    <th className="text-left p-2.5 font-medium">Status</th>
-                    <th className="text-right p-2.5 font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {examsForStudent.map((r) => {
-                    const busy = printingId === r._id;
-                    return (
-                      <tr key={r._id} className="border-b last:border-0 hover:bg-muted/20">
-                        <td className="p-2.5">
-                          <p className="font-medium">{examTitleOf(r)}</p>
-                          <p className="text-xs text-muted-foreground">{examMetaOf(r)}</p>
-                        </td>
-                        <td className="p-2.5 tabular-nums">
-                          {Math.round(Number(r.percentage) || 0)}%
-                          {r.grade ? ` · ${r.grade}` : ""}
-                          {r.position != null ? ` · #${r.position}` : ""}
-                        </td>
-                        <td className="p-2.5">
-                          <Badge
-                            variant={r.isPublished ? "secondary" : "outline"}
-                            className="text-[10px]"
-                          >
-                            {r.isPublished ? "Published" : "Draft"}
-                          </Badge>
-                        </td>
-                        <td className="p-2.5 text-right">
-                          <Button
-                            size="sm"
-                            variant="hero"
-                            className="h-8 gap-1.5"
-                            disabled={busy}
-                            onClick={() => printExamCard(r)}
-                          >
-                            {busy ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Printer className="h-3.5 w-3.5" />
-                            )}
-                            Print
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <ClassProgramSelect
+                className="w-[16.5rem] shrink-0"
+                label={false}
+                value={classId}
+                onChange={setClassId}
+                classes={classes}
+                allowAll
+                selectClassName="rounded-md border-input h-10"
+              />
+              <select
+                className={filterSelectClass}
+                value={sectionId}
+                disabled={!classId || sections.length === 0}
+                onChange={(e) => setSectionId(e.target.value)}
+                aria-label="Section filter"
+              >
+                <option value="">All Sections</option>
+                {sections.map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.sectionName}
+                  </option>
+                ))}
+              </select>
+              <select
+                className={filterSelectClass}
+                value={kind}
+                onChange={(e) => setKind(e.target.value as ReportKind)}
+                aria-label="Type filter"
+              >
+                <option value="all">All types</option>
+                <option value="test">Class tests</option>
+                <option value="exam">Term exams</option>
+              </select>
+              <PanelSearchBar
+                value={search}
+                onChange={setSearch}
+                placeholder="Search test, exam, class…"
+                className="min-w-[12rem] flex-1 max-w-md"
+              />
             </div>
-          )}
+          </div>
 
-          {kind === "test" && displayTests.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 border-b">
-                  <tr>
-                    <th className="text-left p-2.5 font-medium">Test</th>
-                    <th className="text-left p-2.5 font-medium">Type</th>
-                    <th className="text-left p-2.5 font-medium">Subject</th>
-                    <th className="text-left p-2.5 font-medium">No.</th>
-                    <th className="text-left p-2.5 font-medium">Marks</th>
-                    <th className="text-right p-2.5 font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayTests.map((t) => {
-                    const busy = printingId === t.testId;
-                    return (
-                      <tr key={t.testId} className="border-b last:border-0 hover:bg-muted/20">
-                        <td className="p-2.5">
-                          <p className="font-medium">{t.title}</p>
-                          <p className="text-xs text-muted-foreground">{t.schedule}</p>
-                        </td>
-                        <td className="p-2.5 text-muted-foreground">
-                          {assessmentTypeLabel(t.assessmentType) || t.assessmentType}
-                        </td>
-                        <td className="p-2.5">{t.subjectName}</td>
-                        <td className="p-2.5 tabular-nums">
-                          {t.occurrenceIndex != null ? t.occurrenceIndex : "—"}
-                        </td>
-                        <td className="p-2.5 tabular-nums">
-                          {t.obtained}/{t.total}
-                        </td>
-                        <td className="p-2.5 text-right">
-                          <Button
-                            size="sm"
-                            variant="hero"
-                            className="h-8 gap-1.5"
-                            disabled={busy}
-                            onClick={() => printTestCard(t.testId)}
-                          >
-                            {busy ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Printer className="h-3.5 w-3.5" />
-                            )}
-                            Print
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-[#1a2b4b]">
+                  {kind === "all"
+                    ? "Published tests & exams"
+                    : kind === "test"
+                      ? "Published class tests"
+                      : "Published term exams"}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {listLoading
+                    ? "Loading published assessments…"
+                    : `${showTests ? `${publishedTestCount} test${publishedTestCount === 1 ? "" : "s"}` : ""}${showTests && showExams ? " · " : ""
+                    }${showExams ? `${publishedExamCount} exam${publishedExamCount === 1 ? "" : "s"}` : ""}${classId ? " for selected class" : " across all classes"
+                    }. Open one to view and print report cards.`}
+                </p>
+              </div>
+              {listLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
-          )}
-        </Card>
+
+            {showTests && !listLoading && visibleTestCount === 0 && kind === "test" && (
+              <p className="p-6 text-sm text-muted-foreground">
+                {search.trim()
+                  ? "No class tests match your search."
+                  : `No class tests with recorded marks${classId ? " for this class" : ""}${sectionId ? " / section" : ""
+                  }.`}
+              </p>
+            )}
+
+            {showExams && !listLoading && visibleExamCount === 0 && kind === "exam" && (
+              <p className="p-6 text-sm text-muted-foreground">
+                {search.trim()
+                  ? "No term exams match your search."
+                  : `No term exams with published results${classId ? " for this class" : ""}.`}
+              </p>
+            )}
+
+            {kind === "all" &&
+              !listLoading &&
+              visibleTestCount === 0 &&
+              visibleExamCount === 0 && (
+                <p className="p-6 text-sm text-muted-foreground">
+                  {search.trim()
+                    ? "No published tests or exams match your search."
+                    : `No published tests or exams with results yet${classId ? " for this class" : ""
+                    }.`}
+                </p>
+              )}
+
+            {showTests && visibleTestCount > 0 && (
+              <div>
+                {kind === "all" && (
+                  <p className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+                    Class tests
+                  </p>
+                )}
+                <div className="overflow-x-auto max-h-[22rem]">
+                  <table className="w-full text-sm min-w-[780px]">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className={tableHeadClass}>Test</th>
+                        <th className={tableHeadClass}>Class</th>
+                        <th className={tableHeadClass}>Section</th>
+                        <th className={tableHeadClass}>Type</th>
+                        <th className={tableHeadClass}>Subjects</th>
+                        <th className={tableHeadClass}>Date</th>
+                        <th className={tableHeadClass}>Students</th>
+                        <th className={cn(tableHeadClass, "text-right")}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTestBatches.map((batch) => {
+                        const test = batch.primaryTest;
+                        const href = role ? reportCardTestHref(role, test._id) : "#";
+                        return (
+                          <tr
+                            key={batch.key}
+                            className="hover:bg-slate-50/80 cursor-pointer"
+                            onClick={() => {
+                              if (href !== "#") navigate(href);
+                            }}
+                          >
+                            <td className={tableCellClass}>
+                              <p className="font-semibold text-[#1a2b4b] whitespace-nowrap">
+                                {test.occurrenceIndex != null
+                                  ? `Test ${test.occurrenceIndex}`
+                                  : test.title}
+                              </p>
+                              {test.title && test.occurrenceIndex != null ? (
+                                <p className="text-xs text-slate-500 truncate max-w-[14rem]">
+                                  {test.title}
+                                </p>
+                              ) : null}
+                            </td>
+                            <td className={cn(tableCellClass, "whitespace-nowrap font-medium")}>
+                              {testClassName(test)}
+                            </td>
+                            <td
+                              className={cn(
+                                tableCellClass,
+                                "whitespace-nowrap text-muted-foreground"
+                              )}
+                            >
+                              {testSectionName(test)}
+                            </td>
+                            <td
+                              className={cn(
+                                tableCellClass,
+                                "whitespace-nowrap text-muted-foreground"
+                              )}
+                            >
+                              {assessmentTypeLabel(test.assessmentType) ||
+                                test.assessmentType ||
+                                "—"}
+                            </td>
+                            <td className={cn(tableCellClass, "max-w-[14rem]")}>
+                              <span className="line-clamp-2">
+                                {batch.subjectNames.join(", ") || testSubjectName(test)}
+                              </span>
+                            </td>
+                            <td
+                              className={cn(
+                                tableCellClass,
+                                "whitespace-nowrap text-xs text-muted-foreground"
+                              )}
+                            >
+                              {formatClassTestSchedule(test) || "—"}
+                            </td>
+                            <td className={tableCellClass}>
+                              <Badge variant="secondary" className="text-[10px]">
+                                {batch.studentCount} student
+                                {batch.studentCount === 1 ? "" : "s"}
+                              </Badge>
+                            </td>
+                            <td
+                              className={cn(tableCellClass, "text-right")}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                aria-label="View report cards"
+                                title="View"
+                                asChild
+                              >
+                                <Link to={href}>
+                                  <Eye className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {showExams && visibleExamCount > 0 && (
+              <div>
+                {kind === "all" && (
+                  <p className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+                    Term exams
+                  </p>
+                )}
+                <div className="overflow-x-auto max-h-[22rem]">
+                  <table className="w-full text-sm min-w-[720px]">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className={tableHeadClass}>Exam</th>
+                        <th className={tableHeadClass}>Class</th>
+                        <th className={tableHeadClass}>Type</th>
+                        <th className={tableHeadClass}>Session</th>
+                        <th className={tableHeadClass}>Date</th>
+                        <th className={tableHeadClass}>Published</th>
+                        <th className={cn(tableHeadClass, "text-right")}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredExams.map(({ exam, studentCount }) => {
+                        const href = role ? reportCardExamHref(role, exam._id) : "#";
+                        return (
+                          <tr
+                            key={exam._id}
+                            className="hover:bg-slate-50/80 cursor-pointer"
+                            onClick={() => {
+                              if (href !== "#") navigate(href);
+                            }}
+                          >
+                            <td className={tableCellClass}>
+                              <p className="font-semibold text-[#1a2b4b] truncate max-w-[16rem]">
+                                {exam.title}
+                              </p>
+                            </td>
+                            <td className={cn(tableCellClass, "whitespace-nowrap font-medium")}>
+                              {classNameOfExam(exam)}
+                            </td>
+                            <td
+                              className={cn(
+                                tableCellClass,
+                                "whitespace-nowrap text-muted-foreground"
+                              )}
+                            >
+                              {exam.type || "—"}
+                            </td>
+                            <td
+                              className={cn(
+                                tableCellClass,
+                                "whitespace-nowrap text-muted-foreground"
+                              )}
+                            >
+                              {exam.sessionLabel || "—"}
+                            </td>
+                            <td
+                              className={cn(
+                                tableCellClass,
+                                "whitespace-nowrap text-xs text-muted-foreground"
+                              )}
+                            >
+                              {exam.startDate
+                                ? new Date(exam.startDate).toLocaleDateString()
+                                : "—"}
+                            </td>
+                            <td className={tableCellClass}>
+                              <Badge variant="secondary" className="text-[10px]">
+                                {studentCount} published
+                              </Badge>
+                            </td>
+                            <td
+                              className={cn(tableCellClass, "text-right")}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                aria-label="View report cards"
+                                title="View"
+                                asChild
+                              >
+                                <Link to={href}>
+                                  <Eye className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

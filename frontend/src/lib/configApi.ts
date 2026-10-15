@@ -685,3 +685,99 @@ export const fetchAssessmentDateSheet = (
     `/sessions/${sessionId}/assessment-plan/date-sheet${qs ? `?${qs}` : ""}`,
   );
 };
+
+export async function fetchAssessmentDateSheetPdf(
+  sessionId: string,
+  params?: {
+    classId?: string;
+    sectionId?: string;
+    assignmentId?: string;
+    testName?: string;
+  }
+) {
+  const q = new URLSearchParams();
+  if (params?.classId) q.set("classId", params.classId);
+  if (params?.sectionId) q.set("sectionId", params.sectionId);
+  if (params?.assignmentId) q.set("assignmentId", params.assignmentId);
+  if (params?.testName) q.set("testName", params.testName);
+  const qs = q.toString();
+  const res = await authedFetch(
+    `/config/sessions/${sessionId}/assessment-plan/date-sheet.pdf${qs ? `?${qs}` : ""}`
+  );
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res);
+    throw new Error(body.message || "Failed to load date sheet PDF");
+  }
+  return res.blob();
+}
+
+/** Opens branded date-sheet PDF in a new tab. */
+export async function previewAssessmentDateSheetPdf(
+  sessionId: string,
+  params?: {
+    classId?: string;
+    sectionId?: string;
+    assignmentId?: string;
+    testName?: string;
+  }
+) {
+  const preview = window.open("about:blank", "_blank");
+  try {
+    const blob = await fetchAssessmentDateSheetPdf(sessionId, params);
+    const url = URL.createObjectURL(blob);
+    if (preview && !preview.closed) {
+      preview.location.replace(url);
+      preview.focus();
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `date-sheet-${sessionId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (err) {
+    preview?.close();
+    throw err;
+  }
+}
+
+/** Opens branded date-sheet PDF and triggers the browser print dialog. */
+export async function printAssessmentDateSheetPdf(
+  sessionId: string,
+  params?: {
+    classId?: string;
+    sectionId?: string;
+    assignmentId?: string;
+    testName?: string;
+  }
+) {
+  const preview = window.open("about:blank", "_blank");
+  try {
+    const blob = await fetchAssessmentDateSheetPdf(sessionId, params);
+    const url = URL.createObjectURL(blob);
+    if (preview && !preview.closed) {
+      preview.location.replace(url);
+      window.setTimeout(() => {
+        try {
+          preview.focus();
+          preview.print();
+        } catch {
+          /* browser PDF viewer */
+        }
+      }, 800);
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `date-sheet-${sessionId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (err) {
+    preview?.close();
+    throw err;
+  }
+}

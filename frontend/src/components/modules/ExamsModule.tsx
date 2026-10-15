@@ -15,7 +15,9 @@ import ClassTestSeriesPage from "./exams/ClassTestSeriesPage";
 import ClassTestsPanel from "./exams/ClassTestsPanel";
 import TermExamsPanel from "./exams/TermExamsPanel";
 import DateSheetPanel from "./exams/DateSheetPanel";
+import DateSheetDetailPage from "./exams/DateSheetDetailPage";
 import ReportCardPanel from "./exams/ReportCardPanel";
+import ReportCardDetailPage from "./exams/ReportCardDetailPage";
 
 const ExamsModule = ({
   perm: _perm,
@@ -57,6 +59,42 @@ const ExamsModule = ({
 
   if (sectionParam === "enter-tests" && action) {
     return <Navigate to={role ? testExamsHref(role, "enter-tests") : ".."} replace />;
+  }
+
+  if (
+    sectionParam === "date-sheet" &&
+    action === "batch" &&
+    subAction &&
+    isClassTestId(subAction)
+  ) {
+    if (!role) return null;
+    return (
+      <div className="px-4 sm:px-6 lg:px-8 py-6">
+        <DateSheetDetailPage paperId={subAction} role={role} />
+      </div>
+    );
+  }
+
+  if (sectionParam === "date-sheet" && action) {
+    return <Navigate to={role ? testExamsHref(role, "date-sheet") : ".."} replace />;
+  }
+
+  if (
+    sectionParam === "report-card" &&
+    (action === "test" || action === "exam") &&
+    subAction &&
+    isClassTestId(subAction)
+  ) {
+    if (!role) return null;
+    return (
+      <div className="px-4 sm:px-6 lg:px-8 py-6">
+        <ReportCardDetailPage kind={action} id={subAction} role={role} caps={caps} />
+      </div>
+    );
+  }
+
+  if (sectionParam === "report-card" && action) {
+    return <Navigate to={role ? testExamsHref(role, "report-card") : ".."} replace />;
   }
 
   if (!isTestExamsSection(sectionParam)) {

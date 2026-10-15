@@ -2094,8 +2094,10 @@ export interface ClassTestEntryRow {
     fatherName?: string;
     rollNumber?: string;
     phone?: string;
+    contactPhoneRes?: string;
     guardianName?: string;
     sectionName?: string;
+    disciplineName?: string;
   };
   assessment: AcademyAssessmentRecord | null;
 }
@@ -2276,6 +2278,21 @@ export async function previewClassTestMarksReportPdf(
     preview?.close();
     throw err;
   }
+}
+
+/** Opens class-test marks report and triggers the browser print dialog. */
+export async function printClassTestMarksReportPdf(
+  testId: string,
+  opts?: {
+    view?: ClassTestMarksReportView;
+    studentId?: string;
+    studentIds?: string[];
+  }
+) {
+  return openPdfForPrint(
+    () => fetchClassTestMarksReportPdf(testId, opts),
+    `marks-report-${opts?.view || "test"}-${testId}.pdf`
+  );
 }
 
 export function saveClassTestMarks(

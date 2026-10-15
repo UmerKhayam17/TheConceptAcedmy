@@ -333,6 +333,8 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: CalendarDays,
         moduleKey: "exams",
         href: (role) => testExamsHref(role, "date-sheet"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/date-sheet`),
       },
       {
         id: "report-card",

@@ -48,6 +48,9 @@ export interface ExamResult {
     studentId?: string;
     studentName: string;
     fatherName?: string;
+    rollNumber?: string;
+    phone?: string;
+    contactPhoneRes?: string;
   };
   exam?: Exam | string;
   subjectMarks: SubjectMark[];
@@ -134,6 +137,70 @@ export function fetchStudentExamResults(studentId: string) {
 
 export function resultPdfUrl(resultId: string) {
   return `${getApiRoot()}/results/${resultId}/pdf`;
+}
+
+export async function fetchResultCardPdf(resultId: string) {
+  const res = await authedFetch(`/results/${resultId}/pdf`);
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res);
+    throw new Error(body.message || "Failed to load result card");
+  }
+  return res.blob();
+}
+
+/** Opens result card PDF in a new tab. */
+export async function previewResultCardPdf(resultId: string) {
+  const preview = window.open("about:blank", "_blank");
+  try {
+    const blob = await fetchResultCardPdf(resultId);
+    const url = URL.createObjectURL(blob);
+    if (preview && !preview.closed) {
+      preview.location.replace(url);
+      preview.focus();
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `result-card-${resultId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (err) {
+    preview?.close();
+    throw err;
+  }
+}
+
+/** Opens result card PDF and triggers the browser print dialog. */
+export async function printResultCardPdf(resultId: string) {
+  const preview = window.open("about:blank", "_blank");
+  try {
+    const blob = await fetchResultCardPdf(resultId);
+    const url = URL.createObjectURL(blob);
+    if (preview && !preview.closed) {
+      preview.location.replace(url);
+      window.setTimeout(() => {
+        try {
+          preview.focus();
+          preview.print();
+        } catch {
+          /* browser PDF viewer */
+        }
+      }, 800);
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `result-card-${resultId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (err) {
+    preview?.close();
+    throw err;
+  }
 }
 
 export async function fetchExamAwardListPdf(examId: string, subjectId?: string) {

@@ -174,7 +174,10 @@ async function enterMarks(examId, marksRows, userId) {
 
 async function getExamResults(examId) {
   const results = await Result.find({ exam: examId })
-    .populate('academyStudent', 'studentId studentName fatherName classId')
+    .populate(
+      'academyStudent',
+      'studentId studentName fatherName classId rollNumber phone contactPhoneRes'
+    )
     .populate('subjectMarks.subject', 'subjectName subjectCode')
     .sort({ percentage: -1 })
     .lean();
@@ -184,7 +187,10 @@ async function getExamResults(examId) {
   );
 
   return Result.find({ exam: examId })
-    .populate('academyStudent', 'studentId studentName fatherName classId')
+    .populate(
+      'academyStudent',
+      'studentId studentName fatherName classId rollNumber phone contactPhoneRes'
+    )
     .populate('subjectMarks.subject', 'subjectName subjectCode')
     .sort({ percentage: -1 })
     .lean();
