@@ -189,6 +189,8 @@ export default function AssignAssessmentsPanel({
   const role = user?.role ?? "admin";
   const isTeacher = role === "teacher";
   const canManage = caps.canCreate || caps.canEdit;
+  const canEnterMarks = caps.canEdit || caps.canCreate;
+  const canDelete = caps.canDelete;
 
   const { data: sessions = [] } = useQuery({
     queryKey: ["academic-sessions"],
@@ -569,28 +571,32 @@ export default function AssignAssessmentsPanel({
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-sky-600 hover:text-sky-700"
-                        title="Edit"
-                        aria-label="Edit"
-                        onClick={() => setConfigAssignment(a)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-violet-600 hover:text-violet-700"
-                        title="Syllabus"
-                        aria-label="Syllabus"
-                        onClick={() => setConfigAssignment(a)}
-                      >
-                        <BookOpen className="h-4 w-4" />
-                      </Button>
+                      {canManage && (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-sky-600 hover:text-sky-700"
+                          title="Edit"
+                          aria-label="Edit"
+                          onClick={() => setConfigAssignment(a)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canManage && (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-violet-600 hover:text-violet-700"
+                          title="Syllabus"
+                          aria-label="Syllabus"
+                          onClick={() => setConfigAssignment(a)}
+                        >
+                          <BookOpen className="h-4 w-4" />
+                        </Button>
+                      )}
                       {a.status === "published" && a.category === "exam" && a.examId && (
                         <MarksReportButton
                           examId={String(a.examId)}
@@ -607,10 +613,10 @@ export default function AssignAssessmentsPanel({
                             title="Print test marks report"
                           />
                         )}
-                      {canManage && a.status === "draft" && isReady(a, teacherSubjectSet) && (
+                      {caps.canCreate && a.status === "draft" && isReady(a, teacherSubjectSet) && (
                         <PublishButton sessionId={effectiveSessionId} assignmentId={a._id} onDone={invalidate} />
                       )}
-                      {canManage && (
+                      {canDelete && (
                         <DeleteButton
                           sessionId={effectiveSessionId}
                           assignmentId={a._id}
@@ -663,7 +669,7 @@ export default function AssignAssessmentsPanel({
                       title="Print test marks report"
                     />
                     <AwardListButton testId={t._id} />
-                    {canManage && (
+                    {canDelete && (
                       <DeleteClassTestButton test={t} onDone={invalidate} />
                     )}
                   </td>
@@ -685,6 +691,7 @@ export default function AssignAssessmentsPanel({
               )
             : undefined
         }
+        canEnterMarks={canEnterMarks}
         onOpenChange={(open) => {
           if (!open) setSubjectsAssignment(null);
         }}
@@ -868,12 +875,14 @@ function formatPaperDate(value?: string) {
 function TestSubjectsDialog({
   assignment,
   subjectFilter,
+  canEnterMarks = false,
   onOpenChange,
   onEnterMarks,
   onEnterExam,
 }: {
   assignment: AssessmentAssignment | null;
   subjectFilter?: Set<string>;
+  canEnterMarks?: boolean;
   onOpenChange: (open: boolean) => void;
   onEnterMarks: (testId: string) => void;
   onEnterExam: (examId: string) => void;
@@ -935,14 +944,16 @@ function TestSubjectsDialog({
                             examId={String(assignment.examId)}
                             subjectId={idOf(p.subjectId)}
                           />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 px-3"
-                            onClick={() => onEnterExam(String(assignment.examId))}
-                          >
-                            Enter marks
-                          </Button>
+                          {canEnterMarks ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-3"
+                              onClick={() => onEnterExam(String(assignment.examId))}
+                            >
+                              Enter marks
+                            </Button>
+                          ) : null}
                         </div>
                       ) : p.classTestId ? (
                         <div className="inline-flex items-center gap-1.5">
@@ -953,14 +964,16 @@ function TestSubjectsDialog({
                             title={`Print ${paperLabel(p)} report`}
                           />
                           <AwardListButton testId={String(p.classTestId)} />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 px-3"
-                            onClick={() => onEnterMarks(String(p.classTestId))}
-                          >
-                            Enter marks
-                          </Button>
+                          {canEnterMarks ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-3"
+                              onClick={() => onEnterMarks(String(p.classTestId))}
+                            >
+                              Enter marks
+                            </Button>
+                          ) : null}
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">Not published</span>

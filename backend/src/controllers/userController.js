@@ -91,7 +91,8 @@ async function attachLinkedStudentsToUsers(users) {
 }
 
 const listModuleRegistry = catchAsync(async (req, res) => {
-  const modules = getSystemModulesForApi().map((m) => ({
+  // Hide coming-soon modules from Permissions / Users grant UI
+  const modules = getSystemModulesForApi({ forPermissions: true }).map((m) => ({
     key: m.key,
     name: m.label,
     description: m.description,

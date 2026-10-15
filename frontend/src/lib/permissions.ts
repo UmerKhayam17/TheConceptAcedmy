@@ -318,7 +318,8 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     homework: "crud",
     "study-materials": "crud",
     "lesson-plans": "grade",
-    exams: "grade",
+    /** View-only until create/edit granted on the Examination matrix. */
+    exams: "view",
     "student-progress": "view",
     behaviour: "grade",
     "parent-meetings": "grade",

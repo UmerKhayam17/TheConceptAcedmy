@@ -174,6 +174,8 @@ const SYSTEM_MODULES = [
     description: 'Create and manage own homework',
     order: 50,
     actions: ['view', 'create', 'edit', 'delete'],
+    /** Coming soon — hidden from Permissions / Users module matrix */
+    showInPermissions: false,
   },
   {
     key: 'studyMaterials',
@@ -183,6 +185,7 @@ const SYSTEM_MODULES = [
     description: 'Upload and manage study materials',
     order: 51,
     actions: ['view', 'create', 'edit', 'delete'],
+    showInPermissions: false,
   },
   {
     key: 'lessonPlans',
@@ -192,6 +195,7 @@ const SYSTEM_MODULES = [
     description: 'Create and view lesson plans',
     order: 52,
     actions: ['view', 'create', 'edit'],
+    showInPermissions: false,
   },
   {
     key: 'studentProgress',
@@ -201,6 +205,7 @@ const SYSTEM_MODULES = [
     description: 'Progress reports for assigned students',
     order: 61,
     actions: ['view'],
+    showInPermissions: false,
   },
   {
     key: 'behaviour',
@@ -210,6 +215,7 @@ const SYSTEM_MODULES = [
     description: 'Behaviour notes and disciplinary remarks',
     order: 62,
     actions: ['view', 'create', 'edit'],
+    showInPermissions: false,
   },
   {
     key: 'parentMeetings',
@@ -219,6 +225,7 @@ const SYSTEM_MODULES = [
     description: 'Schedule and manage PTM records',
     order: 63,
     actions: ['view', 'create', 'edit'],
+    showInPermissions: false,
   },
   {
     key: 'onlineClasses',
@@ -228,6 +235,7 @@ const SYSTEM_MODULES = [
     description: 'Create and manage online sessions',
     order: 64,
     actions: ['view', 'create', 'edit', 'delete'],
+    showInPermissions: false,
   },
   {
     key: 'library',
@@ -237,6 +245,7 @@ const SYSTEM_MODULES = [
     description: 'View own issued books',
     order: 65,
     actions: ['view'],
+    showInPermissions: false,
   },
   {
     key: 'schoolCalendar',
@@ -246,6 +255,7 @@ const SYSTEM_MODULES = [
     description: 'School events calendar',
     order: 66,
     actions: ['view'],
+    showInPermissions: false,
   },
   {
     key: 'notifications',
@@ -255,6 +265,7 @@ const SYSTEM_MODULES = [
     description: 'In-app notifications',
     order: 67,
     actions: ['view'],
+    showInPermissions: false,
   },
   {
     key: 'profile',
@@ -312,8 +323,9 @@ function buildModulesMap() {
 /**
  * Payload for GET /config/system-modules (sidebar + permission UI).
  */
-function getSystemModulesForApi() {
+function getSystemModulesForApi({ forPermissions = false } = {}) {
   return [...SYSTEM_MODULES]
+    .filter((mod) => !forPermissions || mod.showInPermissions !== false)
     .sort((a, b) => a.order - b.order)
     .map((mod) => ({
       key: mod.key,
@@ -323,6 +335,7 @@ function getSystemModulesForApi() {
       description: mod.description,
       actions: mod.actions,
       order: mod.order,
+      showInPermissions: mod.showInPermissions !== false,
     }));
 }
 

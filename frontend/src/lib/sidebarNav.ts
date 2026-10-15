@@ -546,22 +546,6 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
       //   moduleKey: "lesson-plans",
       //   href: (role) => moduleHref(role, "lesson-plans"),
       // },
-      {
-        id: "exams",
-        label: "Examination",
-        icon: Award,
-        moduleKey: "exams",
-        href: (role) => testExamsHref(role),
-      },
-      {
-        id: "report-card",
-        label: "Report Card",
-        icon: FileBadge,
-        moduleKey: "exams",
-        href: (role) => testExamsHref(role, "report-card"),
-        isActive: (pathname, role) =>
-          pathname.startsWith(`${p(role)}/exams/report-card`),
-      },
       // {
       //   id: "student-progress",
       //   label: "Student Progress",
@@ -575,6 +559,50 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: ClipboardList,
         moduleKey: "attendance",
         href: (role) => moduleHref(role, "attendance"),
+      },
+    ],
+  },
+  {
+    id: "examinations",
+    label: "Examination",
+    icon: Award,
+    collapsible: true,
+    items: [
+      {
+        id: "class-tests",
+        label: "Test Scheduling",
+        icon: ClipboardList,
+        moduleKey: "exams",
+        href: (role) => testExamsHref(role, "enter-tests"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/enter-tests`),
+      },
+      {
+        id: "term-results",
+        label: "Exams",
+        icon: Award,
+        moduleKey: "exams",
+        href: (role) => testExamsHref(role, "term-exams"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/term-exams`),
+      },
+      {
+        id: "date-sheet",
+        label: "Date sheet",
+        icon: CalendarDays,
+        moduleKey: "exams",
+        href: (role) => testExamsHref(role, "date-sheet"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/date-sheet`),
+      },
+      {
+        id: "report-card",
+        label: "Report Card",
+        icon: FileBadge,
+        moduleKey: "exams",
+        href: (role) => testExamsHref(role, "report-card"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/report-card`),
       },
     ],
   },
@@ -1013,7 +1041,7 @@ export const MOBILE_PRIMARY_NAV_IDS: Record<Role, string[]> = {
     "administration",
   ],
   accountant: ["dashboard", "students", "fee-management", "academy-expenses", "chat"],
-  teacher: ["dashboard", "my-classes", "attendance", "chat", "exams"],
+  teacher: ["dashboard", "my-classes", "attendance", "chat", "class-tests"],
   parent: ["dashboard", "students", "student-attendance", "chat", "announcements"],
   student: ["dashboard", "student-timetable", "exams", "chat", "announcements"],
 };
