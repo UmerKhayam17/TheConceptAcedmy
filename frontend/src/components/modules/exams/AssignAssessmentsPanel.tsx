@@ -592,9 +592,6 @@ export default function AssignAssessmentsPanel({
                         <MarksReportButton
                           examId={String(a.examId)}
                           iconOnly
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-amber-600 hover:text-amber-700"
                           title="Print exam marks report"
                         />
                       )}
@@ -604,9 +601,6 @@ export default function AssignAssessmentsPanel({
                           <MarksReportButton
                             testId={firstClassTestIdOf(a)}
                             iconOnly
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-amber-600 hover:text-amber-700"
                             title="Print test marks report"
                           />
                         )}

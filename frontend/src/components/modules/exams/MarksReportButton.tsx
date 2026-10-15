@@ -116,10 +116,10 @@ export default function MarksReportButton({
       <Button
         type="button"
         size="icon"
-        variant={variant === "outline" ? "ghost" : variant}
+        variant="outline"
         title={title}
         aria-label={title}
-        className={cn("h-8 w-8 text-amber-600 hover:text-amber-700", className)}
+        className={cn("h-8 w-8 shrink-0 text-[#1a2b4b] border-slate-200", className)}
         disabled={!canOpen || Boolean(loading)}
         onClick={(e) => {
           e.preventDefault();

@@ -474,8 +474,8 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                                 <Button
                                   type="button"
                                   size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 text-amber-600 hover:text-amber-700"
+                                  variant="outline"
+                                  className="h-8 w-8 shrink-0 text-[#1a2b4b] border-slate-200"
                                   title="Download result card"
                                   aria-label="Download result card"
                                   onClick={() => downloadPdf(r._id)}
