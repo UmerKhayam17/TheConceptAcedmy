@@ -70,10 +70,20 @@ function serializeUser(user) {
 }
 
 function serializeLinkedStudent(student) {
+  const classId =
+    student.classId && typeof student.classId === 'object'
+      ? student.classId._id
+      : student.classId;
+  const sectionId =
+    student.sectionId && typeof student.sectionId === 'object'
+      ? student.sectionId._id
+      : student.sectionId;
   return {
     _id: student._id,
     studentId: student.studentId,
     studentName: student.studentName,
+    classId: classId ? String(classId) : null,
+    sectionId: sectionId ? String(sectionId) : null,
     className: student.classId?.className || null,
     sectionName: student.sectionId?.sectionName || null,
     status: student.status,
@@ -594,12 +604,120 @@ const deleteUser = catchAsync(async (req, res) => {
   res.json({ success: true, data: { deleted: true, id: String(user._id) } });
 });
 
+const DEFAULT_RESET_PASSWORD = 'Concept@1234';
+
+const bulkUsers = catchAsync(async (req, res) => {
+  const action = String(req.body.action || '');
+  const ids = [...new Set((req.body.ids || []).map((id) => String(id)))];
+  if (!ids.length) throw new ApiError(400, 'Select at least one account');
+
+  const neededAction = action === 'delete' ? 'delete' : 'edit';
+  if (!isSystemAdmin(req.user) && !hasAnyAccountModulePermission(req.user, neededAction)) {
+    throw new ApiError(403, `You do not have permission to ${action} accounts`);
+  }
+
+  const resetPassword =
+    action === 'resetPassword'
+      ? String(req.body.password || DEFAULT_RESET_PASSWORD).trim() || DEFAULT_RESET_PASSWORD
+      : null;
+  if (action === 'resetPassword' && resetPassword.length < 8) {
+    throw new ApiError(400, 'Password must be at least 8 characters');
+  }
+  const passwordHash =
+    action === 'resetPassword' ? await bcrypt.hash(resetPassword, 12) : null;
+
+  const selfId = String(req.user._id);
+  const results = { processed: 0, skipped: 0, failed: [] };
+
+  for (const id of ids) {
+    try {
+      if (id === selfId && (action === 'delete' || action === 'deactivate')) {
+        results.failed.push({ id, reason: 'You cannot modify your own account this way' });
+        continue;
+      }
+
+      const user = await User.findById(id).populate('role');
+      if (!user) {
+        results.failed.push({ id, reason: 'User not found' });
+        continue;
+      }
+      if (isSystemAdmin(user)) {
+        results.failed.push({ id, reason: 'System admin is protected' });
+        continue;
+      }
+
+      const roleName = roleNameFromUserDoc(user);
+      const moduleName = accountModuleForRoleName(roleName);
+      assertAccountAction(
+        req.user,
+        moduleName,
+        neededAction,
+        `${action} ${roleName || 'user'} accounts`,
+      );
+
+      if (action === 'activate') {
+        user.isActive = true;
+        await user.save();
+        results.processed += 1;
+      } else if (action === 'deactivate') {
+        if (roleName === 'admin') {
+          const adminCount = await User.countDocuments({
+            role: user.role._id,
+            _id: { $ne: user._id },
+            isActive: true,
+          });
+          if (adminCount === 0) {
+            results.failed.push({ id, reason: 'Cannot deactivate the last active admin' });
+            continue;
+          }
+        }
+        user.isActive = false;
+        await user.save();
+        results.processed += 1;
+      } else if (action === 'resetPassword') {
+        user.password = passwordHash;
+        await user.save();
+        results.processed += 1;
+      } else if (action === 'delete') {
+        if (roleName === 'admin') {
+          const adminCount = await User.countDocuments({
+            role: user.role._id,
+            _id: { $ne: user._id },
+            isActive: true,
+          });
+          if (adminCount === 0) {
+            results.failed.push({ id, reason: 'Cannot delete the last active admin' });
+            continue;
+          }
+        }
+        await User.findByIdAndDelete(user._id);
+        results.processed += 1;
+      } else {
+        results.failed.push({ id, reason: 'Unknown action' });
+      }
+    } catch (err) {
+      results.failed.push({ id, reason: err.message || 'Failed' });
+    }
+  }
+
+  notifyStaff(req, action === 'delete' ? 'deleted' : 'updated');
+  res.json({
+    success: true,
+    data: {
+      ...results,
+      action,
+      ...(action === 'resetPassword' ? { password: resetPassword } : {}),
+    },
+  });
+});
+
 module.exports = {
   listUsers,
   listModuleRegistry,
   createUser,
   updateUser,
   deleteUser,
+  bulkUsers,
   uploadProfilePhoto,
   patchPermissions,
   patchModulePermissions,

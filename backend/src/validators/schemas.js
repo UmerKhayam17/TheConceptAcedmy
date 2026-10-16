@@ -264,6 +264,12 @@ const readMessages = Joi.object({
   messageIds: Joi.array().items(Joi.string().hex().length(24)).min(1).required(),
 });
 
+const bulkUsers = Joi.object({
+  action: Joi.string().valid('activate', 'deactivate', 'delete', 'resetPassword').required(),
+  ids: Joi.array().items(Joi.string().hex().length(24)).min(1).max(200).required(),
+  password: Joi.string().min(8).max(128).optional(),
+});
+
 module.exports = {
   login,
   refresh,
@@ -271,6 +277,7 @@ module.exports = {
   otpVerify,
   createUser,
   updateUser,
+  bulkUsers,
   parentStudentAccess,
   userPermissions,
   sessionBody,

@@ -19,6 +19,8 @@ export interface LinkedStudentSummary {
   _id: string;
   studentId: string;
   studentName: string;
+  classId?: string | null;
+  sectionId?: string | null;
   className?: string | null;
   sectionName?: string | null;
   status?: string;
@@ -296,6 +298,35 @@ export async function deleteStaffUser(id: string): Promise<void> {
   const res = await authedFetch(`/users/${id}`, { method: "DELETE" });
   const body = await parseJson<{ success?: boolean; message?: string }>(res);
   if (!res.ok) throw new Error(body.message || "Failed to delete user");
+}
+
+export type BulkUserAction = "activate" | "deactivate" | "delete" | "resetPassword";
+
+export interface BulkUsersResult {
+  action: BulkUserAction;
+  processed: number;
+  skipped?: number;
+  failed: { id: string; reason: string }[];
+  /** Present after resetPassword — show once to the operator. */
+  password?: string;
+}
+
+export async function bulkUsersAction(
+  action: BulkUserAction,
+  ids: string[],
+  password?: string,
+): Promise<BulkUsersResult> {
+  const res = await authedFetch("/users/bulk", {
+    method: "POST",
+    body: JSON.stringify({ action, ids, ...(password ? { password } : {}) }),
+  });
+  const body = await parseJson<{
+    success?: boolean;
+    message?: string;
+    data?: BulkUsersResult;
+  }>(res);
+  if (!res.ok || !body.data) throw new Error(body.message || "Bulk action failed");
+  return body.data;
 }
 
 export async function patchUserPermissionIds(userId: string, permissionIds: string[]): Promise<UserWithAccess> {

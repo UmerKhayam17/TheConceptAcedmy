@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -12,10 +12,13 @@ import {
 } from "@/components/ui/dialog";
 import {
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Percent,
   Plus,
   Pencil,
   Shield,
+  UserCheck,
   UserCog,
   UserX,
   Eye,
@@ -36,7 +39,11 @@ import { tableColumns, type UserFieldKey } from "@/lib/userSchemaFields";
 import {
   fetchUsersByScope,
   deleteStaffUser,
+  updateStaffUser,
+  bulkUsersAction,
   roleDisplayLabel,
+  type BulkUserAction,
+  type BulkUsersResult,
   type RoleOption,
   type LinkedStudentSummary,
   type StaffUser,
@@ -44,14 +51,32 @@ import {
 import { useStaffRealtime } from "@/hooks/useStaffSocket";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
 import {
+  fetchAcademyClasses,
+  fetchAcademySectionsBySession,
   provisionParentPortals,
+  type AcademyClass,
+  type AcademySectionWithClass,
   type ParentPortalProvisionResult,
 } from "@/lib/studentManagementApi";
 import { resolveUploadUrl } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SquareCheckbox } from "@/components/ui/square-checkbox";
+import PageSizeSelect from "@/components/modules/student-management/PageSizeSelect";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { userCreateHref, userEditHref, type UserFormScope } from "@/lib/userFormRoutes";
 import { cn } from "@/lib/utils";
+
+function pageWindow(current: number, totalPages: number, max = 5): number[] {
+  if (totalPages <= max) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const half = Math.floor(max / 2);
+  let start = Math.max(1, current - half);
+  let end = start + max - 1;
+  if (end > totalPages) {
+    end = totalPages;
+    start = Math.max(1, end - max + 1);
+  }
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+}
 
 const filterSelectClass =
   "h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0";
@@ -365,8 +390,34 @@ const UsersModule = ({
   const [moduleFilter, setModuleFilter] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [sectionFilter, setSectionFilter] = useState("");
+  const [page, setPage] = useState(1);
+  /** Default 50 rows per page (same as student management). */
+  const [pageSize, setPageSize] = useState(50);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [revealedPasswords, setRevealedPasswords] = useState<Set<string>>(() => new Set());
+  const [bulkResetResult, setBulkResetResult] = useState<BulkUsersResult | null>(null);
+  const [showBulkResetPassword, setShowBulkResetPassword] = useState(true);
+
+  const isParentsScope = scope === "parents";
+
+  const { data: academyClasses = [] } = useQuery<AcademyClass[]>({
+    queryKey: ["academy-classes", "parents-filter"],
+    queryFn: () => fetchAcademyClasses({ status: "active" }),
+    enabled: isParentsScope,
+  });
+
+  const { data: academySections = [] } = useQuery<AcademySectionWithClass[]>({
+    queryKey: ["academy-sections", "parents-filter", classFilter],
+    queryFn: async () => {
+      const all = await fetchAcademySectionsBySession(undefined, { status: "active" });
+      if (!classFilter) return all;
+      return all.filter((s) => {
+        const cid = typeof s.classId === "object" ? s.classId?._id : s.classId;
+        return String(cid) === classFilter;
+      });
+    },
+    enabled: isParentsScope,
+  });
 
   const { search, setSearch, filtered: searchFiltered } = usePanelListSearch(staff, (u) => [
     u.name,
@@ -409,30 +460,6 @@ const UsersModule = ({
     return Array.from(keys).sort((a, b) => a.localeCompare(b));
   }, [staff]);
 
-  const classOptions = useMemo(() => {
-    const names = new Set<string>();
-    for (const u of staff) {
-      for (const s of u.linkedStudents ?? []) {
-        const c = String(s.className || "").trim();
-        if (c) names.add(c);
-      }
-    }
-    return Array.from(names).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [staff]);
-
-  const sectionOptions = useMemo(() => {
-    const names = new Set<string>();
-    for (const u of staff) {
-      for (const s of u.linkedStudents ?? []) {
-        const c = String(s.className || "").trim();
-        if (classFilter && c !== classFilter) continue;
-        const sec = String(s.sectionName || "").trim();
-        if (sec) names.add(sec);
-      }
-    }
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [staff, classFilter]);
-
   const staffFiltered = useMemo(() => {
     return searchFiltered.filter((u) => {
       if (roleFilter && roleNameOf(u) !== roleFilter) return false;
@@ -452,10 +479,8 @@ const UsersModule = ({
       if (classFilter || sectionFilter) {
         const linked = u.linkedStudents ?? [];
         const match = linked.some((s) => {
-          const c = String(s.className || "").trim();
-          const sec = String(s.sectionName || "").trim();
-          if (classFilter && c !== classFilter) return false;
-          if (sectionFilter && sec !== sectionFilter) return false;
+          if (classFilter && String(s.classId || "") !== classFilter) return false;
+          if (sectionFilter && String(s.sectionId || "") !== sectionFilter) return false;
           return true;
         });
         if (!match) return false;
@@ -489,7 +514,23 @@ const UsersModule = ({
     setClassFilter("");
     setSectionFilter("");
     setSearch("");
+    setPage(1);
   };
+
+  useEffect(() => {
+    setPage(1);
+    setSelectedIds(new Set());
+  }, [
+    scope,
+    roleFilter,
+    statusFilter,
+    payTypeFilter,
+    moduleFilter,
+    classFilter,
+    sectionFilter,
+    search,
+    pageSize,
+  ]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => {
@@ -505,8 +546,86 @@ const UsersModule = ({
     },
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      if (!caps.canEdit) throw new Error("Not allowed.");
+      return updateStaffUser(id, { isActive });
+    },
+    onSuccess: (_data, vars) => {
+      toast({ title: vars.isActive ? "Account activated" : "Account deactivated" });
+      void qc.invalidateQueries({ queryKey: STAFF_QUERY });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Update failed", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const selectedCount = selectedIds.size;
+  const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
+
+  const bulkMutation = useMutation({
+    mutationFn: async ({
+      action,
+      password,
+    }: {
+      action: BulkUserAction;
+      password?: string;
+    }) => {
+      if (action === "delete" && !caps.canDelete) {
+        throw new Error("You do not have permission to delete accounts.");
+      }
+      if (action !== "delete" && !caps.canEdit) {
+        throw new Error("You do not have permission to update accounts.");
+      }
+      if (!selectedIdList.length) throw new Error("Select at least one account.");
+      return bulkUsersAction(action, selectedIdList, password);
+    },
+    onSuccess: (data) => {
+      void qc.invalidateQueries({ queryKey: STAFF_QUERY });
+      setSelectedIds(new Set());
+      const failHint =
+        data.failed.length > 0
+          ? ` · ${data.failed.length} skipped (${data.failed[0]?.reason || "error"})`
+          : "";
+      if (data.action === "resetPassword") {
+        setBulkResetResult(data);
+        setShowBulkResetPassword(true);
+        toast({
+          title: "Passwords reset",
+          description: `${data.processed} account(s) updated${failHint}`,
+        });
+        return;
+      }
+      const titles: Record<Exclude<BulkUserAction, "resetPassword">, string> = {
+        activate: "Accounts activated",
+        deactivate: "Accounts deactivated",
+        delete: "Accounts deleted",
+      };
+      toast({
+        title: titles[data.action],
+        description: `${data.processed} account(s)${failHint}`,
+      });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Bulk action failed", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const runBulk = (action: BulkUserAction) => {
+    const labels: Record<BulkUserAction, string> = {
+      activate: `Activate ${selectedCount} selected account(s)?`,
+      deactivate: `Deactivate ${selectedCount} selected account(s)?`,
+      delete: `Permanently delete ${selectedCount} selected account(s)? This cannot be undone.`,
+      resetPassword: `Reset password for ${selectedCount} selected account(s) to ${DEFAULT_PARENT_PASSWORD}?`,
+    };
+    if (!window.confirm(labels[action])) return;
+    bulkMutation.mutate({
+      action,
+      password: action === "resetPassword" ? DEFAULT_PARENT_PASSWORD : undefined,
+    });
+  };
+
   const isStaffScope = scope === "staff";
-  const isParentsScope = scope === "parents";
   const isAdminsScope = scope === "admins";
   // Pay / salary columns only apply to teachers & accountants.
   const cols = tableColumns().filter((c) => {
@@ -530,16 +649,32 @@ const UsersModule = ({
     (showParentPasswordCol ? 1 : 0) +
     (showActions ? 1 : 0);
 
-  const allFilteredIds = useMemo(() => staffFiltered.map((u) => u._id), [staffFiltered]);
+  const totalFiltered = staffFiltered.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+  const pageRows = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return staffFiltered.slice(start, start + pageSize);
+  }, [staffFiltered, safePage, pageSize]);
+  const pageIds = useMemo(() => pageRows.map((u) => u._id), [pageRows]);
   const allSelected =
-    allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));
-  const someSelected = allFilteredIds.some((id) => selectedIds.has(id));
+    pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+  const someSelected = pageIds.some((id) => selectedIds.has(id));
+  const showingFrom = totalFiltered > 0 ? (safePage - 1) * pageSize + 1 : 0;
+  const showingTo = Math.min(safePage * pageSize, totalFiltered);
+  const pages = pageWindow(safePage, totalPages);
+  const entityPlural =
+    isStaffScope ? "staff" : isAdminsScope ? "admins" : "parents";
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const toggleSelectAll = (checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (checked) allFilteredIds.forEach((id) => next.add(id));
-      else allFilteredIds.forEach((id) => next.delete(id));
+      if (checked) pageIds.forEach((id) => next.add(id));
+      else pageIds.forEach((id) => next.delete(id));
       return next;
     });
   };
@@ -746,6 +881,41 @@ const UsersModule = ({
 
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
         <div className="flex flex-wrap items-center gap-2">
+          {isParentsScope ? (
+            <>
+              <ClassProgramSelect
+                className="w-[16.5rem] shrink-0"
+                label={false}
+                value={classFilter}
+                onChange={(v) => {
+                  setClassFilter(v);
+                  setSectionFilter("");
+                  setPage(1);
+                }}
+                classes={academyClasses}
+                allowAll
+                selectClassName="rounded-md border-input h-10"
+              />
+              <select
+                className="h-10 w-[10rem] shrink-0 rounded-md border border-input bg-background px-3 text-sm"
+                value={sectionFilter}
+                onChange={(e) => {
+                  setSectionFilter(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Section filter"
+                disabled={academySections.length === 0}
+              >
+                <option value="">All Sections</option>
+                {academySections.map((sec) => (
+                  <option key={sec._id} value={sec._id}>
+                    {sec.sectionName}
+                    {!classFilter && sec.className ? ` · ${sec.className}` : ""}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
           {showRoleFilter ? (
             <select
               className={`${filterSelectClass} w-[9.5rem]`}
@@ -782,39 +952,6 @@ const UsersModule = ({
               <option value="fixed">Fixed</option>
               <option value="percentage">Percentage</option>
             </select>
-          ) : null}
-          {isParentsScope ? (
-            <>
-              <select
-                className={`${filterSelectClass} w-[10rem]`}
-                value={classFilter}
-                onChange={(e) => {
-                  setClassFilter(e.target.value);
-                  setSectionFilter("");
-                }}
-                aria-label="Class filter"
-              >
-                <option value="">All classes</option>
-                {classOptions.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={`${filterSelectClass} w-[10rem]`}
-                value={sectionFilter}
-                onChange={(e) => setSectionFilter(e.target.value)}
-                aria-label="Section filter"
-              >
-                <option value="">All sections</option>
-                {sectionOptions.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </>
           ) : null}
           <select
             className={`${filterSelectClass} w-[11rem]`}
@@ -879,6 +1016,85 @@ const UsersModule = ({
           </div>
         </div>
       </Card>
+
+      {selectedCount > 0 && (
+        <Card className="border-border/80 p-3 shadow-sm sm:px-4 sm:py-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-semibold text-[#1a2b4b]">{selectedCount}</span>
+              {" selected"}
+              {bulkMutation.isPending ? (
+                <span className="ml-2 inline-flex items-center gap-1.5 text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Working…
+                </span>
+              ) : null}
+            </p>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {caps.canEdit && (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                    disabled={bulkMutation.isPending}
+                    onClick={() => runBulk("activate")}
+                  >
+                    <UserCheck className="h-4 w-4" />
+                    Activate
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5 border-border"
+                    disabled={bulkMutation.isPending}
+                    onClick={() => runBulk("deactivate")}
+                  >
+                    <UserX className="h-4 w-4" />
+                    Deactivate
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5 border-border"
+                    disabled={bulkMutation.isPending}
+                    onClick={() => runBulk("resetPassword")}
+                  >
+                    <KeyRound className="h-4 w-4" />
+                    Reset password
+                  </Button>
+                </>
+              )}
+              {caps.canDelete && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                  disabled={bulkMutation.isPending}
+                  onClick={() => runBulk("delete")}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 gap-1.5 text-muted-foreground"
+                disabled={bulkMutation.isPending}
+                onClick={() => setSelectedIds(new Set())}
+              >
+                <X className="h-4 w-4" />
+                Clear
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card className="overflow-hidden border-border/80 shadow-sm">
         <div className="overflow-x-auto">
@@ -947,7 +1163,7 @@ const UsersModule = ({
                   </td>
                 </tr>
               ) : (
-                staffFiltered.map((u) => (
+                pageRows.map((u) => (
                   <tr
                     key={u._id}
                     className={cn(
@@ -1034,11 +1250,45 @@ const UsersModule = ({
                               <Pencil className="h-4 w-4" />
                             </Button>
                           )}
+                          {caps.canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8",
+                                u.isActive
+                                  ? "text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+                                  : "text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700",
+                              )}
+                              disabled={toggleActiveMutation.isPending}
+                              title={u.isActive ? "Deactivate" : "Activate"}
+                              aria-label={u.isActive ? "Deactivate" : "Activate"}
+                              onClick={() => {
+                                const next = !u.isActive;
+                                if (
+                                  !window.confirm(
+                                    next
+                                      ? `Activate ${u.name}?`
+                                      : `Deactivate ${u.name}?`,
+                                  )
+                                ) {
+                                  return;
+                                }
+                                toggleActiveMutation.mutate({ id: u._id, isActive: next });
+                              }}
+                            >
+                              {u.isActive ? (
+                                <UserX className="h-4 w-4" />
+                              ) : (
+                                <UserCheck className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
                           {caps.canDelete && (
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              className="h-8 w-8 text-destructive hover:bg-destructive/5 hover:text-destructive"
                               disabled={deleteMutation.isPending}
                               onClick={() => {
                                 if (
@@ -1063,6 +1313,68 @@ const UsersModule = ({
             </tbody>
           </table>
         </div>
+
+        {totalFiltered > 0 && (
+          <div className="flex flex-col gap-3 border-t bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-muted-foreground">
+                Showing{" "}
+                <span className="font-medium text-foreground">{showingFrom}</span>
+                {" to "}
+                <span className="font-medium text-foreground">{showingTo}</span>
+                {" of "}
+                <span className="font-medium text-foreground">{totalFiltered}</span>
+                {" "}
+                {entityPlural}
+              </p>
+              <PageSizeSelect
+                value={pageSize}
+                onChange={(n) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={safePage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                {pages.map((n) => (
+                  <Button
+                    key={n}
+                    variant={n === safePage ? "default" : "outline"}
+                    size="icon"
+                    className="h-8 w-8 text-sm"
+                    onClick={() => setPage(n)}
+                    aria-label={`Page ${n}`}
+                    aria-current={n === safePage ? "page" : undefined}
+                  >
+                    {n}
+                  </Button>
+                ))}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       <Dialog
@@ -1132,6 +1444,63 @@ const UsersModule = ({
           )}
           <DialogFooter>
             <Button type="button" onClick={() => setProvisionOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(bulkResetResult)}
+        onOpenChange={(o) => {
+          if (!o) setBulkResetResult(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Passwords reset</DialogTitle>
+          </DialogHeader>
+          {bulkResetResult && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Updated{" "}
+                <span className="font-medium text-foreground">{bulkResetResult.processed}</span>{" "}
+                account(s). Share this password once — it will not be shown again from the
+                database.
+              </p>
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                <span className="font-mono text-base font-semibold tracking-wide">
+                  {showBulkResetPassword
+                    ? bulkResetResult.password || DEFAULT_PARENT_PASSWORD
+                    : "••••••••"}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowBulkResetPassword((p) => !p)}
+                >
+                  {showBulkResetPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              {bulkResetResult.failed.length > 0 ? (
+                <p className="text-xs text-amber-700">
+                  {bulkResetResult.failed.length} skipped:{" "}
+                  {bulkResetResult.failed
+                    .slice(0, 3)
+                    .map((f) => f.reason)
+                    .join("; ")}
+                  {bulkResetResult.failed.length > 3 ? "…" : ""}
+                </p>
+              ) : null}
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" onClick={() => setBulkResetResult(null)}>
               Done
             </Button>
           </DialogFooter>
