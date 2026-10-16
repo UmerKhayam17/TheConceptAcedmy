@@ -25,8 +25,9 @@ export const canCRUD  = (p: PermLevel) => PERM_RANK[p] >= PERM_RANK.crud;
 
 export type ModuleKey =
   | "dashboard"
-  | "users"
+  | "parents"
   | "staff-management"
+  | "admins"
   /** Route hubs (URL slugs) — permission checks use leaf keys */
   | "student-management"
   | "system-config"
@@ -265,8 +266,9 @@ export const MODULES: ModuleDef[] = [
   },
   { key: "reports", label: "Reports", icon: "BarChart3", desc: "Analytics & exports" },
   { key: "datasheets", label: "Datasheets", icon: "FileText", desc: "Create & manage spreadsheets" },
-  { key: "users", label: "Users management", shortLabel: "Users", icon: "Users", desc: "All accounts including parents" },
-  { key: "staff-management", label: "Staff management", shortLabel: "Staff", icon: "UserCog", desc: "Teachers and accountants only" },
+  { key: "parents", label: "Parents", shortLabel: "Parents", icon: "Users", desc: "Parent portal accounts" },
+  { key: "staff-management", label: "Staff", shortLabel: "Staff", icon: "UserCog", desc: "Teachers and accountants" },
+  { key: "admins", label: "Admins", shortLabel: "Admins", icon: "Shield", desc: "Administration accounts" },
   { key: "permissions", label: "Permissions", icon: "KeyRound", desc: "Roles, API & module access" },
   {
     key: "permission-catalog",
@@ -373,7 +375,7 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
   {
     id: "administration",
     label: "Administration",
-    modules: ["users", "staff-management", "permissions", "settings"],
+    modules: ["parents", "staff-management", "admins", "permissions", "settings"],
   },
 ];
 
@@ -518,6 +520,7 @@ export const LEGACY_BACKEND_EXPANSION: Record<string, string[]> = {
     "feeStructure",
   ],
   timetable: ["timetableBuilder", "timetableBoard", "timetableView"],
+  user: ["parentUsers", "staffUsers", "adminUsers"],
 };
 
 export function expandBackendModulePermissions(
@@ -596,7 +599,9 @@ export const BACKEND_MODULE_KEY_MAP: Record<string, ModuleKey> = {
   salary: "salary",
   academyExpense: "expenses",
   role: "permissions",
-  user: "users",
+  parentUsers: "parents",
+  staffUsers: "staff-management",
+  adminUsers: "admins",
 };
 
 const PANEL_MODULE_TO_BACKEND_KEY: Partial<Record<ModuleKey, string>> = (() => {
@@ -797,10 +802,6 @@ export function resolveModuleCaps(
       }
       return emptyActionCaps();
     }
-    if (moduleKey === "staff-management") {
-      const arr = expanded.user;
-      return capsFromBackendActions(Array.isArray(arr) ? arr : []);
-    }
     return emptyActionCaps();
   }
   return capsFromPermLevel(rolePermLevel);
@@ -871,10 +872,6 @@ export function applyBackendModulePermissions(
     if (salaryLevel !== "none") next.salary = salaryLevel;
     const expenseLevel = permLevelFromActionCaps(capsForExpensesModule(expanded));
     if (expenseLevel !== "none") next.expenses = expenseLevel;
-  }
-  if (expanded.user) {
-    const userLevel = permLevelFromActionCaps(capsFromBackendActions(expanded.user));
-    if (userLevel !== "none") next["staff-management"] = userLevel;
   }
   if (expanded.role) {
     const roleLevel = permLevelFromActionCaps(capsFromBackendActions(expanded.role));

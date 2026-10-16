@@ -51,10 +51,10 @@ import {
   fetchAllRoles,
   fetchParentStudents,
   fetchModuleRegistry,
-  fetchStaffUsers,
-  fetchAllUsers,
+  fetchUsersByScope,
   staffRolesOnly,
-  userCreateRoles,
+  parentRolesOnly,
+  adminRolesOnly,
   roleDisplayLabel,
   assignParentStudents,
   updateStaffUser,
@@ -269,7 +269,17 @@ export default function UserFormPage({
   const role = session?.role;
   const listHref = role ? usersListHref(role, scope) : "/";
   const isStaffScope = scope === "staff";
-  const HeaderIcon = mode === "create" ? UserPlus : isStaffScope ? UserCog : Users;
+  const isParentsScope = scope === "parents";
+  const isAdminsScope = scope === "admins";
+  const HeaderIcon =
+    mode === "create"
+      ? UserPlus
+      : isStaffScope
+        ? UserCog
+        : isAdminsScope
+          ? Shield
+          : Users;
+  const scopeListLabel = isStaffScope ? "staff" : isAdminsScope ? "admins" : "parents";
 
   const [form, setForm] = useState<UserFormValues>(() => emptyUserForm());
   const [modulePerms, setModulePerms] = useState<Record<string, string[]>>({});
@@ -295,10 +305,7 @@ export default function UserFormPage({
   const { data: editingUser, isLoading: userLoading } = useQuery({
     queryKey: [...STAFF_QUERY, scope, "edit", userId],
     queryFn: async () => {
-      const list =
-        scope === "staff"
-          ? await fetchStaffUsers()
-          : ((await fetchAllUsers()) as StaffUser[]);
+      const list = await fetchUsersByScope(scope);
       const found = list.find((u) => u._id === userId);
       if (!found) throw new Error("User not found");
       return found;
@@ -312,10 +319,9 @@ export default function UserFormPage({
   });
 
   const roleOptions = useMemo(() => {
-    if (scope === "staff") {
-      return staffRolesOnly(rolesRaw).filter((r) => String(r.name).toLowerCase() !== "parent");
-    }
-    return userCreateRoles(rolesRaw);
+    if (scope === "staff") return staffRolesOnly(rolesRaw);
+    if (scope === "admins") return adminRolesOnly(rolesRaw);
+    return parentRolesOnly(rolesRaw);
   }, [rolesRaw, scope]);
 
   const selectedRole = roleOptions.find((r) => r._id === form.role);
@@ -338,6 +344,13 @@ export default function UserFormPage({
       editingUser.profileImage ? resolveUploadUrl(editingUser.profileImage) : null,
     );
   }, [mode, editingUser]);
+
+  useEffect(() => {
+    if (mode !== "create") return;
+    if (!form.role && roleOptions.length === 1) {
+      setFormField(setForm, "role", roleOptions[0]._id);
+    }
+  }, [mode, form.role, roleOptions]);
 
   useEffect(() => {
     if (mode !== "create") return;
@@ -517,14 +530,16 @@ export default function UserFormPage({
       toast({
         title:
           mode === "create"
-            ? isParentRole
-              ? "Parent user created"
+            ? isParentsScope || isParentRole
+              ? "Parent account created"
               : isStaffScope
                 ? "Staff member created"
-                : "User created"
-            : isStaffScope
-              ? "Staff member updated"
-              : "User updated",
+                : "Admin account created"
+            : isParentsScope
+              ? "Parent account updated"
+              : isStaffScope
+                ? "Staff member updated"
+                : "Admin account updated",
       });
       void qc.invalidateQueries({ queryKey: STAFF_QUERY });
       if (result.parentCredentials) {
@@ -542,16 +557,26 @@ export default function UserFormPage({
     mode === "create"
       ? isStaffScope
         ? "Add staff"
-        : "Add user"
+        : isAdminsScope
+          ? "Add admin"
+          : "Add parent"
       : isStaffScope
         ? "Edit staff"
-        : "Edit user";
+        : isAdminsScope
+          ? "Edit admin"
+          : "Edit parent";
   const pageHint =
     mode === "create"
       ? isStaffScope
         ? "Create a teacher or accountant with pay settings and module access."
-        : "Create a portal account, assign a role, and set module permissions."
-      : "Update profile details, pay type, and module access for this account.";
+        : isAdminsScope
+          ? "Create an administration account and set module permissions."
+          : "Create a parent portal account and link students."
+      : isStaffScope
+        ? "Update profile details, pay type, and module access for this staff member."
+        : isAdminsScope
+          ? "Update profile details and module access for this admin."
+          : "Update parent profile, linked students, and module access.";
 
   if (mode === "edit" && userLoading) {
     return (
@@ -580,12 +605,10 @@ export default function UserFormPage({
   const detailFields = visibleFormFields(mode).filter((field) => {
     if (field.key === "role") return false;
     if (field.key === "isActive") return false;
-    if (
-      isParentRole &&
-      (field.key === "payType" || field.key === "salary" || field.key === "salaryPercentage")
-    ) {
-      return false;
-    }
+    const isPayField =
+      field.key === "payType" || field.key === "salary" || field.key === "salaryPercentage";
+    // Pay/salary only for Staff (teachers & accountants) — not parents or admins.
+    if (isPayField && !isStaffScope) return false;
     if (field.key === "salary" && form.payType === "percentage") return false;
     if (field.key === "salaryPercentage" && form.payType !== "percentage") return false;
     return true;
@@ -595,7 +618,9 @@ export default function UserFormPage({
     mode === "create"
       ? isStaffScope
         ? "Create staff"
-        : "Create user"
+        : isAdminsScope
+          ? "Create admin"
+          : "Create parent"
       : "Save changes";
 
   return (
@@ -613,7 +638,7 @@ export default function UserFormPage({
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
-                  Back to {isStaffScope ? "staff" : "users"}
+                  Back to {scopeListLabel}
                 </Link>
                 <h2 className="mt-0.5 text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
                   {pageTitle}

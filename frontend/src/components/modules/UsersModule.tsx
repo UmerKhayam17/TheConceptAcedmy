@@ -15,6 +15,7 @@ import {
   Percent,
   Plus,
   Pencil,
+  Shield,
   UserCog,
   UserX,
   Eye,
@@ -33,9 +34,7 @@ import PanelStatCard from "@/components/modules/PanelStatCard";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { tableColumns, type UserFieldKey } from "@/lib/userSchemaFields";
 import {
-  fetchAllUsers,
-  fetchStaffUsers,
-  updateStaffUser,
+  fetchUsersByScope,
   deleteStaffUser,
   roleDisplayLabel,
   type RoleOption,
@@ -50,44 +49,22 @@ import {
 } from "@/lib/studentManagementApi";
 import { resolveUploadUrl } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { userCreateHref, userEditHref } from "@/lib/userFormRoutes";
+import { SquareCheckbox } from "@/components/ui/square-checkbox";
+import { userCreateHref, userEditHref, type UserFormScope } from "@/lib/userFormRoutes";
+import { cn } from "@/lib/utils";
 
 const filterSelectClass =
   "h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0";
 
-function formatTableCell(user: StaffUser, key: UserFieldKey): React.ReactNode {
-  if (key === "role") {
-    const r = user.role;
-    if (r && typeof r === "object" && "name" in r) {
-      return <span className="capitalize">{(r as RoleOption).name}</span>;
-    }
-    return "—";
-  }
-  if (key === "isActive") {
-    return (
-      <span
-        className={`text-xs font-semibold rounded-full px-2 py-0.5 ${
-          user.isActive ? "bg-accent/15 text-accent" : "bg-muted text-muted-foreground"
-        }`}
-      >
-        {user.isActive ? "Active" : "Inactive"}
-      </span>
-    );
-  }
-  if (key === "payType") {
-    return user.payType === "percentage" ? "Percentage" : "Fixed";
-  }
-  if (key === "salary") {
-    const n = Number(user.salary ?? 0);
-    return `₨ ${n.toLocaleString()}`;
-  }
-  if (key === "salaryPercentage") {
-    return `${Number(user.salaryPercentage ?? 0)}%`;
-  }
-  const v = user[key as keyof StaffUser];
-  if (v === undefined || v === null) return "—";
-  return String(v);
-}
+const DEFAULT_PARENT_PASSWORD = "Concept@1234";
+
+const AVATAR_TONES = [
+  "bg-[#EEF5FF] text-[#1769E0]",
+  "bg-[#FFF4E6] text-[#C27803]",
+  "bg-[#F3EEFF] text-[#7C3AED]",
+  "bg-[#ECFDF5] text-[#059669]",
+  "bg-[#FFE8EE] text-[#E11D48]",
+];
 
 function roleNameOf(user: StaffUser): string {
   const r = user.role;
@@ -104,6 +81,122 @@ function isParentUser(user: StaffUser): boolean {
   return roleNameOf(user) === "parent";
 }
 
+function initialOf(name: string): string {
+  const t = String(name || "").trim();
+  return t ? t.charAt(0).toUpperCase() : "?";
+}
+
+function avatarTone(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i += 1) h = (h + name.charCodeAt(i) * (i + 1)) % AVATAR_TONES.length;
+  return AVATAR_TONES[h] || AVATAR_TONES[0];
+}
+
+function UserAvatar({ user }: { user: StaffUser }) {
+  const imgSrc = user.profileImage ? resolveUploadUrl(user.profileImage) : null;
+  if (imgSrc) {
+    return (
+      <img
+        src={imgSrc}
+        alt=""
+        className="h-8 w-8 shrink-0 rounded-md border border-border object-cover"
+      />
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold",
+        avatarTone(user.name || ""),
+      )}
+    >
+      {initialOf(user.name)}
+    </span>
+  );
+}
+
+function NameCell({ user }: { user: StaffUser }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <UserAvatar user={user} />
+      <span className="truncate font-medium text-foreground">{user.name}</span>
+    </div>
+  );
+}
+
+function StatusBadge({ active }: { active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+        active
+          ? "border-emerald-200/80 bg-emerald-500/10 text-emerald-700"
+          : "border-border bg-muted text-muted-foreground",
+      )}
+    >
+      <span
+        className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-emerald-600" : "bg-muted-foreground")}
+        aria-hidden
+      />
+      {active ? "Active" : "Inactive"}
+    </span>
+  );
+}
+
+function ModulesCell({ user }: { user: StaffUser }) {
+  const mods =
+    user.modulePermissions && typeof user.modulePermissions === "object"
+      ? Object.keys(user.modulePermissions)
+      : [];
+  if (!mods.length) return <span className="text-muted-foreground">—</span>;
+  const show = mods.slice(0, 2);
+  const more = mods.length - show.length;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {show.map((m) => (
+        <span
+          key={m}
+          className="inline-flex rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[11px] font-medium capitalize text-foreground"
+        >
+          {humanizeModuleKey(m).split(" ")[0]}
+        </span>
+      ))}
+      {more > 0 ? (
+        <span className="text-xs text-muted-foreground">+{more}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function PasswordCell({
+  visible,
+  onToggle,
+}: {
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="inline-flex items-center gap-1.5 text-left font-mono text-xs tracking-wide text-muted-foreground hover:text-foreground"
+      title={visible ? "Hide password" : "Show password"}
+    >
+      {visible ? <EyeOff className="h-3.5 w-3.5 shrink-0" /> : <Eye className="h-3.5 w-3.5 shrink-0" />}
+      <span>{visible ? DEFAULT_PARENT_PASSWORD : "••••••••"}</span>
+    </button>
+  );
+}
+
+function sectionBadgeClass(name: string) {
+  const letter = name.trim().charAt(0).toUpperCase();
+  if (letter === "A") return "bg-sky-100 text-sky-800 border-sky-200";
+  if (letter === "B") return "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200";
+  if (letter === "C") return "bg-emerald-100 text-emerald-800 border-emerald-200";
+  if (letter === "D") return "bg-amber-100 text-amber-800 border-amber-200";
+  return "bg-slate-100 text-slate-700 border-slate-200";
+}
+
 function LinkedStudentsCell({ user }: { user: StaffUser }) {
   if (!isParentUser(user)) return <span className="text-muted-foreground">—</span>;
   const students = user.linkedStudents ?? [];
@@ -111,23 +204,111 @@ function LinkedStudentsCell({ user }: { user: StaffUser }) {
     return <span className="text-xs text-muted-foreground">No children linked</span>;
   }
   return (
-    <div className="flex flex-col gap-1.5 max-w-xs">
-      {students.map((s: LinkedStudentSummary) => {
-        const classSection = [s.className, s.sectionName].filter(Boolean).join(" · ");
-        return (
-          <div key={s._id} className="text-xs leading-snug">
-            <span className="font-medium text-foreground">{s.studentName}</span>
-            {s.studentId ? (
-              <span className="text-muted-foreground"> ({s.studentId})</span>
-            ) : null}
-            {classSection ? (
-              <div className="text-muted-foreground">{classSection}</div>
-            ) : null}
-          </div>
-        );
-      })}
+    <div className="flex min-w-[8rem] flex-col gap-1">
+      {students.map((s: LinkedStudentSummary) => (
+        <div key={s._id} className="text-xs leading-snug">
+          <span className="font-medium text-foreground">{s.studentName}</span>
+          {s.studentId ? <span className="text-muted-foreground"> ({s.studentId})</span> : null}
+        </div>
+      ))}
     </div>
   );
+}
+
+function ParentClassesCell({ user }: { user: StaffUser }) {
+  const classes = [
+    ...new Set(
+      (user.linkedStudents ?? [])
+        .map((s) => String(s.className || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!classes.length) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-col gap-1">
+      {classes.map((c) => (
+        <span key={c} className="whitespace-nowrap text-foreground">
+          {c}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ParentSectionsCell({ user }: { user: StaffUser }) {
+  const sections = [
+    ...new Set(
+      (user.linkedStudents ?? [])
+        .map((s) => String(s.sectionName || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!sections.length) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {sections.map((sec) => (
+        <span
+          key={sec}
+          className={cn(
+            "inline-flex min-w-[1.75rem] items-center justify-center rounded-md border px-2 py-0.5 text-xs font-semibold",
+            sectionBadgeClass(sec),
+          )}
+        >
+          {sec}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function PayTypeBadge({ user }: { user: StaffUser }) {
+  const pct = user.payType === "percentage";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+        pct
+          ? "border-orange-200 bg-orange-100 text-orange-800"
+          : "border-sky-200 bg-sky-100 text-sky-800",
+      )}
+    >
+      {pct ? "Percentage" : "Fixed"}
+    </span>
+  );
+}
+
+function formatTableCell(user: StaffUser, key: UserFieldKey): React.ReactNode {
+  if (key === "name") return <NameCell user={user} />;
+  if (key === "email") {
+    return (
+      <span className="block max-w-[14rem] truncate text-muted-foreground" title={user.email}>
+        {user.email}
+      </span>
+    );
+  }
+  if (key === "phone") {
+    return <span className="whitespace-nowrap text-muted-foreground">{user.phone || "—"}</span>;
+  }
+  if (key === "role") {
+    const name = roleNameOf(user);
+    return (
+      <span className="whitespace-nowrap text-foreground">
+        {name ? roleDisplayLabel(name) : "—"}
+      </span>
+    );
+  }
+  if (key === "isActive") return <StatusBadge active={Boolean(user.isActive)} />;
+  if (key === "payType") return <PayTypeBadge user={user} />;
+  if (key === "salary") {
+    const n = Number(user.salary ?? 0);
+    return `₨ ${n.toLocaleString()}`;
+  }
+  if (key === "salaryPercentage") {
+    return `${Number(user.salaryPercentage ?? 0)}%`;
+  }
+  const v = user[key as keyof StaffUser];
+  if (v === undefined || v === null) return "—";
+  return String(v);
 }
 
 const STAFF_QUERY = ["users-module-list"] as const;
@@ -135,11 +316,11 @@ const STAFF_QUERY = ["users-module-list"] as const;
 const UsersModule = ({
   perm: _perm,
   caps,
-  scope = "all",
+  scope = "parents",
 }: {
   perm: PermLevel;
   caps: ModuleActionCaps;
-  scope?: "all" | "staff";
+  scope?: UserFormScope;
 }) => {
   const anyWrite = caps.canCreate || caps.canEdit || caps.canDelete;
   const { toast } = useToast();
@@ -151,10 +332,7 @@ const UsersModule = ({
 
   const { data: staff = [], isLoading: staffLoading } = useQuery<StaffUser[]>({
     queryKey: [...STAFF_QUERY, scope],
-    queryFn: async () =>
-      scope === "staff"
-        ? await fetchStaffUsers()
-        : ((await fetchAllUsers()) as StaffUser[]),
+    queryFn: () => fetchUsersByScope(scope),
   });
 
   const [provisionOpen, setProvisionOpen] = useState(false);
@@ -185,6 +363,10 @@ const UsersModule = ({
   const [statusFilter, setStatusFilter] = useState<"" | "active" | "inactive">("");
   const [payTypeFilter, setPayTypeFilter] = useState<"" | "fixed" | "percentage">("");
   const [moduleFilter, setModuleFilter] = useState("");
+  const [classFilter, setClassFilter] = useState("");
+  const [sectionFilter, setSectionFilter] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [revealedPasswords, setRevealedPasswords] = useState<Set<string>>(() => new Set());
 
   const { search, setSearch, filtered: searchFiltered } = usePanelListSearch(staff, (u) => [
     u.name,
@@ -227,6 +409,30 @@ const UsersModule = ({
     return Array.from(keys).sort((a, b) => a.localeCompare(b));
   }, [staff]);
 
+  const classOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const u of staff) {
+      for (const s of u.linkedStudents ?? []) {
+        const c = String(s.className || "").trim();
+        if (c) names.add(c);
+      }
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [staff]);
+
+  const sectionOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const u of staff) {
+      for (const s of u.linkedStudents ?? []) {
+        const c = String(s.className || "").trim();
+        if (classFilter && c !== classFilter) continue;
+        const sec = String(s.sectionName || "").trim();
+        if (sec) names.add(sec);
+      }
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [staff, classFilter]);
+
   const staffFiltered = useMemo(() => {
     return searchFiltered.filter((u) => {
       if (roleFilter && roleNameOf(u) !== roleFilter) return false;
@@ -243,15 +449,36 @@ const UsersModule = ({
             : null;
         if (!mods || !(moduleFilter in mods)) return false;
       }
+      if (classFilter || sectionFilter) {
+        const linked = u.linkedStudents ?? [];
+        const match = linked.some((s) => {
+          const c = String(s.className || "").trim();
+          const sec = String(s.sectionName || "").trim();
+          if (classFilter && c !== classFilter) return false;
+          if (sectionFilter && sec !== sectionFilter) return false;
+          return true;
+        });
+        if (!match) return false;
+      }
       return true;
     });
-  }, [searchFiltered, roleFilter, statusFilter, payTypeFilter, moduleFilter]);
+  }, [
+    searchFiltered,
+    roleFilter,
+    statusFilter,
+    payTypeFilter,
+    moduleFilter,
+    classFilter,
+    sectionFilter,
+  ]);
 
   const filtersActive =
     Boolean(roleFilter) ||
     Boolean(statusFilter) ||
     Boolean(payTypeFilter) ||
     Boolean(moduleFilter) ||
+    Boolean(classFilter) ||
+    Boolean(sectionFilter) ||
     Boolean(search.trim());
 
   const clearFilters = () => {
@@ -259,22 +486,10 @@ const UsersModule = ({
     setStatusFilter("");
     setPayTypeFilter("");
     setModuleFilter("");
+    setClassFilter("");
+    setSectionFilter("");
     setSearch("");
   };
-
-  const deactivateMutation = useMutation({
-    mutationFn: (id: string) => {
-      if (!caps.canEdit) throw new Error("Not allowed.");
-      return updateStaffUser(id, { isActive: false });
-    },
-    onSuccess: () => {
-      toast({ title: "Staff member deactivated" });
-      void qc.invalidateQueries({ queryKey: STAFF_QUERY });
-    },
-    onError: (e: Error) => {
-      toast({ title: "Update failed", description: e.message, variant: "destructive" });
-    },
-  });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => {
@@ -290,33 +505,81 @@ const UsersModule = ({
     },
   });
 
-  const cols = tableColumns();
-  const showLinkedStudents = scope === "all";
-  const showParentPasswordCol = scope === "all";
-  const showActions = scope === "staff" || caps.canEdit || caps.canDelete;
-  const tableColSpan =
-    cols.length + 2 + (showLinkedStudents ? 1 : 0) + (showParentPasswordCol ? 1 : 0) + (showActions ? 1 : 0);
-
   const isStaffScope = scope === "staff";
+  const isParentsScope = scope === "parents";
+  const isAdminsScope = scope === "admins";
+  // Pay / salary columns only apply to teachers & accountants.
+  const cols = tableColumns().filter((c) => {
+    if (c.key === "payType" || c.key === "salary" || c.key === "salaryPercentage") {
+      return isStaffScope;
+    }
+    return true;
+  });
+  const showLinkedStudents = isParentsScope;
+  const showClassSectionCols = isParentsScope;
+  const showParentPasswordCol = isParentsScope;
+  const showPayTypeFilter = isStaffScope;
+  const showRoleFilter = isStaffScope;
+  const showActions = caps.canEdit || caps.canDelete || isStaffScope;
+  // checkbox + data cols + modules (+ linked/class/section/password/actions when shown)
+  const tableColSpan =
+    cols.length +
+    2 +
+    (showLinkedStudents ? 1 : 0) +
+    (showClassSectionCols ? 2 : 0) +
+    (showParentPasswordCol ? 1 : 0) +
+    (showActions ? 1 : 0);
+
+  const allFilteredIds = useMemo(() => staffFiltered.map((u) => u._id), [staffFiltered]);
+  const allSelected =
+    allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));
+  const someSelected = allFilteredIds.some((id) => selectedIds.has(id));
+
+  const toggleSelectAll = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) allFilteredIds.forEach((id) => next.add(id));
+      else allFilteredIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  };
+
+  const toggleSelectOne = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const togglePassword = (id: string) => {
+    setRevealedPasswords((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const stats = useMemo(() => {
     const total = staff.length;
     const active = staff.filter((u) => u.isActive).length;
     const activePct = total ? Math.round((active / total) * 100) : 0;
     const teachers = staff.filter((u) => roleNameOf(u) === "teacher").length;
     const percentage = staff.filter((u) => u.payType === "percentage").length;
-    const parents = staff.filter((u) => isParentUser(u)).length;
-    const staffCount = staff.filter((u) => {
-      const n = roleNameOf(u);
-      return n === "teacher" || n === "accountant";
-    }).length;
-    return { total, active, activePct, teachers, percentage, parents, staffCount };
+    return { total, active, activePct, teachers, percentage };
   }, [staff]);
 
-  const pageTitle = isStaffScope ? "Staff" : "Users";
+  const pageTitle = isStaffScope ? "Staff" : isAdminsScope ? "Admins" : "Parents";
   const pageHint = isStaffScope
     ? "Manage teachers, accountants, pay type, and module access."
-    : "Manage portal users, roles, parent accounts, and access.";
-  const HeaderIcon = isStaffScope ? UserCog : Users;
+    : isAdminsScope
+      ? "Manage administration accounts and access."
+      : "Manage parent portal accounts and linked students.";
+  const HeaderIcon = isStaffScope ? UserCog : isAdminsScope ? Shield : Users;
+  const entityLabel = isStaffScope ? "staff" : isAdminsScope ? "admins" : "parents";
+  const addButtonLabel = isStaffScope ? "Add staff" : isAdminsScope ? "Add admin" : "Add parent";
 
   const goCreate = () => {
     if (!caps.canCreate || !role) return;
@@ -395,13 +658,13 @@ const UsersModule = ({
               iconClass="text-[#ea580c]"
             />
           </>
-        ) : (
+        ) : isAdminsScope ? (
           <>
             <PanelStatCard
-              label="Total Users"
+              label="Total Admins"
               value={staffLoading ? "…" : stats.total}
-              hint="All portal accounts"
-              icon={Users}
+              hint="Administration accounts"
+              icon={Shield}
               iconWrapClass="bg-[#dbeafe]"
               iconClass="text-[#2563eb]"
             />
@@ -414,20 +677,68 @@ const UsersModule = ({
               iconClass="text-[#059669]"
             />
             <PanelStatCard
-              label="Parents"
-              value={staffLoading ? "…" : stats.parents}
-              hint="Parent portals"
-              icon={UserRound}
-              iconWrapClass="bg-[#ede9fe]"
-              iconClass="text-[#7c3aed]"
+              label="Inactive"
+              value={staffLoading ? "…" : stats.total - stats.active}
+              hint="Disabled accounts"
+              icon={UserX}
+              iconWrapClass="bg-[#fee2e2]"
+              iconClass="text-[#dc2626]"
             />
             <PanelStatCard
-              label="Staff"
-              value={staffLoading ? "…" : stats.staffCount}
-              hint="Teachers & accountants"
-              icon={UserCog}
+              label="Custom access"
+              value={
+                staffLoading
+                  ? "…"
+                  : staff.filter(
+                      (u) =>
+                        u.modulePermissions &&
+                        typeof u.modulePermissions === "object" &&
+                        Object.keys(u.modulePermissions).length > 0,
+                    ).length
+              }
+              hint="Admins with module matrix set"
+              icon={KeyRound}
               iconWrapClass="bg-[#ffedd5]"
               iconClass="text-[#ea580c]"
+            />
+          </>
+        ) : (
+          <>
+            <PanelStatCard
+              label="Total Parents"
+              value={staffLoading ? "…" : stats.total}
+              hint="Parent portal accounts"
+              icon={UserRound}
+              iconWrapClass="bg-[#dbeafe]"
+              iconClass="text-[#2563eb]"
+            />
+            <PanelStatCard
+              label="Active"
+              value={staffLoading ? "…" : stats.active}
+              hint={staffLoading ? undefined : `${stats.activePct}%`}
+              icon={CheckCircle2}
+              iconWrapClass="bg-[#d1fae5]"
+              iconClass="text-[#059669]"
+            />
+            <PanelStatCard
+              label="Inactive"
+              value={staffLoading ? "…" : stats.total - stats.active}
+              hint="Disabled portals"
+              icon={UserX}
+              iconWrapClass="bg-[#fee2e2]"
+              iconClass="text-[#dc2626]"
+            />
+            <PanelStatCard
+              label="With students"
+              value={
+                staffLoading
+                  ? "…"
+                  : staff.filter((u) => (u.linkedStudents?.length ?? 0) > 0).length
+              }
+              hint="Linked to at least one student"
+              icon={Users}
+              iconWrapClass="bg-[#ede9fe]"
+              iconClass="text-[#7c3aed]"
             />
           </>
         )}
@@ -435,19 +746,21 @@ const UsersModule = ({
 
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            className={`${filterSelectClass} w-[9.5rem]`}
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            aria-label="Role filter"
-          >
-            <option value="">All roles</option>
-            {roleOptions.map((name) => (
-              <option key={name} value={name}>
-                {roleDisplayLabel(name)}
-              </option>
-            ))}
-          </select>
+          {showRoleFilter ? (
+            <select
+              className={`${filterSelectClass} w-[9.5rem]`}
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              aria-label="Role filter"
+            >
+              <option value="">All roles</option>
+              {roleOptions.map((name) => (
+                <option key={name} value={name}>
+                  {roleDisplayLabel(name)}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <select
             className={`${filterSelectClass} w-[10rem]`}
             value={statusFilter}
@@ -458,16 +771,51 @@ const UsersModule = ({
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-          <select
-            className={`${filterSelectClass} w-[10rem]`}
-            value={payTypeFilter}
-            onChange={(e) => setPayTypeFilter(e.target.value as "" | "fixed" | "percentage")}
-            aria-label="Pay type filter"
-          >
-            <option value="">All pay types</option>
-            <option value="fixed">Fixed</option>
-            <option value="percentage">Percentage</option>
-          </select>
+          {showPayTypeFilter ? (
+            <select
+              className={`${filterSelectClass} w-[10rem]`}
+              value={payTypeFilter}
+              onChange={(e) => setPayTypeFilter(e.target.value as "" | "fixed" | "percentage")}
+              aria-label="Pay type filter"
+            >
+              <option value="">All pay types</option>
+              <option value="fixed">Fixed</option>
+              <option value="percentage">Percentage</option>
+            </select>
+          ) : null}
+          {isParentsScope ? (
+            <>
+              <select
+                className={`${filterSelectClass} w-[10rem]`}
+                value={classFilter}
+                onChange={(e) => {
+                  setClassFilter(e.target.value);
+                  setSectionFilter("");
+                }}
+                aria-label="Class filter"
+              >
+                <option value="">All classes</option>
+                {classOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className={`${filterSelectClass} w-[10rem]`}
+                value={sectionFilter}
+                onChange={(e) => setSectionFilter(e.target.value)}
+                aria-label="Section filter"
+              >
+                <option value="">All sections</option>
+                {sectionOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
           <select
             className={`${filterSelectClass} w-[11rem]`}
             value={moduleFilter}
@@ -484,7 +832,7 @@ const UsersModule = ({
           <PanelSearchBar
             value={search}
             onChange={setSearch}
-            placeholder="Search name, email, phone, role…"
+            placeholder="Search name, email, phone…"
             className="min-w-[12rem] flex-1 max-w-md"
           />
           <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
@@ -499,7 +847,7 @@ const UsersModule = ({
                 Clear
               </Button>
             ) : null}
-            {caps.canCreate && scope !== "staff" && (
+            {caps.canCreate && isParentsScope && (
               <Button
                 variant="outline"
                 className="h-10 gap-2"
@@ -525,54 +873,71 @@ const UsersModule = ({
             )}
             {caps.canCreate && (
               <Button className="h-10 gap-2" onClick={goCreate}>
-                <Plus className="h-4 w-4" /> {scope === "staff" ? "Add staff" : "Add user"}
+                <Plus className="h-4 w-4" /> {addButtonLabel}
               </Button>
             )}
           </div>
         </div>
       </Card>
 
-      <Card className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <Card className="overflow-hidden border-border/80 shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+          <table className="w-full min-w-[56rem] text-sm">
+            <thead className="border-b bg-muted/40">
               <tr>
-                <th className="text-left font-medium px-4 py-3 w-14">Photo</th>
+                <th className="w-10 p-3 text-center">
+                  <SquareCheckbox
+                    checked={allSelected}
+                    indeterminate={!allSelected && someSelected}
+                    onChange={() => toggleSelectAll(!allSelected)}
+                    aria-label="Select all"
+                  />
+                </th>
                 {cols.map((c) => (
-                  <th key={c.key} className="text-left font-medium px-4 py-3">
+                  <th key={c.key} className="p-3 text-left font-medium whitespace-nowrap">
                     {c.label}
                   </th>
                 ))}
                 {showLinkedStudents && (
-                  <th className="text-left font-medium px-4 py-3 min-w-[10rem]">Linked students</th>
+                  <th className="min-w-[10rem] p-3 text-left font-medium whitespace-nowrap">
+                    Linked students
+                  </th>
+                )}
+                {showClassSectionCols && (
+                  <>
+                    <th className="p-3 text-left font-medium whitespace-nowrap">Class</th>
+                    <th className="p-3 text-left font-medium whitespace-nowrap">Section</th>
+                  </>
                 )}
                 {showParentPasswordCol && (
-                  <th className="text-left font-medium px-4 py-3 min-w-[8rem]">Password</th>
+                  <th className="min-w-[8rem] p-3 text-left font-medium">Password</th>
                 )}
-                <th className="text-left font-medium px-4 py-3">Modules</th>
-                {showActions && <th className="px-4 py-3 w-28" />}
+                <th className="p-3 text-left font-medium">Modules</th>
+                {showActions && <th className="p-3 text-right font-medium">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {staffLoading ? (
                 <tr>
-                  <td colSpan={tableColSpan} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={tableColSpan} className="p-10 text-center text-muted-foreground">
                     Loading…
                   </td>
                 </tr>
               ) : staff.length === 0 ? (
                 <tr>
-                  <td colSpan={tableColSpan} className="px-4 py-8 text-center text-muted-foreground">
-                    {scope === "staff"
+                  <td colSpan={tableColSpan} className="p-10 text-center text-muted-foreground">
+                    {isStaffScope
                       ? "No teachers or accountants yet."
-                      : "No users found yet."}
+                      : isAdminsScope
+                        ? "No admin accounts yet."
+                        : "No parent accounts yet."}
                   </td>
                 </tr>
               ) : staffFiltered.length === 0 ? (
                 <tr>
-                  <td colSpan={tableColSpan} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={tableColSpan} className="p-10 text-center text-muted-foreground">
                     <div className="space-y-2">
-                      <p>No {isStaffScope ? "staff" : "users"} match your filters.</p>
+                      <p>No {entityLabel} match your filters.</p>
                       {filtersActive ? (
                         <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
                           Clear filters
@@ -582,133 +947,118 @@ const UsersModule = ({
                   </td>
                 </tr>
               ) : (
-                staffFiltered.map((u) => {
-                  const imgSrc = u.profileImage ? resolveUploadUrl(u.profileImage) : undefined;
-                  return (
-                    <tr key={u._id} className="border-t border-border hover:bg-secondary/30">
-                      <td className="px-4 py-2">
-                        <div className="h-10 w-10 rounded-full bg-muted overflow-hidden border border-border">
-                          {imgSrc ? (
-                            <img src={imgSrc} alt="" className="h-full w-full object-cover" />
+                staffFiltered.map((u) => (
+                  <tr
+                    key={u._id}
+                    className={cn(
+                      "border-b last:border-0 hover:bg-muted/20",
+                      selectedIds.has(u._id) && "bg-muted/50",
+                    )}
+                  >
+                    <td className="w-10 p-3 text-center">
+                      <SquareCheckbox
+                        checked={selectedIds.has(u._id)}
+                        onChange={() => toggleSelectOne(u._id, !selectedIds.has(u._id))}
+                        aria-label={`Select ${u.name}`}
+                      />
+                    </td>
+                    {cols.map((c) => (
+                      <td key={c.key} className="p-3">
+                        {formatTableCell(u, c.key)}
+                      </td>
+                    ))}
+                    {showLinkedStudents && (
+                      <td className="p-3">
+                        <LinkedStudentsCell user={u} />
+                      </td>
+                    )}
+                    {showClassSectionCols && (
+                      <>
+                        <td className="p-3 whitespace-nowrap">
+                          <ParentClassesCell user={u} />
+                        </td>
+                        <td className="p-3">
+                          <ParentSectionsCell user={u} />
+                        </td>
+                      </>
+                    )}
+                    {showParentPasswordCol && (
+                      <td className="p-3">
+                        {isParentUser(u) ? (
+                          <PasswordCell
+                            visible={revealedPasswords.has(u._id)}
+                            onToggle={() => togglePassword(u._id)}
+                          />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    )}
+                    <td className="p-3">
+                      <ModulesCell user={u} />
+                    </td>
+                    {showActions && (
+                      <td className="p-3">
+                        <div className="flex justify-end gap-0.5">
+                          {isStaffScope ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-primary"
+                              asChild
+                              aria-label="View"
+                            >
+                              <Link to={u._id}>
+                                <Eye className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                          ) : caps.canView || caps.canEdit ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-primary"
+                              onClick={() => goEdit(u)}
+                              aria-label="View"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
                           ) : null}
+                          {caps.canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-sky-600 hover:text-sky-700"
+                              onClick={() => goEdit(u)}
+                              aria-label="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {caps.canDelete && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              disabled={deleteMutation.isPending}
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Permanently delete ${u.name}? This cannot be undone.`,
+                                  )
+                                ) {
+                                  deleteMutation.mutate(u._id);
+                                }
+                              }}
+                              aria-label="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </td>
-                      {cols.map((c) => (
-                        <td key={c.key} className="px-4 py-3">
-                          {formatTableCell(u, c.key)}
-                        </td>
-                      ))}
-                      {showLinkedStudents && (
-                        <td className="px-4 py-3 align-top">
-                          <LinkedStudentsCell user={u} />
-                        </td>
-                      )}
-                      {showParentPasswordCol && (
-                        <td className="px-4 py-3 align-top">
-                          {isParentUser(u) ? (
-                            <span className="font-mono text-xs tracking-wide">Concept@1234</span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                      )}
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {(() => {
-                          const mods =
-                            u.modulePermissions && typeof u.modulePermissions === "object"
-                              ? Object.keys(u.modulePermissions)
-                              : [];
-                          if (!mods || mods.length === 0) return "—";
-                          const show = mods.slice(0, 3);
-                          return (
-                            <div className="flex flex-wrap items-center gap-2">
-                              {show.map((m) => (
-                                <span
-                                  key={m}
-                                  className="text-xs bg-muted/20 rounded-full px-2 py-0.5 capitalize"
-                                >
-                                  {m}
-                                </span>
-                              ))}
-                              {mods.length > 3 ? (
-                                <span className="text-xs text-muted-foreground">
-                                  +{mods.length - 3}
-                                </span>
-                              ) : null}
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      {showActions && (
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <div className="flex justify-end gap-0.5">
-                            {scope === "staff" && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-muted-foreground hover:text-primary"
-                                asChild
-                                aria-label="View staff"
-                              >
-                                <Link to={u._id}>
-                                  <Eye className="h-4 w-4" />
-                                </Link>
-                              </Button>
-                            )}
-                            {caps.canEdit && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-sky-600 hover:text-sky-700"
-                                onClick={() => goEdit(u)}
-                                aria-label="Edit"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {caps.canEdit && u.isActive ? (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8"
-                                onClick={() => {
-                                  if (window.confirm(`Deactivate ${u.name}?`)) {
-                                    deactivateMutation.mutate(u._id);
-                                  }
-                                }}
-                                aria-label="Deactivate"
-                                title="Deactivate"
-                              >
-                                <UserX className="h-4 w-4 text-destructive" />
-                              </Button>
-                            ) : null}
-                            {caps.canDelete && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8"
-                                disabled={deleteMutation.isPending}
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      `Permanently delete ${u.name}? This cannot be undone.`,
-                                    )
-                                  ) {
-                                    deleteMutation.mutate(u._id);
-                                  }
-                                }}
-                                aria-label="Delete"
-                                title="Delete user"
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })
+                    )}
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

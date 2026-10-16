@@ -306,6 +306,11 @@ const Panel = () => {
     return <Navigate to={moduleHref(r, "staff-attendance")} replace />;
   }
 
+  // Legacy Administration "Users" list → Parents panel.
+  if (slug === "users") {
+    return <Navigate to={moduleHref(r, "parents")} replace />;
+  }
+
   const mod = findModule(slug);
   if (!mod) return <Navigate to={`/panel/${r}`} replace />;
 
@@ -394,13 +399,16 @@ const Panel = () => {
   const renderModule = () => {
     switch (mod.key) {
       case "users":
+        // Legacy URL — Administration now uses Parents / Staff / Admins.
+        return <Navigate to={moduleHref(r, "parents")} replace />;
+      case "parents":
         if (section === "new") {
-          return <UserFormPage caps={caps} scope="all" mode="create" />;
+          return <UserFormPage caps={caps} scope="parents" mode="create" />;
         }
         if (section && /^[a-f0-9]{24}$/i.test(section) && action === "edit") {
-          return <UserFormPage caps={caps} scope="all" mode="edit" userId={section} />;
+          return <UserFormPage caps={caps} scope="parents" mode="edit" userId={section} />;
         }
-        return <UsersModule perm={perm} caps={caps} scope="all" />;
+        return <UsersModule perm={perm} caps={caps} scope="parents" />;
       case "staff-management":
         if (section === "new") {
           return <UserFormPage caps={caps} scope="staff" mode="create" />;
@@ -412,6 +420,14 @@ const Panel = () => {
           return <StaffDetailPage staffId={section} />;
         }
         return <UsersModule perm={perm} caps={caps} scope="staff" />;
+      case "admins":
+        if (section === "new") {
+          return <UserFormPage caps={caps} scope="admins" mode="create" />;
+        }
+        if (section && /^[a-f0-9]{24}$/i.test(section) && action === "edit") {
+          return <UserFormPage caps={caps} scope="admins" mode="edit" userId={section} />;
+        }
+        return <UsersModule perm={perm} caps={caps} scope="admins" />;
       case "student-management": return (
         <StudentManagementModule perm={perm} caps={caps} section={section} action={action} subAction={subAction} />
       );

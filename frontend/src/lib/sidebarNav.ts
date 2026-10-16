@@ -29,6 +29,7 @@ import {
   FileBadge,
   Users,
   UserCog,
+  Shield,
   KeyRound,
   Route,
   ArrowLeftRight,
@@ -441,11 +442,11 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
     collapsible: true,
     items: [
       {
-        id: "users",
-        label: "Users",
+        id: "parents",
+        label: "Parents",
         icon: Users,
-        moduleKey: "users",
-        href: (role) => moduleHref(role, "users"),
+        moduleKey: "parents",
+        href: (role) => moduleHref(role, "parents"),
       },
       {
         id: "staff",
@@ -453,6 +454,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: UserCog,
         moduleKey: "staff-management",
         href: (role) => moduleHref(role, "staff-management"),
+      },
+      {
+        id: "admins",
+        label: "Admins",
+        icon: Shield,
+        moduleKey: "admins",
+        href: (role) => moduleHref(role, "admins"),
       },
       {
         id: "permissions",

@@ -2,6 +2,37 @@ const ApiError = require('../utils/ApiError');
 const { hasModulePermission } = require('../modules');
 const { isSystemAdmin } = require('../utils/systemAdmin');
 
+/** Separate Administration account panels (Parents / Staff / Admins). */
+const ACCOUNT_MODULE_KEYS = ['parentUsers', 'staffUsers', 'adminUsers'];
+
+function accountModuleForRoleName(roleName) {
+  const n = String(roleName || '').toLowerCase();
+  if (n === 'parent') return 'parentUsers';
+  if (n === 'teacher' || n === 'accountant') return 'staffUsers';
+  if (n === 'admin') return 'adminUsers';
+  return null;
+}
+
+function accountModuleForListScope(scope) {
+  const s = String(scope || '').toLowerCase().trim();
+  if (s === 'parents' || s === 'parent') return 'parentUsers';
+  if (s === 'staff') return 'staffUsers';
+  if (s === 'admins' || s === 'admin') return 'adminUsers';
+  return null;
+}
+
+function hasAccountModulePermission(user, moduleName, action) {
+  if (!moduleName) return false;
+  return hasModulePermission(user, moduleName, action);
+}
+
+function hasAnyAccountModulePermission(user, action) {
+  // Prefer the split modules. Coarse legacy `user` expands onto these three via LEGACY_MODULE_EXPANSION.
+  if (ACCOUNT_MODULE_KEYS.some((m) => hasModulePermission(user, m, action))) return true;
+  // Named API permission document only (not module-matrix expansion of manage_users).
+  return collectPermissionNames(user).has('manage_users');
+}
+
 /**
  * Legacy Permission.name → module RBAC.
  * Seed used read/update/approve; module matrix uses view/edit/publish.
@@ -143,13 +174,28 @@ function requireFaceImageAccess() {
   };
 }
 
+/** Any Parents / Staff / Admins module permission (or legacy manage_users). */
+function requireAnyAccountModule(action = 'view') {
+  return (req, res, next) => {
+    if (isSystemAdmin(req.user)) return next();
+    if (hasAnyAccountModulePermission(req.user, action)) return next();
+    return next(new ApiError(403, 'You do not have permission for this action'));
+  };
+}
+
 module.exports = {
   requirePermission,
   requireAnyPermission,
   requireModulePermission,
   requireFeeReadAccess,
   requireFaceImageAccess,
+  requireAnyAccountModule,
   collectPermissionNames,
   hasLegacyOrModulePermission,
+  hasAnyAccountModulePermission,
+  hasAccountModulePermission,
+  accountModuleForRoleName,
+  accountModuleForListScope,
+  ACCOUNT_MODULE_KEYS,
   LEGACY_PERMISSION_MODULE,
 };

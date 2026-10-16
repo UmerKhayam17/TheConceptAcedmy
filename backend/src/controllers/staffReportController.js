@@ -52,6 +52,16 @@ async function buildStaffReportPayload(staffId, { month, year, sessionId }) {
 }
 
 const exportStaffReport = catchAsync(async (req, res) => {
+  const { isSystemAdmin } = require('../utils/systemAdmin');
+  const { hasAccountModulePermission, hasAnyAccountModulePermission } = require('../middleware/permissions');
+  if (
+    !isSystemAdmin(req.user) &&
+    !hasAccountModulePermission(req.user, 'staffUsers', 'view') &&
+    !hasAnyAccountModulePermission(req.user, 'view')
+  ) {
+    throw new ApiError(403, 'You do not have permission for staff reports');
+  }
+
   const format = String(req.query.format || 'xlsx').toLowerCase();
   if (!['xlsx', 'pdf'].includes(format)) {
     throw new ApiError(400, 'Export format must be xlsx or pdf');

@@ -701,7 +701,7 @@ export default function AdminDashboard({ role, name }: { role: Role; name: strin
                   label="Staff total"
                   value={String(k.staffCount)}
                   hint="Teachers + accountants"
-                  href={moduleHref(role, "users")}
+                  href={moduleHref(role, "staff-management")}
                 />
                 <KpiCard
                   icon={BookOpen}

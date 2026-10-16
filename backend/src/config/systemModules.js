@@ -432,14 +432,46 @@ const SYSTEM_MODULES = [
     parentGroup: 'administration',
   },
   {
-    key: 'user',
-    panelSlug: 'users',
-    label: 'Users management',
+    key: 'parentUsers',
+    panelSlug: 'parents',
+    label: 'Parents',
     icon: 'Users',
-    description: 'All accounts including parents',
+    description: 'Parent portal accounts',
     order: 220,
     actions: CRUD,
     parentGroup: 'administration',
+  },
+  {
+    key: 'staffUsers',
+    panelSlug: 'staff-management',
+    label: 'Staff',
+    icon: 'UserCog',
+    description: 'Teachers and accountants',
+    order: 221,
+    actions: CRUD,
+    parentGroup: 'administration',
+  },
+  {
+    key: 'adminUsers',
+    panelSlug: 'admins',
+    label: 'Admins',
+    icon: 'Shield',
+    description: 'Administration accounts',
+    order: 222,
+    actions: CRUD,
+    parentGroup: 'administration',
+  },
+  // Legacy coarse key — expands to parentUsers + staffUsers + adminUsers
+  {
+    key: 'user',
+    panelSlug: 'parents',
+    label: 'Account management (legacy)',
+    icon: 'Users',
+    description: 'Legacy: expands to Parents, Staff, and Admins',
+    order: 219,
+    actions: CRUD,
+    parentGroup: 'administration',
+    showInPermissions: false,
   },
 
   // ── Teacher portal modules ──────────────────────────────────────
@@ -619,6 +651,7 @@ const LEGACY_MODULE_EXPANSION = {
     'feeStructure',
   ],
   timetable: ['timetableBuilder', 'timetableBoard', 'timetableView'],
+  user: ['parentUsers', 'staffUsers', 'adminUsers'],
 };
 
 /**

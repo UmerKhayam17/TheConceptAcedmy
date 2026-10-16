@@ -9,7 +9,24 @@ const { MODULES } = require('../modules');
 const { getSystemModulesForApi } = require('../config/systemModules');
 const { isSystemAdmin, seedAdminEmail } = require('../utils/systemAdmin');
 const { expandModulePermissions } = require('../modules/expandModulePermissions');
+const {
+  accountModuleForRoleName,
+  accountModuleForListScope,
+  hasAccountModulePermission,
+  hasAnyAccountModulePermission,
+} = require('../middleware/permissions');
 const rt = require('../services/realtime/academyRealtime');
+
+function assertAccountAction(reqUser, moduleName, action, label = 'this action') {
+  if (isSystemAdmin(reqUser)) return;
+  if (moduleName && hasAccountModulePermission(reqUser, moduleName, action)) return;
+  if (!moduleName && hasAnyAccountModulePermission(reqUser, action)) return;
+  throw new ApiError(403, `You do not have permission for ${label}`);
+}
+
+function roleNameFromUserDoc(user) {
+  return String(user?.role?.name || user?.roleDoc?.name || '').toLowerCase();
+}
 
 function notifyStaff(req, action = 'updated', userId) {
   const io = req.app.get('io');
@@ -114,20 +131,57 @@ const listModuleRegistry = catchAsync(async (req, res) => {
 
 const listUsers = catchAsync(async (req, res) => {
   const staffOnly = req.query.staff === 'true' || req.query.staff === '1';
+  const scope = String(req.query.scope || '').toLowerCase().trim();
   const users = await User.find().populate('role').populate('permissions').sort({ createdAt: -1 });
   let list = users;
-  if (staffOnly) {
+  let attachParents = true;
+
+  const roleName = (u) => u.role?.name?.toLowerCase?.() || '';
+
+  const scopedModule = accountModuleForListScope(staffOnly ? 'staff' : scope);
+  if (scopedModule) {
+    assertAccountAction(req.user, scopedModule, 'view', 'listing these accounts');
+  } else if (!isSystemAdmin(req.user) && !hasAnyAccountModulePermission(req.user, 'view')) {
+    throw new ApiError(403, 'You do not have permission for listing accounts');
+  }
+
+  if (staffOnly || scope === 'staff') {
     list = users.filter((u) => {
-      const n = u.role?.name?.toLowerCase?.();
+      const n = roleName(u);
       return n === 'teacher' || n === 'accountant';
     });
+    attachParents = false;
+  } else if (scope === 'parents' || scope === 'parent') {
+    list = users.filter((u) => roleName(u) === 'parent');
+  } else if (scope === 'admins' || scope === 'admin') {
+    list = users.filter((u) => roleName(u) === 'admin');
+    attachParents = false;
+  } else if (!isSystemAdmin(req.user)) {
+    // Unscoped list (e.g. Permissions screen): only roles the caller can manage.
+    const { collectPermissionNames } = require('../middleware/permissions');
+    const fullLegacy = collectPermissionNames(req.user).has('manage_users');
+    if (!fullLegacy) {
+      const canParent = hasAccountModulePermission(req.user, 'parentUsers', 'view');
+      const canStaff = hasAccountModulePermission(req.user, 'staffUsers', 'view');
+      const canAdmin = hasAccountModulePermission(req.user, 'adminUsers', 'view');
+      list = users.filter((u) => {
+        const n = roleName(u);
+        if (n === 'parent') return canParent;
+        if (n === 'teacher' || n === 'accountant') return canStaff;
+        if (n === 'admin') return canAdmin;
+        return false;
+      });
+      attachParents = canParent;
+    }
   }
+
   const serialized = list.map(serializeUser);
-  const data = staffOnly ? serialized : await attachLinkedStudentsToUsers(serialized);
+  const data = attachParents ? await attachLinkedStudentsToUsers(serialized) : serialized;
   res.json({ success: true, data });
 });
 
 const getParentStudents = catchAsync(async (req, res) => {
+  assertAccountAction(req.user, 'parentUsers', 'view', 'viewing parent accounts');
   const user = await User.findById(req.params.id).populate('role');
   if (!user) throw new ApiError(404, 'User not found');
   if (!user.role || user.role.name !== 'parent') throw new ApiError(400, 'User is not a parent');
@@ -147,6 +201,7 @@ const getParentStudents = catchAsync(async (req, res) => {
 });
 
 const patchParentStudents = catchAsync(async (req, res) => {
+  assertAccountAction(req.user, 'parentUsers', 'edit', 'editing parent accounts');
   const { studentIds } = req.body;
 
   const user = await User.findById(req.params.id).populate('role');
@@ -221,6 +276,8 @@ const createUser = catchAsync(async (req, res) => {
   if (roleName === 'student') {
     throw new ApiError(400, 'Student portal logins are disabled. Create a parent user instead.');
   }
+  const createModule = accountModuleForRoleName(roleName);
+  assertAccountAction(req.user, createModule, 'create', `creating ${roleName || 'user'} accounts`);
 
   // New teachers / accountants / parents inherit role defaults when none provided.
   // Secondary admins keep the request matrix (or empty) — they never inherit full admin-role access.
@@ -294,7 +351,7 @@ const createUser = catchAsync(async (req, res) => {
 });
 
 const updateUser = catchAsync(async (req, res) => {
-  const user = await User.findById(req.params.id);
+  const user = await User.findById(req.params.id).populate('role');
   if (!user) throw new ApiError(404, 'User not found');
 
   const {
@@ -313,6 +370,13 @@ const updateUser = catchAsync(async (req, res) => {
   } = req.body;
 
   const targetIsSystemAdmin = isSystemAdmin(user);
+  const currentRoleName = roleNameFromUserDoc(user);
+  assertAccountAction(
+    req.user,
+    accountModuleForRoleName(currentRoleName),
+    'edit',
+    `editing ${currentRoleName || 'user'} accounts`,
+  );
 
   if (name !== undefined) user.name = name;
   if (email !== undefined) {
@@ -325,6 +389,13 @@ const updateUser = catchAsync(async (req, res) => {
   if (role !== undefined) {
     if (targetIsSystemAdmin) {
       throw new ApiError(400, 'Cannot change the system admin role.');
+    }
+    const Role = require('../models/Role');
+    const nextRole = await Role.findById(role);
+    const nextRoleName = String(nextRole?.name || '').toLowerCase();
+    const nextModule = accountModuleForRoleName(nextRoleName);
+    if (nextModule !== accountModuleForRoleName(currentRoleName)) {
+      assertAccountAction(req.user, nextModule, 'create', `moving accounts to ${nextRoleName || 'role'}`);
     }
     user.role = role;
   }
@@ -392,8 +463,14 @@ const updateUser = catchAsync(async (req, res) => {
 
 const uploadProfilePhoto = catchAsync(async (req, res) => {
   if (!req.file) throw new ApiError(400, 'Image file required');
-  const user = await User.findById(req.params.id);
+  const user = await User.findById(req.params.id).populate('role');
   if (!user) throw new ApiError(404, 'User not found');
+  assertAccountAction(
+    req.user,
+    accountModuleForRoleName(roleNameFromUserDoc(user)),
+    'edit',
+    'updating profile photos',
+  );
 
   const uploadDir = path.join(__dirname, '../../uploads/staff');
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -495,6 +572,12 @@ const deleteUser = catchAsync(async (req, res) => {
   }
 
   const roleName = String(user.role?.name || '').toLowerCase();
+  assertAccountAction(
+    req.user,
+    accountModuleForRoleName(roleName),
+    'delete',
+    `deleting ${roleName || 'user'} accounts`,
+  );
   if (roleName === 'admin') {
     const adminCount = await User.countDocuments({
       role: user.role._id,

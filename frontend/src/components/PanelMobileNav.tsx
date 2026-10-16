@@ -196,7 +196,7 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
         "student-management": "students",
         "teacher-management": "staff-attendance",
         finance: "fee-management",
-        administration: "users",
+        administration: "parents",
       };
       const out: MobileTab[] = [];
 

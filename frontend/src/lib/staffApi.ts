@@ -66,10 +66,32 @@ export function normalizeModulePermissions(raw: StaffUser["modulePermissions"]):
 }
 
 export async function fetchStaffUsers(): Promise<StaffUser[]> {
-  const res = await authedFetch("/users?staff=1");
+  const res = await authedFetch("/users?scope=staff");
   const body = await parseJson<{ success?: boolean; data?: StaffUser[] }>(res);
   if (!res.ok || !body.data) return [];
   return body.data;
+}
+
+export async function fetchParentUsers(): Promise<StaffUser[]> {
+  const res = await authedFetch("/users?scope=parents");
+  const body = await parseJson<{ success?: boolean; data?: StaffUser[] }>(res);
+  if (!res.ok || !body.data) return [];
+  return body.data;
+}
+
+export async function fetchAdminUsers(): Promise<StaffUser[]> {
+  const res = await authedFetch("/users?scope=admins");
+  const body = await parseJson<{ success?: boolean; data?: StaffUser[] }>(res);
+  if (!res.ok || !body.data) return [];
+  return body.data;
+}
+
+export async function fetchUsersByScope(
+  scope: "parents" | "staff" | "admins",
+): Promise<StaffUser[]> {
+  if (scope === "staff") return fetchStaffUsers();
+  if (scope === "admins") return fetchAdminUsers();
+  return fetchParentUsers();
 }
 
 export async function fetchAllUsers(): Promise<UserWithAccess[]> {
@@ -101,11 +123,19 @@ export async function fetchAllRoles(): Promise<RoleOption[]> {
 }
 
 export function staffRolesOnly(roles: RoleOption[]): RoleOption[] {
-  const allow = new Set(["teacher", "accountant", "parent"]);
+  const allow = new Set(["teacher", "accountant"]);
   return roles.filter((r) => allow.has(String(r.name).toLowerCase()));
 }
 
-/** Roles offered on the Users (all) create form — student portal logins are not created. */
+export function parentRolesOnly(roles: RoleOption[]): RoleOption[] {
+  return roles.filter((r) => String(r.name).toLowerCase() === "parent");
+}
+
+export function adminRolesOnly(roles: RoleOption[]): RoleOption[] {
+  return roles.filter((r) => String(r.name).toLowerCase() === "admin");
+}
+
+/** @deprecated Prefer scope-specific helpers; kept for Permissions screens. */
 export function userCreateRoles(roles: RoleOption[]): RoleOption[] {
   const allow = new Set(["parent", "teacher", "accountant", "admin"]);
   return roles.filter((r) => allow.has(String(r.name).toLowerCase()));
