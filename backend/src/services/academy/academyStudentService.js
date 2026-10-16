@@ -38,8 +38,13 @@ async function refreshUnpaidSalariesAfterStudentTuitionChange(userId, reason = '
 const PARENT_DEFAULT_MODULE_PERMISSIONS = {
   student: ['view'],
   attendance: ['view'],
-  exam: ['view'],
-  timetable: ['view'],
+  examTests: ['view'],
+  examTerm: ['view'],
+  examDateSheet: ['view'],
+  examReportCard: ['view'],
+  timetableBuilder: ['view'],
+  timetableBoard: ['view'],
+  timetableView: ['view'],
   chat: ['view', 'create', 'participate'],
   announcement: ['view'],
 };

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -16,10 +17,19 @@ import {
   EyeOff,
   ImageIcon,
   Loader2,
-  Save,
+  Lock,
+  Mail,
+  Percent,
+  Phone,
+  Shield,
+  Upload,
+  User,
   UserCog,
   UserPlus,
   Users,
+  Wallet,
+  X,
+  type LucideIcon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -63,12 +73,39 @@ import { resolveUploadUrl } from "@/lib/api";
 import { usersListHref, type UserFormScope } from "@/lib/userFormRoutes";
 import { cn } from "@/lib/utils";
 
+const FIELD_ICONS: Partial<Record<UserFieldKey, LucideIcon>> = {
+  name: User,
+  email: Mail,
+  phone: Phone,
+  password: Lock,
+  role: Shield,
+  payType: Wallet,
+  salary: Wallet,
+  salaryPercentage: Percent,
+};
+
 function setFormField(
   setter: React.Dispatch<React.SetStateAction<UserFormValues>>,
   key: UserFieldKey,
   value: string,
 ) {
   setter((prev) => ({ ...prev, [key]: value }));
+}
+
+function IconFieldShell({
+  icon: Icon,
+  children,
+}: {
+  icon?: LucideIcon;
+  children: ReactNode;
+}) {
+  if (!Icon) return <>{children}</>;
+  return (
+    <div className="relative">
+      <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      {children}
+    </div>
+  );
 }
 
 function SchemaFieldControl({
@@ -84,6 +121,7 @@ function SchemaFieldControl({
   onChange: (v: string) => void;
   roleOptions: RoleOption[];
 }) {
+  const Icon = FIELD_ICONS[field.key];
   const selectOptions =
     field.optionsFrom === "roles"
       ? roleOptions.map((r) => ({ value: r._id, label: r.name }))
@@ -94,34 +132,44 @@ function SchemaFieldControl({
       ? "Leave blank to keep current password"
       : field.placeholder;
 
+  const controlClass = cn(
+    "w-full h-10 rounded-md border border-input bg-background text-sm shadow-none",
+    Icon ? "pl-9 pr-3" : "px-3",
+  );
+
   if (field.inputType === "select") {
     return (
-      <select
-        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required={field.required && !(mode === "edit" && field.key === "password")}
-      >
-        {field.optionsFrom === "roles" && <option value="">Select role…</option>}
-        {selectOptions.map((o) => (
-          <option key={o.value} value={o.value}>
-            {field.optionsFrom === "roles" ? roleDisplayLabel(o.label) : o.label}
-          </option>
-        ))}
-      </select>
+      <IconFieldShell icon={Icon}>
+        <select
+          className={cn(controlClass, "appearance-none")}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required={field.required && !(mode === "edit" && field.key === "password")}
+        >
+          {field.optionsFrom === "roles" && <option value="">Select role…</option>}
+          {selectOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {field.optionsFrom === "roles" ? roleDisplayLabel(o.label) : o.label}
+            </option>
+          ))}
+        </select>
+      </IconFieldShell>
     );
   }
 
   if (field.inputType === "number") {
     return (
-      <Input
-        type="number"
-        min={0}
-        step={1}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
+      <IconFieldShell icon={Icon}>
+        <Input
+          type="number"
+          min={0}
+          step={1}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={Icon ? "pl-9" : undefined}
+        />
+      </IconFieldShell>
     );
   }
 
@@ -130,17 +178,19 @@ function SchemaFieldControl({
 
   return field.inputType === "password" ? (
     <div className="space-y-1">
-      <Input
-        type="text"
-        autoComplete="new-password"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="font-mono"
-        required={
-          field.required && !(mode === "edit" && field.key === "password" && field.optionalOnEdit)
-        }
-      />
+      <IconFieldShell icon={Icon}>
+        <Input
+          type="text"
+          autoComplete="new-password"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={cn("font-mono", Icon ? "pl-9" : undefined)}
+          required={
+            field.required && !(mode === "edit" && field.key === "password" && field.optionalOnEdit)
+          }
+        />
+      </IconFieldShell>
       {mode === "create" ? (
         <p className="text-xs text-muted-foreground">
           Password is shown in plain text so you can copy it.
@@ -148,41 +198,51 @@ function SchemaFieldControl({
       ) : null}
     </div>
   ) : (
-    <Input
-      type={inputType}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      required={
-        field.required && !(mode === "edit" && field.key === "password" && field.optionalOnEdit)
-      }
-    />
+    <IconFieldShell icon={Icon}>
+      <Input
+        type={inputType}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={Icon ? "pl-9" : undefined}
+        required={
+          field.required && !(mode === "edit" && field.key === "password" && field.optionalOnEdit)
+        }
+      />
+    </IconFieldShell>
   );
 }
 
-function SectionCard({
+function StepSection({
+  step,
   title,
   description,
   children,
   className,
 }: {
+  step: number;
   title: string;
   description?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 }) {
   return (
     <section
       className={cn(
-        "rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm ring-1 ring-black/[0.02]",
+        "rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm",
         className,
       )}
     >
-      <div className="mb-4 border-b border-slate-100 pb-3">
-        <h3 className="text-sm font-semibold tracking-tight text-[#1a2b4b]">{title}</h3>
-        {description ? (
-          <p className="mt-0.5 text-xs text-slate-500">{description}</p>
-        ) : null}
+      <div className="mb-5 flex items-start gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+          {step}
+        </span>
+        <div className="min-w-0 pt-0.5">
+          <h3 className="text-base font-semibold tracking-tight text-[#1a2b4b]">{title}</h3>
+          {description ? (
+            <p className="mt-0.5 text-xs sm:text-sm text-slate-500">{description}</p>
+          ) : null}
+        </div>
       </div>
       {children}
     </section>
@@ -517,16 +577,37 @@ export default function UserFormPage({
     Boolean(form.role) &&
     !saveMutation.isPending;
 
+  const detailFields = visibleFormFields(mode).filter((field) => {
+    if (field.key === "role") return false;
+    if (field.key === "isActive") return false;
+    if (
+      isParentRole &&
+      (field.key === "payType" || field.key === "salary" || field.key === "salaryPercentage")
+    ) {
+      return false;
+    }
+    if (field.key === "salary" && form.payType === "percentage") return false;
+    if (field.key === "salaryPercentage" && form.payType !== "percentage") return false;
+    return true;
+  });
+
+  const primaryActionLabel =
+    mode === "create"
+      ? isStaffScope
+        ? "Create staff"
+        : "Create user"
+      : "Save changes";
+
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
-              <HeaderIcon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-h-full flex-col">
+      <div className="flex-1 px-4 sm:px-6 lg:px-8 py-6 space-y-4 pb-28">
+        <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+                <HeaderIcon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+              </span>
+              <div className="min-w-0">
                 <Link
                   to={listHref}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
@@ -534,51 +615,44 @@ export default function UserFormPage({
                   <ArrowLeft className="h-3.5 w-3.5" />
                   Back to {isStaffScope ? "staff" : "users"}
                 </Link>
+                <h2 className="mt-0.5 text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                  {pageTitle}
+                </h2>
+                <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                  {pageHint}
+                </p>
               </div>
-              <h2 className="mt-0.5 text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
-                {pageTitle}
-              </h2>
-              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
-                {pageHint}
+            </div>
+            <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+              <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+                <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                  &ldquo;
+                </span>
+                Teachers plant seeds that grow forever.
+                <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                  &rdquo;
+                </span>
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Button variant="outline" className="h-10 gap-2" asChild>
-              <Link to={listHref}>Cancel</Link>
-            </Button>
-            <Button
-              className="h-10 gap-2"
-              disabled={!canSave}
-              onClick={() => saveMutation.mutate()}
-            >
-              {saveMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              {saveMutation.isPending ? "Saving…" : mode === "create" ? "Create" : "Save changes"}
-            </Button>
-          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-4">
-        <div className="space-y-4">
-          {!isParentCreate && (
-            <SectionCard
-              title="Profile photo"
-              description="Optional. Stored on the server — you can change it anytime."
-            >
-              <div className="flex flex-col sm:flex-row gap-4 items-start">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="h-28 w-28 rounded-full border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden">
-                    {photoPreview ? (
-                      <img src={photoPreview} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <ImageIcon className="h-8 w-8 text-muted-foreground" />
-                    )}
-                  </div>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          <StepSection
+            step={1}
+            title="Basic Information"
+            description="Enter the user's personal and login details."
+          >
+            {!isParentCreate && (
+              <div className="mb-5 flex flex-wrap items-center gap-4">
+                <div className="h-20 w-20 rounded-full border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
+                  {photoPreview ? (
+                    <img src={photoPreview} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <ImageIcon className="h-7 w-7 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="space-y-1.5">
                   <input
                     id="user-form-photo"
                     type="file"
@@ -588,56 +662,69 @@ export default function UserFormPage({
                   />
                   <Label
                     htmlFor="user-form-photo"
-                    className="cursor-pointer text-xs font-medium text-primary hover:underline"
+                    className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-primary/40 bg-background px-3 text-sm font-medium text-primary hover:bg-primary/5"
                   >
-                    Upload photo
+                    <Upload className="h-4 w-4" />
+                    Upload Photo
                   </Label>
+                  <p className="text-xs text-muted-foreground">JPG, PNG (Max 2MB)</p>
                 </div>
-                <p className="text-xs text-slate-500 max-w-sm leading-relaxed">
-                  Use a clear face photo for staff directories and attendance. JPG, PNG, GIF, or
-                  WebP.
-                </p>
               </div>
-            </SectionCard>
-          )}
+            )}
 
-          <SectionCard
-            title="Account details"
-            description="Role, login credentials, and contact information."
-          >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2 sm:max-w-xs">
-                <Label className="mb-1.5 block">
+              <div>
+                <Label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Role <span className="text-destructive">*</span>
                 </Label>
-                <select
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={form.role}
-                  onChange={(e) => {
-                    const nextRole = e.target.value;
-                    setFormField(setForm, "role", nextRole);
-                    const roleName =
-                      roleOptions.find((r) => r._id === nextRole)?.name?.toLowerCase() || "";
-                    if (roleName === "parent" && mode === "create") {
-                      setParentCreate(emptyParentCreateSelection());
-                    }
-                    if (mode === "create" && roleName === "teacher") {
-                      setModulePerms({ ...TEACHER_DEFAULT_MODULE_PERMISSIONS });
-                    }
-                    if (mode === "create" && roleName === "accountant") {
-                      setModulePerms({ ...ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS });
-                    }
-                  }}
-                  required
-                >
-                  <option value="">Select role…</option>
-                  {roleOptions.map((r) => (
-                    <option key={r._id} value={r._id}>
-                      {roleDisplayLabel(r.name)}
-                    </option>
-                  ))}
-                </select>
+                <IconFieldShell icon={Shield}>
+                  <select
+                    className="w-full h-10 rounded-md border border-input bg-background pl-9 pr-3 text-sm appearance-none"
+                    value={form.role}
+                    onChange={(e) => {
+                      const nextRole = e.target.value;
+                      setFormField(setForm, "role", nextRole);
+                      const roleName =
+                        roleOptions.find((r) => r._id === nextRole)?.name?.toLowerCase() || "";
+                      if (roleName === "parent" && mode === "create") {
+                        setParentCreate(emptyParentCreateSelection());
+                      }
+                      if (mode === "create" && roleName === "teacher") {
+                        setModulePerms({ ...TEACHER_DEFAULT_MODULE_PERMISSIONS });
+                      }
+                      if (mode === "create" && roleName === "accountant") {
+                        setModulePerms({ ...ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS });
+                      }
+                    }}
+                    required
+                  >
+                    <option value="">Select role…</option>
+                    {roleOptions.map((r) => (
+                      <option key={r._id} value={r._id}>
+                        {roleDisplayLabel(r.name)}
+                      </option>
+                    ))}
+                  </select>
+                </IconFieldShell>
               </div>
+
+              {!isParentCreate && (
+                <div>
+                  <Label className="mb-1.5 block text-sm font-medium text-slate-700">Status</Label>
+                  <div className="flex h-10 items-center gap-3 rounded-md border border-input bg-background px-3">
+                    <Switch
+                      checked={form.isActive === "true"}
+                      onCheckedChange={(checked) =>
+                        setFormField(setForm, "isActive", checked ? "true" : "false")
+                      }
+                      aria-label="Active status"
+                    />
+                    <span className="text-sm font-medium text-slate-700">
+                      {form.isActive === "true" ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {isParentCreate ? (
                 form.role ? (
@@ -651,62 +738,42 @@ export default function UserFormPage({
                 ) : null
               ) : (
                 <>
-                  {visibleFormFields(mode)
-                    .filter((field) => {
-                      if (field.key === "role") return false;
-                      if (
-                        isParentRole &&
-                        (field.key === "payType" ||
-                          field.key === "salary" ||
-                          field.key === "salaryPercentage")
-                      ) {
-                        return false;
-                      }
-                      if (field.key === "salary" && form.payType === "percentage") return false;
-                      if (field.key === "salaryPercentage" && form.payType !== "percentage") {
-                        return false;
-                      }
-                      return true;
-                    })
-                    .map((field) => (
-                      <div
-                        key={field.key}
-                        className={field.colSpan === 2 ? "sm:col-span-2" : undefined}
-                      >
-                        <Label className="mb-1.5 block">
-                          {field.label}
-                          {field.required &&
-                          !(mode === "edit" && field.key === "password" && field.optionalOnEdit) ? (
-                            <span className="text-destructive"> *</span>
-                          ) : null}
-                          {field.key === "salaryPercentage" ? (
-                            <span className="text-destructive"> *</span>
-                          ) : null}
-                        </Label>
-                        <SchemaFieldControl
-                          field={field}
-                          mode={mode}
-                          value={form[field.key]}
-                          onChange={(v) => setFormField(setForm, field.key, v)}
-                          roleOptions={roleOptions}
-                        />
-                        {field.key === "payType" ? (
-                          <p className="text-[11px] text-muted-foreground mt-1">
-                            Fixed uses a monthly amount. Percentage teachers get tuition × subject
-                            share × this teacher %. Subject weightage is configured on Subjects.
-                          </p>
+                  {detailFields.map((field) => (
+                    <div key={field.key}>
+                      <Label className="mb-1.5 block text-sm font-medium text-slate-700">
+                        {field.label}
+                        {field.required &&
+                        !(mode === "edit" && field.key === "password" && field.optionalOnEdit) ? (
+                          <span className="text-destructive"> *</span>
                         ) : null}
                         {field.key === "salaryPercentage" ? (
-                          <p className="text-[11px] text-muted-foreground mt-1">
-                            Teacher’s cut of each subject pool (e.g. 60 or 70).
-                          </p>
+                          <span className="text-destructive"> *</span>
                         ) : null}
-                      </div>
-                    ))}
+                      </Label>
+                      <SchemaFieldControl
+                        field={field}
+                        mode={mode}
+                        value={form[field.key]}
+                        onChange={(v) => setFormField(setForm, field.key, v)}
+                        roleOptions={roleOptions}
+                      />
+                      {field.key === "payType" ? (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Fixed uses a monthly amount. Percentage teachers get tuition × subject
+                          share × this teacher %.
+                        </p>
+                      ) : null}
+                      {field.key === "salaryPercentage" ? (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Teacher’s cut of each subject pool (e.g. 60 or 70).
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
 
                   {isParentRole && mode === "edit" && (
                     <div className="sm:col-span-2 space-y-2">
-                      <Label className="mb-1.5 block">
+                      <Label className="mb-1.5 block text-sm font-medium text-slate-700">
                         Parent students
                         <span className="text-destructive"> *</span>
                       </Label>
@@ -738,52 +805,54 @@ export default function UserFormPage({
                 </>
               )}
             </div>
-          </SectionCard>
-        </div>
+          </StepSection>
 
-        <div className="space-y-4">
-          {!isParentCreate && modules.length > 0 ? (
-            <SectionCard
-              title="Module permissions"
-              description="Choose what this account can view and manage in the panel."
-            >
+          <StepSection
+            step={2}
+            title="Module Permissions"
+            description="Choose what this user can access and manage."
+          >
+            {!isParentCreate && modules.length > 0 ? (
               <ModuleAccessMatrix
                 modules={modules}
                 value={modulePerms}
                 onChange={setModulePerms}
+                embedded
               />
-            </SectionCard>
-          ) : (
-            <SectionCard
-              title="Access"
-              description={
-                isParentCreate
-                  ? "Parent module access is configured with the student link below."
-                  : "Select a role to load default module permissions."
-              }
-            >
+            ) : (
               <p className="text-sm text-slate-500">
                 {isParentCreate
-                  ? "Use the parent fields to set portal access for the linked student."
-                  : "Default permissions appear after you pick Teacher, Accountant, or Parent."}
+                  ? "Parent module access is set with the student link in Basic Information."
+                  : "Select a role to load default module permissions."}
               </p>
-            </SectionCard>
-          )}
+            )}
+          </StepSection>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2 pt-1 pb-6">
-        <Button variant="outline" className="h-10 gap-2" asChild>
-          <Link to={listHref}>Cancel</Link>
-        </Button>
-        <Button className="h-10 gap-2" disabled={!canSave} onClick={() => saveMutation.mutate()}>
-          {saveMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          {saveMutation.isPending ? "Saving…" : mode === "create" ? "Create" : "Save changes"}
-        </Button>
+      <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90 px-4 sm:px-6 lg:px-8 py-3 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" className="h-10 gap-2 border-primary/30 text-primary" asChild>
+            <Link to={listHref}>
+              <X className="h-4 w-4" />
+              Cancel
+            </Link>
+          </Button>
+          <Button
+            className="h-10 gap-2"
+            disabled={!canSave}
+            onClick={() => saveMutation.mutate()}
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : mode === "create" ? (
+              <UserPlus className="h-4 w-4" />
+            ) : (
+              <UserCog className="h-4 w-4" />
+            )}
+            {saveMutation.isPending ? "Saving…" : primaryActionLabel}
+          </Button>
+        </div>
       </div>
 
       <Dialog

@@ -118,23 +118,49 @@ export const findModule = (slug: string | undefined): ModuleDef | undefined => {
   return MODULES.find((m) => m.key === key);
 };
 
+const LEAF_HREF: Partial<Record<ModuleKey, (role: Role) => string>> = {
+  sessions: (role) => systemConfigHref(role, "academic"),
+  "session-history": (role) => systemConfigHref(role, "history"),
+  "test-catalog": (role) => systemConfigHref(role, "test-catalog"),
+  "exam-catalog": (role) => systemConfigHref(role, "exam-catalog"),
+  rooms: (role) => systemConfigHref(role, "rooms"),
+  periods: (role) => systemConfigHref(role, "periods"),
+  "timetable-rules": (role) => systemConfigHref(role, "timetable-rules"),
+  teachers: (role) => systemConfigHref(role, "teachers"),
+  "subject-teachers": (role) => systemConfigHref(role, "subject-teachers"),
+  classes: (role) => studentManagementHref(role, "classes"),
+  sections: (role) => studentManagementHref(role, "sections"),
+  subjects: (role) => studentManagementHref(role, "subjects"),
+  disciplines: (role) => studentManagementHref(role, "disciplines"),
+  "student-registration": (role) => studentManagementHref(role, "registration"),
+  "change-section": (role) => studentManagementHref(role, "change-section"),
+  "fee-structure": (role) => studentManagementHref(role, "fees-structure"),
+  "timetable-builder": (role) => timetableHref(role, "builder"),
+  "timetable-board": (role) => timetableHref(role, "board"),
+  "timetable-view": (role) => timetableHref(role, "view"),
+  "exam-tests": (role) => testExamsHref(role, "enter-tests"),
+  "exam-term": (role) => testExamsHref(role, "term-exams"),
+  "exam-date-sheet": (role) => testExamsHref(role, "date-sheet"),
+  "exam-report-card": (role) => testExamsHref(role, "report-card"),
+};
+
 export const moduleHref = (
   role: Role,
   key: ModuleKey,
   opts?: { caps?: ModuleActionCaps },
-) =>
-  key === "dashboard"
-    ? `/panel/${role}`
-    : key === "system-config"
-      ? systemConfigHref(role)
-      : key === "student-management"
-        ? studentManagementHref(role)
-        : key === "timetable" && opts?.caps
-          ? timetableHref(role, defaultTimetableSection({ caps: opts.caps, role }))
-          : key === "exams"
-            ? testExamsHref(role)
-        : key === "staff-management"
-          ? `/panel/${role}/staff-management`
-          : key === "staff-attendance"
-            ? `/panel/${role}/teacher-attendance`
-            : `/panel/${role}/${key}`;
+) => {
+  if (key === "dashboard") return `/panel/${role}`;
+  const leaf = LEAF_HREF[key];
+  if (leaf) return leaf(role);
+  if (key === "system-config") return systemConfigHref(role);
+  if (key === "student-management") return studentManagementHref(role);
+  if (key === "timetable") {
+    return opts?.caps
+      ? timetableHref(role, defaultTimetableSection({ caps: opts.caps, role }))
+      : timetableHref(role, "view");
+  }
+  if (key === "exams") return testExamsHref(role);
+  if (key === "staff-management") return `/panel/${role}/staff-management`;
+  if (key === "staff-attendance") return `/panel/${role}/teacher-attendance`;
+  return `/panel/${role}/${key}`;
+};

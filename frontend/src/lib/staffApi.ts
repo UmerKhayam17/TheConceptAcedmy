@@ -11,6 +11,8 @@ export interface ModuleRegistryEntry {
   name: string;
   description: string;
   actions: string[];
+  /** Sidebar-aligned group for the permissions matrix UI */
+  parentGroup?: string | null;
 }
 
 export interface LinkedStudentSummary {
@@ -119,15 +121,25 @@ export function roleDisplayLabel(name: string): string {
 /** Default module grants for a new teacher account (matches seeded teacher role). */
 export const TEACHER_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   student: ["view"],
-  studentManagement: ["view"],
+  classes: ["view"],
+  sections: ["view"],
+  subjects: ["view"],
+  disciplines: ["view"],
+  studentRegistration: ["view"],
+  changeSection: ["view"],
+  feeStructure: ["view"],
   myClasses: ["view"],
   mySubjects: ["view"],
-  timetable: ["view"],
+  timetableBuilder: ["view"],
+  timetableBoard: ["view"],
+  timetableView: ["view"],
   homework: ["view", "create", "edit", "delete"],
   studyMaterials: ["view", "create", "edit", "delete"],
   lessonPlans: ["view", "create", "edit"],
-  /** View-only by default — grant create/edit on the matrix to manage tests & marks. */
-  exam: ["view"],
+  examTests: ["view"],
+  examTerm: ["view"],
+  examDateSheet: ["view"],
+  examReportCard: ["view"],
   studentProgress: ["view"],
   chat: ["view", "create", "participate"],
   announcement: ["view", "create", "edit"],
@@ -147,12 +159,21 @@ export const TEACHER_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
 /** Default module grants for a new accountant account (matches seeded accountant role). */
 export const ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   student: ["view", "activate"],
-  studentManagement: ["view", "create", "edit", "record", "generate"],
+  classes: ["view", "create", "edit", "record", "generate"],
+  sections: ["view", "create", "edit", "record", "generate"],
+  subjects: ["view", "create", "edit", "record", "generate"],
+  disciplines: ["view", "create", "edit", "record", "generate"],
+  studentRegistration: ["view", "create", "edit", "record", "generate"],
+  changeSection: ["view", "create", "edit", "record", "generate"],
+  feeStructure: ["view", "create", "edit", "record", "generate"],
   fee: ["view", "create", "edit", "generate", "record"],
   salary: ["view", "process", "generate", "record"],
   academyExpense: ["view", "create", "edit", "delete", "record"],
   attendance: ["view"],
-  exam: ["view"],
+  examTests: ["view"],
+  examTerm: ["view"],
+  examDateSheet: ["view"],
+  examReportCard: ["view"],
   chat: ["view", "create", "participate"],
   datasheets: ["view", "create", "edit", "delete"],
   reports: ["view"],
@@ -167,8 +188,13 @@ export const ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
 export const PARENT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   student: ["view"],
   attendance: ["view"],
-  exam: ["view"],
-  timetable: ["view"],
+  examTests: ["view"],
+  examTerm: ["view"],
+  examDateSheet: ["view"],
+  examReportCard: ["view"],
+  timetableBuilder: ["view"],
+  timetableBoard: ["view"],
+  timetableView: ["view"],
   chat: ["view", "create", "participate"],
   announcement: ["view"],
 };

@@ -24,23 +24,25 @@ import {
   Trash2,
   Users,
   UserRound,
+  X,
 } from "lucide-react";
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import PanelStatCard from "@/components/modules/PanelStatCard";
+import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { tableColumns, type UserFieldKey } from "@/lib/userSchemaFields";
 import {
   fetchAllUsers,
   fetchStaffUsers,
   updateStaffUser,
   deleteStaffUser,
+  roleDisplayLabel,
   type RoleOption,
   type LinkedStudentSummary,
   type StaffUser,
 } from "@/lib/staffApi";
 import { useStaffRealtime } from "@/hooks/useStaffSocket";
-import PanelToolbar from "@/components/modules/PanelToolbar";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
 import {
   provisionParentPortals,
@@ -49,6 +51,9 @@ import {
 import { resolveUploadUrl } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { userCreateHref, userEditHref } from "@/lib/userFormRoutes";
+
+const filterSelectClass =
+  "h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0";
 
 function formatTableCell(user: StaffUser, key: UserFieldKey): React.ReactNode {
   if (key === "role") {
@@ -89,6 +94,10 @@ function roleNameOf(user: StaffUser): string {
   if (r && typeof r === "object" && "name" in r) return String((r as RoleOption).name).toLowerCase();
   if (typeof r === "string") return r.toLowerCase();
   return "";
+}
+
+function humanizeModuleKey(key: string): string {
+  return key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()).trim();
 }
 
 function isParentUser(user: StaffUser): boolean {
@@ -172,7 +181,12 @@ const UsersModule = ({
     },
   });
 
-  const { search, setSearch, filtered: staffFiltered } = usePanelListSearch(staff, (u) => [
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | "active" | "inactive">("");
+  const [payTypeFilter, setPayTypeFilter] = useState<"" | "fixed" | "percentage">("");
+  const [moduleFilter, setModuleFilter] = useState("");
+
+  const { search, setSearch, filtered: searchFiltered } = usePanelListSearch(staff, (u) => [
     u.name,
     u.email,
     u.phone,
@@ -182,6 +196,10 @@ const UsersModule = ({
         ? u.role
         : "",
     u.isActive ? "active" : "inactive",
+    u.payType === "percentage" ? "percentage" : "fixed",
+    ...(u.modulePermissions && typeof u.modulePermissions === "object"
+      ? Object.keys(u.modulePermissions)
+      : []),
     ...(u.linkedStudents ?? []).flatMap((s) => [
       s.studentName,
       s.studentId,
@@ -189,6 +207,60 @@ const UsersModule = ({
       s.sectionName ?? "",
     ]),
   ]);
+
+  const roleOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const u of staff) {
+      const n = roleNameOf(u);
+      if (n) names.add(n);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [staff]);
+
+  const moduleOptions = useMemo(() => {
+    const keys = new Set<string>();
+    for (const u of staff) {
+      if (u.modulePermissions && typeof u.modulePermissions === "object") {
+        Object.keys(u.modulePermissions).forEach((k) => keys.add(k));
+      }
+    }
+    return Array.from(keys).sort((a, b) => a.localeCompare(b));
+  }, [staff]);
+
+  const staffFiltered = useMemo(() => {
+    return searchFiltered.filter((u) => {
+      if (roleFilter && roleNameOf(u) !== roleFilter) return false;
+      if (statusFilter === "active" && !u.isActive) return false;
+      if (statusFilter === "inactive" && u.isActive) return false;
+      if (payTypeFilter) {
+        const pay = u.payType === "percentage" ? "percentage" : "fixed";
+        if (pay !== payTypeFilter) return false;
+      }
+      if (moduleFilter) {
+        const mods =
+          u.modulePermissions && typeof u.modulePermissions === "object"
+            ? u.modulePermissions
+            : null;
+        if (!mods || !(moduleFilter in mods)) return false;
+      }
+      return true;
+    });
+  }, [searchFiltered, roleFilter, statusFilter, payTypeFilter, moduleFilter]);
+
+  const filtersActive =
+    Boolean(roleFilter) ||
+    Boolean(statusFilter) ||
+    Boolean(payTypeFilter) ||
+    Boolean(moduleFilter) ||
+    Boolean(search.trim());
+
+  const clearFilters = () => {
+    setRoleFilter("");
+    setStatusFilter("");
+    setPayTypeFilter("");
+    setModuleFilter("");
+    setSearch("");
+  };
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => {
@@ -361,43 +433,104 @@ const UsersModule = ({
         )}
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-        <PanelToolbar
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search name, email, phone, role…"
-        >
-          {caps.canCreate && scope !== "staff" && (
-            <Button
-              variant="outline"
-              className="h-10 gap-2"
-              disabled={provisionMutation.isPending}
-              onClick={() => {
-                if (
-                  !window.confirm(
-                    "Create or reset parent portal email and password (Concept@1234) for every active student?",
-                  )
-                ) {
-                  return;
-                }
-                provisionMutation.mutate();
-              }}
-            >
-              {provisionMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <KeyRound className="h-4 w-4" />
-              )}
-              Create parent emails & passwords
-            </Button>
-          )}
-          {caps.canCreate && (
-            <Button className="h-10 gap-2" onClick={goCreate}>
-              <Plus className="h-4 w-4" /> {scope === "staff" ? "Add staff" : "Add user"}
-            </Button>
-          )}
-        </PanelToolbar>
-      </div>
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className={`${filterSelectClass} w-[9.5rem]`}
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            aria-label="Role filter"
+          >
+            <option value="">All roles</option>
+            {roleOptions.map((name) => (
+              <option key={name} value={name}>
+                {roleDisplayLabel(name)}
+              </option>
+            ))}
+          </select>
+          <select
+            className={`${filterSelectClass} w-[10rem]`}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "" | "active" | "inactive")}
+            aria-label="Status filter"
+          >
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <select
+            className={`${filterSelectClass} w-[10rem]`}
+            value={payTypeFilter}
+            onChange={(e) => setPayTypeFilter(e.target.value as "" | "fixed" | "percentage")}
+            aria-label="Pay type filter"
+          >
+            <option value="">All pay types</option>
+            <option value="fixed">Fixed</option>
+            <option value="percentage">Percentage</option>
+          </select>
+          <select
+            className={`${filterSelectClass} w-[11rem]`}
+            value={moduleFilter}
+            onChange={(e) => setModuleFilter(e.target.value)}
+            aria-label="Module filter"
+          >
+            <option value="">All modules</option>
+            {moduleOptions.map((key) => (
+              <option key={key} value={key}>
+                {humanizeModuleKey(key)}
+              </option>
+            ))}
+          </select>
+          <PanelSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search name, email, phone, role…"
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+          <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+            {filtersActive ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-10 gap-1.5 text-muted-foreground"
+                onClick={clearFilters}
+              >
+                <X className="h-4 w-4" />
+                Clear
+              </Button>
+            ) : null}
+            {caps.canCreate && scope !== "staff" && (
+              <Button
+                variant="outline"
+                className="h-10 gap-2"
+                disabled={provisionMutation.isPending}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      "Create or reset parent portal email and password (Concept@1234) for every active student?",
+                    )
+                  ) {
+                    return;
+                  }
+                  provisionMutation.mutate();
+                }}
+              >
+                {provisionMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <KeyRound className="h-4 w-4" />
+                )}
+                Create parent emails & passwords
+              </Button>
+            )}
+            {caps.canCreate && (
+              <Button className="h-10 gap-2" onClick={goCreate}>
+                <Plus className="h-4 w-4" /> {scope === "staff" ? "Add staff" : "Add user"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Card>
 
       <Card className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -438,7 +571,14 @@ const UsersModule = ({
               ) : staffFiltered.length === 0 ? (
                 <tr>
                   <td colSpan={tableColSpan} className="px-4 py-8 text-center text-muted-foreground">
-                    No staff match your search.
+                    <div className="space-y-2">
+                      <p>No {isStaffScope ? "staff" : "users"} match your filters.</p>
+                      {filtersActive ? (
+                        <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+                          Clear filters
+                        </Button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ) : (

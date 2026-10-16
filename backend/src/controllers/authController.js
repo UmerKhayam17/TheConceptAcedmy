@@ -13,6 +13,7 @@ const {
 const { setRefreshCookie, clearRefreshCookie, setAccessCookie, clearAccessCookie } = require('../utils/authCookies');
 const MODULES = require('../modules/moduleConfig');
 const { isSystemAdmin, isAdminRole } = require('../utils/systemAdmin');
+const { expandModulePermissions } = require('../modules/expandModulePermissions');
 
 const otpStore = new Map();
 
@@ -64,15 +65,15 @@ function collectSessionModulePermissions(user) {
   const userModulePermissions = toPlainModulePermissions(user.modulePermissions);
   // Secondary admins always use their own dynamic matrix (empty = no modules until granted).
   if (isAdminRole(user)) {
-    return userModulePermissions;
+    return expandModulePermissions(userModulePermissions);
   }
   const roleModulePermissions = toPlainModulePermissions(
     user.roleDoc?.modulePermissions || user.role?.modulePermissions,
   );
   if (hasExplicitModulePermissions(userModulePermissions)) {
-    return userModulePermissions;
+    return expandModulePermissions(userModulePermissions);
   }
-  return roleModulePermissions;
+  return expandModulePermissions(roleModulePermissions);
 }
 
 function issueTokens(user) {

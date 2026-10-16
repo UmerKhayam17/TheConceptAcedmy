@@ -1,18 +1,30 @@
 /**
  * Default module permissions for the Teacher role.
  * Applied on role seed sync and when creating a teacher with no explicit matrix.
+ * Uses leaf submodule keys (legacy coarse keys still expand on read).
  */
 const TEACHER_DEFAULT_MODULE_PERMISSIONS = {
   student: ['view'],
-  studentManagement: ['view'],
+  classes: ['view'],
+  sections: ['view'],
+  subjects: ['view'],
+  disciplines: ['view'],
+  studentRegistration: ['view'],
+  changeSection: ['view'],
+  feeStructure: ['view'],
   myClasses: ['view'],
   mySubjects: ['view'],
-  timetable: ['view'],
+  timetableBuilder: ['view'],
+  timetableBoard: ['view'],
+  timetableView: ['view'],
   homework: ['view', 'create', 'edit', 'delete'],
   studyMaterials: ['view', 'create', 'edit', 'delete'],
   lessonPlans: ['view', 'create', 'edit'],
   /** View-only by default — grant create/edit on the user/role matrix to manage tests & marks. */
-  exam: ['view'],
+  examTests: ['view'],
+  examTerm: ['view'],
+  examDateSheet: ['view'],
+  examReportCard: ['view'],
   studentProgress: ['view'],
   chat: ['view', 'create', 'participate'],
   announcement: ['view', 'create', 'edit'],

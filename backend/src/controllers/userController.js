@@ -8,6 +8,7 @@ const AcademyStudent = require('../models/academy/AcademyStudent');
 const { MODULES } = require('../modules');
 const { getSystemModulesForApi } = require('../config/systemModules');
 const { isSystemAdmin, seedAdminEmail } = require('../utils/systemAdmin');
+const { expandModulePermissions } = require('../modules/expandModulePermissions');
 const rt = require('../services/realtime/academyRealtime');
 
 function notifyStaff(req, action = 'updated', userId) {
@@ -44,7 +45,7 @@ function serializeUser(user) {
     o.modulePermissions = Object.fromEntries(o.modulePermissions);
   }
   if (o.modulePermissions && typeof o.modulePermissions === 'object' && !Array.isArray(o.modulePermissions)) {
-    /* already plain */
+    o.modulePermissions = expandModulePermissions(o.modulePermissions);
   } else if (!o.modulePermissions) {
     o.modulePermissions = {};
   }
@@ -106,6 +107,7 @@ const listModuleRegistry = catchAsync(async (req, res) => {
     name: m.label,
     description: m.description,
     actions: m.actions,
+    parentGroup: m.parentGroup || null,
   }));
   res.json({ success: true, data: { modules } });
 });
@@ -246,8 +248,13 @@ const createUser = catchAsync(async (req, res) => {
               Object.entries({
                 student: ['view'],
                 attendance: ['view'],
-                exam: ['view'],
-                timetable: ['view'],
+                examTests: ['view'],
+                examTerm: ['view'],
+                examDateSheet: ['view'],
+                examReportCard: ['view'],
+                timetableBuilder: ['view'],
+                timetableBoard: ['view'],
+                timetableView: ['view'],
                 chat: ['view', 'create', 'participate'],
                 announcement: ['view'],
               })

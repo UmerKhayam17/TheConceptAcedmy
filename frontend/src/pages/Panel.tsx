@@ -12,6 +12,16 @@ import { usePermissions } from "@/hooks/usePermissions";
 import {
   applyBackendModulePermissions, ModuleKey, resolveModuleCaps,
 } from "@/lib/permissions";
+import {
+  EXAM_SECTION_MAP,
+  SYSTEM_CONFIG_SECTION_MAP,
+  STUDENT_MGMT_SECTION_MAP,
+  firstAccessibleSection,
+  resolveHubSectionModuleKey,
+} from "@/lib/sectionModuleKeys";
+import type { SystemConfigSection } from "@/lib/systemConfigMenus";
+import type { StudentManagementSection } from "@/lib/studentManagementMenus";
+import type { TestExamsSection } from "@/lib/testExamsMenus";
 import { Card } from "@/components/ui/card";
 import SEO from "@/components/SEO";
 import { fetchExams } from "@/lib/examApi";
@@ -305,30 +315,72 @@ const Panel = () => {
     r,
     session.isSystemAdmin,
   );
-  const perm = rolePerms[mod.key as ModuleKey];
+
+  // Leaf key for nested hub sections (e.g. exams/date-sheet → exam-date-sheet)
+  const accessKey = resolveHubSectionModuleKey(mod.key as ModuleKey, section);
+  const perm = rolePerms[accessKey] ?? rolePerms[mod.key as ModuleKey];
   const caps = resolveModuleCaps(
-    mod.key as ModuleKey,
+    accessKey,
     perm,
+    session.modulePermissions,
+    r,
+    session.isSystemAdmin,
+  );
+  // Hub shell caps (any leaf) used for default redirects when section is missing
+  const hubCaps = resolveModuleCaps(
+    mod.key as ModuleKey,
+    rolePerms[mod.key as ModuleKey],
     session.modulePermissions,
     r,
     session.isSystemAdmin,
   );
 
   if (mod.key === "system-config" && !section) {
-    return <Navigate to={systemConfigHref(r)} replace />;
+    const first =
+      (firstAccessibleSection(
+        SYSTEM_CONFIG_SECTION_MAP,
+        resolveModuleCaps,
+        rolePerms,
+        session.modulePermissions,
+        r,
+        session.isSystemAdmin,
+      ) as SystemConfigSection | undefined) || "academic";
+    return <Navigate to={systemConfigHref(r, first)} replace />;
+  }
+
+  if (mod.key === "student-management" && !section) {
+    const first =
+      (firstAccessibleSection(
+        STUDENT_MGMT_SECTION_MAP,
+        resolveModuleCaps,
+        rolePerms,
+        session.modulePermissions,
+        r,
+        session.isSystemAdmin,
+      ) as StudentManagementSection | undefined) || "classes";
+    return <Navigate to={studentManagementHref(r, first)} replace />;
   }
 
   if (mod.key === "timetable" && !section) {
     return (
       <Navigate
-        to={timetableHref(r, defaultTimetableSection({ caps, role: r }))}
+        to={timetableHref(r, defaultTimetableSection({ caps: hubCaps, role: r }))}
         replace
       />
     );
   }
 
   if (mod.key === "exams" && !section) {
-    return <Navigate to={testExamsHref(r)} replace />;
+    const first =
+      (firstAccessibleSection(
+        EXAM_SECTION_MAP,
+        resolveModuleCaps,
+        rolePerms,
+        session.modulePermissions,
+        r,
+        session.isSystemAdmin,
+      ) as TestExamsSection | undefined) || "enter-tests";
+    return <Navigate to={testExamsHref(r, first)} replace />;
   }
   if (!caps.canView) {
     return (

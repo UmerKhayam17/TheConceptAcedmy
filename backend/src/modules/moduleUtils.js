@@ -5,11 +5,11 @@
 
 const MODULES = require('./moduleConfig');
 const { isSystemAdmin, isAdminRole } = require('../utils/systemAdmin');
+const { actionsForModule, expandModulePermissions } = require('./expandModulePermissions');
 
 function fromMap(map, moduleName) {
   if (!map) return [];
-  if (map instanceof Map) return map.get(moduleName) || [];
-  return map[moduleName] || [];
+  return actionsForModule(map, moduleName);
 }
 
 function hasExplicitModulePermissions(map) {
@@ -172,7 +172,7 @@ function getAllUserModulePermissions(user) {
       perms[moduleName] = user.modulePermissions[moduleName];
     });
   }
-  return perms;
+  return expandModulePermissions(perms);
 }
 
 module.exports = {
@@ -182,5 +182,6 @@ module.exports = {
   revokeModulePermission,
   getModulePermissions,
   getAllUserModulePermissions,
+  expandModulePermissions,
   MODULES,
 };

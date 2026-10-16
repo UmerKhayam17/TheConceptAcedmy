@@ -81,11 +81,26 @@ function itemIsActive(item: SidebarNavItem, pathname: string, role: Role): boole
   if (item.moduleKey === "fees") return rest.startsWith("/fees");
   if (item.moduleKey === "expenses") return rest.startsWith("/expenses");
   if (item.moduleKey === "salary") return rest.startsWith("/salary");
-  if (item.moduleKey === "exams") return rest.startsWith("/exams") || rest.startsWith("/test-exams");
+  if (
+    item.moduleKey === "exams" ||
+    item.moduleKey === "exam-tests" ||
+    item.moduleKey === "exam-term" ||
+    item.moduleKey === "exam-date-sheet" ||
+    item.moduleKey === "exam-report-card"
+  ) {
+    return rest.startsWith("/exams") || rest.startsWith("/test-exams");
+  }
   if (item.moduleKey === "announcements") return rest.startsWith("/announcements");
   if (item.moduleKey === "homework") return rest.startsWith("/homework");
   if (item.moduleKey === "my-classes") return rest.startsWith("/my-classes");
-  if (item.moduleKey === "timetable") return rest.startsWith("/timetable");
+  if (
+    item.moduleKey === "timetable" ||
+    item.moduleKey === "timetable-builder" ||
+    item.moduleKey === "timetable-board" ||
+    item.moduleKey === "timetable-view"
+  ) {
+    return rest.startsWith("/timetable");
+  }
 
   const slug = item.moduleKey;
   return Boolean(slug && rest.startsWith(`/${slug}`));

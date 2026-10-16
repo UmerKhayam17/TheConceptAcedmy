@@ -167,8 +167,13 @@ function buildDefaultRoleDefs(allPermissionIds) {
       modulePermissions: new Map([
         ['student', ['view']],
         ['attendance', ['view']],
-        ['exam', ['view']],
-        ['timetable', ['view']],
+        ['examTests', ['view']],
+        ['examTerm', ['view']],
+        ['examDateSheet', ['view']],
+        ['examReportCard', ['view']],
+        ['timetableBuilder', ['view']],
+        ['timetableBoard', ['view']],
+        ['timetableView', ['view']],
         ['chat', ['view', 'create', 'participate']],
         ['announcement', ['view']],
       ]),
@@ -282,8 +287,13 @@ async function syncBuiltInRolePermissions() {
           modulePermissions: {
             student: ['view'],
             attendance: ['view'],
-            exam: ['view'],
-            timetable: ['view'],
+            examTests: ['view'],
+            examTerm: ['view'],
+            examDateSheet: ['view'],
+            examReportCard: ['view'],
+            timetableBuilder: ['view'],
+            timetableBoard: ['view'],
+            timetableView: ['view'],
             chat: ['view', 'create', 'participate'],
             announcement: ['view'],
           },
@@ -291,7 +301,8 @@ async function syncBuiltInRolePermissions() {
       }
     );
 
-    // Strip fee only; restore exam view for test results on existing parent users.
+    // Strip fee only; ensure examination leaf view for test results on existing parent users.
+    const examLeaves = ['examTests', 'examTerm', 'examDateSheet', 'examReportCard'];
     const parentUsers = await User.find({ role: parentRole._id }).select('modulePermissions');
     for (const pu of parentUsers) {
       const perms = pu.modulePermissions;
@@ -304,8 +315,10 @@ async function syncBuiltInRolePermissions() {
         asMap.delete('fee');
         changed = true;
       }
-      if (!asMap.has('exam')) {
-        asMap.set('exam', ['view']);
+      const hasExam =
+        asMap.has('exam') || examLeaves.some((k) => asMap.has(k));
+      if (!hasExam) {
+        examLeaves.forEach((k) => asMap.set(k, ['view']));
         changed = true;
       }
       if (!changed) continue;
@@ -315,8 +328,13 @@ async function syncBuiltInRolePermissions() {
           : new Map([
               ['student', ['view']],
               ['attendance', ['view']],
-              ['exam', ['view']],
-              ['timetable', ['view']],
+              ['examTests', ['view']],
+              ['examTerm', ['view']],
+              ['examDateSheet', ['view']],
+              ['examReportCard', ['view']],
+              ['timetableBuilder', ['view']],
+              ['timetableBoard', ['view']],
+              ['timetableView', ['view']],
               ['chat', ['view', 'create', 'participate']],
               ['announcement', ['view']],
             ]);
