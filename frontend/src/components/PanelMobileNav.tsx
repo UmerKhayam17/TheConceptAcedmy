@@ -1,10 +1,13 @@
 import { useMemo, type ComponentType } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { LayoutGrid } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import type { Role, SessionUser } from "@/lib/auth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { applyBackendModulePermissions, resolveModuleCaps } from "@/lib/permissions";
+import { fetchAcademyStudents } from "@/lib/studentManagementApi";
+import { injectParentChildrenIntoSidebar } from "@/lib/parentSidebarChildren";
 import {
   ADMIN_MOBILE_GROUP_IDS,
   MOBILE_PRIMARY_NAV_IDS,
@@ -179,6 +182,16 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
     return true;
   };
 
+  const { data: parentStudents = [] } = useQuery({
+    queryKey: ["parent-dashboard-children", user.id],
+    queryFn: async () => {
+      const { students } = await fetchAcademyStudents({ limit: 100 });
+      return students;
+    },
+    enabled: user.role === "parent",
+    staleTime: 60_000,
+  });
+
   const tabs = useMemo((): MobileTab[] => {
     if (isAdmin) {
       const groups = sidebarNavForRole("admin")
@@ -218,7 +231,23 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
       return out;
     }
 
-    const flat = flattenSidebarNav(user.role);
+    let flat = flattenSidebarNav(user.role);
+    if (user.role === "parent" && parentStudents.length) {
+      const injected = injectParentChildrenIntoSidebar(
+        sidebarNavForRole("parent"),
+        parentStudents.map((s) => ({ _id: s._id, studentName: s.studentName })),
+      );
+      const seen = new Set<string>();
+      flat = [];
+      for (const group of injected) {
+        for (const item of group.items) {
+          if (seen.has(item.id)) continue;
+          seen.add(item.id);
+          flat.push(item);
+        }
+      }
+    }
+
     const byId = new Map(flat.map((item) => [item.id, item]));
     const preferredIds = MOBILE_PRIMARY_NAV_IDS[user.role] || MOBILE_PRIMARY_NAV_IDS.teacher;
 
@@ -237,7 +266,7 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
       end: item.id === "dashboard",
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.role, user.modulePermissions, perms, pathname, isAdmin]);
+  }, [user.role, user.modulePermissions, perms, pathname, isAdmin, parentStudents]);
 
   const primaryActive = tabs.some((t) => t.active);
   const showMore = true;

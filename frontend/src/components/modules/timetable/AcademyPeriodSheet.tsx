@@ -110,17 +110,17 @@ export default function AcademyPeriodSheet({
   const hasAnySlot = rows.some((r) => r.slots.length > 0);
 
   return (
-    <div className="overflow-auto">
-      <table className="w-full min-w-[860px] text-sm border-collapse">
+    <div className="w-full overflow-hidden">
+      <table className="w-full table-fixed text-sm border-collapse">
         <thead>
           <tr className="bg-slate-50 dark:bg-muted/50">
-            <th className="sticky left-0 z-10 bg-slate-50 dark:bg-muted/50 border-b px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground min-w-[130px]">
+            <th className="w-[120px] border-b px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {firstColumnHeader}
             </th>
             {lecturePeriods.map((p) => (
-              <th key={p._id} className="border-b px-2 py-3 text-center font-semibold min-w-[120px]">
-                <div className="text-sm">{p.label || `P${p.order}`}</div>
-                <div className="text-[11px] font-normal text-muted-foreground">
+              <th key={p._id} className="border-b px-1.5 py-3 text-center font-semibold overflow-hidden">
+                <div className="text-sm truncate">{p.label || `P${p.order}`}</div>
+                <div className="text-[11px] font-normal text-muted-foreground truncate">
                   {p.startTime} – {p.endTime}
                 </div>
               </th>
@@ -130,10 +130,10 @@ export default function AcademyPeriodSheet({
         <tbody>
           {rows.map((row) => (
             <tr key={row.key} className="align-top">
-              <td className="sticky left-0 z-10 border-b bg-primary/5 px-3 py-3 font-semibold whitespace-nowrap">
-                <div>{row.label}</div>
+              <td className="w-[120px] border-b bg-primary/5 px-3 py-3 font-semibold overflow-hidden">
+                <div className="truncate">{row.label}</div>
                 {row.sublabel ? (
-                  <div className="mt-0.5 text-[11px] font-normal text-muted-foreground">
+                  <div className="mt-0.5 text-[11px] font-normal text-muted-foreground truncate">
                     {row.sublabel}
                   </div>
                 ) : null}
@@ -144,7 +144,7 @@ export default function AcademyPeriodSheet({
                     slotMatchesPeriod(s, period._id) && (row.day ? s.day === row.day : true),
                 );
                 return (
-                  <td key={period._id} className="border-b p-1.5 align-top">
+                  <td key={period._id} className="border-b p-1.5 align-top overflow-hidden">
                     {slot ? (
                       <AcademyLessonCell slot={slot} />
                     ) : (

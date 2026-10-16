@@ -34,14 +34,12 @@ import type { Weekday } from "@/lib/configApi";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
-  assignUniqueSubjectColors,
   DAY_FULL_LABELS,
   DAY_ORDER,
-  dotForSubjectName,
-  colorForSubjectName,
   normalizeWorkingDays,
   slotMatchesPeriod,
-  subjectColorKey,
+  subjectColor,
+  subjectColorDot,
 } from "./constants";
 import {
   downloadBuilderGridPdf,
@@ -194,25 +192,19 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
     slots.find((s) => s.day === day && slotMatchesPeriod(s, periodId));
 
   const legendSubjects = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { id: string; name: string }>();
     for (const slot of slots) {
       for (const e of scheduleSlotEntries(slot)) {
         if (isDeletedSubject(e.subject)) continue;
+        const id = e.subject?._id || "";
         const name = e.subject?.name?.trim();
         if (!name) continue;
-        const key = subjectColorKey(name);
-        if (!map.has(key)) map.set(key, name);
+        const key = id || name;
+        if (!map.has(key)) map.set(key, { id: key, name });
       }
     }
-    return [...map.entries()]
-      .map(([key, name]) => ({ key, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [slots]);
-
-  const subjectColorByKey = useMemo(
-    () => assignUniqueSubjectColors(legendSubjects.map((s) => s.name)),
-    [legendSubjects],
-  );
 
   /** Today's upcoming lessons only — next periods that have not ended yet (max 4). */
   const upcomingLessons = useMemo(() => {
@@ -220,6 +212,8 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
       id: string;
       title: string;
       subjectName: string;
+      /** Same color key as AcademyLessonCell (subject id). */
+      colorId: string;
       teachers: string;
       periodLabel: string;
       periodOrder: number;
@@ -248,10 +242,12 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
 
       const key = slot.combinedGroupId ? `shared:${slot.combinedGroupId}` : `slot:${slot._id}`;
       if (map.has(key)) continue;
+      const subjectId = entries[0]?.subject?._id || slot.subject?._id || "";
       map.set(key, {
         id: key,
         title: scheduleSlotTitle(slot),
         subjectName: entries[0]?.subject?.name || "",
+        colorId: subjectId,
         teachers: entries.map((e) => e.teacher?.name || "—").join(" / ") || "—",
         periodLabel: period?.label || `Period ${period?.order || ""}`,
         periodOrder: period?.order ?? 999,
@@ -537,11 +533,11 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
                     legendSubjects.map((s) => {
                       const Icon = subjectIcon(s.name);
                       return (
-                        <span key={s.key} className="inline-flex items-center gap-1.5">
+                        <span key={s.id} className="inline-flex items-center gap-1.5">
                           <span
                             className={cn(
                               "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10",
-                              dotForSubjectName(s.name, subjectColorByKey),
+                              subjectColorDot(s.id),
                             )}
                             aria-hidden
                           />
@@ -635,7 +631,7 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
                         key={item.id}
                         className={cn(
                           "rounded-xl border px-3 py-2.5 text-xs space-y-1 shadow-sm",
-                          colorForSubjectName(item.subjectName, subjectColorByKey),
+                          subjectColor(item.colorId),
                         )}
                       >
                         <div className="inline-flex min-w-0 items-center gap-1.5 font-semibold">

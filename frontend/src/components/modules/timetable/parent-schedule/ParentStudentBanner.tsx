@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { CalendarDays } from "lucide-react";
 
 /**
@@ -7,10 +7,12 @@ import { CalendarDays } from "lucide-react";
 export function ParentStudentBanner({
   title = "Time Table",
   subtitle = "Weekly class schedule for your child. Switch weeks or view a single day.",
+  icon: Icon = CalendarDays,
   childPicker,
 }: {
   title?: string;
   subtitle?: string;
+  icon?: ComponentType<{ className?: string; strokeWidth?: number }>;
   /** Optional control (e.g. child select) shown under the subtitle on small screens / beside title. */
   childPicker?: ReactNode;
   /** @deprecated kept for call-site compatibility — profile card removed to match admin top bar */
@@ -21,7 +23,7 @@ export function ParentStudentBanner({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
-            <CalendarDays className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            <Icon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">

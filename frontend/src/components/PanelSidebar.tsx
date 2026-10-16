@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   ShieldCheck,
   Calculator,
@@ -9,6 +11,8 @@ import {
   School,
   ChevronDown,
 } from "lucide-react";
+import { fetchAcademyStudents } from "@/lib/studentManagementApi";
+import { injectParentChildrenIntoSidebar } from "@/lib/parentSidebarChildren";
 import {
   Sidebar,
   SidebarContent,
@@ -81,15 +85,36 @@ const PanelSidebar = ({ user }: { user: SessionUser }) => {
     return true;
   };
 
-  const visibleGroups = sidebarNavForRole(user.role)
-    .map((group) => ({
-      ...group,
-      items: group.items.filter(canView).map((item) => ({
-        ...item,
-        children: item.children?.filter(canView),
-      })),
-    }))
-    .filter((group) => group.items.length > 0);
+  const { data: parentStudents = [] } = useQuery({
+    queryKey: ["parent-dashboard-children", user.id],
+    queryFn: async () => {
+      const { students } = await fetchAcademyStudents({ limit: 100 });
+      return students;
+    },
+    enabled: user.role === "parent",
+    staleTime: 60_000,
+  });
+
+  const visibleGroups = useMemo(() => {
+    let groups = sidebarNavForRole(user.role)
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(canView).map((item) => ({
+          ...item,
+          children: item.children?.filter(canView),
+        })),
+      }))
+      .filter((group) => group.items.length > 0);
+
+    if (user.role === "parent") {
+      groups = injectParentChildrenIntoSidebar(
+        groups,
+        parentStudents.map((s) => ({ _id: s._id, studentName: s.studentName })),
+      );
+    }
+    return groups;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.role, user.modulePermissions, user.isSystemAdmin, perms, parentStudents]);
 
   const activeLinkClass =
     "!bg-primary !text-primary-foreground font-semibold shadow-sm hover:!bg-primary hover:!text-primary-foreground [&>svg]:!text-primary-foreground data-[active=true]:!bg-primary data-[active=true]:!text-primary-foreground";
