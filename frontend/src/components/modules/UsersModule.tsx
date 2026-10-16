@@ -1,166 +1,61 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, UserX, ImageIcon, Eye, EyeOff, KeyRound, Loader2, Trash2 } from "lucide-react";
+import {
+  CheckCircle2,
+  Percent,
+  Plus,
+  Pencil,
+  UserCog,
+  UserX,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  Trash2,
+  Users,
+  UserRound,
+} from "lucide-react";
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import PanelStatCard from "@/components/modules/PanelStatCard";
+import { tableColumns, type UserFieldKey } from "@/lib/userSchemaFields";
 import {
-  emptyUserForm,
-  tableColumns,
-  userToFormValues,
-  visibleFormFields,
-  type UserFormMode,
-  type UserFormValues,
-  type UserSchemaField,
-  type UserFieldKey,
-} from "@/lib/userSchemaFields";
-import {
-  createStaffUser,
-  TEACHER_DEFAULT_MODULE_PERMISSIONS,
-  ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS,
-  PARENT_DEFAULT_MODULE_PERMISSIONS,
   fetchAllUsers,
-  fetchAllRoles,
-  fetchParentStudents,
-  fetchModuleRegistry,
   fetchStaffUsers,
-  staffRolesOnly,
-  userCreateRoles,
-  roleDisplayLabel,
-  assignParentStudents,
   updateStaffUser,
   deleteStaffUser,
-  uploadStaffProfilePhoto,
-  normalizeModulePermissions,
   type RoleOption,
   type LinkedStudentSummary,
   type StaffUser,
 } from "@/lib/staffApi";
 import { useStaffRealtime } from "@/hooks/useStaffSocket";
-import ModuleAccessMatrix from "@/components/modules/ModuleAccessMatrix";
-import ParentUserCreateFields, {
-  emptyParentCreateSelection,
-  type ParentCreateSelection,
-} from "@/components/modules/ParentUserCreateFields";
 import PanelToolbar from "@/components/modules/PanelToolbar";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
 import {
-  fetchAcademyStudents,
   provisionParentPortals,
-  type AcademyStudent,
   type ParentPortalProvisionResult,
 } from "@/lib/studentManagementApi";
 import { resolveUploadUrl } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-function setFormField(setter: React.Dispatch<React.SetStateAction<UserFormValues>>, key: UserFieldKey, value: string) {
-  setter((prev) => ({ ...prev, [key]: value }));
-}
-
-function SchemaFieldControl({
-  field,
-  mode,
-  value,
-  onChange,
-  roleOptions,
-}: {
-  field: UserSchemaField;
-  mode: UserFormMode;
-  value: string;
-  onChange: (v: string) => void;
-  roleOptions: RoleOption[];
-}) {
-  const selectOptions =
-    field.optionsFrom === "roles"
-      ? roleOptions.map((r) => ({ value: r._id, label: r.name }))
-      : field.options ?? [];
-
-  const placeholder =
-    field.key === "password" && mode === "edit" && field.optionalOnEdit
-      ? "Leave blank to keep current password"
-      : field.placeholder;
-
-  if (field.inputType === "select") {
-    return (
-      <select
-        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required={field.required && !(mode === "edit" && field.key === "password")}
-      >
-        {field.optionsFrom === "roles" && <option value="">Select role…</option>}
-        {selectOptions.map((o) => (
-          <option key={o.value} value={o.value}>
-            {field.optionsFrom === "roles" ? roleDisplayLabel(o.label) : o.label}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
-  if (field.inputType === "number") {
-    return (
-      <Input
-        type="number"
-        min={0}
-        step={1}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
-    );
-  }
-
-  const inputType =
-    field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : "text";
-
-  return (
-    field.inputType === "password" ? (
-      <div className="space-y-1">
-        <Input
-          type="text"
-          autoComplete="new-password"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="font-mono"
-          required={
-            field.required && !(mode === "edit" && field.key === "password" && field.optionalOnEdit)
-          }
-        />
-        {mode === "create" ? (
-          <p className="text-xs text-muted-foreground">Password is shown in plain text so you can copy it.</p>
-        ) : null}
-      </div>
-    ) : (
-      <Input
-        type={inputType}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={
-          field.required && !(mode === "edit" && field.key === "password" && field.optionalOnEdit)
-        }
-      />
-    )
-  );
-}
+import { userCreateHref, userEditHref } from "@/lib/userFormRoutes";
 
 function formatTableCell(user: StaffUser, key: UserFieldKey): React.ReactNode {
   if (key === "role") {
     const r = user.role;
-    if (r && typeof r === "object" && "name" in r) return <span className="capitalize">{(r as RoleOption).name}</span>;
+    if (r && typeof r === "object" && "name" in r) {
+      return <span className="capitalize">{(r as RoleOption).name}</span>;
+    }
     return "—";
   }
   if (key === "isActive") {
@@ -189,15 +84,15 @@ function formatTableCell(user: StaffUser, key: UserFieldKey): React.ReactNode {
   return String(v);
 }
 
-function isParentUser(user: StaffUser): boolean {
+function roleNameOf(user: StaffUser): string {
   const r = user.role;
-  const name =
-    r && typeof r === "object" && "name" in r
-      ? String((r as RoleOption).name)
-      : typeof r === "string"
-        ? r
-        : "";
-  return name.toLowerCase() === "parent";
+  if (r && typeof r === "object" && "name" in r) return String((r as RoleOption).name).toLowerCase();
+  if (typeof r === "string") return r.toLowerCase();
+  return "";
+}
+
+function isParentUser(user: StaffUser): boolean {
+  return roleNameOf(user) === "parent";
 }
 
 function LinkedStudentsCell({ user }: { user: StaffUser }) {
@@ -227,8 +122,6 @@ function LinkedStudentsCell({ user }: { user: StaffUser }) {
 }
 
 const STAFF_QUERY = ["users-module-list"] as const;
-const ROLES_QUERY = ["staffRoles"] as const;
-const REGISTRY_QUERY = ["moduleRegistry"] as const;
 
 const UsersModule = ({
   perm: _perm,
@@ -241,7 +134,10 @@ const UsersModule = ({
 }) => {
   const anyWrite = caps.canCreate || caps.canEdit || caps.canDelete;
   const { toast } = useToast();
+  const { user: session } = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
+  const role = session?.role;
   useStaffRealtime(anyWrite);
 
   const { data: staff = [], isLoading: staffLoading } = useQuery<StaffUser[]>({
@@ -249,65 +145,12 @@ const UsersModule = ({
     queryFn: async () =>
       scope === "staff"
         ? await fetchStaffUsers()
-        : (await fetchAllUsers()) as StaffUser[],
+        : ((await fetchAllUsers()) as StaffUser[]),
   });
 
-  const { data: rolesRaw = [] } = useQuery({
-    queryKey: ROLES_QUERY,
-    queryFn: fetchAllRoles,
-  });
-
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<UserFormMode>("create");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<UserFormValues>(() => emptyUserForm());
-  const [modulePerms, setModulePerms] = useState<Record<string, string[]>>({});
-  const [parentStudentIds, setParentStudentIds] = useState<string[]>([]);
-  const [parentCreate, setParentCreate] = useState<ParentCreateSelection>(() => emptyParentCreateSelection());
-  const [editingWasParent, setEditingWasParent] = useState(false);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [provisionOpen, setProvisionOpen] = useState(false);
   const [provisionResult, setProvisionResult] = useState<ParentPortalProvisionResult | null>(null);
   const [showProvisionPasswords, setShowProvisionPasswords] = useState(true);
-  const [createdParentCredentials, setCreatedParentCredentials] = useState<{
-    name: string;
-    email: string;
-    password: string;
-  } | null>(null);
-
-  const roleOptions = useMemo(() => {
-    if (scope === "staff") {
-      return staffRolesOnly(rolesRaw).filter((r) => String(r.name).toLowerCase() !== "parent");
-    }
-    return userCreateRoles(rolesRaw);
-  }, [rolesRaw, scope]);
-  const selectedRole = roleOptions.find((r) => r._id === form.role);
-  const isParentRole = (selectedRole?.name || "").toLowerCase() === "parent";
-  const isTeacherRole = (selectedRole?.name || "").toLowerCase() === "teacher";
-  const isAccountantRole = (selectedRole?.name || "").toLowerCase() === "accountant";
-  const isParentCreate = open && mode === "create" && isParentRole;
-
-  // Seed default RBAC matrix when creating teacher / accountant / parent (admin can still override).
-  useEffect(() => {
-    if (!open || mode !== "create") return;
-    if (isParentRole) {
-      setParentCreate((prev) => ({
-        ...prev,
-        password: prev.password || "Concept@1234",
-        modulePermissions:
-          Object.keys(prev.modulePermissions || {}).length > 0
-            ? prev.modulePermissions
-            : { ...PARENT_DEFAULT_MODULE_PERMISSIONS },
-      }));
-      return;
-    }
-    if (isTeacherRole) {
-      setModulePerms({ ...TEACHER_DEFAULT_MODULE_PERMISSIONS });
-    } else if (isAccountantRole) {
-      setModulePerms({ ...ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS });
-    }
-  }, [open, mode, isTeacherRole, isAccountantRole, isParentRole, form.role]);
 
   const provisionMutation = useMutation({
     mutationFn: async () => {
@@ -329,41 +172,15 @@ const UsersModule = ({
     },
   });
 
-  const { data: parentStudentChoices = [], isLoading: parentStudentChoicesLoading } = useQuery({
-    queryKey: ["academy-student-choices", isParentRole, mode],
-    queryFn: async () => {
-      const r = await fetchAcademyStudents({ page: 1, limit: 200, status: "active" });
-      return r.students;
-    },
-    enabled: open && isParentRole && mode === "edit",
-    retry: false,
-  });
-
-  const { data: currentParentStudents = [] } = useQuery({
-    queryKey: ["parent-students", editingId],
-    queryFn: async () => {
-      if (!editingId) return [];
-      return await fetchParentStudents(editingId);
-    },
-    enabled: open && mode === "edit" && Boolean(editingId) && isParentRole,
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (!(open && mode === "edit" && isParentRole)) return;
-    setParentStudentIds(currentParentStudents.map((r: any) => r._id));
-  }, [open, mode, isParentRole, currentParentStudents]);
-
-  const { data: modules = [] } = useQuery({
-    queryKey: REGISTRY_QUERY,
-    queryFn: fetchModuleRegistry,
-  });
-
   const { search, setSearch, filtered: staffFiltered } = usePanelListSearch(staff, (u) => [
     u.name,
     u.email,
     u.phone,
-    typeof u.role === "object" && u.role ? (u.role as RoleOption).name : typeof u.role === "string" ? u.role : "",
+    typeof u.role === "object" && u.role
+      ? (u.role as RoleOption).name
+      : typeof u.role === "string"
+        ? u.role
+        : "",
     u.isActive ? "active" : "inactive",
     ...(u.linkedStudents ?? []).flatMap((s) => [
       s.studentName,
@@ -372,132 +189,6 @@ const UsersModule = ({
       s.sectionName ?? "",
     ]),
   ]);
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (mode === "create" && !caps.canCreate) throw new Error("You do not have permission to create staff.");
-      if (mode === "edit" && !caps.canEdit) throw new Error("You do not have permission to edit staff.");
-
-      if (mode === "create" && isParentRole) {
-        if (!form.role) throw new Error("Select a role.");
-        if (!parentCreate.studentId) throw new Error("Select a student for this parent.");
-        if (!parentCreate.name.trim()) throw new Error("Selected student has no name.");
-        if (!parentCreate.email.trim()) {
-          throw new Error("Could not build a portal email. Ensure the student has an official Student ID.");
-        }
-        if (!parentCreate.password || parentCreate.password.length < 8) {
-          throw new Error("Password must be at least 8 characters.");
-        }
-        const mods =
-          Object.keys(parentCreate.modulePermissions || {}).length > 0
-            ? parentCreate.modulePermissions
-            : { ...PARENT_DEFAULT_MODULE_PERMISSIONS };
-        const u = await createStaffUser({
-          name: parentCreate.name.trim(),
-          email: parentCreate.email.trim().toLowerCase(),
-          password: parentCreate.password,
-          phone: parentCreate.phone.trim() || "N/A",
-          role: form.role,
-          isActive: true,
-          payType: "fixed",
-          salary: 0,
-          salaryPercentage: 0,
-          modulePermissions: mods,
-        });
-        await assignParentStudents(u._id, [parentCreate.studentId]);
-        return {
-          user: u,
-          parentCredentials: {
-            name: parentCreate.name.trim(),
-            email: parentCreate.email.trim().toLowerCase(),
-            password: parentCreate.password,
-          },
-        };
-      }
-
-      const fields = visibleFormFields(mode);
-      for (const f of fields) {
-        const v = (form[f.key] || "").trim();
-        if (f.key === "password" && mode === "edit" && f.optionalOnEdit) continue;
-        if (f.required && !v && f.key !== "salary" && f.key !== "salaryPercentage") {
-          throw new Error(`${f.label} is required.`);
-        }
-        if (f.key === "password" && mode === "create" && (!v || v.length < 8)) {
-          throw new Error("Password must be at least 8 characters.");
-        }
-        if (f.key === "password" && mode === "edit" && v && v.length < 8) {
-          throw new Error("Password must be at least 8 characters.");
-        }
-        if (f.key === "role" && !form.role) throw new Error("Select a role.");
-      }
-
-      const payType = form.payType === "percentage" ? "percentage" : "fixed";
-      const salaryNum = Math.max(0, Number(form.salary) || 0);
-      const pctNum = Math.min(100, Math.max(0, Number(form.salaryPercentage) || 0));
-      if (payType === "percentage" && pctNum <= 0) {
-        throw new Error("Enter the teacher percentage (greater than 0).");
-      }
-      if (payType === "fixed" && salaryNum < 0) {
-        throw new Error("Salary cannot be negative.");
-      }
-      const permsPayload = { ...modulePerms };
-      if (isParentRole && parentStudentIds.length === 0) {
-        throw new Error("Select at least one student for this parent.");
-      }
-
-      if (mode === "create") {
-        if (!form.password || form.password.length < 8) throw new Error("Password must be at least 8 characters.");
-        const u = await createStaffUser({
-          name: form.name.trim(),
-          email: form.email.trim().toLowerCase(),
-          password: form.password,
-          phone: form.phone.trim(),
-          role: form.role,
-          isActive: form.isActive === "true",
-          payType,
-          salary: payType === "fixed" ? salaryNum : 0,
-          salaryPercentage: payType === "percentage" ? pctNum : 0,
-          modulePermissions: permsPayload,
-        });
-        if (photoFile) await uploadStaffProfilePhoto(u._id, photoFile);
-        return { user: u, parentCredentials: null };
-      }
-      if (!editingId) throw new Error("Missing user");
-      const payload: Parameters<typeof updateStaffUser>[1] = {
-        name: form.name.trim(),
-        email: form.email.trim().toLowerCase(),
-        phone: form.phone.trim(),
-        role: form.role,
-        isActive: form.isActive === "true",
-        payType,
-        salary: payType === "fixed" ? salaryNum : 0,
-        salaryPercentage: payType === "percentage" ? pctNum : 0,
-        modulePermissions: permsPayload,
-      };
-      if (form.password.trim()) payload.password = form.password;
-      const u = await updateStaffUser(editingId, payload);
-      if (photoFile) await uploadStaffProfilePhoto(editingId, photoFile);
-      if (isParentRole) await assignParentStudents(editingId, parentStudentIds);
-      if (!isParentRole && editingWasParent) await assignParentStudents(editingId, []);
-      return { user: u, parentCredentials: null };
-    },
-    onSuccess: (result) => {
-      toast({
-        title: mode === "create"
-          ? isParentRole ? "Parent user created" : "User created"
-          : "User updated",
-      });
-      void qc.invalidateQueries({ queryKey: STAFF_QUERY });
-      setOpen(false);
-      clearFormState();
-      if (result.parentCredentials) {
-        setCreatedParentCredentials(result.parentCredentials);
-      }
-    },
-    onError: (e: Error) => {
-      toast({ title: "Save failed", description: e.message, variant: "destructive" });
-    },
-  });
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => {
@@ -527,57 +218,6 @@ const UsersModule = ({
     },
   });
 
-  const clearFormState = () => {
-    setForm(emptyUserForm());
-    setEditingId(null);
-    setModulePerms({});
-    setParentStudentIds([]);
-    setParentCreate(emptyParentCreateSelection());
-    setEditingWasParent(false);
-    setPhotoFile(null);
-    setPhotoPreview((prev) => {
-      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-      return null;
-    });
-  };
-
-  const openCreate = () => {
-    if (!caps.canCreate) return;
-    setMode("create");
-    clearFormState();
-    setOpen(true);
-  };
-
-  const openEdit = (u: StaffUser) => {
-    if (!caps.canEdit) return;
-    setMode("edit");
-    setEditingId(u._id);
-    setForm(userToFormValues(u));
-    setModulePerms(normalizeModulePermissions(u.modulePermissions));
-    const uRoleName =
-      typeof u.role === "object" && u.role?.name ? String(u.role.name).toLowerCase() : String(u.role || "").toLowerCase();
-    setEditingWasParent(uRoleName === "parent");
-    setParentStudentIds([]);
-    setPhotoFile(null);
-    setPhotoPreview((prev) => {
-      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-      return u.profileImage ? resolveUploadUrl(u.profileImage) : null;
-    });
-    setOpen(true);
-  };
-
-  const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    if (!/image\/(jpeg|png|gif|webp)/i.test(f.type) && !/\.(jpe?g|png|gif|webp)$/i.test(f.name)) {
-      toast({ title: "Invalid file", description: "Please choose a JPG, PNG, GIF, or WebP image.", variant: "destructive" });
-      return;
-    }
-    setPhotoFile(f);
-    setPhotoPreview(URL.createObjectURL(f));
-  };
-
   const cols = tableColumns();
   const showLinkedStudents = scope === "all";
   const showParentPasswordCol = scope === "all";
@@ -585,231 +225,184 @@ const UsersModule = ({
   const tableColSpan =
     cols.length + 2 + (showLinkedStudents ? 1 : 0) + (showParentPasswordCol ? 1 : 0) + (showActions ? 1 : 0);
 
+  const isStaffScope = scope === "staff";
+  const stats = useMemo(() => {
+    const total = staff.length;
+    const active = staff.filter((u) => u.isActive).length;
+    const activePct = total ? Math.round((active / total) * 100) : 0;
+    const teachers = staff.filter((u) => roleNameOf(u) === "teacher").length;
+    const percentage = staff.filter((u) => u.payType === "percentage").length;
+    const parents = staff.filter((u) => isParentUser(u)).length;
+    const staffCount = staff.filter((u) => {
+      const n = roleNameOf(u);
+      return n === "teacher" || n === "accountant";
+    }).length;
+    return { total, active, activePct, teachers, percentage, parents, staffCount };
+  }, [staff]);
+
+  const pageTitle = isStaffScope ? "Staff" : "Users";
+  const pageHint = isStaffScope
+    ? "Manage teachers, accountants, pay type, and module access."
+    : "Manage portal users, roles, parent accounts, and access.";
+  const HeaderIcon = isStaffScope ? UserCog : Users;
+
+  const goCreate = () => {
+    if (!caps.canCreate || !role) return;
+    navigate(userCreateHref(role, scope));
+  };
+
+  const goEdit = (u: StaffUser) => {
+    if (!caps.canEdit || !role) return;
+    navigate(userEditHref(role, u._id, scope));
+  };
+
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      <PanelToolbar
-        search={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search name, email, phone, role…"
-      >
-        {caps.canCreate && scope !== "staff" && (
-          <Button
-            variant="outline"
-            disabled={provisionMutation.isPending}
-            onClick={() => {
-              if (
-                !window.confirm(
-                  "Create or reset parent portal email and password (Concept@1234) for every active student?",
-                )
-              ) {
-                return;
-              }
-              provisionMutation.mutate();
-            }}
-          >
-            {provisionMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <KeyRound className="h-4 w-4" />
-            )}
-            Create parent emails & passwords
-          </Button>
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <HeaderIcon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                {pageTitle}
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                {pageHint}
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        {isStaffScope ? (
+          <>
+            <PanelStatCard
+              label="Total Staff"
+              value={staffLoading ? "…" : stats.total}
+              hint="Teachers & accountants"
+              icon={UserCog}
+              iconWrapClass="bg-[#dbeafe]"
+              iconClass="text-[#2563eb]"
+            />
+            <PanelStatCard
+              label="Active"
+              value={staffLoading ? "…" : stats.active}
+              hint={staffLoading ? undefined : `${stats.activePct}%`}
+              icon={CheckCircle2}
+              iconWrapClass="bg-[#d1fae5]"
+              iconClass="text-[#059669]"
+            />
+            <PanelStatCard
+              label="Teachers"
+              value={staffLoading ? "…" : stats.teachers}
+              hint="Teaching staff"
+              icon={Users}
+              iconWrapClass="bg-[#ede9fe]"
+              iconClass="text-[#7c3aed]"
+            />
+            <PanelStatCard
+              label="Percentage pay"
+              value={staffLoading ? "…" : stats.percentage}
+              hint="Tuition-share payroll"
+              icon={Percent}
+              iconWrapClass="bg-[#ffedd5]"
+              iconClass="text-[#ea580c]"
+            />
+          </>
+        ) : (
+          <>
+            <PanelStatCard
+              label="Total Users"
+              value={staffLoading ? "…" : stats.total}
+              hint="All portal accounts"
+              icon={Users}
+              iconWrapClass="bg-[#dbeafe]"
+              iconClass="text-[#2563eb]"
+            />
+            <PanelStatCard
+              label="Active"
+              value={staffLoading ? "…" : stats.active}
+              hint={staffLoading ? undefined : `${stats.activePct}%`}
+              icon={CheckCircle2}
+              iconWrapClass="bg-[#d1fae5]"
+              iconClass="text-[#059669]"
+            />
+            <PanelStatCard
+              label="Parents"
+              value={staffLoading ? "…" : stats.parents}
+              hint="Parent portals"
+              icon={UserRound}
+              iconWrapClass="bg-[#ede9fe]"
+              iconClass="text-[#7c3aed]"
+            />
+            <PanelStatCard
+              label="Staff"
+              value={staffLoading ? "…" : stats.staffCount}
+              hint="Teachers & accountants"
+              icon={UserCog}
+              iconWrapClass="bg-[#ffedd5]"
+              iconClass="text-[#ea580c]"
+            />
+          </>
         )}
-        {caps.canCreate && (
-          <Button variant="hero" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> {scope === "staff" ? "Add staff" : "Add user"}
-          </Button>
-        )}
-      </PanelToolbar>
-        {(caps.canCreate || caps.canEdit) && (
-            <Dialog
-              open={open}
-              onOpenChange={(o) => {
-                setOpen(o);
-                if (!o) clearFormState();
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+        <PanelToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search name, email, phone, role…"
+        >
+          {caps.canCreate && scope !== "staff" && (
+            <Button
+              variant="outline"
+              className="h-10 gap-2"
+              disabled={provisionMutation.isPending}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Create or reset parent portal email and password (Concept@1234) for every active student?",
+                  )
+                ) {
+                  return;
+                }
+                provisionMutation.mutate();
               }}
             >
-              <DialogContent className="sm:max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>
-                    {mode === "create"
-                      ? scope === "staff" ? "Add staff member" : "Add user"
-                      : scope === "staff" ? "Edit staff member" : "Edit user"}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="grid grid-cols-2 gap-3 py-2">
-                  {!isParentCreate && (
-                    <div className="col-span-2 flex flex-col sm:flex-row gap-4 items-start">
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="h-24 w-24 rounded-full border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden">
-                          {photoPreview ? (
-                            <img src={photoPreview} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <ImageIcon className="h-8 w-8 text-muted-foreground" />
-                          )}
-                        </div>
-                        <input
-                          id="staff-photo-input"
-                          type="file"
-                          accept="image/jpeg,image/png,image/gif,image/webp"
-                          className="sr-only"
-                          onChange={onPickPhoto}
-                        />
-                        <Label htmlFor="staff-photo-input" className="cursor-pointer text-xs text-accent hover:underline">
-                          Upload photo
-                        </Label>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground flex-1">
-                        Profile picture is stored on the server (not a URL field). Optional — you can add or change it
-                        whenever you save.
-                      </p>
-                    </div>
-                  )}
+              {provisionMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <KeyRound className="h-4 w-4" />
+              )}
+              Create parent emails & passwords
+            </Button>
+          )}
+          {caps.canCreate && (
+            <Button className="h-10 gap-2" onClick={goCreate}>
+              <Plus className="h-4 w-4" /> {scope === "staff" ? "Add staff" : "Add user"}
+            </Button>
+          )}
+        </PanelToolbar>
+      </div>
 
-                  <div className="col-span-2 sm:col-span-1">
-                    <Label className="mb-1.5 block">
-                      Role <span className="text-destructive">*</span>
-                    </Label>
-                    <select
-                      className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                      value={form.role}
-                      onChange={(e) => {
-                        const nextRole = e.target.value;
-                        setFormField(setForm, "role", nextRole);
-                        const roleName = roleOptions.find((r) => r._id === nextRole)?.name?.toLowerCase() || "";
-                        if (roleName === "parent" && mode === "create") {
-                          setParentCreate(emptyParentCreateSelection());
-                        }
-                        if (mode === "create" && roleName === "teacher") {
-                          setModulePerms({ ...TEACHER_DEFAULT_MODULE_PERMISSIONS });
-                        }
-                        if (mode === "create" && roleName === "accountant") {
-                          setModulePerms({ ...ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS });
-                        }
-                      }}
-                      required
-                    >
-                      <option value="">Select role…</option>
-                      {roleOptions.map((r) => (
-                        <option key={r._id} value={r._id}>
-                          {roleDisplayLabel(r.name)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {isParentCreate ? (
-                    form.role ? (
-                      <ParentUserCreateFields
-                        value={parentCreate}
-                        onChange={setParentCreate}
-                        modules={modules}
-                      />
-                    ) : null
-                  ) : (
-                    <>
-                      {visibleFormFields(mode)
-                        .filter((field) => {
-                          if (field.key === "role") return false;
-                          if (
-                            isParentRole &&
-                            (field.key === "payType" ||
-                              field.key === "salary" ||
-                              field.key === "salaryPercentage")
-                          ) {
-                            return false;
-                          }
-                          if (field.key === "salary" && form.payType === "percentage") return false;
-                          if (field.key === "salaryPercentage" && form.payType !== "percentage") return false;
-                          return true;
-                        })
-                        .map((field) => (
-                          <div key={field.key} className={field.colSpan === 2 ? "col-span-2" : "col-span-2 sm:col-span-1"}>
-                            <Label className="mb-1.5 block">
-                              {field.label}
-                              {field.required && !(mode === "edit" && field.key === "password" && field.optionalOnEdit) ? (
-                                <span className="text-destructive"> *</span>
-                              ) : null}
-                              {field.key === "salaryPercentage" ? (
-                                <span className="text-destructive"> *</span>
-                              ) : null}
-                            </Label>
-                            <SchemaFieldControl
-                              field={field}
-                              mode={mode}
-                              value={form[field.key]}
-                              onChange={(v) => setFormField(setForm, field.key, v)}
-                              roleOptions={roleOptions}
-                            />
-                            {field.key === "payType" ? (
-                              <p className="text-[11px] text-muted-foreground mt-1">
-                                Fixed uses a monthly amount. Percentage teachers get tuition × subject share × this
-                                teacher %. Set the % here; subject weightage is configured on Subjects.
-                              </p>
-                            ) : null}
-                            {field.key === "salaryPercentage" ? (
-                              <p className="text-[11px] text-muted-foreground mt-1">
-                                Teacher’s cut of each subject pool (e.g. 60 or 70).
-                              </p>
-                            ) : null}
-                          </div>
-                        ))}
-
-                      {isParentRole && mode === "edit" && (
-                        <div className="col-span-2 space-y-2">
-                          <Label className="mb-1.5 block">
-                            Parent students
-                            <span className="text-destructive"> *</span>
-                          </Label>
-                          <div className="rounded-lg border p-3 bg-secondary/10">
-                            {parentStudentChoicesLoading ? (
-                              <p className="text-sm text-muted-foreground">Loading students…</p>
-                            ) : parentStudentChoices.length === 0 ? (
-                              <p className="text-sm text-muted-foreground">No active students found.</p>
-                            ) : (
-                              <select
-                                multiple
-                                value={parentStudentIds}
-                                onChange={(e) => {
-                                  const opts = Array.from(e.target.selectedOptions);
-                                  setParentStudentIds(opts.map((o) => o.value));
-                                }}
-                                className="w-full h-40 rounded-md border border-input bg-background px-3 text-sm"
-                              >
-                                {parentStudentChoices.map((s: AcademyStudent) => (
-                                  <option key={s._id} value={s._id}>
-                                    {s.studentName} ({s.studentId})
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {modules.length > 0 && (
-                        <ModuleAccessMatrix modules={modules} value={modulePerms} onChange={setModulePerms} />
-                      )}
-                    </>
-                  )}
-                </div>
-                <DialogFooter>
-                  <Button
-                    onClick={() => saveMutation.mutate()}
-                    variant="hero"
-                    disabled={saveMutation.isPending || (mode === "create" && !form.role)}
-                  >
-                    {saveMutation.isPending ? "Saving…" : "Save"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-        )}
-
-      <Card className="overflow-hidden">
+      <Card className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-secondary/50 text-muted-foreground">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
               <tr>
                 <th className="text-left font-medium px-4 py-3 w-14">Photo</th>
                 {cols.map((c) => (
@@ -850,7 +443,6 @@ const UsersModule = ({
                 </tr>
               ) : (
                 staffFiltered.map((u) => {
-                  const modCount = u.modulePermissions ? Object.keys(u.modulePermissions).length : 0;
                   const imgSrc = u.profileImage ? resolveUploadUrl(u.profileImage) : undefined;
                   return (
                     <tr key={u._id} className="border-t border-border hover:bg-secondary/30">
@@ -882,20 +474,26 @@ const UsersModule = ({
                       )}
                       <td className="px-4 py-3 text-muted-foreground">
                         {(() => {
-                          const mods = u.modulePermissions && typeof u.modulePermissions === "object"
-                            ? Object.keys(u.modulePermissions)
-                            : [];
+                          const mods =
+                            u.modulePermissions && typeof u.modulePermissions === "object"
+                              ? Object.keys(u.modulePermissions)
+                              : [];
                           if (!mods || mods.length === 0) return "—";
                           const show = mods.slice(0, 3);
                           return (
                             <div className="flex flex-wrap items-center gap-2">
                               {show.map((m) => (
-                                <span key={m} className="text-xs bg-muted/20 rounded-full px-2 py-0.5 capitalize">
+                                <span
+                                  key={m}
+                                  className="text-xs bg-muted/20 rounded-full px-2 py-0.5 capitalize"
+                                >
                                   {m}
                                 </span>
                               ))}
                               {mods.length > 3 ? (
-                                <span className="text-xs text-muted-foreground">+{mods.length - 3}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  +{mods.length - 3}
+                                </span>
                               ) : null}
                             </div>
                           );
@@ -903,51 +501,69 @@ const UsersModule = ({
                       </td>
                       {showActions && (
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          {scope === "staff" && (
-                            <Button size="sm" variant="ghost" className="gap-1" asChild aria-label="View staff">
-                              <Link to={u._id}>
-                                <Eye className="h-4 w-4" /> View
-                              </Link>
-                            </Button>
-                          )}
-                          {caps.canEdit && (
-                            <Button size="sm" variant="ghost" onClick={() => openEdit(u)} aria-label="Edit">
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {caps.canEdit && u.isActive ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                if (window.confirm(`Deactivate ${u.name}?`)) deactivateMutation.mutate(u._id);
-                              }}
-                              aria-label="Deactivate"
-                              title="Deactivate"
-                            >
-                              <UserX className="h-4 w-4 text-destructive" />
-                            </Button>
-                          ) : null}
-                          {caps.canDelete && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={deleteMutation.isPending}
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `Permanently delete ${u.name}? This cannot be undone.`,
-                                  )
-                                ) {
-                                  deleteMutation.mutate(u._id);
-                                }
-                              }}
-                              aria-label="Delete"
-                              title="Delete user"
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
+                          <div className="flex justify-end gap-0.5">
+                            {scope === "staff" && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                asChild
+                                aria-label="View staff"
+                              >
+                                <Link to={u._id}>
+                                  <Eye className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                            )}
+                            {caps.canEdit && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-sky-600 hover:text-sky-700"
+                                onClick={() => goEdit(u)}
+                                aria-label="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {caps.canEdit && u.isActive ? (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={() => {
+                                  if (window.confirm(`Deactivate ${u.name}?`)) {
+                                    deactivateMutation.mutate(u._id);
+                                  }
+                                }}
+                                aria-label="Deactivate"
+                                title="Deactivate"
+                              >
+                                <UserX className="h-4 w-4 text-destructive" />
+                              </Button>
+                            ) : null}
+                            {caps.canDelete && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                disabled={deleteMutation.isPending}
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `Permanently delete ${u.name}? This cannot be undone.`,
+                                    )
+                                  ) {
+                                    deleteMutation.mutate(u._id);
+                                  }
+                                }}
+                                aria-label="Delete"
+                                title="Delete user"
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -958,43 +574,6 @@ const UsersModule = ({
           </table>
         </div>
       </Card>
-
-      <Dialog
-        open={Boolean(createdParentCredentials)}
-        onOpenChange={(o) => {
-          if (!o) setCreatedParentCredentials(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Parent portal credentials</DialogTitle>
-          </DialogHeader>
-          {createdParentCredentials && (
-            <div className="space-y-3 text-sm">
-              <div>
-                <p className="text-muted-foreground text-xs">Student / parent name</p>
-                <p className="font-medium">{createdParentCredentials.name}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Login email</p>
-                <p className="font-medium break-all">{createdParentCredentials.email}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Password</p>
-                <p className="font-medium font-mono tracking-wide">{createdParentCredentials.password}</p>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Share these credentials with the family. Default password is Concept@1234.
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" onClick={() => setCreatedParentCredentials(null)}>
-              Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={provisionOpen}

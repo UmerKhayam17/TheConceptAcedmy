@@ -27,6 +27,7 @@ import { localTodayYmd } from "@/lib/localDate";
 
 const StudentsRecordsModule = lazy(() => import("@/components/modules/StudentsRecordsModule"));
 const UsersModule = lazy(() => import("@/components/modules/UsersModule"));
+const UserFormPage = lazy(() => import("@/components/modules/UserFormPage"));
 const AttendanceModule = lazy(() => import("@/components/modules/AttendanceModule"));
 const TimetableModule = lazy(() => import("@/components/modules/TimetableModule"));
 const SystemConfigModule = lazy(() => import("@/components/modules/SystemConfigModule"));
@@ -340,8 +341,21 @@ const Panel = () => {
 
   const renderModule = () => {
     switch (mod.key) {
-      case "users":         return <UsersModule perm={perm} caps={caps} scope="all" />;
+      case "users":
+        if (section === "new") {
+          return <UserFormPage caps={caps} scope="all" mode="create" />;
+        }
+        if (section && /^[a-f0-9]{24}$/i.test(section) && action === "edit") {
+          return <UserFormPage caps={caps} scope="all" mode="edit" userId={section} />;
+        }
+        return <UsersModule perm={perm} caps={caps} scope="all" />;
       case "staff-management":
+        if (section === "new") {
+          return <UserFormPage caps={caps} scope="staff" mode="create" />;
+        }
+        if (section && /^[a-f0-9]{24}$/i.test(section) && action === "edit") {
+          return <UserFormPage caps={caps} scope="staff" mode="edit" userId={section} />;
+        }
         if (section && /^[a-f0-9]{24}$/i.test(section)) {
           return <StaffDetailPage staffId={section} />;
         }
