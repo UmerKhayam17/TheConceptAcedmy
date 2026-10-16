@@ -326,7 +326,7 @@ export default function StaffDetailPage({
     .join("");
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5 max-w-6xl">
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5 w-full">
       <div className="overflow-hidden rounded-2xl shadow-sm ring-1 ring-black/[0.04]">
         <div className="relative bg-gradient-to-br from-[#1a2b4b] via-[#243b66] to-[#2d4a7a] px-5 py-6 sm:px-7 sm:py-7 text-white">
           <div

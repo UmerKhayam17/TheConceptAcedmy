@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Calendar,
-  Check,
   Clock,
   Eye,
   EyeOff,
@@ -18,7 +17,6 @@ import {
   Pencil,
   Phone,
   Plus,
-  Search,
   Shield,
   Unlink,
   User,
@@ -63,16 +61,8 @@ import {
   fetchAcademyClasses,
   fetchAcademyStudents,
   fetchSectionsByClass,
-  getAcademyStudent,
-  type AcademyStudent,
 } from "@/lib/studentManagementApi";
-import {
-  classLabel,
-  formatDate,
-  formatPkr,
-  subjectList,
-} from "@/components/modules/student-management/studentDisplayUtils";
-import { FreeStudentBadge, isFullFeeWaiver } from "@/components/modules/student-management/FeeModeSelector";
+import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
 import { cn } from "@/lib/utils";
 import StaffDetailPage from "@/components/modules/staff/StaffDetailPage";
 
@@ -187,40 +177,6 @@ function InfoField({ label, value, icon: Icon }: { label: string; value: React.R
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="space-y-1 min-w-0">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="text-sm font-medium text-slate-800 break-words">{value ?? "—"}</p>
-    </div>
-  );
-}
-
-function SectionBlock({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="rounded-xl border border-slate-200/80 bg-slate-50/40 p-4 sm:p-5 space-y-3">
-      <h4 className="text-sm font-semibold text-[#1a2b4b] border-b border-slate-200/80 pb-2">{title}</h4>
-      {children}
-    </section>
-  );
-}
-
-function sectionLabel(sectionId: AcademyStudent["sectionId"]): string {
-  if (!sectionId) return "—";
-  if (typeof sectionId === "object" && "sectionName" in sectionId) {
-    return sectionId.sectionName || "—";
-  }
-  return "—";
-}
-
-function disciplineLabel(disciplineId: AcademyStudent["disciplineId"]): string | null {
-  if (!disciplineId) return null;
-  if (typeof disciplineId === "object" && disciplineId && "name" in disciplineId) {
-    return disciplineId.name || null;
-  }
-  return String(disciplineId);
-}
-
 function StudentStatusPill({ status }: { status?: string }) {
   const label = status === "pending_fee" ? "Pending fee" : status?.replace(/_/g, " ") || "—";
   const colors: Record<string, string> = {
@@ -239,276 +195,6 @@ function StudentStatusPill({ status }: { status?: string }) {
       {label}
     </span>
   );
-}
-
-function FullStudentDetailCard({
-  student,
-  detailHref,
-  canUnlink,
-  unlinking,
-  onUnlink,
-}: {
-  student: AcademyStudent;
-  detailHref?: string;
-  canUnlink?: boolean;
-  unlinking?: boolean;
-  onUnlink?: () => void;
-}) {
-  const photoSrc = student.photoImage ? resolveUploadUrl(student.photoImage) : null;
-  const subtotal = (student.monthlyFee || 0) + (student.admissionFee || 0);
-  const disc = disciplineLabel(student.disciplineId);
-  const initials = student.studentName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-
-  return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="h-14 w-14 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
-            {photoSrc ? (
-              <img
-                src={photoSrc}
-                alt={student.studentName}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-slate-500">
-                {initials || <User className="h-6 w-6 text-slate-400" />}
-              </div>
-            )}
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base font-bold text-[#1a2b4b] truncate">{student.studentName}</h3>
-              <StudentStatusPill status={student.status} />
-              {isFullFeeWaiver(student) && <FreeStudentBadge />}
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5 font-mono">
-              {student.studentId || "—"}
-              {student.registrationNumber ? ` · Reg ${student.registrationNumber}` : ""}
-              {student.rollNumber ? ` · Roll ${student.rollNumber}` : ""}
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {classLabel(student.classId)}
-              {sectionLabel(student.sectionId) !== "—"
-                ? ` · ${sectionLabel(student.sectionId)}`
-                : ""}
-              {disc ? ` · ${disc}` : ""}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {detailHref && (
-            <Button variant="outline" size="sm" className="gap-1.5" asChild>
-              <Link to={detailHref}>
-                Open student
-                <ExternalLink className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          )}
-          {canUnlink && onUnlink && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5"
-              disabled={unlinking}
-              onClick={onUnlink}
-            >
-              {unlinking ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Unlink className="h-3.5 w-3.5" />
-              )}
-              Unlink
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div className="p-4 sm:p-5 space-y-4">
-        <SectionBlock title="Student information">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-3">
-            <DetailRow label="Student name" value={student.studentName} />
-            <DetailRow label="Student ID" value={student.studentId || "—"} />
-            <DetailRow label="Registration no." value={student.registrationNumber || "—"} />
-            <DetailRow label="Roll number" value={student.rollNumber || "—"} />
-            <DetailRow label="Father's name" value={student.fatherName || "—"} />
-            <DetailRow label="Date of birth" value={formatDate(student.dateOfBirth)} />
-            <DetailRow label="Gender" value={student.gender || "—"} />
-            <DetailRow label="Nationality" value={student.nationality || "—"} />
-            <DetailRow label="Student email" value={student.studentEmail || "—"} />
-            <DetailRow label="Admission date" value={formatDate(student.createdAt)} />
-            {student.status === "active" && (
-              <DetailRow label="Activated" value={formatDate(student.activatedAt)} />
-            )}
-            <DetailRow label="Status" value={<StudentStatusPill status={student.status} />} />
-          </div>
-        </SectionBlock>
-
-        <SectionBlock title="Class & enrollment">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-3">
-            <DetailRow label="Class" value={classLabel(student.classId)} />
-            <DetailRow label="Section" value={sectionLabel(student.sectionId)} />
-            {disc && <DetailRow label="Discipline" value={disc} />}
-            <DetailRow
-              label="Package"
-              value={student.isFullPackage ? "Full package" : "Selected subjects"}
-            />
-            <DetailRow
-              label="Subjects"
-              value={subjectList(student.selectedSubjects, student.isFullPackage)}
-            />
-          </div>
-        </SectionBlock>
-
-        <SectionBlock title="Guardian information">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-3">
-            <DetailRow label="Guardian name" value={student.guardianName || "—"} />
-            <DetailRow label="Relation" value={student.guardianRelation || "—"} />
-            <DetailRow label="CNIC" value={student.fatherGuardianCnic || "—"} />
-            <DetailRow label="Occupation" value={student.guardianOccupation || "—"} />
-            <DetailRow label="Work address" value={student.guardianWorkAddress || "—"} />
-            <DetailRow label="Parent portal email" value={student.guardianEmail || "—"} />
-          </div>
-        </SectionBlock>
-
-        <SectionBlock title="Contact & address">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-3">
-            <DetailRow label="Mobile" value={student.phone || "—"} />
-            <DetailRow label="Residence phone" value={student.contactPhoneRes || "—"} />
-            <DetailRow
-              label="Postal address"
-              value={student.postalAddress || student.address || "—"}
-            />
-            <DetailRow label="Permanent address" value={student.permanentAddress || "—"} />
-            {student.intakeNotes && (
-              <DetailRow label="Intake notes" value={student.intakeNotes} />
-            )}
-          </div>
-        </SectionBlock>
-
-        <SectionBlock title="Previous school / college">
-          <DetailRow label="School / college" value={student.currentSchoolCollege || "—"} />
-        </SectionBlock>
-
-        {student.academicHistory && student.academicHistory.length > 0 && (
-          <SectionBlock title="Academic history (prior institutions)">
-            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2 font-medium">Institution</th>
-                    <th className="px-3 py-2 font-medium">Class</th>
-                    <th className="px-3 py-2 font-medium">Total</th>
-                    <th className="px-3 py-2 font-medium">Obtained</th>
-                    <th className="px-3 py-2 font-medium">%</th>
-                    <th className="px-3 py-2 font-medium">Year</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {student.academicHistory.map((row, i) => (
-                    <tr key={i} className="border-b last:border-0">
-                      <td className="px-3 py-2">{row.institutionName || "—"}</td>
-                      <td className="px-3 py-2">{row.className || "—"}</td>
-                      <td className="px-3 py-2">{row.totalMarks ?? "—"}</td>
-                      <td className="px-3 py-2">{row.obtainedMarks ?? "—"}</td>
-                      <td className="px-3 py-2">
-                        {row.percentage != null ? `${row.percentage}%` : "—"}
-                      </td>
-                      <td className="px-3 py-2">{row.year || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </SectionBlock>
-        )}
-
-        <SectionBlock
-          title={
-            <span className="inline-flex flex-wrap items-center gap-2">
-              Fee structure at registration
-              {isFullFeeWaiver(student) && <FreeStudentBadge />}
-            </span>
-          }
-        >
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-3">
-            <DetailRow label="Monthly fee" value={formatPkr(student.monthlyFee)} />
-            <DetailRow label="Admission fee" value={formatPkr(student.admissionFee)} />
-            <DetailRow
-              label="Monthly total payable"
-              value={formatPkr(
-                Math.max(0, (student.monthlyFee || 0) - (student.monthlyFeeDiscount || 0)),
-              )}
-            />
-            <DetailRow
-              label="Admission total payable"
-              value={formatPkr(
-                Math.max(0, (student.admissionFee || 0) - (student.admissionFeeDiscount || 0)),
-              )}
-            />
-            <DetailRow
-              label="Monthly fee discount"
-              value={formatPkr(student.monthlyFeeDiscount)}
-            />
-            <DetailRow
-              label="Admission fee discount"
-              value={formatPkr(student.admissionFeeDiscount)}
-            />
-            {(student.defaultChargeIds?.length ?? 0) > 0 && (
-              <DetailRow
-                label="Default additional charges"
-                value={`${student.defaultChargeIds!.length} selected`}
-              />
-            )}
-            {(student.discountAmount ?? 0) > 0 &&
-            !(student.monthlyFeeDiscount || student.admissionFeeDiscount) ? (
-              <DetailRow
-                label="Combined discount (legacy)"
-                value={formatPkr(student.discountAmount)}
-              />
-            ) : (
-              <DetailRow label="Total discount" value={formatPkr(student.discountAmount)} />
-            )}
-            <DetailRow label="Subtotal" value={formatPkr(subtotal)} />
-            <DetailRow
-              label="First month challan (monthly + admission − discounts)"
-              value={formatPkr(student.totalFee)}
-            />
-            <DetailRow
-              label="Later months (monthly − discount)"
-              value={formatPkr(
-                Math.max(0, (student.monthlyFee || 0) - (student.monthlyFeeDiscount || 0)),
-              )}
-            />
-          </div>
-        </SectionBlock>
-      </div>
-    </div>
-  );
-}
-
-function titleCaseName(name: string) {
-  return String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
-}
-
-function studentInitials(name: string) {
-  return String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
 }
 
 function LinkStudentDialog({
@@ -588,8 +274,8 @@ function LinkStudentDialog({
 
   const linkedSet = useMemo(() => new Set(alreadyLinkedIds), [alreadyLinkedIds]);
   const candidates = (searchResult?.students ?? []).filter((s) => !linkedSet.has(s._id));
-  const fieldClass =
-    "w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-[#1a2b4b] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1a2b4b]/20 focus:border-[#1a2b4b]/40 disabled:opacity-50 disabled:bg-slate-50";
+  const selectClass =
+    "w-full h-10 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50";
 
   const linkMutation = useMutation({
     mutationFn: async (studentId: string) => {
@@ -609,29 +295,21 @@ function LinkStudentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl p-0 gap-0 overflow-hidden rounded-2xl border-slate-200/80 shadow-xl">
-        <div className="bg-gradient-to-br from-[#1a2b4b] via-[#243b66] to-[#2d4a7a] px-5 py-4 text-white">
-          <DialogHeader className="space-y-1">
-            <DialogTitle className="flex items-center gap-3 text-white font-display text-lg tracking-tight">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 border border-white/20">
-                <Link2 className="h-4 w-4" />
-              </span>
-              Link another student
-            </DialogTitle>
-            <p className="text-sm text-white/65 pl-12">
-              Filter by class and section, then select a student to attach to this parent.
-            </p>
-          </DialogHeader>
-        </div>
-
-        <div className="px-5 py-4 space-y-4 bg-slate-50/40">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Link2 className="h-4 w-4 text-primary" />
+            Link another student
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
                 Class
               </label>
               <select
-                className={fieldClass}
+                className={selectClass}
                 value={classId}
                 disabled={classesLoading || !sessionId}
                 onChange={(e) => {
@@ -648,12 +326,12 @@ function LinkStudentDialog({
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
                 Section
               </label>
               <select
-                className={fieldClass}
+                className={selectClass}
                 value={sectionId}
                 disabled={!classId || sectionsLoading}
                 onChange={(e) => {
@@ -670,106 +348,59 @@ function LinkStudentDialog({
               </select>
             </div>
           </div>
-
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-            <Input
-              placeholder="Search by name, student ID, or roll…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              autoFocus
-              className="h-10 pl-9 rounded-lg border-slate-200 bg-white shadow-sm focus-visible:ring-[#1a2b4b]/20"
-            />
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <div className="px-3.5 py-2 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                Students
-              </span>
-              <span className="text-xs tabular-nums text-slate-500">
-                {isFetching ? "…" : `${candidates.length} result${candidates.length === 1 ? "" : "s"}`}
-              </span>
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              {isFetching ? (
-                <p className="p-6 text-sm text-slate-500 flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-[#1a2b4b]" />
-                  Loading students…
-                </p>
-              ) : candidates.length === 0 ? (
-                <div className="px-6 py-10 text-center">
-                  <GraduationCap className="h-7 w-7 mx-auto text-slate-300 mb-2" />
-                  <p className="text-sm font-medium text-slate-600">No students found</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Try another class, section, or search term.
-                  </p>
-                </div>
-              ) : (
-                <ul className="divide-y divide-slate-100">
-                  {candidates.map((s) => {
-                    const selected = selectedId === s._id;
-                    const displayName = titleCaseName(s.studentName);
-                    const initials = studentInitials(s.studentName);
-                    return (
-                      <li key={s._id}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedId(s._id)}
-                          className={cn(
-                            "w-full flex items-center gap-3 px-3.5 py-3 text-left transition-colors",
-                            selected
-                              ? "bg-[#1a2b4b]/[0.06]"
-                              : "hover:bg-slate-50",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-semibold tracking-wide",
-                              selected
-                                ? "bg-[#1a2b4b] text-white"
-                                : "bg-slate-100 text-slate-600",
-                            )}
-                          >
-                            {initials || <User className="h-4 w-4" />}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-semibold text-[#1a2b4b] tracking-tight truncate">
-                              {displayName}
-                            </span>
-                            <span className="block text-[11px] text-slate-500 mt-0.5 truncate">
-                              <span className="font-mono">{s.studentId || "—"}</span>
-                              {s.rollNumber ? ` · Roll ${s.rollNumber}` : ""}
-                              {" · "}
-                              {classLabel(s.classId)}
-                            </span>
-                          </span>
-                          {selected && (
-                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1a2b4b] text-white">
-                              <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
+          <Input
+            placeholder="Search by name, student ID, or roll…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            autoFocus
+          />
+          <div className="rounded-lg border border-slate-200 max-h-64 overflow-y-auto">
+            {isFetching ? (
+              <p className="p-4 text-sm text-slate-500 flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> Searching…
+              </p>
+            ) : candidates.length === 0 ? (
+              <p className="p-4 text-sm text-slate-500 text-center">
+                {classId || sectionId || debounced
+                  ? "No matching active students (or already linked)."
+                  : "No available students to link."}
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {candidates.map((s) => {
+                  const selected = selectedId === s._id;
+                  return (
+                    <li key={s._id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(s._id)}
+                        className={cn(
+                          "w-full text-left px-3 py-2.5 transition-colors",
+                          selected ? "bg-sky-50" : "hover:bg-slate-50",
+                        )}
+                      >
+                        <div className="text-sm font-medium text-slate-800">{s.studentName}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {s.studentId || "—"}
+                          {s.rollNumber ? ` · Roll ${s.rollNumber}` : ""}
+                          {" · "}
+                          {classLabel(s.classId)}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </div>
-
-        <DialogFooter className="px-5 py-3.5 bg-white border-t border-slate-100 gap-2 sm:gap-2">
-          <Button
-            variant="outline"
-            className="h-10 border-slate-200 text-slate-700"
-            onClick={() => onOpenChange(false)}
-          >
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
             disabled={!selectedId || linkMutation.isPending}
-            className="h-10 gap-1.5 bg-[#1a2b4b] hover:bg-[#243b66]"
+            className="gap-1.5"
             onClick={() => {
               if (selectedId) linkMutation.mutate(selectedId);
             }}
@@ -804,18 +435,6 @@ function ParentLinkedStudentsPanel({
   const qc = useQueryClient();
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const ids = summaries.map((s) => s._id);
-  const queries = useQueries({
-    queries: ids.map((id) => ({
-      queryKey: ["academy-student", id],
-      queryFn: () => getAcademyStudent(id),
-      enabled: Boolean(id),
-    })),
-  });
-
-  const loading = listLoading || queries.some((q) => q.isLoading);
-  const students = queries
-    .map((q) => q.data ?? null)
-    .filter((s): s is AcademyStudent => Boolean(s));
 
   const unlinkMutation = useMutation({
     mutationFn: async (studentId: string) => {
@@ -833,19 +452,17 @@ function ParentLinkedStudentsPanel({
     onSettled: () => setUnlinkingId(null),
   });
 
-  if (loading) {
+  if (listLoading) {
     return (
-      <div className="space-y-3">
-        {[1, 2].map((i) => (
-          <div key={i} className="h-48 rounded-2xl bg-slate-100 animate-pulse" />
-        ))}
+      <div className="rounded-xl border border-slate-200/80 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+        Loading students…
       </div>
     );
   }
 
   if (summaries.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-12 text-center">
+      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-12 text-center">
         <GraduationCap className="h-8 w-8 mx-auto text-slate-300 mb-2" />
         <p className="text-sm text-slate-500">No students linked to this parent.</p>
         {canEdit && (
@@ -855,36 +472,87 @@ function ParentLinkedStudentsPanel({
     );
   }
 
-  if (students.length === 0) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 shadow-sm">
-        Could not load full student details.
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-5">
-      {students.map((student) => (
-        <FullStudentDetailCard
-          key={student._id}
-          student={student}
-          detailHref={studentDetailHref?.(student._id)}
-          canUnlink={canEdit}
-          unlinking={unlinkingId === student._id && unlinkMutation.isPending}
-          onUnlink={() => {
-            if (
-              !window.confirm(
-                `Unlink ${student.studentName} from this parent? They can be linked again later.`,
-              )
-            ) {
-              return;
-            }
-            setUnlinkingId(student._id);
-            unlinkMutation.mutate(student._id);
-          }}
-        />
-      ))}
+    <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-500 bg-slate-50/70">
+              <th className="px-5 py-2.5 font-medium">Student</th>
+              <th className="px-4 py-2.5 font-medium">ID</th>
+              <th className="px-4 py-2.5 font-medium">Class</th>
+              <th className="px-4 py-2.5 font-medium">Section</th>
+              <th className="px-4 py-2.5 font-medium">Status</th>
+              <th className="px-5 py-2.5 font-medium text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summaries.map((s) => (
+              <tr
+                key={s._id}
+                className="border-b border-slate-50 last:border-0 hover:bg-slate-50/80 transition-colors"
+              >
+                <td className="px-5 py-3.5">
+                  {studentDetailHref ? (
+                    <Link
+                      to={studentDetailHref(s._id)}
+                      className="font-medium text-[#1a2b4b] hover:text-sky-700 hover:underline"
+                    >
+                      {s.studentName}
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-slate-800">{s.studentName}</span>
+                  )}
+                </td>
+                <td className="px-4 py-3.5 text-slate-600">{s.studentId || "—"}</td>
+                <td className="px-4 py-3.5 text-slate-600">{s.className || "—"}</td>
+                <td className="px-4 py-3.5 text-slate-600">{s.sectionName || "—"}</td>
+                <td className="px-4 py-3.5">
+                  <StudentStatusPill status={s.status} />
+                </td>
+                <td className="px-5 py-3.5">
+                  <div className="flex justify-end gap-1.5">
+                    {studentDetailHref && (
+                      <Button variant="outline" size="sm" className="h-8 gap-1" asChild>
+                        <Link to={studentDetailHref(s._id)}>
+                          Open
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Link>
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 text-destructive border-destructive/30 hover:bg-destructive/5"
+                        disabled={unlinkingId === s._id && unlinkMutation.isPending}
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `Unlink ${s.studentName} from this parent? They can be linked again later.`,
+                            )
+                          ) {
+                            return;
+                          }
+                          setUnlinkingId(s._id);
+                          unlinkMutation.mutate(s._id);
+                        }}
+                      >
+                        {unlinkingId === s._id && unlinkMutation.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Unlink className="h-3.5 w-3.5" />
+                        )}
+                        Unlink
+                      </Button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -1090,7 +758,7 @@ export default function UserDetailPage({
     .join("");
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5 max-w-6xl">
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5 w-full">
       {/* Hero */}
       <div className="overflow-hidden rounded-2xl shadow-sm ring-1 ring-black/[0.04]">
         <div className={cn("relative bg-gradient-to-br px-5 py-6 sm:px-7 sm:py-7 text-white", meta.accent)}>
@@ -1263,7 +931,7 @@ export default function UserDetailPage({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <GraduationCap className="h-4 w-4 text-[#1a2b4b]" />
-                <h3 className="text-sm font-semibold text-[#1a2b4b]">Linked students — full details</h3>
+                <h3 className="text-sm font-semibold text-[#1a2b4b]">Linked students</h3>
                 <span className="text-xs font-medium text-slate-500 tabular-nums">
                   {students.length} student{students.length === 1 ? "" : "s"}
                 </span>
