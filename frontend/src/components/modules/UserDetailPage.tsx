@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Calendar,
+  CheckCircle2,
   Clock,
   Eye,
   EyeOff,
@@ -12,15 +12,12 @@ import {
   KeyRound,
   Link2,
   Loader2,
-  Lock,
-  Mail,
-  Pencil,
-  Phone,
   Plus,
   Shield,
   Unlink,
   User,
   UserCog,
+  UserX,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import PanelStatCard from "@/components/modules/PanelStatCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { resolveUploadUrl } from "@/lib/api";
@@ -50,19 +48,22 @@ import {
   type RoleOption,
   type StaffUser,
 } from "@/lib/staffApi";
-import {
-  userEditHref,
-  usersListHref,
-  type UserFormScope,
-} from "@/lib/userFormRoutes";
+import { usersListHref, type UserFormScope } from "@/lib/userFormRoutes";
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
 import { fetchSessions, isSessionWritable } from "@/lib/configApi";
 import {
   fetchAcademyClasses,
   fetchAcademyStudents,
   fetchSectionsByClass,
+  getAcademyStudent,
+  type AcademyStudent,
+  type AcademyStudentStatus,
 } from "@/lib/studentManagementApi";
-import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
+import {
+  classLabel,
+  formatDate,
+  formatPkr,
+} from "@/components/modules/student-management/studentDisplayUtils";
 import { cn } from "@/lib/utils";
 import StaffDetailPage from "@/components/modules/staff/StaffDetailPage";
 
@@ -101,98 +102,88 @@ function moduleLabel(key: string, registry: ModuleRegistryEntry[]) {
   return key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
 }
 
-function StatusBadge({ active }: { active: boolean }) {
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h3 className="text-sm font-semibold text-primary border-b pb-1.5 mb-3">{children}</h3>;
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="space-y-1 min-w-0">
+      <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className="text-sm font-medium break-words">{value ?? "—"}</p>
+    </div>
+  );
+}
+
+function ActiveBadge({ active }: { active: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
-        active
-          ? "bg-emerald-500/15 text-emerald-100 ring-1 ring-emerald-400/30"
-          : "bg-white/10 text-white/80 ring-1 ring-white/20",
+        "inline-flex text-xs font-semibold rounded-full px-2 py-0.5",
+        active ? "bg-accent/15 text-accent" : "bg-muted text-muted-foreground",
       )}
     >
-      <span
-        className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-emerald-300" : "bg-white/50")}
-      />
       {active ? "Active" : "Inactive"}
     </span>
   );
 }
 
-function SoftStatusBadge({ active }: { active: boolean }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-        active
-          ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/15"
-          : "bg-slate-100 text-slate-600 ring-1 ring-slate-500/10",
-      )}
-    >
-      <span
-        className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-emerald-500" : "bg-slate-400")}
+function studentRef(s: AcademyStudent) {
+  if (s.status === "pending_fee") {
+    return s.rollNumber ?? s.registrationNumber ?? "Pending";
+  }
+  return s.rollNumber ?? s.studentId ?? "—";
+}
+
+function sectionNameOf(s: AcademyStudent): string {
+  if (!s.sectionId) return "";
+  if (typeof s.sectionId === "object") return s.sectionId.sectionName || "";
+  return "";
+}
+
+function sectionBadgeClass(name: string) {
+  const letter = name.trim().charAt(0).toUpperCase();
+  if (letter === "A") return "bg-sky-100 text-sky-800 border-sky-200";
+  if (letter === "B") return "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200";
+  if (letter === "C") return "bg-emerald-100 text-emerald-800 border-emerald-200";
+  if (letter === "D") return "bg-amber-100 text-amber-800 border-amber-200";
+  return "bg-slate-100 text-slate-700 border-slate-200";
+}
+
+function statusLabel(status?: string) {
+  if (status === "pending_fee") return "Pending fee";
+  return status?.replace(/_/g, " ") || "—";
+}
+
+function statusBadgeClass(status?: string) {
+  if (status === "active") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (status === "pending_fee") return "bg-amber-50 text-amber-800 border-amber-200";
+  if (status === "suspended") return "bg-rose-50 text-rose-700 border-rose-200";
+  return "bg-slate-100 text-slate-600 border-slate-200";
+}
+
+function statusDotClass(status?: string) {
+  if (status === "active") return "bg-emerald-500";
+  if (status === "pending_fee") return "bg-amber-500";
+  if (status === "suspended") return "bg-rose-500";
+  return "bg-slate-400";
+}
+
+function StudentAvatar({ student }: { student: AcademyStudent }) {
+  const src = student.photoImage ? resolveUploadUrl(student.photoImage) : null;
+  const initial = (student.studentName || "?").trim().charAt(0).toUpperCase() || "?";
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className="h-8 w-8 rounded-md object-cover shrink-0 border border-border"
       />
-      {active ? "Active" : "Inactive"}
-    </span>
-  );
-}
-
-function StatTile({
-  label,
-  value,
-  icon: Icon,
-}: {
-  label: string;
-  value: React.ReactNode;
-  icon: typeof Users;
-}) {
+    );
+  }
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
-          <p className="mt-1 text-lg font-semibold text-[#1a2b4b] tabular-nums truncate">{value}</p>
-        </div>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1a2b4b]/[0.06] text-[#1a2b4b]">
-          <Icon className="h-4 w-4" strokeWidth={2.25} />
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function InfoField({ label, value, icon: Icon }: { label: string; value: React.ReactNode; icon?: typeof Mail }) {
-  return (
-    <div className="flex gap-3 min-w-0">
-      {Icon ? (
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-      ) : null}
-      <div className="min-w-0 space-y-0.5">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
-        <p className="text-sm font-medium text-slate-800 break-words">{value ?? "—"}</p>
-      </div>
-    </div>
-  );
-}
-
-function StudentStatusPill({ status }: { status?: string }) {
-  const label = status === "pending_fee" ? "Pending fee" : status?.replace(/_/g, " ") || "—";
-  const colors: Record<string, string> = {
-    active: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
-    pending_fee: "bg-amber-50 text-amber-800 ring-amber-600/15",
-    inactive: "bg-slate-100 text-slate-600 ring-slate-500/10",
-    suspended: "bg-rose-50 text-rose-700 ring-rose-600/15",
-  };
-  return (
-    <span
-      className={cn(
-        "inline-flex capitalize text-[11px] font-semibold rounded-full px-2.5 py-0.5 ring-1",
-        colors[status || ""] || "bg-slate-100 text-slate-600 ring-slate-500/10",
-      )}
-    >
-      {label}
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+      {initial}
     </span>
   );
 }
@@ -436,6 +427,19 @@ function ParentLinkedStudentsPanel({
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const ids = summaries.map((s) => s._id);
 
+  const detailQueries = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ["academy-student", id],
+      queryFn: () => getAcademyStudent(id),
+      enabled: Boolean(id),
+    })),
+  });
+
+  const studentsLoading = listLoading || detailQueries.some((q) => q.isLoading);
+  const students = detailQueries
+    .map((q) => q.data ?? null)
+    .filter((s): s is AcademyStudent => Boolean(s));
+
   const unlinkMutation = useMutation({
     mutationFn: async (studentId: string) => {
       const next = ids.filter((id) => id !== studentId);
@@ -452,68 +456,125 @@ function ParentLinkedStudentsPanel({
     onSettled: () => setUnlinkingId(null),
   });
 
-  if (listLoading) {
+  if (studentsLoading) {
     return (
-      <div className="rounded-xl border border-slate-200/80 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+      <p className="text-sm text-muted-foreground py-5 text-center border rounded-md bg-muted/20">
         Loading students…
-      </div>
+      </p>
     );
   }
 
   if (summaries.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-12 text-center">
-        <GraduationCap className="h-8 w-8 mx-auto text-slate-300 mb-2" />
-        <p className="text-sm text-slate-500">No students linked to this parent.</p>
-        {canEdit && (
-          <p className="text-xs text-slate-400 mt-1">Use “Link student” above to add one.</p>
-        )}
-      </div>
+      <p className="text-sm text-muted-foreground py-5 text-center border rounded-md bg-muted/20">
+        No students linked to this parent.
+        {canEdit ? " Use “Link student” to add one." : ""}
+      </p>
+    );
+  }
+
+  if (students.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground py-5 text-center border rounded-md bg-muted/20">
+        Could not load student details.
+      </p>
     );
   }
 
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-500 bg-slate-50/70">
-              <th className="px-5 py-2.5 font-medium">Student</th>
-              <th className="px-4 py-2.5 font-medium">ID</th>
-              <th className="px-4 py-2.5 font-medium">Class</th>
-              <th className="px-4 py-2.5 font-medium">Section</th>
-              <th className="px-4 py-2.5 font-medium">Status</th>
-              <th className="px-5 py-2.5 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {summaries.map((s) => (
-              <tr
-                key={s._id}
-                className="border-b border-slate-50 last:border-0 hover:bg-slate-50/80 transition-colors"
-              >
-                <td className="px-5 py-3.5">
-                  {studentDetailHref ? (
-                    <Link
-                      to={studentDetailHref(s._id)}
-                      className="font-medium text-[#1a2b4b] hover:text-sky-700 hover:underline"
+    <div className="overflow-x-auto border rounded-md">
+      <table className="w-full min-w-[56rem] text-sm">
+        <thead className="bg-muted/50 border-b">
+          <tr>
+            <th className="p-3 text-left font-medium whitespace-nowrap">ID</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Student</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Father</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Phone</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Class</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Section</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Registered</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Monthly</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Payable</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Status</th>
+            <th className="p-3 text-right font-medium whitespace-nowrap">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {students.map((s) => {
+            const isPending = s.status === "pending_fee";
+            const sectionName = sectionNameOf(s);
+            const payable = Math.max(
+              0,
+              (Number(s.monthlyFee) || 0) - (Number(s.monthlyFeeDiscount) || 0),
+            );
+            return (
+              <tr key={s._id} className="border-b last:border-0 hover:bg-muted/20">
+                <td className="p-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                  {studentRef(s)}
+                </td>
+                <td className="p-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <StudentAvatar student={s} />
+                    {studentDetailHref ? (
+                      <Link
+                        to={studentDetailHref(s._id)}
+                        className="font-medium text-foreground truncate hover:text-primary hover:underline"
+                      >
+                        {s.studentName}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-foreground truncate">{s.studentName}</span>
+                    )}
+                  </div>
+                </td>
+                <td className="p-3 text-muted-foreground whitespace-nowrap">
+                  {s.fatherName || "—"}
+                </td>
+                <td className="p-3 text-muted-foreground whitespace-nowrap">{s.phone || "—"}</td>
+                <td className="p-3 whitespace-nowrap">{classLabel(s.classId)}</td>
+                <td className="p-3">
+                  {sectionName ? (
+                    <span
+                      className={cn(
+                        "inline-flex min-w-[1.75rem] items-center justify-center rounded-md border px-2 py-0.5 text-xs font-semibold",
+                        sectionBadgeClass(sectionName),
+                      )}
                     >
-                      {s.studentName}
-                    </Link>
+                      {sectionName}
+                    </span>
                   ) : (
-                    <span className="font-medium text-slate-800">{s.studentName}</span>
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </td>
-                <td className="px-4 py-3.5 text-slate-600">{s.studentId || "—"}</td>
-                <td className="px-4 py-3.5 text-slate-600">{s.className || "—"}</td>
-                <td className="px-4 py-3.5 text-slate-600">{s.sectionName || "—"}</td>
-                <td className="px-4 py-3.5">
-                  <StudentStatusPill status={s.status} />
+                <td className="p-3 text-muted-foreground whitespace-nowrap">
+                  {formatDate(s.createdAt)}
                 </td>
-                <td className="px-5 py-3.5">
-                  <div className="flex justify-end gap-1.5">
+                <td className="p-3 whitespace-nowrap">
+                  {isPending ? "—" : formatPkr(s.monthlyFee)}
+                </td>
+                <td className="p-3 whitespace-nowrap font-medium text-[#1a2b4b]">
+                  {isPending ? "—" : formatPkr(payable)}
+                </td>
+                <td className="p-3">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize",
+                      statusBadgeClass(s.status as AcademyStudentStatus),
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        statusDotClass(s.status as AcademyStudentStatus),
+                      )}
+                    />
+                    {statusLabel(s.status)}
+                  </span>
+                </td>
+                <td className="p-3">
+                  <div className="flex justify-end gap-1">
                     {studentDetailHref && (
-                      <Button variant="outline" size="sm" className="h-8 gap-1" asChild>
+                      <Button variant="ghost" size="sm" className="h-8 gap-1" asChild>
                         <Link to={studentDetailHref(s._id)}>
                           Open
                           <ExternalLink className="h-3.5 w-3.5" />
@@ -522,9 +583,9 @@ function ParentLinkedStudentsPanel({
                     )}
                     {canEdit && (
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        className="h-8 gap-1 text-destructive border-destructive/30 hover:bg-destructive/5"
+                        className="h-8 gap-1 text-destructive"
                         disabled={unlinkingId === s._id && unlinkMutation.isPending}
                         onClick={() => {
                           if (
@@ -549,10 +610,10 @@ function ParentLinkedStudentsPanel({
                   </div>
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -580,40 +641,43 @@ function PermissionsPanel({
 
   if (moduleRows.length === 0 && apiPerms.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-10 text-center text-sm text-slate-500">
+      <p className="text-sm text-muted-foreground py-5 text-center border rounded-md bg-muted/20">
         No module or API permissions assigned to this account.
-      </div>
+      </p>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center gap-2">
-          <KeyRound className="h-4 w-4 text-[#1a2b4b]" />
-          <h3 className="text-sm font-semibold text-[#1a2b4b]">Module access</h3>
-          <span className="ml-auto text-xs text-slate-500 tabular-nums">{moduleRows.length}</span>
-        </div>
+      <section className="rounded-lg border p-4 space-y-3">
+        <SectionTitle>
+          <span className="inline-flex items-center gap-2">
+            Module access
+            <span className="text-xs font-normal text-muted-foreground tabular-nums">
+              {moduleRows.length}
+            </span>
+          </span>
+        </SectionTitle>
         {moduleRows.length === 0 ? (
-          <p className="p-5 text-sm text-slate-500">No module permissions granted.</p>
+          <p className="text-sm text-muted-foreground">No module permissions granted.</p>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y rounded-md border overflow-hidden">
             {moduleRows.map(([key, actions]) => (
               <div
                 key={key}
-                className="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4"
+                className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 bg-card"
               >
                 <div className="sm:w-56 shrink-0 min-w-0">
-                  <div className="text-sm font-medium text-slate-800 truncate">
+                  <div className="text-sm font-medium text-primary truncate">
                     {moduleLabel(key, registry)}
                   </div>
-                  <div className="text-[11px] text-slate-400 font-mono truncate">{key}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">{key}</div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {actions.map((action) => (
                     <span
                       key={action}
-                      className="text-[11px] font-semibold rounded-md px-2 py-0.5 bg-[#1a2b4b]/[0.06] text-[#1a2b4b] capitalize"
+                      className="text-xs font-semibold rounded-full px-2 py-0.5 bg-primary/10 text-primary capitalize"
                     >
                       {action}
                     </span>
@@ -623,22 +687,20 @@ function PermissionsPanel({
             ))}
           </div>
         )}
-      </div>
+      </section>
 
       {apiPerms.length > 0 && (
-        <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-100">
-            <h3 className="text-sm font-semibold text-[#1a2b4b]">API permissions</h3>
-          </div>
-          <div className="divide-y divide-slate-100">
+        <section className="rounded-lg border p-4 space-y-3">
+          <SectionTitle>API permissions</SectionTitle>
+          <div className="divide-y rounded-md border overflow-hidden">
             {[...apiByModule.entries()].map(([mod, perms]) => (
-              <div key={mod} className="px-5 py-3.5 space-y-2">
-                <div className="text-sm font-medium text-slate-800 capitalize">{mod}</div>
+              <div key={mod} className="px-4 py-3 space-y-2 bg-card">
+                <div className="text-sm font-medium text-primary capitalize">{mod}</div>
                 <div className="flex flex-wrap gap-1.5">
                   {perms.map((p) => (
                     <span
                       key={p._id || p.name}
-                      className="text-[11px] rounded-md px-2 py-0.5 bg-slate-100 text-slate-700"
+                      className="text-xs rounded-full px-2 py-0.5 bg-muted text-foreground"
                       title={p.description || p.name}
                     >
                       {p.name || `${p.module}:${p.action}`}
@@ -648,7 +710,7 @@ function PermissionsPanel({
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );
@@ -656,26 +718,11 @@ function PermissionsPanel({
 
 const SCOPE_META: Record<
   UserFormScope,
-  { title: string; listLabel: string; Icon: typeof Users; accent: string }
+  { title: string; listLabel: string; Icon: typeof Users }
 > = {
-  parents: {
-    title: "Parent",
-    listLabel: "Parents",
-    Icon: Users,
-    accent: "from-[#1a2b4b] via-[#243b66] to-[#2d4a7a]",
-  },
-  staff: {
-    title: "Staff",
-    listLabel: "Staff",
-    Icon: UserCog,
-    accent: "from-[#1a2b4b] via-[#243b66] to-[#2d4a7a]",
-  },
-  admins: {
-    title: "Admin",
-    listLabel: "Admins",
-    Icon: Shield,
-    accent: "from-[#1a2b4b] via-[#243b66] to-[#2d4a7a]",
-  },
+  parents: { title: "Parent", listLabel: "Parents", Icon: Users },
+  staff: { title: "Staff", listLabel: "Staff", Icon: UserCog },
+  admins: { title: "Admin", listLabel: "Admins", Icon: Shield },
 };
 
 export default function UserDetailPage({
@@ -691,10 +738,26 @@ export default function UserDetailPage({
   const role = session?.role;
   const meta = SCOPE_META[scope];
   const listHref = role ? usersListHref(role, scope) : "#";
-  const editHref = role ? userEditHref(role, userId, scope) : "#";
   const studentRoutes = role ? academyStudentRoutes(role, "registration") : null;
   const [showPassword, setShowPassword] = useState(false);
   const [linkStudentOpen, setLinkStudentOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const allowedTabs =
+    scope === "parents"
+      ? (["overview", "students", "access"] as const)
+      : (["overview", "access"] as const);
+  const tabFromUrl = searchParams.get("tab") || "";
+  const activeTab = (allowedTabs as readonly string[]).includes(tabFromUrl)
+    ? tabFromUrl
+    : "overview";
+
+  const setActiveTab = (next: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "overview") params.delete("tab");
+    else params.set("tab", next);
+    setSearchParams(params, { replace: true });
+  };
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["users-module-list", scope],
@@ -719,20 +782,15 @@ export default function UserDetailPage({
 
   if (isLoading) {
     return (
-      <div className="px-4 sm:px-6 lg:px-8 py-10">
-        <div className="h-40 rounded-2xl bg-slate-100 animate-pulse" />
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-20 rounded-xl bg-slate-100 animate-pulse" />
-          ))}
-        </div>
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-12 text-center text-muted-foreground">
+        Loading account…
       </div>
     );
   }
 
   if (!account) {
     return (
-      <div className="px-6 py-10 space-y-3">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-12 space-y-4 text-center">
         <p className="text-sm text-muted-foreground">{meta.title} not found.</p>
         <Button variant="outline" asChild>
           <Link to={listHref}>
@@ -745,203 +803,192 @@ export default function UserDetailPage({
 
   const imgSrc = account.profileImage ? resolveUploadUrl(account.profileImage) : undefined;
   const roleLabel = roleDisplayLabel(roleNameOf(account));
-  const HeaderIcon = meta.Icon;
   const students = account.linkedStudents?.length ? account.linkedStudents : linkedStudents;
   const moduleCount = Object.values(normalizeModulePermissions(account.modulePermissions)).filter(
     (a) => a.length > 0,
   ).length;
-  const initials = account.name
-    .split(/\s+/)
+  const HeaderIcon = meta.Icon;
+  const pageHint = [
+    roleLabel,
+    account.email,
+    account.isActive ? "Active" : "Inactive",
+  ]
     .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
+    .join(" · ");
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5 w-full">
-      {/* Hero */}
-      <div className="overflow-hidden rounded-2xl shadow-sm ring-1 ring-black/[0.04]">
-        <div className={cn("relative bg-gradient-to-br px-5 py-6 sm:px-7 sm:py-7 text-white", meta.accent)}>
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.12]"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 20% 20%, white 0%, transparent 45%), radial-gradient(circle at 80% 0%, white 0%, transparent 35%)",
-            }}
-          />
-          <div className="relative flex flex-wrap items-start justify-between gap-4">
-            <div className="flex items-start gap-4 min-w-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="mt-1 shrink-0 h-9 w-9 text-white/90 hover:bg-white/10 hover:text-white"
-                asChild
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary overflow-hidden">
+              {imgSrc ? (
+                <img src={imgSrc} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <HeaderIcon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+              )}
+            </span>
+            <div className="min-w-0">
+              <Link
+                to={listHref}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
               >
-                <Link to={listHref} aria-label={`Back to ${meta.listLabel}`}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Link>
-              </Button>
-
-              <div className="relative shrink-0">
-                <div className="h-[4.5rem] w-[4.5rem] sm:h-20 sm:w-20 rounded-2xl overflow-hidden border-2 border-white/25 bg-white/10 shadow-lg backdrop-blur-sm">
-                  {imgSrc ? (
-                    <img src={imgSrc} alt="" className="h-full w-full object-cover" />
-                  ) : initials ? (
-                    <div className="flex h-full w-full items-center justify-center text-xl font-semibold tracking-wide text-white">
-                      {initials}
-                    </div>
-                  ) : (
-                    <User className="h-9 w-9 m-[1.35rem] text-white/70" />
-                  )}
-                </div>
-                <span className="absolute -bottom-1.5 -right-1.5 flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[#1a2b4b] shadow-md">
-                  <HeaderIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
-                </span>
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to {meta.listLabel}
+              </Link>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight truncate">
+                  {account.name}
+                </h2>
+                <ActiveBadge active={account.isActive} />
               </div>
-
-              <div className="min-w-0 pt-0.5">
-                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/55">
-                  {meta.title} profile
-                </p>
-                <div className="mt-1 flex flex-wrap items-center gap-2.5">
-                  <h1 className="text-2xl font-bold tracking-tight truncate">{account.name}</h1>
-                  <StatusBadge active={account.isActive} />
-                </div>
-                <p className="mt-1 text-sm text-white/70">{roleLabel}</p>
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-white/80">
-                  {account.email && (
-                    <span className="inline-flex items-center gap-1.5 min-w-0">
-                      <Mail className="h-3.5 w-3.5 shrink-0 text-white/50" />
-                      <span className="truncate">{account.email}</span>
-                    </span>
-                  )}
-                  {account.phone && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Phone className="h-3.5 w-3.5 shrink-0 text-white/50" />
-                      {account.phone}
-                    </span>
-                  )}
-                </div>
-              </div>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl truncate">
+                {pageHint}
+              </p>
             </div>
-
-            {caps.canEdit && role && (
-              <Button
-                size="sm"
-                className="shrink-0 gap-1.5 bg-white text-[#1a2b4b] hover:bg-white/90 shadow-sm"
-                asChild
-              >
-                <Link to={editHref}>
-                  <Pencil className="h-3.5 w-3.5" />
-                  Edit {meta.title.toLowerCase()}
-                </Link>
-              </Button>
-            )}
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile label="Status" value={<SoftStatusBadge active={account.isActive} />} icon={Shield} />
-        <StatTile label="Role" value={roleLabel} icon={HeaderIcon} />
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <PanelStatCard
+          label="Status"
+          value={account.isActive ? "Active" : "Inactive"}
+          hint={account.isActive ? "Portal can sign in" : "Login disabled"}
+          icon={account.isActive ? CheckCircle2 : UserX}
+          iconWrapClass={account.isActive ? "bg-[#d1fae5]" : "bg-[#fee2e2]"}
+          iconClass={account.isActive ? "text-[#059669]" : "text-[#dc2626]"}
+        />
+        <PanelStatCard
+          label="Role"
+          value={roleLabel}
+          hint={`${meta.title} account`}
+          icon={Shield}
+          iconWrapClass="bg-[#dbeafe]"
+          iconClass="text-[#2563eb]"
+        />
         {scope === "parents" ? (
-          <StatTile
+          <PanelStatCard
             label="Linked students"
             value={studentsLoading ? "…" : students.length}
-            icon={GraduationCap}
+            hint="Students on this portal"
+            icon={Users}
+            iconWrapClass="bg-[#ede9fe]"
+            iconClass="text-[#7c3aed]"
           />
         ) : (
-          <StatTile label="Modules" value={moduleCount} icon={KeyRound} />
+          <PanelStatCard
+            label="Modules"
+            value={moduleCount}
+            hint="With access granted"
+            icon={KeyRound}
+            iconWrapClass="bg-[#ede9fe]"
+            iconClass="text-[#7c3aed]"
+          />
         )}
-        <StatTile label="Last login" value={fmtDate(account.lastLogin)} icon={Clock} />
+        <PanelStatCard
+          label="Last login"
+          value={account.lastLogin ? fmtDate(account.lastLogin) : "—"}
+          hint={account.lastLogin ? "Most recent sign-in" : "Never signed in"}
+          icon={Clock}
+          iconWrapClass="bg-[#ffedd5]"
+          iconClass="text-[#ea580c]"
+        />
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="h-auto flex flex-wrap gap-1 bg-slate-100/80 p-1 rounded-xl">
-          <TabsTrigger value="overview" className="rounded-lg data-[state=active]:shadow-sm gap-1.5">
-            <User className="h-3.5 w-3.5" />
-            Overview
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="w-full flex flex-wrap h-auto gap-0.5 p-0.5 bg-muted/40">
+          <TabsTrigger value="overview" className="gap-1.5">
+            <User className="h-3.5 w-3.5" /> Overview
           </TabsTrigger>
           {scope === "parents" && (
-            <TabsTrigger value="students" className="rounded-lg data-[state=active]:shadow-sm gap-1.5">
-              <GraduationCap className="h-3.5 w-3.5" />
-              Students
-              <span className="ml-0.5 text-[10px] font-semibold tabular-nums text-slate-500">
-                {students.length}
-              </span>
+            <TabsTrigger value="students" className="gap-1.5">
+              <GraduationCap className="h-3.5 w-3.5" /> Students ({students.length})
             </TabsTrigger>
           )}
-          <TabsTrigger value="access" className="rounded-lg data-[state=active]:shadow-sm gap-1.5">
-            <KeyRound className="h-3.5 w-3.5" />
-            Access
+          <TabsTrigger value="access" className="gap-1.5">
+            <KeyRound className="h-3.5 w-3.5" /> Access
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-0 space-y-5">
-          <div className="grid lg:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-5">
-              <h3 className="text-sm font-semibold text-[#1a2b4b]">Contact</h3>
-              <div className="space-y-4">
-                <InfoField label="Full name" value={account.name} icon={User} />
-                <InfoField label="Email" value={account.email || "—"} icon={Mail} />
-                <InfoField label="Phone" value={account.phone || "—"} icon={Phone} />
-                {scope === "parents" && (
-                  <InfoField
-                    label="Portal password"
-                    icon={Lock}
-                    value={
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((v) => !v)}
-                        className="inline-flex items-center gap-1.5 font-mono text-sm font-medium text-slate-800 hover:text-[#1a2b4b]"
-                        title={showPassword ? "Hide password" : "Show password"}
-                      >
-                        {showPassword ? (
-                          <EyeOff className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        ) : (
-                          <Eye className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        )}
-                        <span>{showPassword ? DEFAULT_PARENT_PASSWORD : "••••••••"}</span>
-                      </button>
-                    }
-                  />
-                )}
+        <TabsContent value="overview" className="mt-3 focus-visible:outline-none space-y-4">
+          {imgSrc ? (
+            <div className="flex items-center gap-4 rounded-lg border p-4">
+              <img
+                src={imgSrc}
+                alt={account.name}
+                className="h-24 w-24 rounded-full object-cover border"
+              />
+              <div>
+                <p className="font-medium">{account.name}</p>
+                <p className="text-sm text-muted-foreground">{roleLabel}</p>
               </div>
             </div>
-            <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-5">
-              <h3 className="text-sm font-semibold text-[#1a2b4b]">Account</h3>
-              <div className="space-y-4">
-                <InfoField label="Role" value={roleLabel} icon={Shield} />
-                <InfoField
-                  label="Status"
-                  value={<SoftStatusBadge active={account.isActive} />}
-                  icon={Shield}
+          ) : null}
+
+          <section className="rounded-lg border p-4 space-y-3">
+            <SectionTitle>Contact</SectionTitle>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+              <DetailRow label="Full name" value={account.name} />
+              <DetailRow label="Email" value={account.email || "—"} />
+              <DetailRow label="Phone" value={account.phone || "—"} />
+              {scope === "parents" && (
+                <DetailRow
+                  label="Portal password"
+                  value={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="inline-flex items-center gap-1.5 text-sm font-medium hover:text-primary"
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                      <span>{showPassword ? DEFAULT_PARENT_PASSWORD : "••••••••"}</span>
+                    </button>
+                  }
                 />
-                <InfoField label="Last login" value={fmtDateTime(account.lastLogin)} icon={Clock} />
-                <InfoField label="Created" value={fmtDateTime(account.createdAt)} icon={Calendar} />
-                <InfoField label="Updated" value={fmtDateTime(account.updatedAt)} icon={Calendar} />
-              </div>
+              )}
             </div>
-          </div>
+          </section>
+
+          <section className="rounded-lg border p-4 space-y-3">
+            <SectionTitle>Account</SectionTitle>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+              <DetailRow label="Role" value={roleLabel} />
+              <DetailRow label="Status" value={<ActiveBadge active={account.isActive} />} />
+              <DetailRow label="Last login" value={fmtDateTime(account.lastLogin)} />
+              <DetailRow label="Created" value={fmtDateTime(account.createdAt)} />
+              <DetailRow label="Updated" value={fmtDateTime(account.updatedAt)} />
+            </div>
+          </section>
         </TabsContent>
 
         {scope === "parents" && (
-          <TabsContent value="students" className="mt-0 space-y-3">
+          <TabsContent value="students" className="mt-3 focus-visible:outline-none space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <GraduationCap className="h-4 w-4 text-[#1a2b4b]" />
-                <h3 className="text-sm font-semibold text-[#1a2b4b]">Linked students</h3>
-                <span className="text-xs font-medium text-slate-500 tabular-nums">
-                  {students.length} student{students.length === 1 ? "" : "s"}
+              <h3 className="text-sm font-semibold text-primary">
+                Linked students
+                <span className="ml-2 text-xs font-normal text-muted-foreground tabular-nums">
+                  ({students.length})
                 </span>
-              </div>
+              </h3>
               {caps.canEdit && (
-                <Button
-                  size="sm"
-                  className="gap-1.5 shrink-0"
-                  onClick={() => setLinkStudentOpen(true)}
-                >
+                <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setLinkStudentOpen(true)}>
                   <Plus className="h-3.5 w-3.5" />
                   Link student
                 </Button>
@@ -963,7 +1010,7 @@ export default function UserDetailPage({
           </TabsContent>
         )}
 
-        <TabsContent value="access" className="mt-0">
+        <TabsContent value="access" className="mt-3 focus-visible:outline-none">
           <PermissionsPanel user={account} registry={modules} />
         </TabsContent>
       </Tabs>

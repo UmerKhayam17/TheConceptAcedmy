@@ -481,7 +481,8 @@ const UsersModule = ({
             : null;
         if (!mods || !(moduleFilter in mods)) return false;
       }
-      if (classFilter || sectionFilter) {
+      // Class/section filters are parents-only (linked students).
+      if (isParentsScope && (classFilter || sectionFilter)) {
         const linked = u.linkedStudents ?? [];
         const match = linked.some((s) => {
           if (classFilter && String(s.classId || "") !== classFilter) return false;
@@ -494,6 +495,7 @@ const UsersModule = ({
     });
   }, [
     searchFiltered,
+    isParentsScope,
     roleFilter,
     statusFilter,
     payTypeFilter,
@@ -507,8 +509,7 @@ const UsersModule = ({
     Boolean(statusFilter) ||
     Boolean(payTypeFilter) ||
     Boolean(moduleFilter) ||
-    Boolean(classFilter) ||
-    Boolean(sectionFilter) ||
+    (isParentsScope && (Boolean(classFilter) || Boolean(sectionFilter))) ||
     Boolean(search.trim());
 
   const clearFilters = () => {
@@ -522,11 +523,24 @@ const UsersModule = ({
     setPage(1);
   };
 
+  // Switching Parents ↔ Staff ↔ Admins reuses this component — reset filters.
+  useEffect(() => {
+    setRoleFilter("");
+    setStatusFilter("");
+    setPayTypeFilter("");
+    setModuleFilter("");
+    setClassFilter("");
+    setSectionFilter("");
+    setSearch("");
+    setPage(1);
+    setSelectedIds(new Set());
+    setRevealedPasswords(new Set());
+  }, [scope, setSearch]);
+
   useEffect(() => {
     setPage(1);
     setSelectedIds(new Set());
   }, [
-    scope,
     roleFilter,
     statusFilter,
     payTypeFilter,

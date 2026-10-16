@@ -411,7 +411,7 @@ const Panel = () => {
         if (section && /^[a-f0-9]{24}$/i.test(section)) {
           return <UserDetailPage userId={section} scope="parents" caps={caps} />;
         }
-        return <UsersModule perm={perm} caps={caps} scope="parents" />;
+        return <UsersModule key="parents" perm={perm} caps={caps} scope="parents" />;
       case "staff-management":
         if (section === "new") {
           return <UserFormPage caps={caps} scope="staff" mode="create" />;
@@ -422,7 +422,7 @@ const Panel = () => {
         if (section && /^[a-f0-9]{24}$/i.test(section)) {
           return <UserDetailPage userId={section} scope="staff" caps={caps} />;
         }
-        return <UsersModule perm={perm} caps={caps} scope="staff" />;
+        return <UsersModule key="staff" perm={perm} caps={caps} scope="staff" />;
       case "admins":
         if (section === "new") {
           return <UserFormPage caps={caps} scope="admins" mode="create" />;
@@ -433,7 +433,7 @@ const Panel = () => {
         if (section && /^[a-f0-9]{24}$/i.test(section)) {
           return <UserDetailPage userId={section} scope="admins" caps={caps} />;
         }
-        return <UsersModule perm={perm} caps={caps} scope="admins" />;
+        return <UsersModule key="admins" perm={perm} caps={caps} scope="admins" />;
       case "student-management": return (
         <StudentManagementModule perm={perm} caps={caps} section={section} action={action} subAction={subAction} />
       );

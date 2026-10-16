@@ -1,22 +1,24 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Calendar,
+  CheckCircle2,
   ChevronDown,
   Clock,
   Download,
   FileSpreadsheet,
   FileText,
   KeyRound,
-  Pencil,
   Receipt,
   User,
+  Wallet,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import PanelStatCard from "@/components/modules/PanelStatCard";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,7 +52,6 @@ import { formatPkr, MONTH_NAMES } from "@/components/modules/student-management/
 import { DAY_LABELS, DAY_ORDER, subjectColor } from "@/components/modules/timetable/constants";
 import type { Weekday } from "@/lib/configApi";
 import { moduleHref } from "@/lib/panelMenus";
-import { userEditHref } from "@/lib/userFormRoutes";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
@@ -91,15 +92,6 @@ function StatusPill({ status }: { status: string }) {
     <span className={`text-xs font-semibold rounded-full px-2 py-0.5 capitalize ${colors[status] || "bg-muted text-muted-foreground"}`}>
       {status.replace("_", " ")}
     </span>
-  );
-}
-
-function StatCard({ label, value, tone }: { label: string; value: ReactNode; tone?: string }) {
-  return (
-    <Card className="p-4">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`font-display text-xl font-bold ${tone || "text-primary"}`}>{value}</div>
-    </Card>
   );
 }
 
@@ -208,12 +200,25 @@ export default function StaffDetailPage({
   const { toast } = useToast();
   const role = user?.role || "admin";
   const backHref = moduleHref(role, "staff-management");
-  const editHref = userEditHref(role, staffId, "staff");
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [sessionId, setSessionId] = useState("");
   const [exporting, setExporting] = useState<StaffReportFormat | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const staffTabs = ["permissions", "payroll", "attendance", "timetable", "report"] as const;
+  const tabFromUrl = searchParams.get("tab") || "";
+  const activeTab = (staffTabs as readonly string[]).includes(tabFromUrl)
+    ? tabFromUrl
+    : "permissions";
+
+  const setActiveTab = (next: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "permissions") params.delete("tab");
+    else params.set("tab", next);
+    setSearchParams(params, { replace: true });
+  };
 
   const { data: staffList = [], isLoading: staffLoading } = useQuery({
     queryKey: ["users-module-list", "staff"],
@@ -318,133 +323,124 @@ export default function StaffDetailPage({
   const imgSrc = staff.profileImage ? resolveUploadUrl(staff.profileImage) : undefined;
   const roleLabel = roleDisplayLabel(roleNameOf(staff));
 
-  const initials = staff.name
-    .split(/\s+/)
+  const pageHint = [
+    roleLabel,
+    staff.email,
+    staff.isActive ? "Active" : "Inactive",
+    staff.payType === "percentage"
+      ? `Percentage (${Number(staff.salaryPercentage ?? 0)}%)`
+      : `Salary ${formatPkr(staff.salary)}`,
+  ]
     .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
+    .join(" · ");
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5 w-full">
-      <div className="overflow-hidden rounded-2xl shadow-sm ring-1 ring-black/[0.04]">
-        <div className="relative bg-gradient-to-br from-[#1a2b4b] via-[#243b66] to-[#2d4a7a] px-5 py-6 sm:px-7 sm:py-7 text-white">
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.12]"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 20% 20%, white 0%, transparent 45%), radial-gradient(circle at 80% 0%, white 0%, transparent 35%)",
-            }}
-          />
-          <div className="relative flex flex-wrap items-start justify-between gap-4">
-            <div className="flex items-start gap-4 min-w-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="mt-1 shrink-0 h-9 w-9 text-white/90 hover:bg-white/10 hover:text-white"
-                asChild
-              >
-                <Link to={backHref} aria-label="Back to staff list">
-                  <ArrowLeft className="h-4 w-4" />
-                </Link>
-              </Button>
-              <div className="relative shrink-0">
-                <div className="h-[4.5rem] w-[4.5rem] sm:h-20 sm:w-20 rounded-2xl overflow-hidden border-2 border-white/25 bg-white/10 shadow-lg">
-                  {imgSrc ? (
-                    <img src={imgSrc} alt="" className="h-full w-full object-cover" />
-                  ) : initials ? (
-                    <div className="flex h-full w-full items-center justify-center text-xl font-semibold tracking-wide">
-                      {initials}
-                    </div>
-                  ) : (
-                    <User className="h-9 w-9 m-[1.35rem] text-white/70" />
-                  )}
-                </div>
-              </div>
-              <div className="min-w-0 pt-0.5">
-                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/55">
-                  Staff profile
-                </p>
-                <div className="mt-1 flex flex-wrap items-center gap-2.5">
-                  <h2 className="text-2xl font-bold tracking-tight truncate">{staff.name}</h2>
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
-                      staff.isActive
-                        ? "bg-emerald-500/15 text-emerald-100 ring-1 ring-emerald-400/30"
-                        : "bg-white/10 text-white/80 ring-1 ring-white/20",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 rounded-full",
-                        staff.isActive ? "bg-emerald-300" : "bg-white/50",
-                      )}
-                    />
-                    {staff.isActive ? "Active" : "Inactive"}
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-white/70">{roleLabel}</p>
-                <p className="mt-2 text-sm text-white/80">
-                  {staff.email || ""}
-                  {staff.email && staff.phone ? " · " : ""}
-                  {staff.phone || ""}
-                </p>
-                <p className="mt-1 text-xs text-white/55">
-                  {staff.payType === "percentage"
-                    ? `Pay type · Percentage (${Number(staff.salaryPercentage ?? 0)}%)`
-                    : `Monthly salary · ${formatPkr(staff.salary)}`}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {caps?.canEdit && (
-                <Button
-                  size="sm"
-                  className="gap-1.5 bg-white text-[#1a2b4b] hover:bg-white/90 shadow-sm"
-                  asChild
-                >
-                  <Link to={editHref}>
-                    <Pencil className="h-3.5 w-3.5" />
-                    Edit staff
-                  </Link>
-                </Button>
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary overflow-hidden">
+              {imgSrc ? (
+                <img src={imgSrc} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <User className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
               )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1 border-white/25 bg-white/10 text-white hover:bg-white/15 hover:text-white"
-                    disabled={!!exporting}
-                  >
-                    <Download className="h-4 w-4" />
-                    {exporting ? "Exporting…" : "Complete report"}
-                    <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
-                    <FileSpreadsheet className="h-4 w-4" /> Excel (.xlsx)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
-                    <FileText className="h-4 w-4" /> PDF report
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            </span>
+            <div className="min-w-0">
+              <Link
+                to={backHref}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to Staff
+              </Link>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight truncate">
+                  {staff.name}
+                </h2>
+                <span
+                  className={cn(
+                    "inline-flex text-xs font-semibold rounded-full px-2 py-0.5",
+                    staff.isActive ? "bg-accent/15 text-accent" : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {staff.isActive ? "Active" : "Inactive"}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl truncate">
+                {pageHint}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1" disabled={!!exporting}>
+                  <Download className="h-4 w-4" />
+                  {exporting ? "Exporting…" : "Complete report"}
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
+                  <FileSpreadsheet className="h-4 w-4" /> Excel (.xlsx)
+                </DropdownMenuItem>
+                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
+                  <FileText className="h-4 w-4" /> PDF report
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className="rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+              <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+                <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                  &ldquo;
+                </span>
+                Teachers plant seeds that grow forever.
+                <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                  &rdquo;
+                </span>
+              </p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Paid" value={formatPkr(salarySummary?.totalPaid)} tone="text-accent" />
-        <StatCard label="Pending" value={formatPkr(salarySummary?.totalPending)} tone="text-destructive" />
-        <StatCard label="Vouchers" value={salarySummary?.recordsCount ?? salaries.length} />
-        <StatCard label="Present (month)" value={attCounts.present} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <PanelStatCard
+          label="Paid"
+          value={formatPkr(salarySummary?.totalPaid)}
+          hint="Salary paid"
+          icon={Wallet}
+          iconWrapClass="bg-[#d1fae5]"
+          iconClass="text-[#059669]"
+        />
+        <PanelStatCard
+          label="Pending"
+          value={formatPkr(salarySummary?.totalPending)}
+          hint="Awaiting payment"
+          icon={Receipt}
+          iconWrapClass="bg-[#fee2e2]"
+          iconClass="text-[#dc2626]"
+        />
+        <PanelStatCard
+          label="Vouchers"
+          value={salarySummary?.recordsCount ?? salaries.length}
+          hint="Salary records"
+          icon={FileText}
+          iconWrapClass="bg-[#dbeafe]"
+          iconClass="text-[#2563eb]"
+        />
+        <PanelStatCard
+          label="Present (month)"
+          value={attCounts.present}
+          hint={`${MONTH_NAMES[month - 1]} ${year}`}
+          icon={CheckCircle2}
+          iconWrapClass="bg-[#ede9fe]"
+          iconClass="text-[#7c3aed]"
+        />
       </div>
 
-      <Tabs defaultValue="permissions">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="permissions" className="gap-1">
             <KeyRound className="h-3.5 w-3.5" /> Permissions

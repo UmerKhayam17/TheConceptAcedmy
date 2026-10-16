@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -725,6 +725,7 @@ export default function StudentDetailPage({
   routes?: AcademyStudentRoutes;
 }) {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const routes =
     routesProp ?? (user?.role ? academyStudentRoutes(user.role, "registration") : null);
   const listHref = routes?.list ?? "..";
@@ -738,6 +739,24 @@ export default function StudentDetailPage({
     queryKey: ["academy-student-record", studentId],
     queryFn: () => getAcademyStudentRecord(studentId),
   });
+
+  const isPendingStudent = record?.student.status === "pending_fee";
+  const isTeacherUser = user?.role === "teacher";
+  const studentTabs = isPendingStudent
+    ? (["profile"] as const)
+    : isTeacherUser
+      ? (["profile", "enrollment", "timetable", "attendance", "tests"] as const)
+      : (["profile", "enrollment", "timetable", "attendance", "fees", "tests"] as const);
+  const tabFromUrl = searchParams.get("tab") || "";
+  const activeTab = (studentTabs as readonly string[]).includes(tabFromUrl)
+    ? tabFromUrl
+    : "profile";
+  const setActiveTab = (next: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "profile") params.delete("tab");
+    else params.set("tab", next);
+    setSearchParams(params, { replace: true });
+  };
 
   if (isLoading) {
     return (
@@ -848,7 +867,7 @@ export default function StudentDetailPage({
         </div>
       )}
 
-      <Tabs defaultValue="profile" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full flex flex-wrap h-auto gap-0.5 p-0.5 bg-muted/40">
           <TabsTrigger value="profile" className="gap-1.5">
             <User className="h-3.5 w-3.5" /> Profile
