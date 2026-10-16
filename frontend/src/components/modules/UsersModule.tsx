@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,7 +63,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SquareCheckbox } from "@/components/ui/square-checkbox";
 import PageSizeSelect from "@/components/modules/student-management/PageSizeSelect";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
-import { userCreateHref, userEditHref, type UserFormScope } from "@/lib/userFormRoutes";
+import {
+  userCreateHref,
+  userDetailHref,
+  userEditHref,
+  type UserFormScope,
+} from "@/lib/userFormRoutes";
 import { cn } from "@/lib/utils";
 
 function pageWindow(current: number, totalPages: number, max = 5): number[] {
@@ -639,7 +644,7 @@ const UsersModule = ({
   const showParentPasswordCol = isParentsScope;
   const showPayTypeFilter = isStaffScope;
   const showRoleFilter = isStaffScope;
-  const showActions = caps.canEdit || caps.canDelete || isStaffScope;
+  const showActions = caps.canView || caps.canEdit || caps.canDelete;
   // checkbox + data cols + modules (+ linked/class/section/password/actions when shown)
   const tableColSpan =
     cols.length +
@@ -724,6 +729,11 @@ const UsersModule = ({
   const goEdit = (u: StaffUser) => {
     if (!caps.canEdit || !role) return;
     navigate(userEditHref(role, u._id, scope));
+  };
+
+  const goView = (u: StaffUser) => {
+    if (!role) return;
+    navigate(userDetailHref(role, u._id, scope));
   };
 
   return (
@@ -1163,15 +1173,36 @@ const UsersModule = ({
                   </td>
                 </tr>
               ) : (
-                pageRows.map((u) => (
+                pageRows.map((u) => {
+                  const canOpenDetail = caps.canView || caps.canEdit;
+                  return (
                   <tr
                     key={u._id}
                     className={cn(
-                      "border-b last:border-0 hover:bg-muted/20",
+                      "border-b last:border-0 transition-colors",
+                      canOpenDetail && "cursor-pointer hover:bg-sky-50/60",
+                      !canOpenDetail && "hover:bg-muted/20",
                       selectedIds.has(u._id) && "bg-muted/50",
                     )}
+                    onClick={() => {
+                      if (canOpenDetail) goView(u);
+                    }}
+                    onKeyDown={(e) => {
+                      if (!canOpenDetail) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        goView(u);
+                      }
+                    }}
+                    tabIndex={canOpenDetail ? 0 : undefined}
+                    role={canOpenDetail ? "link" : undefined}
+                    aria-label={canOpenDetail ? `View ${u.name}` : undefined}
                   >
-                    <td className="w-10 p-3 text-center">
+                    <td
+                      className="w-10 p-3 text-center"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
                       <SquareCheckbox
                         checked={selectedIds.has(u._id)}
                         onChange={() => toggleSelectOne(u._id, !selectedIds.has(u._id))}
@@ -1199,7 +1230,11 @@ const UsersModule = ({
                       </>
                     )}
                     {showParentPasswordCol && (
-                      <td className="p-3">
+                      <td
+                        className="p-3"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
                         {isParentUser(u) ? (
                           <PasswordCell
                             visible={revealedPasswords.has(u._id)}
@@ -1214,31 +1249,24 @@ const UsersModule = ({
                       <ModulesCell user={u} />
                     </td>
                     {showActions && (
-                      <td className="p-3">
+                      <td
+                        className="p-3"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
                         <div className="flex justify-end gap-0.5">
-                          {isStaffScope ? (
+                          {canOpenDetail && (
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-muted-foreground hover:text-primary"
-                              asChild
+                              onClick={() => goView(u)}
                               aria-label="View"
-                            >
-                              <Link to={u._id}>
-                                <Eye className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                          ) : caps.canView || caps.canEdit ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-primary"
-                              onClick={() => goEdit(u)}
-                              aria-label="View"
+                              title="View details"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
-                          ) : null}
+                          )}
                           {caps.canEdit && (
                             <Button
                               variant="ghost"
@@ -1308,7 +1336,8 @@ const UsersModule = ({
                       </td>
                     )}
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

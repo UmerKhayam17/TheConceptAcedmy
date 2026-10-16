@@ -38,6 +38,7 @@ import { localTodayYmd } from "@/lib/localDate";
 const StudentsRecordsModule = lazy(() => import("@/components/modules/StudentsRecordsModule"));
 const UsersModule = lazy(() => import("@/components/modules/UsersModule"));
 const UserFormPage = lazy(() => import("@/components/modules/UserFormPage"));
+const UserDetailPage = lazy(() => import("@/components/modules/UserDetailPage"));
 const AttendanceModule = lazy(() => import("@/components/modules/AttendanceModule"));
 const TimetableModule = lazy(() => import("@/components/modules/TimetableModule"));
 const SystemConfigModule = lazy(() => import("@/components/modules/SystemConfigModule"));
@@ -55,7 +56,6 @@ const StudentManagementModule = lazy(() => import("@/components/modules/StudentM
 const PermissionCatalogModule = lazy(() => import("@/components/modules/PermissionCatalogModule"));
 const AiAttendanceModule = lazy(() => import("@/components/modules/AiAttendanceModule"));
 const StaffAttendanceModule = lazy(() => import("@/components/modules/StaffAttendanceModule"));
-const StaffDetailPage = lazy(() => import("@/components/modules/staff/StaffDetailPage"));
 const TeacherFeatureModule = lazy(() => import("@/components/modules/TeacherFeatureModule"));
 const AdminDashboard = lazy(() => import("@/components/modules/AdminDashboard"));
 const TeacherDashboard = lazy(() => import("@/components/modules/TeacherDashboard"));
@@ -408,6 +408,9 @@ const Panel = () => {
         if (section && /^[a-f0-9]{24}$/i.test(section) && action === "edit") {
           return <UserFormPage caps={caps} scope="parents" mode="edit" userId={section} />;
         }
+        if (section && /^[a-f0-9]{24}$/i.test(section)) {
+          return <UserDetailPage userId={section} scope="parents" caps={caps} />;
+        }
         return <UsersModule perm={perm} caps={caps} scope="parents" />;
       case "staff-management":
         if (section === "new") {
@@ -417,7 +420,7 @@ const Panel = () => {
           return <UserFormPage caps={caps} scope="staff" mode="edit" userId={section} />;
         }
         if (section && /^[a-f0-9]{24}$/i.test(section)) {
-          return <StaffDetailPage staffId={section} />;
+          return <UserDetailPage userId={section} scope="staff" caps={caps} />;
         }
         return <UsersModule perm={perm} caps={caps} scope="staff" />;
       case "admins":
@@ -426,6 +429,9 @@ const Panel = () => {
         }
         if (section && /^[a-f0-9]{24}$/i.test(section) && action === "edit") {
           return <UserFormPage caps={caps} scope="admins" mode="edit" userId={section} />;
+        }
+        if (section && /^[a-f0-9]{24}$/i.test(section)) {
+          return <UserDetailPage userId={section} scope="admins" caps={caps} />;
         }
         return <UsersModule perm={perm} caps={caps} scope="admins" />;
       case "student-management": return (

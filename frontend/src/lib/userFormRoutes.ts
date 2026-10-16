@@ -18,6 +18,10 @@ export function userCreateHref(role: Role, scope: UserFormScope = "parents") {
   return `${usersListHref(role, scope)}/new`;
 }
 
+export function userDetailHref(role: Role, userId: string, scope: UserFormScope = "parents") {
+  return `${usersListHref(role, scope)}/${userId}`;
+}
+
 export function userEditHref(role: Role, userId: string, scope: UserFormScope = "parents") {
   return `${usersListHref(role, scope)}/${userId}/edit`;
 }

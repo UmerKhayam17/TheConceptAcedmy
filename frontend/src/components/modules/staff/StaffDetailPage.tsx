@@ -10,6 +10,7 @@ import {
   FileSpreadsheet,
   FileText,
   KeyRound,
+  Pencil,
   Receipt,
   User,
 } from "lucide-react";
@@ -49,6 +50,9 @@ import { formatPkr, MONTH_NAMES } from "@/components/modules/student-management/
 import { DAY_LABELS, DAY_ORDER, subjectColor } from "@/components/modules/timetable/constants";
 import type { Weekday } from "@/lib/configApi";
 import { moduleHref } from "@/lib/panelMenus";
+import { userEditHref } from "@/lib/userFormRoutes";
+import type { ModuleActionCaps } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
 
 function roleNameOf(user?: StaffUser | null) {
   const r = user?.role;
@@ -193,11 +197,18 @@ function StaffPermissionsPanel({
   );
 }
 
-export default function StaffDetailPage({ staffId }: { staffId: string }) {
+export default function StaffDetailPage({
+  staffId,
+  caps,
+}: {
+  staffId: string;
+  caps?: ModuleActionCaps;
+}) {
   const { user } = useAuth();
   const { toast } = useToast();
   const role = user?.role || "admin";
   const backHref = moduleHref(role, "staff-management");
+  const editHref = userEditHref(role, staffId, "staff");
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -307,57 +318,123 @@ export default function StaffDetailPage({ staffId }: { staffId: string }) {
   const imgSrc = staff.profileImage ? resolveUploadUrl(staff.profileImage) : undefined;
   const roleLabel = roleDisplayLabel(roleNameOf(staff));
 
+  const initials = staff.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0">
-          <Button variant="ghost" size="sm" className="mt-1" asChild>
-            <Link to={backHref} aria-label="Back to staff list">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div className="h-14 w-14 rounded-full bg-muted overflow-hidden border border-border shrink-0">
-            {imgSrc ? <img src={imgSrc} alt="" className="h-full w-full object-cover" /> : <User className="h-7 w-7 m-3.5 text-muted-foreground" />}
-          </div>
-          <div className="min-w-0">
-            <h2 className="font-display text-xl font-bold text-primary truncate">{staff.name}</h2>
-            <p className="text-sm text-muted-foreground">
-              {roleLabel}
-              {staff.email ? ` · ${staff.email}` : ""}
-              {staff.phone ? ` · ${staff.phone}` : ""}
-            </p>
-            <p className="text-xs mt-1">
-              {staff.payType === "percentage" ? (
-                <>
-                  Pay type <span className="font-semibold text-primary">Percentage ({Number(staff.salaryPercentage ?? 0)}%)</span>
-                </>
-              ) : (
-                <>
-                  Monthly salary <span className="font-semibold text-primary">{formatPkr(staff.salary)}</span>
-                </>
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5 max-w-6xl">
+      <div className="overflow-hidden rounded-2xl shadow-sm ring-1 ring-black/[0.04]">
+        <div className="relative bg-gradient-to-br from-[#1a2b4b] via-[#243b66] to-[#2d4a7a] px-5 py-6 sm:px-7 sm:py-7 text-white">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.12]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 20% 20%, white 0%, transparent 45%), radial-gradient(circle at 80% 0%, white 0%, transparent 35%)",
+            }}
+          />
+          <div className="relative flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-4 min-w-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="mt-1 shrink-0 h-9 w-9 text-white/90 hover:bg-white/10 hover:text-white"
+                asChild
+              >
+                <Link to={backHref} aria-label="Back to staff list">
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
+              </Button>
+              <div className="relative shrink-0">
+                <div className="h-[4.5rem] w-[4.5rem] sm:h-20 sm:w-20 rounded-2xl overflow-hidden border-2 border-white/25 bg-white/10 shadow-lg">
+                  {imgSrc ? (
+                    <img src={imgSrc} alt="" className="h-full w-full object-cover" />
+                  ) : initials ? (
+                    <div className="flex h-full w-full items-center justify-center text-xl font-semibold tracking-wide">
+                      {initials}
+                    </div>
+                  ) : (
+                    <User className="h-9 w-9 m-[1.35rem] text-white/70" />
+                  )}
+                </div>
+              </div>
+              <div className="min-w-0 pt-0.5">
+                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/55">
+                  Staff profile
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2.5">
+                  <h2 className="text-2xl font-bold tracking-tight truncate">{staff.name}</h2>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
+                      staff.isActive
+                        ? "bg-emerald-500/15 text-emerald-100 ring-1 ring-emerald-400/30"
+                        : "bg-white/10 text-white/80 ring-1 ring-white/20",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        staff.isActive ? "bg-emerald-300" : "bg-white/50",
+                      )}
+                    />
+                    {staff.isActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-white/70">{roleLabel}</p>
+                <p className="mt-2 text-sm text-white/80">
+                  {staff.email || ""}
+                  {staff.email && staff.phone ? " · " : ""}
+                  {staff.phone || ""}
+                </p>
+                <p className="mt-1 text-xs text-white/55">
+                  {staff.payType === "percentage"
+                    ? `Pay type · Percentage (${Number(staff.salaryPercentage ?? 0)}%)`
+                    : `Monthly salary · ${formatPkr(staff.salary)}`}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {caps?.canEdit && (
+                <Button
+                  size="sm"
+                  className="gap-1.5 bg-white text-[#1a2b4b] hover:bg-white/90 shadow-sm"
+                  asChild
+                >
+                  <Link to={editHref}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit staff
+                  </Link>
+                </Button>
               )}
-              {" · "}
-              {staff.isActive ? "Active" : "Inactive"}
-            </p>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 border-white/25 bg-white/10 text-white hover:bg-white/15 hover:text-white"
+                    disabled={!!exporting}
+                  >
+                    <Download className="h-4 w-4" />
+                    {exporting ? "Exporting…" : "Complete report"}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
+                    <FileSpreadsheet className="h-4 w-4" /> Excel (.xlsx)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
+                    <FileText className="h-4 w-4" /> PDF report
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-1" disabled={!!exporting}>
-              <Download className="h-4 w-4" />
-              {exporting ? "Exporting…" : "Complete report"}
-              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
-              <FileSpreadsheet className="h-4 w-4" /> Excel (.xlsx)
-            </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
-              <FileText className="h-4 w-4" /> PDF report
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -49,6 +49,8 @@ export interface StaffUser {
   modulePermissions?: Record<string, string[]>;
   role?: RoleOption | string;
   createdAt?: string;
+  updatedAt?: string;
+  lastLogin?: string;
   permissions?: PermissionDefinition[];
   /** Populated for parent users on GET /users (all-users list). */
   linkedStudents?: LinkedStudentSummary[];
