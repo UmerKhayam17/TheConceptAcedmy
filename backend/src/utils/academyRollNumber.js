@@ -16,25 +16,52 @@ async function classRollPrefix(classId) {
   return `${sessionPart}-${classPart}`;
 }
 
+/**
+ * Highest numeric suffix already used for this prefix (any student status),
+ * then +1. Unique index applies to all non-empty rollNumbers — not only active.
+ */
+async function nextSeqForPrefix(prefix, { exactThreeDigits = false } = {}) {
+  const pattern = exactThreeDigits
+    ? `^${escapeRegex(prefix)}-(\\d{3})$`
+    : `^${escapeRegex(prefix)}-(\\d+)$`;
+  const rx = new RegExp(pattern);
+
+  const rows = await AcademyStudent.find({
+    rollNumber: new RegExp(`^${escapeRegex(prefix)}-`),
+  })
+    .select('rollNumber')
+    .lean();
+
+  let max = 0;
+  for (const row of rows) {
+    const m = String(row.rollNumber || '').match(rx);
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return max + 1;
+}
+
+async function allocateRoll(prefix, { exactThreeDigits = false } = {}) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const seq = String(await nextSeqForPrefix(prefix, { exactThreeDigits })).padStart(3, '0');
+    const candidate = `${prefix}-${seq}`;
+    const taken = await AcademyStudent.exists({ rollNumber: candidate });
+    if (!taken) return candidate;
+  }
+  throw new Error(`Unable to allocate roll number for prefix ${prefix}`);
+}
+
 /** Temporary roll assigned at admission intake (replaced on activation). */
 async function generateTemporaryRollNumber(classId) {
   const prefix = `TMP-${await classRollPrefix(classId)}`;
-  const count = await AcademyStudent.countDocuments({
-    rollNumber: new RegExp(`^${escapeRegex(prefix)}-`),
-  });
-  const seq = String(count + 1).padStart(3, '0');
-  return `${prefix}-${seq}`;
+  return allocateRoll(prefix);
 }
 
 /** Official class roll number — assigned when admission is completed. */
 async function generateAcademyRollNumber(classId) {
   const prefix = await classRollPrefix(classId);
-  const count = await AcademyStudent.countDocuments({
-    status: 'active',
-    rollNumber: new RegExp(`^${escapeRegex(prefix)}-\\d{3}$`),
-  });
-  const seq = String(count + 1).padStart(3, '0');
-  return `${prefix}-${seq}`;
+  return allocateRoll(prefix, { exactThreeDigits: true });
 }
 
 module.exports = { generateAcademyRollNumber, generateTemporaryRollNumber };

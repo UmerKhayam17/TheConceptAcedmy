@@ -357,7 +357,7 @@ export default function ParentAttendancePanel() {
     return list;
   }, [data?.records]);
 
-  const leaveRecords = recordsSorted.filter((r) => r.status === "leave");
+  // const leaveRecords = recordsSorted.filter((r) => r.status === "leave");
   const yearOptions = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
 
   const TrendLine = ({
@@ -672,7 +672,7 @@ export default function ParentAttendancePanel() {
               [
                 { key: "records" as const, label: "Attendance Records" },
                 { key: "summary" as const, label: "Monthly Summary" },
-                { key: "leave" as const, label: "Leave Applications" },
+                // { key: "leave" as const, label: "Leave Applications" },
               ] as const
             ).map((t) => (
               <button
@@ -756,6 +756,7 @@ export default function ParentAttendancePanel() {
             </div>
           )}
 
+          {/* Leave Applications tab — hidden for now
           {tab === "leave" && (
             leaveRecords.length === 0 ? (
               <p className="text-sm text-muted-foreground py-10 text-center">
@@ -793,6 +794,7 @@ export default function ParentAttendancePanel() {
               </div>
             )
           )}
+          */}
 
           {tab === "records" && (
             isLoading ? (

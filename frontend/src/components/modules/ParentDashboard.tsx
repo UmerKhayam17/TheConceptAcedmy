@@ -532,58 +532,106 @@ export default function ParentDashboard({
 
       {/* Header: Student profile (+ quote) | Quick Actions */}
       <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
-        <Card className="rounded-2xl border-0 bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)] overflow-hidden">
+        <Card className="relative overflow-hidden rounded-2xl border border-slate-100/80 bg-white p-5 sm:p-6 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#1E3A8A] via-[#3B82F6] to-[#60A5FA]"
+            aria-hidden
+          />
           {loading || !student ? (
             <p className="text-sm text-muted-foreground py-10 text-center">Loading student…</p>
           ) : (
-            <div className="flex flex-col lg:flex-row gap-4 lg:items-center">
-              <div className="flex gap-4 items-start min-w-0 flex-1">
-                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-slate-100 ring-4 ring-[#E8F1FB] shadow-sm">
-                  {photo ? (
-                    <img src={photo} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="grid h-full w-full place-items-center text-slate-400">
-                      <UserRound className="h-9 w-9" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-xl font-bold text-[#1E3A8A] leading-tight">
-                      {student.studentName}
-                    </h2>
-                    <Badge
-                      variant="outline"
-                      className={cn("capitalize rounded-full px-2.5", statusTone(student.status))}
-                    >
-                      {student.status === "active"
-                        ? "Active"
-                        : student.status.replace("_", " ")}
-                    </Badge>
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:justify-between">
+              <div className="flex min-w-0 flex-1 gap-4 sm:gap-5">
+                <div className="relative shrink-0">
+                  <div className="h-[88px] w-[88px] overflow-hidden rounded-2xl bg-gradient-to-br from-slate-100 to-slate-50 ring-1 ring-slate-200/80 shadow-sm">
+                    {photo ? (
+                      <img
+                        src={photo}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center bg-[#EEF4FF] text-[#64748B]">
+                        <UserRound className="h-10 w-10" strokeWidth={1.5} />
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm text-slate-500">
-                    {className}
-                    <span className="mx-1.5 text-slate-300">|</span>
-                    Roll No: {student.rollNumber || student.studentId || "—"}
-                    <span className="mx-1.5 text-slate-300">|</span>
-                    Section: {sectionName || "—"}
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
-                    <div className="flex items-start gap-2 text-sm">
-                      <CalendarDays className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-[11px] text-slate-400">Date of Birth</p>
-                        <p className="font-medium text-[#0F172A]">
+                  <span
+                    className={cn(
+                      "absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-full border-2 border-white shadow-sm",
+                      student.status === "active" ? "bg-emerald-500" : "bg-slate-400",
+                    )}
+                    title={student.status}
+                    aria-hidden
+                  />
+                </div>
+
+                <div className="min-w-0 flex-1 space-y-3">
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <h2 className="text-[1.35rem] font-bold tracking-tight text-[#0F172A] leading-none">
+                        {student.studentName}
+                      </h2>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          statusTone(student.status),
+                        )}
+                      >
+                        {student.status === "active"
+                          ? "Active"
+                          : student.status.replace("_", " ")}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70">
+                        Class{" "}
+                        <span className="ml-1 font-semibold text-[#0F172A]">{className}</span>
+                      </span>
+                      <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70">
+                        Roll{" "}
+                        <span className="ml-1 font-semibold text-[#0F172A]">
+                          {student.rollNumber || student.studentId || "—"}
+                        </span>
+                      </span>
+                      <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70">
+                        Section{" "}
+                        <span className="ml-1 font-semibold text-[#0F172A]">
+                          {sectionName || "—"}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+                    <div className="flex items-center gap-2.5 rounded-xl bg-[#F8FAFC] px-3 py-2.5 ring-1 ring-slate-100">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-sky-600 shadow-sm ring-1 ring-slate-100">
+                        <CalendarDays className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Date of Birth
+                        </p>
+                        <p className="truncate text-sm font-semibold text-[#0F172A]">
                           {formatDobLong(student.dateOfBirth)}
-                          {age != null ? ` (Age: ${age} years)` : ""}
+                          {age != null && age >= 0 ? (
+                            <span className="ml-1 font-medium text-slate-400">
+                              · {age} {age === 1 ? "yr" : "yrs"}
+                            </span>
+                          ) : null}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-start gap-2 text-sm">
-                      <User className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-[11px] text-slate-400">Gender</p>
-                        <p className="font-medium text-[#0F172A] capitalize">
+                    <div className="flex items-center gap-2.5 rounded-xl bg-[#F8FAFC] px-3 py-2.5 ring-1 ring-slate-100">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-violet-600 shadow-sm ring-1 ring-slate-100">
+                        <User className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Gender
+                        </p>
+                        <p className="truncate text-sm font-semibold capitalize text-[#0F172A]">
                           {student.gender || "—"}
                         </p>
                       </div>
@@ -592,8 +640,11 @@ export default function ParentDashboard({
                 </div>
               </div>
 
-              <div className="hidden md:flex items-center shrink-0 lg:max-w-[14rem] lg:border-l lg:border-slate-100 lg:pl-4">
-                <p className="text-xs sm:text-sm italic text-[#3B82F6] leading-snug text-right">
+              <div className="hidden lg:flex w-[200px] shrink-0 flex-col justify-center rounded-xl bg-gradient-to-br from-[#EEF4FF] to-[#F8FAFF] px-4 py-4 ring-1 ring-[#DBEAFE]/80">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-600/80">
+                  Note
+                </p>
+                <p className="mt-1.5 text-sm italic leading-relaxed text-[#1E3A8A]/90">
                   &ldquo;Small steps every day lead to big achievements.&rdquo;
                 </p>
               </div>
