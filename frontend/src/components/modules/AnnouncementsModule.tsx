@@ -10,6 +10,7 @@ import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
+import { useAuth } from "@/hooks/useAuth";
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -27,6 +28,8 @@ const AUDIENCE_LABELS: Record<AnnouncementAudience, string> = {
 };
 
 const AnnouncementsModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleActionCaps }) => {
+  const { user } = useAuth();
+  const isParent = user?.role === "parent";
   const qc = useQueryClient();
   const { toast } = useToast();
   const [title, setTitle] = useState("");
@@ -35,7 +38,7 @@ const AnnouncementsModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Mod
   const [search, setSearch] = useState("");
 
   const { data: list = [], isLoading } = useQuery({
-    queryKey: ["announcements"],
+    queryKey: ["announcements", isParent ? "parent" : "all"],
     queryFn: () => fetchAnnouncements(),
   });
 
@@ -61,14 +64,20 @@ const AnnouncementsModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Mod
   });
 
   const listFiltered = useMemo(() => {
-    const sorted = [...list].sort(
+    const scoped = isParent
+      ? list.filter((a) => {
+          const aud = String(a.targetAudience || "all");
+          return aud === "all" || aud === "parents" || aud === "class" || aud === "section";
+        })
+      : list;
+    const sorted = [...scoped].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     if (!search.trim()) return sorted;
     return sorted.filter((a) =>
       matchesPanelSearch(search, a.title, a.body, a.targetAudience, a.type)
     );
-  }, [list, search]);
+  }, [list, search, isParent]);
 
   const publish = () => {
     if (!title.trim()) return;

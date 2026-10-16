@@ -727,7 +727,7 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
   },
 ];
 
-/** Parent portal sidebar — children, schedule, attendance, and messaging only. */
+/** Parent portal sidebar — children, schedule, exams, messaging, calendar. */
 export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
   {
     id: "dashboard",
@@ -771,6 +771,50 @@ export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: CalendarDays,
         moduleKey: "timetable-view",
         href: (role) => timetableHref(role, "view"),
+      },
+    ],
+  },
+  {
+    id: "examinations",
+    label: "Exams",
+    icon: Award,
+    collapsible: true,
+    items: [
+      {
+        id: "class-tests",
+        label: "Class test results",
+        icon: ClipboardList,
+        moduleKey: "exam-tests",
+        href: (role) => testExamsHref(role, "enter-tests"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/enter-tests`),
+      },
+      {
+        id: "term-results",
+        label: "Exam results",
+        icon: Award,
+        moduleKey: "exam-term",
+        href: (role) => testExamsHref(role, "term-exams"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/term-exams`),
+      },
+      {
+        id: "date-sheet",
+        label: "Date sheet",
+        icon: CalendarDays,
+        moduleKey: "exam-date-sheet",
+        href: (role) => testExamsHref(role, "date-sheet"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/date-sheet`),
+      },
+      {
+        id: "report-card",
+        label: "Report cards",
+        icon: FileBadge,
+        moduleKey: "exam-report-card",
+        href: (role) => testExamsHref(role, "report-card"),
+        isActive: (pathname, role) =>
+          pathname.startsWith(`${p(role)}/exams/report-card`),
       },
     ],
   },
@@ -1050,7 +1094,7 @@ export const MOBILE_PRIMARY_NAV_IDS: Record<Role, string[]> = {
   ],
   accountant: ["dashboard", "students", "fee-management", "academy-expenses", "chat"],
   teacher: ["dashboard", "my-classes", "attendance", "chat", "class-tests"],
-  parent: ["dashboard", "students", "student-attendance", "chat", "announcements"],
+  parent: ["dashboard", "students", "student-attendance", "term-results", "chat"],
   student: ["dashboard", "student-timetable", "exams", "chat", "announcements"],
 };
 

@@ -1995,12 +1995,37 @@ export const markAcademyAttendance = (body: {
     body: JSON.stringify(body),
   });
 
-export const fetchAcademyAttendanceSummary = (params: { month: number; year: number }) => {
+export const fetchAcademyAttendanceSummary = (params: {
+  month: number;
+  year: number;
+  studentId?: string;
+}) => {
   const q = new URLSearchParams({
     month: String(params.month),
     year: String(params.year),
   });
+  if (params.studentId) q.set("studentId", params.studentId);
   return api<AcademyAttendanceMonthSummary>(`/attendance/summary?${q}`);
+};
+
+export interface StudentMonthAttendance {
+  month: number;
+  year: number;
+  daysInMonth: number;
+  summary: AcademyAttendanceMonthSummary & { attendanceRate: number | null };
+  records: AcademyAttendanceRecord[];
+}
+
+export const fetchStudentMonthAttendance = (params: {
+  studentId: string;
+  month: number;
+  year: number;
+}) => {
+  const q = new URLSearchParams({
+    month: String(params.month),
+    year: String(params.year),
+  });
+  return api<StudentMonthAttendance>(`/attendance/student/${params.studentId}?${q}`);
 };
 
 export type AttendanceExportFormat = "xlsx" | "pdf";

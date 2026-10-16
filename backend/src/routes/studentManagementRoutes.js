@@ -641,6 +641,11 @@ router.get(
   attendanceCtrl.summary
 );
 router.get(
+  '/attendance/student/:studentId',
+  requirePermission('view_attendance'),
+  attendanceCtrl.studentMonth
+);
+router.get(
   '/attendance/export',
   requireAnyPermission('view_attendance', 'mark_attendance'),
   attendanceCtrl.exportAttendance

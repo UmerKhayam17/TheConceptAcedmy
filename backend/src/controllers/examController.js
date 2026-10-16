@@ -5,7 +5,11 @@ const examService = require('../services/exam/examService');
 const { renderResultCardPdf } = require('../services/pdfService');
 const { renderExamAwardListPdf } = require('../services/academy/academyAwardListService');
 const { renderExamMarksReportPdf } = require('../services/academy/academyMarksReportService');
-const { roleNameOf, assertParentOwnsStudent } = require('../utils/parentScope');
+const {
+  roleNameOf,
+  assertParentOwnsStudent,
+  assertNotParent,
+} = require('../utils/parentScope');
 
 const createExam = catchAsync(async (req, res) => {
   const exam = await examService.createExam(req.body, req.user._id);
@@ -13,11 +17,14 @@ const createExam = catchAsync(async (req, res) => {
 });
 
 const listExams = catchAsync(async (req, res) => {
+  // Parents use /results/student/:id — not the full exam catalog.
+  assertNotParent(req, 'Parents cannot list all exams');
   const exams = await examService.listExams({ classId: req.query.classId });
   res.json({ success: true, data: exams });
 });
 
 const getExam = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot open exam setup');
   const exam = await examService.getExamById(req.params.id);
   res.json({ success: true, data: exam });
 });
@@ -28,6 +35,7 @@ const updateExam = catchAsync(async (req, res) => {
 });
 
 const getExamStudents = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot open exam student lists');
   const data = await examService.getExamStudents(req.params.id);
   res.json({ success: true, data });
 });
@@ -38,6 +46,7 @@ const enterMarks = catchAsync(async (req, res) => {
 });
 
 const getExamResults = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot open class-wide exam results');
   const results = await examService.getExamResults(req.params.id);
   res.json({ success: true, data: results });
 });
@@ -67,6 +76,7 @@ const publishAll = catchAsync(async (req, res) => {
 });
 
 const awardListPdf = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot download award lists');
   const subjectId = req.query.subjectId ? String(req.query.subjectId) : undefined;
   const buffer = await renderExamAwardListPdf(req.params.id, subjectId);
   const filename = subjectId
@@ -78,6 +88,7 @@ const awardListPdf = catchAsync(async (req, res) => {
 });
 
 const marksReportPdf = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot download class marks reports');
   const view = String(req.query.view || 'exam').toLowerCase();
   const subjectId = req.query.subjectId ? String(req.query.subjectId) : undefined;
   const studentId = req.query.studentId ? String(req.query.studentId) : undefined;

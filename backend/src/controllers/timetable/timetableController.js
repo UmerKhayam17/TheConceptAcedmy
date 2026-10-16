@@ -5,6 +5,7 @@ const classBoardService = require('../../services/timetable/classBoardService');
 const autoGenerateAllService = require('../../services/timetable/autoGenerateAllService');
 const sectionDashboardService = require('../../services/timetable/sectionDashboardService');
 const { validateVersion } = require('../../services/timetable/timetableConflictService');
+const { assertParentCanAccessSection, assertNotParent } = require('../../utils/parentScope');
 
 // Versions
 const listVersions = catchAsync(async (req, res) => {
@@ -103,6 +104,7 @@ const roomSchedule = catchAsync(async (req, res) => {
 
 const sectionSchedule = catchAsync(async (req, res) => {
   const { sessionId, sectionId } = req.query;
+  await assertParentCanAccessSection(req, sectionId);
   const version = await timetableVersionService.getPublishedVersion(sessionId, sectionId);
   if (!version) {
     return res.json({ success: true, data: { version: null, grid: null } });
@@ -117,6 +119,7 @@ const createSubstitution = catchAsync(async (req, res) => {
 });
 
 const getClassBoard = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot access the class board');
   const data = await classBoardService.getClassBoard({
     sessionId: req.query.sessionId,
     classId: req.query.classId,
@@ -127,6 +130,7 @@ const getClassBoard = catchAsync(async (req, res) => {
 });
 
 const upsertSharedLesson = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot edit the class board');
   const data = await classBoardService.upsertSharedLesson(req.body, req.user._id);
   res.status(201).json({ success: true, data });
 });
@@ -162,6 +166,8 @@ const autoGenerateAll = catchAsync(async (req, res) => {
 });
 
 const getSectionDashboard = catchAsync(async (req, res) => {
+  // Admin/staff overview — parents must use child-scoped schedule endpoints instead.
+  assertNotParent(req, 'Parents cannot open the section dashboard');
   const data = await sectionDashboardService.getSectionDashboard({
     sessionId: req.query.sessionId,
     classId: req.query.classId,

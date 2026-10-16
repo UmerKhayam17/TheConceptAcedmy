@@ -9,20 +9,7 @@ const {
   assertTeacherOwnsCombo,
   assertTeacherHasClassSection,
 } = require('../../services/academy/teacherTestScope');
-
-async function assertParentOwnsStudent(req, studentId) {
-  const roleName = req.user?.roleDoc?.name || req.user?.role?.name || req.user?.role;
-  if (String(roleName) !== 'parent') return;
-
-  const student = await AcademyStudent.findById(studentId).select('guardianEmail');
-  if (!student) throw new ApiError(404, 'Student not found');
-
-  const guardianEmail = String(student.guardianEmail || '').trim().toLowerCase();
-  const userEmail = String(req.user?.email || '').trim().toLowerCase();
-  if (!guardianEmail || guardianEmail !== userEmail) {
-    throw new ApiError(403, 'Access denied');
-  }
-}
+const { assertParentOwnsStudent, assertNotParent } = require('../../utils/parentScope');
 
 async function assertTeacherOwnsStudent(req, studentId) {
   if (!isTeacherRole(req)) return;
@@ -69,6 +56,7 @@ const remove = catchAsync(async (req, res) => {
 });
 
 const classEntry = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot open class assessment entry');
   if (isTeacherRole(req)) {
     const { classId, sectionId, subjectId, sessionId } = req.query;
     if (classId && sectionId && subjectId) {

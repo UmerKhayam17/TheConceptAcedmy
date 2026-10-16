@@ -9,8 +9,9 @@ import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import RegistrationTab from "@/components/modules/student-management/RegistrationTab";
 import RegisterStudentPage from "@/components/modules/student-management/RegisterStudentPage";
 import StudentDetailPage from "@/components/modules/student-management/StudentDetailPage";
+import ParentChildrenPage from "@/components/modules/parent/ParentChildrenPage";
 
-/** Student Records module — accountant enrollment under `/panel/:role/students`. */
+/** Student Records — enrollment for staff; linked children for parents. */
 const StudentsRecordsModule = ({
   caps,
   section,
@@ -23,12 +24,29 @@ const StudentsRecordsModule = ({
 }) => {
   const { user } = useAuth();
   const role = user?.role ?? "admin";
+  const isParent = role === "parent";
   const { sessionId } = usePanelSession();
 
   const routes = user?.role ? academyStudentRoutes(user.role, "records") : null;
   const listHref = routes?.list ?? "..";
 
   const body = (() => {
+    if (isParent) {
+      if (section === "register" || section === "new") {
+        return <Navigate to={listHref} replace />;
+      }
+      if (section && isAcademyStudentId(section)) {
+        if (action === "activate" || action === "edit") {
+          return <Navigate to={routes?.detail(section) ?? listHref} replace />;
+        }
+        if (action) return <Navigate to={routes?.detail(section) ?? listHref} replace />;
+        return <StudentDetailPage caps={caps} studentId={section} routes={routes ?? undefined} />;
+      }
+      if (section) return <Navigate to={listHref} replace />;
+      // My Children → same parent dashboard, with student name chips
+      return <ParentChildrenPage />;
+    }
+
     if (section === "register") {
       if (!caps.canEdit) return <Navigate to={listHref} replace />;
       return (

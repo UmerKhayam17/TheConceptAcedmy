@@ -592,7 +592,6 @@ const SYSTEM_MODULES = [
     order: 69,
     actions: ['view'],
     parentGroup: 'communication',
-    showInPermissions: false,
   },
   {
     key: 'notifications',
@@ -603,7 +602,6 @@ const SYSTEM_MODULES = [
     order: 91,
     actions: ['view'],
     parentGroup: 'communication',
-    showInPermissions: false,
   },
   {
     key: 'profile',

@@ -47,6 +47,7 @@ import {
   createStaffUser,
   TEACHER_DEFAULT_MODULE_PERMISSIONS,
   ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS,
+  PARENT_ALLOWED_MODULE_KEYS,
   PARENT_DEFAULT_MODULE_PERMISSIONS,
   fetchAllRoles,
   fetchParentStudents,
@@ -757,7 +758,6 @@ export default function UserFormPage({
                     <ParentUserCreateFields
                       value={parentCreate}
                       onChange={setParentCreate}
-                      modules={modules}
                     />
                   </div>
                 ) : null
@@ -837,25 +837,43 @@ export default function UserFormPage({
             title="Module Permissions"
             description="Choose what this user can access and manage."
           >
-            {!isParentCreate && modules.length > 0 ? (
+            {isParentCreate ? (
+              modules.length > 0 ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Parent portal modules only. Defaults are pre-selected.
+                  </p>
+                  <ModuleAccessMatrix
+                    modules={modules.filter((m) => PARENT_ALLOWED_MODULE_KEYS.has(m.key))}
+                    value={parentCreate.modulePermissions}
+                    onChange={(next) =>
+                      setParentCreate((prev) => ({ ...prev, modulePermissions: next }))
+                    }
+                    embedded
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">Select a role to load parent module permissions.</p>
+              )
+            ) : modules.length > 0 ? (
               <ModuleAccessMatrix
-                modules={modules}
+                modules={
+                  isParentRole
+                    ? modules.filter((m) => PARENT_ALLOWED_MODULE_KEYS.has(m.key))
+                    : modules
+                }
                 value={modulePerms}
                 onChange={setModulePerms}
                 embedded
               />
             ) : (
-              <p className="text-sm text-slate-500">
-                {isParentCreate
-                  ? "Parent module access is set with the student link in Basic Information."
-                  : "Select a role to load default module permissions."}
-              </p>
+              <p className="text-sm text-slate-500">Select a role to load default module permissions.</p>
             )}
           </StepSection>
         </div>
       </div>
 
-      <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90 px-4 sm:px-6 lg:px-8 py-3 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]">
+      <div className="border-t border-slate-200 px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="outline" className="h-10 gap-2 border-primary/30 text-primary" asChild>
             <Link to={listHref}>

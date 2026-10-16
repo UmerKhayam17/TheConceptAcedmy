@@ -218,7 +218,7 @@ export const ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   staffAttendance: ["view", "create"],
 };
 
-/** Default module grants for a new parent account (matches seeded parent role). */
+/** Default module grants for a new parent account (matches seeded parent role / parentDefaults.js). */
 export const PARENT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   student: ["view"],
   attendance: ["view"],
@@ -226,12 +226,15 @@ export const PARENT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   examTerm: ["view"],
   examDateSheet: ["view"],
   examReportCard: ["view"],
-  timetableBuilder: ["view"],
-  timetableBoard: ["view"],
   timetableView: ["view"],
   chat: ["view", "create", "participate"],
   announcement: ["view"],
+  notifications: ["view"],
+  schoolCalendar: ["view"],
 };
+
+/** Modules selectable for parent accounts (portal matrix only). */
+export const PARENT_ALLOWED_MODULE_KEYS = new Set(Object.keys(PARENT_DEFAULT_MODULE_PERMISSIONS));
 
 export async function fetchParentStudents(parentUserId: string): Promise<LinkedStudentSummary[]> {
   const res = await authedFetch(`/users/${parentUserId}/parent-students`);

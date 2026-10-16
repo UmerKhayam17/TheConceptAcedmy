@@ -57,8 +57,11 @@ const PermissionCatalogModule = lazy(() => import("@/components/modules/Permissi
 const AiAttendanceModule = lazy(() => import("@/components/modules/AiAttendanceModule"));
 const StaffAttendanceModule = lazy(() => import("@/components/modules/StaffAttendanceModule"));
 const TeacherFeatureModule = lazy(() => import("@/components/modules/TeacherFeatureModule"));
+const NotificationsModule = lazy(() => import("@/components/modules/NotificationsModule"));
+const SchoolCalendarModule = lazy(() => import("@/components/modules/SchoolCalendarModule"));
 const AdminDashboard = lazy(() => import("@/components/modules/AdminDashboard"));
 const TeacherDashboard = lazy(() => import("@/components/modules/TeacherDashboard"));
+const ParentDashboard = lazy(() => import("@/components/modules/ParentDashboard"));
 const FinanceDashboard = lazy(() => import("@/components/modules/FinanceDashboard"));
 
 function ModuleFallback() {
@@ -84,8 +87,6 @@ const TEACHER_FEATURE_KEYS = new Set<ModuleKey>([
   "parent-meetings",
   "online-classes",
   "library",
-  "school-calendar",
-  "notifications",
   "leave",
 ]);
 
@@ -108,6 +109,18 @@ const Dashboard = ({
   const { data: termExams = [] } = useQuery({
     queryKey: ["dashboard-term-exams"],
     queryFn: () => fetchExams(),
+    enabled: role !== "parent",
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const { data: parentChildren = [] } = useQuery({
+    queryKey: ["dashboard-parent-children"],
+    queryFn: async () => {
+      const r = await fetchAcademyStudents({ limit: 100 });
+      return r.students;
+    },
+    enabled: role === "parent",
     retry: false,
     staleTime: 60_000,
   });
@@ -196,10 +209,26 @@ const Dashboard = ({
       { label: "Announcements", value: String(announcementCount), hint: "Published notices" },
     ],
     parent: [
-      { label: "Announcements", value: String(announcementCount), hint: "Published notices" },
-      { label: "Term exams", value: String(termExamCount), hint: "Published results in Exams" },
-      { label: "Fees outstanding", value: due ? `₨ ${due.toLocaleString()}` : "None", hint: "Academy fees" },
-      { label: "Fees collected", value: `₨ ${collected.toLocaleString()}`, hint: "All periods" },
+      {
+        label: "My children",
+        value: String(parentChildren.length),
+        hint: "Linked to your account",
+      },
+      {
+        label: "Announcements",
+        value: String(announcementCount),
+        hint: "School notices",
+      },
+      {
+        label: "Active",
+        value: String(parentChildren.filter((s) => s.status === "active").length),
+        hint: "Enrolled students",
+      },
+      {
+        label: "Modules",
+        value: String(items.length),
+        hint: "Available in your portal",
+      },
     ],
     student: [
       { label: "Term exams", value: String(termExamCount), hint: "See student profile" },
@@ -288,6 +317,10 @@ const Panel = () => {
               name={session.name}
               avatarUrl={session.profileImage}
             />
+          </LazyModule>
+        ) : r === "parent" ? (
+          <LazyModule>
+            <ParentDashboard name={session.name} />
           </LazyModule>
         ) : (
           <Dashboard
@@ -452,6 +485,8 @@ const Panel = () => {
       case "expenses":      return <ExpensesModule perm={perm} caps={caps} />;
       case "chat":          return <ChatModule user={session} perm={perm} caps={caps} />;
       case "announcements": return <AnnouncementsModule perm={perm} caps={caps} />;
+      case "notifications": return <NotificationsModule />;
+      case "school-calendar": return <SchoolCalendarModule />;
       case "reports":       return <ReportsModule />;
       case "datasheets":    return <DatasheetsModule perm={perm} caps={caps} />;
       case "permissions":   return <PermissionsModule perm={perm} caps={caps} />;

@@ -7,6 +7,7 @@ import {
   type PeriodSlot,
   type ScheduleSlot,
 } from "@/lib/timetableApi";
+import { subjectIcon } from "@/lib/subjectTheme";
 import { DAY_FULL_LABELS, DAY_LABELS, slotMatchesPeriod, subjectColor } from "./constants";
 import type { Weekday } from "@/lib/configApi";
 
@@ -17,53 +18,59 @@ export function AcademyLessonCell({ slot }: { slot: ScheduleSlot }) {
   const missing = Boolean(slot.subjectMissing) || isDeletedSubject(slot.subject);
   const teachers = entries.map((e) => e.teacher?.name || "—").join(" / ") || "—";
   const isParallel = entries.length > 1;
-  const roomLabel = slot.room?.code || slot.room?.name;
+  const roomLabel = slot.room?.code || slot.room?.name || "—";
+  const PrimaryIcon = subjectIcon(
+    missing ? "Deleted subject" : entries[0]?.subject?.name || slot.subject?.name,
+  );
 
   return (
     <div
       className={cn(
-        "relative rounded-xl border px-2.5 py-2 text-left text-xs leading-snug shadow-sm",
+        "relative flex h-[72px] w-full min-w-0 flex-col justify-center overflow-hidden rounded-xl border px-2.5 py-1.5 text-left text-xs leading-snug shadow-sm",
         missing
           ? "border-dashed border-amber-400/80 bg-amber-50 text-amber-900"
-          : subjectColor(entries[0]?.subject?._id || slot.subject?._id || "")
+          : subjectColor(entries[0]?.subject?._id || slot.subject?._id || ""),
       )}
       title={missing ? "Subject was deleted" : title}
     >
-      {slot.combinedGroupId && (
+      {(slot.combinedGroupId || isParallel) && (
         <span
-          className="absolute right-1.5 top-1.5 text-emerald-600"
-          title="Shared / combined lesson"
+          className={cn(
+            "absolute bottom-1.5 right-1.5",
+            slot.combinedGroupId ? "text-emerald-600" : "text-violet-600",
+          )}
+          title={slot.combinedGroupId ? "Shared / combined lesson" : "Parallel entry"}
         >
-          <Users className="h-3.5 w-3.5" />
+          {slot.combinedGroupId ? (
+            <Users className="h-3.5 w-3.5" />
+          ) : (
+            <Link2 className="h-3 w-3" />
+          )}
         </span>
       )}
-      <div className="pr-5">
-        <div className="font-semibold text-[13px] truncate" title={title}>
-          {title}
+      <div className="min-w-0 overflow-hidden pr-5">
+        <div className="inline-flex min-w-0 items-center gap-1.5 font-semibold text-[13px]" title={title}>
+          <PrimaryIcon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+          <span className="truncate">{title}</span>
         </div>
-        <div className="mt-1 flex items-center gap-1 text-muted-foreground truncate" title={teachers}>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1 text-muted-foreground" title={teachers}>
           <User className="h-3 w-3 shrink-0" />
           <span className="truncate">{teachers}</span>
         </div>
-        {roomLabel && (
-          <div className="mt-0.5 flex items-center gap-1 text-muted-foreground truncate">
-            <DoorOpen className="h-3 w-3 shrink-0" />
-            <span className="truncate">{roomLabel}</span>
-          </div>
-        )}
-        {isParallel && (
-          <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-violet-600">
-            <Link2 className="h-3 w-3" /> Parallel
-          </div>
-        )}
+        <div className="mt-0.5 flex min-w-0 items-center gap-1 pr-4 text-muted-foreground" title={roomLabel}>
+          <DoorOpen className="h-3 w-3 shrink-0" />
+          <span className="truncate">{roomLabel}</span>
+        </div>
       </div>
     </div>
   );
 }
 
-type SheetRow = {
+export type SheetRow = {
   key: string;
   label: string;
+  /** Optional secondary line under the row label (e.g. "Oct 12"). */
+  sublabel?: string;
   /** Slots for this row (filtered by day when day-mode, or all week when week-mode). */
   slots: ScheduleSlot[];
   /** When set, only slots matching this day are shown in period columns. */
@@ -124,20 +131,24 @@ export default function AcademyPeriodSheet({
           {rows.map((row) => (
             <tr key={row.key} className="align-top">
               <td className="sticky left-0 z-10 border-b bg-primary/5 px-3 py-3 font-semibold whitespace-nowrap">
-                {row.label}
+                <div>{row.label}</div>
+                {row.sublabel ? (
+                  <div className="mt-0.5 text-[11px] font-normal text-muted-foreground">
+                    {row.sublabel}
+                  </div>
+                ) : null}
               </td>
               {lecturePeriods.map((period) => {
                 const slot = row.slots.find(
                   (s) =>
-                    slotMatchesPeriod(s, period._id) &&
-                    (row.day ? s.day === row.day : true)
+                    slotMatchesPeriod(s, period._id) && (row.day ? s.day === row.day : true),
                 );
                 return (
                   <td key={period._id} className="border-b p-1.5 align-top">
                     {slot ? (
                       <AcademyLessonCell slot={slot} />
                     ) : (
-                      <div className="flex w-full min-h-[72px] items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground">
+                      <div className="flex h-[72px] w-full min-w-0 items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground">
                         —
                       </div>
                     )}
@@ -158,12 +169,20 @@ export default function AcademyPeriodSheet({
 /** Build week rows (one per weekday) for a single section's slots. */
 export function weekRowsFromSlots(
   slots: ScheduleSlot[],
-  days: Weekday[]
+  days: Weekday[],
+  dateByDay?: Partial<Record<Weekday, Date>>,
 ): SheetRow[] {
-  return days.map((d) => ({
-    key: d,
-    label: DAY_FULL_LABELS[d] || DAY_LABELS[d],
-    day: d,
-    slots: slots.filter((s) => s.day === d),
-  }));
+  return days.map((d) => {
+    const date = dateByDay?.[d];
+    const sublabel = date
+      ? date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      : undefined;
+    return {
+      key: d,
+      label: DAY_FULL_LABELS[d] || DAY_LABELS[d],
+      sublabel,
+      day: d,
+      slots: slots.filter((s) => s.day === d),
+    };
+  });
 }

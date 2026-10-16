@@ -1,4 +1,5 @@
 const catchAsync = require('../../utils/catchAsync');
+const ApiError = require('../../utils/ApiError');
 const classService = require('../../services/academy/academyClassService');
 const classRecordService = require('../../services/academy/academyClassRecordService');
 const rt = require('../../services/realtime/academyRealtime');
@@ -9,6 +10,16 @@ const {
   assertTeacherCanAccessClass,
   idStr,
 } = require('../../services/academy/teacherTestScope');
+const {
+  isParentRole,
+  linkedStudentsForParent,
+  assertNotParent,
+} = require('../../utils/parentScope');
+
+async function parentAllowedClassIds(req) {
+  const kids = await linkedStudentsForParent(req, { select: 'classId' });
+  return new Set(kids.map((s) => idStr(s.classId)).filter(Boolean));
+}
 
 const list = catchAsync(async (req, res) => {
   let data = await classService.listClasses({
@@ -20,6 +31,9 @@ const list = catchAsync(async (req, res) => {
     const combos = await getTeacherScopeCombos(req.user._id, req.query.sessionId);
     const allowed = new Set(classIdsFromCombos(combos).map(idStr));
     data = data.filter((c) => allowed.has(idStr(c._id)));
+  } else if (isParentRole(req)) {
+    const allowed = await parentAllowedClassIds(req);
+    data = data.filter((c) => allowed.has(idStr(c._id)));
   }
   res.json({ success: true, data });
 });
@@ -27,12 +41,18 @@ const list = catchAsync(async (req, res) => {
 const getOne = catchAsync(async (req, res) => {
   if (isTeacherRole(req)) {
     await assertTeacherCanAccessClass(req.user._id, req.params.id, req.query.sessionId);
+  } else if (isParentRole(req)) {
+    const allowed = await parentAllowedClassIds(req);
+    if (!allowed.has(idStr(req.params.id))) {
+      throw new ApiError(403, 'Access denied');
+    }
   }
   const data = await classService.getClassById(req.params.id);
   res.json({ success: true, data });
 });
 
 const getRecord = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot open class records');
   let allowedSectionIds = null;
   if (isTeacherRole(req)) {
     const combos = await assertTeacherCanAccessClass(req.user._id, req.params.id, req.query.sessionId);

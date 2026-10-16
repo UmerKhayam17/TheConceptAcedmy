@@ -154,30 +154,18 @@ function buildDefaultRoleDefs(allPermissionIds) {
       description: 'Academic',
       modulePermissions: teacherModulePermissionsMap(),
     },
-    parent: {
-      name: 'parent',
-      permissionNames: [
-        'view_attendance',
-        'view_results',
-        'use_chat',
-        'view_timetables',
-        'view_academy_students',
-      ],
-      description: 'Parent portal',
-      modulePermissions: new Map([
-        ['student', ['view']],
-        ['attendance', ['view']],
-        ['examTests', ['view']],
-        ['examTerm', ['view']],
-        ['examDateSheet', ['view']],
-        ['examReportCard', ['view']],
-        ['timetableBuilder', ['view']],
-        ['timetableBoard', ['view']],
-        ['timetableView', ['view']],
-        ['chat', ['view', 'create', 'participate']],
-        ['announcement', ['view']],
-      ]),
-    },
+    parent: (() => {
+      const {
+        PARENT_PERMISSION_NAMES,
+        parentModulePermissionsMap,
+      } = require('../config/parentDefaults');
+      return {
+        name: 'parent',
+        permissionNames: PARENT_PERMISSION_NAMES,
+        description: 'Parent portal',
+        modulePermissions: parentModulePermissionsMap(),
+      };
+    })(),
     accountant: {
       name: 'accountant',
       permissionNames: ACCOUNTANT_PERMISSION_NAMES,
@@ -272,72 +260,30 @@ async function syncBuiltInRolePermissions() {
 
   const parentRole = await Role.findOne({ name: 'parent' }).lean();
   if (parentRole) {
-    const parentPerms = await permissionIdsByNames([
-      'view_attendance',
-      'view_results',
-      'use_chat',
-      'view_timetables',
-      'view_academy_students',
-    ]);
+    const {
+      PARENT_PERMISSION_NAMES,
+      parentModulePermissionsObject,
+      normalizeParentModulePermissions,
+    } = require('../config/parentDefaults');
+    const parentPerms = await permissionIdsByNames(PARENT_PERMISSION_NAMES);
+    const parentMods = parentModulePermissionsObject();
     await Role.updateOne(
       { _id: parentRole._id },
       {
         $set: {
           permissions: parentPerms,
-          modulePermissions: {
-            student: ['view'],
-            attendance: ['view'],
-            examTests: ['view'],
-            examTerm: ['view'],
-            examDateSheet: ['view'],
-            examReportCard: ['view'],
-            timetableBuilder: ['view'],
-            timetableBoard: ['view'],
-            timetableView: ['view'],
-            chat: ['view', 'create', 'participate'],
-            announcement: ['view'],
-          },
+          modulePermissions: parentMods,
+          description: 'Parent portal',
         },
       }
     );
 
-    // Strip fee only; ensure examination leaf view for test results on existing parent users.
-    const examLeaves = ['examTests', 'examTerm', 'examDateSheet', 'examReportCard'];
+    // Migrate existing parent users: drop builder/board/fees/admin, ensure portal modules.
     const parentUsers = await User.find({ role: parentRole._id }).select('modulePermissions');
     for (const pu of parentUsers) {
-      const perms = pu.modulePermissions;
-      const asMap =
-        perms instanceof Map
-          ? new Map(perms)
-          : new Map(Object.entries(perms && typeof perms === 'object' ? perms : {}));
-      let changed = false;
-      if (asMap.has('fee')) {
-        asMap.delete('fee');
-        changed = true;
-      }
-      const hasExam =
-        asMap.has('exam') || examLeaves.some((k) => asMap.has(k));
-      if (!hasExam) {
-        examLeaves.forEach((k) => asMap.set(k, ['view']));
-        changed = true;
-      }
-      if (!changed) continue;
-      pu.modulePermissions =
-        asMap.size > 0
-          ? asMap
-          : new Map([
-              ['student', ['view']],
-              ['attendance', ['view']],
-              ['examTests', ['view']],
-              ['examTerm', ['view']],
-              ['examDateSheet', ['view']],
-              ['examReportCard', ['view']],
-              ['timetableBuilder', ['view']],
-              ['timetableBoard', ['view']],
-              ['timetableView', ['view']],
-              ['chat', ['view', 'create', 'participate']],
-              ['announcement', ['view']],
-            ]);
+      const next = normalizeParentModulePermissions(pu.modulePermissions);
+      pu.modulePermissions = next;
+      pu.markModified('modulePermissions');
       // eslint-disable-next-line no-await-in-loop
       await pu.save();
     }

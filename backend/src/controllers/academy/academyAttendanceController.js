@@ -181,12 +181,37 @@ const mark = catchAsync(async (req, res) => {
 
 const summary = catchAsync(async (req, res) => {
   const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
+  let studentIds = null;
+  if (roleNameOf(req) === 'parent') {
+    studentIds = await linkedStudentIdsForParent(req);
+    if (req.query.studentId) {
+      await assertParentOwnsStudent(req, req.query.studentId);
+      studentIds = [req.query.studentId];
+    }
+  }
   const data = await attendanceService.getSummary({
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
     scopeFilter: teacherScope?.scopeFilter || null,
+    studentIds,
   });
   res.json({ success: true, data });
 });
 
-module.exports = { list, mark, summary, exportAttendance };
+const studentMonth = catchAsync(async (req, res) => {
+  const studentId = req.params.studentId;
+  await assertParentOwnsStudent(req, studentId);
+  if (isTeacherRole(req)) {
+    const student = await AcademyStudent.findById(studentId).select('classId sectionId');
+    if (!student) throw new ApiError(404, 'Student not found');
+    await assertTeacherCanAccessStudent(req.user._id, student, req.query.sessionId);
+  }
+  const data = await attendanceService.listByStudentMonth({
+    studentId,
+    month: req.query.month ? Number(req.query.month) : undefined,
+    year: req.query.year ? Number(req.query.year) : undefined,
+  });
+  res.json({ success: true, data });
+});
+
+module.exports = { list, mark, summary, exportAttendance, studentMonth };

@@ -7,6 +7,12 @@ const {
   sectionIdsForClassFromCombos,
   idStr,
 } = require('../../services/academy/teacherTestScope');
+const { isParentRole, linkedStudentsForParent } = require('../../utils/parentScope');
+
+async function parentAllowedSectionIds(req) {
+  const kids = await linkedStudentsForParent(req, { select: 'sectionId' });
+  return new Set(kids.map((s) => idStr(s.sectionId)).filter(Boolean));
+}
 
 const listByClass = catchAsync(async (req, res) => {
   const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
@@ -18,6 +24,9 @@ const listByClass = catchAsync(async (req, res) => {
     const allowed = new Set(
       sectionIdsForClassFromCombos(teacherScope.combos, req.params.classId).map(idStr)
     );
+    data = data.filter((s) => allowed.has(idStr(s._id)));
+  } else if (isParentRole(req)) {
+    const allowed = await parentAllowedSectionIds(req);
     data = data.filter((s) => allowed.has(idStr(s._id)));
   }
   res.json({ success: true, data });
@@ -36,6 +45,9 @@ const listBySession = catchAsync(async (req, res) => {
     data = data.filter(
       (s) => allowedClassIds.has(idStr(s.classId?._id || s.classId)) && allowedSections.has(idStr(s._id))
     );
+  } else if (isParentRole(req)) {
+    const allowed = await parentAllowedSectionIds(req);
+    data = data.filter((s) => allowed.has(idStr(s._id)));
   }
   res.json({ success: true, data });
 });

@@ -465,7 +465,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     dashboard: "view",
     students: "view",
     attendance: "view",
-    ...TIMETABLE_LEAF_VIEW,
+    "timetable-view": "view",
     ...EXAM_LEAF_VIEW,
     chat: "view",
     announcements: "view",

@@ -3,8 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { fetchSessions, isSessionWritable } from "@/lib/configApi";
 import {
   fetchAcademyClasses,
@@ -12,10 +10,7 @@ import {
   fetchSectionsByClass,
   type AcademyStudent,
 } from "@/lib/studentManagementApi";
-import {
-  PARENT_DEFAULT_MODULE_PERMISSIONS,
-  type ModuleRegistryEntry,
-} from "@/lib/staffApi";
+import { PARENT_DEFAULT_MODULE_PERMISSIONS } from "@/lib/staffApi";
 
 export type ParentCreateSelection = {
   studentId: string | null;
@@ -58,13 +53,6 @@ function studentLabel(s: AcademyStudent): string {
   return `${s.studentName} · ${id}`;
 }
 
-function defaultActionsForModule(mod: ModuleRegistryEntry): string[] {
-  const seeded = PARENT_DEFAULT_MODULE_PERMISSIONS[mod.key];
-  if (seeded?.length) return [...seeded];
-  if (mod.actions.includes("view")) return ["view"];
-  return mod.actions.slice(0, 1);
-}
-
 export function emptyParentCreateSelection(): ParentCreateSelection {
   return {
     studentId: null,
@@ -79,11 +67,9 @@ export function emptyParentCreateSelection(): ParentCreateSelection {
 export default function ParentUserCreateFields({
   value,
   onChange,
-  modules,
 }: {
   value: ParentCreateSelection;
   onChange: (next: ParentCreateSelection) => void;
-  modules: ModuleRegistryEntry[];
 }) {
   const [sessionId, setSessionId] = useState("");
   const [classId, setClassId] = useState("");
@@ -189,13 +175,6 @@ export default function ParentUserCreateFields({
     });
     setSearch(studentLabel(s));
     setPickerOpen(false);
-  };
-
-  const toggleModule = (mod: ModuleRegistryEntry, checked: boolean) => {
-    const next = { ...value.modulePermissions };
-    if (checked) next[mod.key] = defaultActionsForModule(mod);
-    else delete next[mod.key];
-    patch({ modulePermissions: next });
   };
 
   const selectClassName = "w-full h-10 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50";
@@ -360,42 +339,6 @@ export default function ParentUserCreateFields({
           </p>
         </div>
       </div>
-
-      {modules.length > 0 && (
-        <div className="space-y-3 rounded-lg border border-border bg-secondary/20 p-3">
-          <div>
-            <div className="text-sm font-semibold text-primary">Module access</div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Defaults are pre-selected. Add or remove modules as needed.
-            </p>
-          </div>
-          <ScrollArea className="h-[min(280px,40vh)] pr-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {modules.map((mod) => {
-                const checked = Boolean(value.modulePermissions[mod.key]?.length);
-                return (
-                  <label
-                    key={mod.key}
-                    className="flex items-start gap-2 rounded-md border border-border bg-background/80 p-3 cursor-pointer"
-                  >
-                    <Checkbox
-                      className="mt-0.5"
-                      checked={checked}
-                      onCheckedChange={(v) => toggleModule(mod, v === true)}
-                    />
-                    <span>
-                      <span className="block text-sm font-medium text-primary">{mod.name}</span>
-                      {mod.description ? (
-                        <span className="block text-[11px] text-muted-foreground leading-snug">{mod.description}</span>
-                      ) : null}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </ScrollArea>
-        </div>
-      )}
     </div>
   );
 }

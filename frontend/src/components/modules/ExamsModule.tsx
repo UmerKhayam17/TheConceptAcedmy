@@ -18,6 +18,7 @@ import DateSheetPanel from "./exams/DateSheetPanel";
 import DateSheetDetailPage from "./exams/DateSheetDetailPage";
 import ReportCardPanel from "./exams/ReportCardPanel";
 import ReportCardDetailPage from "./exams/ReportCardDetailPage";
+import ParentExamsPanel from "./parent/ParentExamsPanel";
 
 const ExamsModule = ({
   perm: _perm,
@@ -34,9 +35,23 @@ const ExamsModule = ({
 }) => {
   const { user } = useAuth();
   const role = user?.role;
+  const isParent = role === "parent";
 
   if (!sectionParam || sectionParam === "assign") {
     return <Navigate to={DEFAULT_TEST_EXAMS_SECTION} replace />;
+  }
+
+  // Parents: child results only — never staff scheduling / marks entry screens.
+  if (isParent) {
+    if (!isTestExamsSection(sectionParam) || action) {
+      return <Navigate to={role ? testExamsHref(role, "term-exams") : ".."} replace />;
+    }
+    const section: TestExamsSection = findTestExamsSection(sectionParam);
+    return (
+      <div className="px-4 sm:px-6 lg:px-8 py-6">
+        <ParentExamsPanel section={section} />
+      </div>
+    );
   }
 
   if (sectionParam === "enter-tests" && action === "series" && subAction && isClassTestSeriesId(subAction)) {

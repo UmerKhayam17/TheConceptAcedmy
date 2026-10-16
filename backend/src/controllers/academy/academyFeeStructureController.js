@@ -1,8 +1,10 @@
 const catchAsync = require('../../utils/catchAsync');
 const feeStructureService = require('../../services/academy/academyFeeStructureService');
 const rt = require('../../services/realtime/academyRealtime');
+const { assertNotParent } = require('../../utils/parentScope');
 
 const list = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot view fee structures');
   const data = await feeStructureService.listAll({
     status: req.query.status,
     classId: req.query.classId,
@@ -11,6 +13,7 @@ const list = catchAsync(async (req, res) => {
 });
 
 const getByClass = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot view fee structures');
   const data = await feeStructureService.getByClass(req.params.classId);
   res.json({ success: true, data: data || null });
 });
@@ -28,6 +31,7 @@ const update = catchAsync(async (req, res) => {
 });
 
 const preview = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot preview fees');
   const data = await feeStructureService.previewFees(req.body);
   res.json({ success: true, data });
 });

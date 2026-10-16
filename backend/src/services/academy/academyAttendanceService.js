@@ -136,13 +136,15 @@ async function markAttendance({ date, entries }, userId, { assertStudentAccess }
   return results;
 }
 
-async function getSummary({ month, year, scopeFilter = null }) {
+async function getSummary({ month, year, scopeFilter = null, studentIds = null }) {
   if (!month || !year) throw new ApiError(400, 'month and year required');
   const start = new Date(Number(year), Number(month) - 1, 1);
   const end = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
 
   let studentIdFilter = null;
-  if (scopeFilter && Object.keys(scopeFilter).length) {
+  if (Array.isArray(studentIds)) {
+    studentIdFilter = studentIds;
+  } else if (scopeFilter && Object.keys(scopeFilter).length) {
     const ids = await AcademyStudent.find({
       $and: [{ status: 'active' }, scopeFilter],
     }).distinct('_id');
@@ -171,4 +173,38 @@ async function getSummary({ month, year, scopeFilter = null }) {
   return summary;
 }
 
-module.exports = { listByDate, markAttendance, getSummary };
+/** Daily general attendance for one student across a calendar month. */
+async function listByStudentMonth({ studentId, month, year }) {
+  if (!studentId) throw new ApiError(400, 'studentId required');
+  if (!month || !year) throw new ApiError(400, 'month and year required');
+
+  const start = new Date(Number(year), Number(month) - 1, 1);
+  const end = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
+
+  const records = await AcademyAttendance.find({
+    studentId,
+    date: { $gte: start, $lte: end },
+    $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+  })
+    .sort({ date: 1 })
+    .lean();
+
+  const summary = { total: 0, present: 0, absent: 0, late: 0, leave: 0 };
+  records.forEach((r) => {
+    summary.total += 1;
+    if (summary[r.status] !== undefined) summary[r.status] += 1;
+  });
+  const marked = summary.present + summary.late + summary.absent + summary.leave;
+  const attendanceRate =
+    marked > 0 ? Math.round(((summary.present + summary.late) / marked) * 1000) / 10 : null;
+
+  return {
+    month: Number(month),
+    year: Number(year),
+    daysInMonth: end.getDate(),
+    summary: { ...summary, attendanceRate },
+    records,
+  };
+}
+
+module.exports = { listByDate, markAttendance, getSummary, listByStudentMonth };

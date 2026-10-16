@@ -14,6 +14,7 @@ import GridTab from "@/components/modules/timetable/GridTab";
 import ClassBoardTab from "@/components/modules/timetable/ClassBoardTab";
 import MyScheduleTab from "@/components/modules/timetable/MyScheduleTab";
 import SectionDashboardTab from "@/components/modules/timetable/SectionDashboardTab";
+import ParentChildScheduleTab from "@/components/modules/timetable/ParentChildScheduleTab";
 
 const TimetableModule = ({
   caps,
@@ -30,6 +31,7 @@ const TimetableModule = ({
 
   const canManage = (caps.canEdit || caps.canCreate) && writable;
   const isTeacher = user?.role === "teacher";
+  const isParentOrStudent = role === "parent" || role === "student";
   const section: TimetableSection = sectionParam
     ? findTimetableSection(sectionParam, { caps, role })
     : defaultTimetableSection({ caps, role });
@@ -53,7 +55,7 @@ const TimetableModule = ({
               Timetable builder is available on the active session only. Switch to the active session to edit, or open Class board / Section view to browse this session.
             </p>
           )}
-          {section === "board" && (
+          {section === "board" && !isParentOrStudent && (
             <ClassBoardTab
               sessionId={sessionId}
               caps={{
@@ -64,7 +66,12 @@ const TimetableModule = ({
               }}
             />
           )}
-          {section === "view" && <SectionDashboardTab sessionId={sessionId} />}
+          {section === "view" && isParentOrStudent && (
+            <ParentChildScheduleTab sessionId={sessionId} />
+          )}
+          {section === "view" && !isParentOrStudent && (
+            <SectionDashboardTab sessionId={sessionId} />
+          )}
           {section === "mine" && (isTeacher || caps.canEdit || caps.canCreate) && (
             <MyScheduleTab sessionId={sessionId} />
           )}

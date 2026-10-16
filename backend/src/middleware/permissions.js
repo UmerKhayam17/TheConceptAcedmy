@@ -124,12 +124,15 @@ function requireAnyPermission(...permissionNames) {
 }
 
 /**
- * Staff fee-report access, or parent (controllers must scope to linked children).
+ * Staff fee-report access. Parents are denied here — fee module is not part of the parent portal.
+ * (Controllers that intentionally expose parent fee views must use scoped checks instead.)
  */
 function requireFeeReadAccess() {
   return (req, res, next) => {
     if (isSystemAdmin(req.user)) return next();
-    if (String(roleNameOf(req.user) || '').toLowerCase() === 'parent') return next();
+    if (String(roleNameOf(req.user) || '').toLowerCase() === 'parent') {
+      return next(new ApiError(403, 'You do not have permission for this action'));
+    }
     const allowed = ['view_academy_fee_reports', 'manage_academy_fees'].some((p) =>
       hasLegacyOrModulePermission(req.user, p)
     );

@@ -1,6 +1,5 @@
 const catchAsync = require('../../utils/catchAsync');
 const ApiError = require('../../utils/ApiError');
-const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const Session = require('../../models/Session');
 const studentService = require('../../services/academy/academyStudentService');
@@ -19,21 +18,12 @@ const {
   sanitizeStudentForTeacher,
   sanitizeStudentRecordForTeacher,
 } = require('../../services/academy/teacherTestScope');
-
-async function assertParentOwnsStudent(req, studentId) {
-  const roleName = req.user?.roleDoc?.name || req.user?.role?.name || req.user?.role;
-  if (String(roleName) !== 'parent') return;
-
-  const student = await AcademyStudent.findById(studentId).select('guardianEmail');
-  if (!student) throw new ApiError(404, 'Student not found');
-
-  const guardianEmail = String(student.guardianEmail || '').trim().toLowerCase();
-  const userEmail = String(req.user?.email || '').trim().toLowerCase();
-
-  if (!guardianEmail || guardianEmail !== userEmail) {
-    throw new ApiError(403, 'Access denied');
-  }
-}
+const {
+  roleNameOf,
+  linkedStudentIdsForParent,
+  assertParentOwnsStudent,
+  assertNotParent,
+} = require('../../utils/parentScope');
 
 const register = catchAsync(async (req, res) => {
   const data = await studentService.registerStudent(req.body, req.user._id);
@@ -115,8 +105,11 @@ const getRecord = catchAsync(async (req, res) => {
 });
 
 const list = catchAsync(async (req, res) => {
-  const roleName = req.user?.roleDoc?.name || req.user?.role?.name || req.user?.role;
-  const guardianEmail = String(roleName) === 'parent' ? String(req.user?.email || '').trim().toLowerCase() : undefined;
+  const isParent = roleNameOf(req) === 'parent';
+  let studentIds = null;
+  if (isParent) {
+    studentIds = await linkedStudentIdsForParent(req);
+  }
   const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
   if (teacherScope) {
     ensureClassInTeacherScope(teacherScope, req.query.classId);
@@ -125,14 +118,14 @@ const list = catchAsync(async (req, res) => {
     page: Number(req.query.page) || 1,
     limit: Number(req.query.limit) || 20,
     search: req.query.search,
-    classId: req.query.classId,
-    sectionId: req.query.sectionId,
+    classId: isParent ? undefined : req.query.classId,
+    sectionId: isParent ? undefined : req.query.sectionId,
     status: req.query.status,
-    sessionId: req.query.sessionId,
+    sessionId: isParent ? undefined : req.query.sessionId,
     sort: req.query.sort,
-    guardianEmail,
+    studentIds,
     scopeFilter: teacherScope?.scopeFilter || null,
-    hidePhoneSearch: Boolean(teacherScope),
+    hidePhoneSearch: Boolean(teacherScope) || isParent,
   });
   const items = teacherScope
     ? result.items.map((s) => sanitizeStudentForTeacher(s))
@@ -165,6 +158,7 @@ async function resolveExportMeta(req) {
 }
 
 const exportStudents = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot export students');
   const format = String(req.query.format || 'xlsx').toLowerCase();
   if (!['xlsx', 'pdf', 'csv'].includes(format)) {
     throw new ApiError(400, 'Export format must be xlsx, pdf, or csv');
@@ -214,6 +208,7 @@ const exportStudents = catchAsync(async (req, res) => {
 });
 
 const previewFees = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot preview fees');
   const data = await feeStructureService.previewFees(req.body);
   res.json({ success: true, data });
 });

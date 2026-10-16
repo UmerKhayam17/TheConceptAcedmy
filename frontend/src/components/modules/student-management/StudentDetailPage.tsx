@@ -2,11 +2,15 @@ import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ArrowLeft,
   BookOpen,
   Calendar,
+  CalendarDays,
+  CheckCircle2,
   ClipboardList,
   GraduationCap,
   Pencil,
@@ -15,6 +19,8 @@ import {
   Trash2,
   User,
   UserCheck,
+  UserRound,
+  XCircle,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -26,6 +32,8 @@ import {
   type AcademySubject,
   type AcademyTimetableSlot,
   getAcademyStudentRecord,
+  fetchAcademyStudents,
+  fetchStudentMonthAttendance,
   createAssessment,
   updateAssessment,
   deleteAssessment,
@@ -37,11 +45,13 @@ import AssessmentFormDialog from "@/components/modules/exams/AssessmentFormDialo
 import TestPaperCapture from "@/components/modules/exams/TestPaperCapture";
 import AcademyFeesManagement from "@/components/modules/student-management/AcademyFeesManagement";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import PanelStatCard from "@/components/modules/PanelStatCard";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { getAccessToken } from "@/lib/auth";
 import { createdByLabel } from "@/lib/createdBy";
 import CreatedByLine from "@/components/modules/CreatedByLine";
 import { getApiRoot } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import {
   academyStudentRoutes,
   type AcademyStudentRoutes,
@@ -51,12 +61,50 @@ import {
   examPercentage,
   formatDate,
   formatPkr,
-  MONTH_NAMES,
   subjectCode,
   subjectName,
   WEEKDAY_NAMES,
 } from "./studentDisplayUtils";
 import { FreeStudentBadge, isFullFeeWaiver } from "./FeeModeSelector";
+
+const FULL_MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const CAL_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function ymdLocal(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function attendanceDayTone(status?: string) {
+  switch (status) {
+    case "present":
+      return "bg-emerald-500 text-white";
+    case "late":
+      return "bg-amber-500 text-white";
+    case "absent":
+      return "bg-rose-500 text-white";
+    case "leave":
+      return "bg-sky-500 text-white";
+    default:
+      return "bg-slate-100 text-slate-500";
+  }
+}
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="text-sm font-semibold text-primary border-b pb-1.5 mb-3">{children}</h3>;
@@ -409,54 +457,205 @@ function TimetableTab({ slots }: { slots: AcademyTimetableSlot[] }) {
   );
 }
 
-function AttendanceTab({ record }: { record: AcademyStudentRecord }) {
-  const { summary, records } = record.attendance;
-  const [search, setSearch] = useState("");
-  const recordsFiltered = useMemo(() => {
-    if (!search.trim()) return records;
-    return records.filter((r) =>
-      matchesPanelSearch(search, r.date, r.status, r.notes, r.subjectId ? subjectName(r.subjectId as AcademySubject) : "General")
-    );
-  }, [records, search]);
+function AttendanceTab({ studentId }: { studentId: string }) {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const yearOptions = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["student-attendance-month", studentId, month, year],
+    queryFn: () => fetchStudentMonthAttendance({ studentId, month, year }),
+    enabled: Boolean(studentId),
+  });
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, AcademyAttendanceRecord>();
+    (data?.records || []).forEach((r) => {
+      const key = typeof r.date === "string" ? r.date.slice(0, 10) : ymdLocal(new Date(r.date));
+      map.set(key, r);
+    });
+    return map;
+  }, [data?.records]);
+
+  const daysInMonth = data?.daysInMonth || new Date(year, month, 0).getDate();
+  const firstDow = new Date(year, month - 1, 1).getDay();
+  const summary = data?.summary;
 
   return (
-    <div className="space-y-4">
-      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <SummaryCard label="Total marked days" value={summary.total} />
-        <SummaryCard label="Present" value={summary.present} />
-        <SummaryCard label="Absent" value={summary.absent} />
-        <SummaryCard label="Late / leave" value={`${summary.late} / ${summary.leave}`} />
-        <SummaryCard
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <PanelStatCard
+          label="Present"
+          value={isLoading ? "…" : summary?.present ?? 0}
+          hint={FULL_MONTH_NAMES[month - 1]}
+          icon={CheckCircle2}
+          iconWrapClass="bg-[#d1fae5]"
+          iconClass="text-[#059669]"
+        />
+        <PanelStatCard
+          label="Absent"
+          value={isLoading ? "…" : summary?.absent ?? 0}
+          hint="Marked days"
+          icon={XCircle}
+          iconWrapClass="bg-[#ffe4e6]"
+          iconClass="text-[#e11d48]"
+        />
+        <PanelStatCard
+          label="Late / Leave"
+          value={isLoading ? "…" : `${summary?.late ?? 0} / ${summary?.leave ?? 0}`}
+          hint="This month"
+          icon={CalendarDays}
+          iconWrapClass="bg-[#fef3c7]"
+          iconClass="text-[#d97706]"
+        />
+        <PanelStatCard
           label="Attendance rate"
-          value={summary.attendanceRate != null ? `${summary.attendanceRate}%` : "—"}
-          hint="Present + late out of all records"
+          value={
+            isLoading
+              ? "…"
+              : summary?.attendanceRate != null
+                ? `${summary.attendanceRate}%`
+                : "—"
+          }
+          hint="Present + late"
+          icon={UserRound}
+          iconWrapClass="bg-[#dbeafe]"
+          iconClass="text-[#2563eb]"
         />
       </div>
 
-      {records.length > 0 && (
-        <PanelSearchBar value={search} onChange={setSearch} placeholder="Search attendance…" className="max-w-md" />
-      )}
-      {records.length === 0 ? (
-        <EmptyBlock message="No attendance records for this student yet." />
-      ) : recordsFiltered.length === 0 ? (
-        <EmptyBlock message="No attendance records match your search." />
-      ) : (
-        <DataTable
-          headers={["Date", "Status", "First check-in", "Last check-out", "Subject", "Notes"]}
-          rows={recordsFiltered.map((r: AcademyAttendanceRecord) => [
-            formatDate(r.date),
-            <StatusBadge key="st" status={r.status} />,
-            r.checkIn
-              ? new Date(r.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-              : "—",
-            r.checkOut
-              ? new Date(r.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-              : "—",
-            r.subjectId ? subjectName(r.subjectId as AcademySubject) : "General",
-            r.notes || "—",
-          ])}
-        />
-      )}
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[10rem]">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Month</Label>
+            <select
+              className="mt-1 h-10 w-full rounded-lg border bg-background px-3 text-sm"
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value))}
+            >
+              {FULL_MONTH_NAMES.map((name, i) => (
+                <option key={name} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[6rem]">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Year</Label>
+            <select
+              className="mt-1 h-10 w-full rounded-lg border bg-background px-3 text-sm"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+        <Card className="rounded-2xl border p-4 shadow-sm sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="font-display text-base font-semibold text-[#1a2b4b]">
+              {FULL_MONTH_NAMES[month - 1]} {year}
+            </h3>
+            <div className="flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-wide">
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" /> Present
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-amber-500" /> Late
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-rose-500" /> Absent
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-sky-500" /> Leave
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-muted-foreground">
+            {CAL_WEEKDAYS.map((d) => (
+              <div key={d} className="py-1">
+                {d}
+              </div>
+            ))}
+          </div>
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {Array.from({ length: firstDow }).map((_, i) => (
+              <div key={`b-${i}`} className="aspect-square" />
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const key = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const rec = byDay.get(key);
+              const isToday = key === ymdLocal(new Date());
+              return (
+                <div
+                  key={key}
+                  title={rec ? `${key}: ${rec.status}` : key}
+                  className={cn(
+                    "flex aspect-square flex-col items-center justify-center rounded-lg text-xs font-semibold tabular-nums",
+                    attendanceDayTone(rec?.status),
+                    isToday && !rec && "ring-2 ring-primary/40",
+                    isToday && rec && "ring-2 ring-offset-1 ring-primary/50",
+                  )}
+                >
+                  {day}
+                </div>
+              );
+            })}
+          </div>
+          {isLoading && <p className="mt-3 text-xs text-muted-foreground">Loading month…</p>}
+          {isError && (
+            <p className="mt-3 text-xs text-destructive">
+              {(error as Error)?.message || "Failed to load attendance"}
+            </p>
+          )}
+        </Card>
+
+        <Card className="rounded-2xl border p-4 shadow-sm sm:p-5">
+          <h3 className="font-display text-base font-semibold text-[#1a2b4b]">Daily log</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            All marked days in {FULL_MONTH_NAMES[month - 1]} {year}
+          </p>
+          <div className="mt-4 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+            {!isLoading && (data?.records || []).length === 0 && (
+              <p className="text-sm text-muted-foreground py-6 text-center">
+                No attendance marked for this month yet.
+              </p>
+            )}
+            {(data?.records || []).map((r) => {
+              const day =
+                typeof r.date === "string" ? r.date.slice(0, 10) : ymdLocal(new Date(r.date));
+              return (
+                <div
+                  key={r._id || day}
+                  className="flex items-center justify-between gap-3 rounded-xl border bg-slate-50/70 px-3 py-2.5"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-[#1a2b4b]">
+                      {new Date(`${day}T12:00:00`).toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">{day}</p>
+                  </div>
+                  <StatusBadge status={r.status} />
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -728,12 +927,30 @@ export default function StudentDetailPage({
   const [searchParams, setSearchParams] = useSearchParams();
   const routes =
     routesProp ?? (user?.role ? academyStudentRoutes(user.role, "registration") : null);
-  const listHref = routes?.list ?? "..";
   const editHref = routes ? routes.edit(studentId) : "#";
   const activateHref = routes ? routes.activate(studentId) : "#";
-  const listBackLabel = routes?.list.includes("/students")
-    ? "Back to student records"
-    : "Back to registration";
+
+  const { data: parentSiblings = [] } = useQuery({
+    queryKey: ["parent-children-list", user?.id],
+    queryFn: async () => {
+      const { students } = await fetchAcademyStudents({ limit: 100 });
+      return students;
+    },
+    enabled: user?.role === "parent",
+  });
+
+  const listHref =
+    user?.role === "parent" && parentSiblings.length <= 1
+      ? `/panel/parent`
+      : routes?.list ?? "..";
+  const listBackLabel =
+    user?.role === "parent"
+      ? parentSiblings.length <= 1
+        ? "Back to dashboard"
+        : "Back to My Children"
+      : routes?.list.includes("/students")
+        ? "Back to student records"
+        : "Back to registration";
 
   const { data: record, isLoading, isError, error } = useQuery({
     queryKey: ["academy-student-record", studentId],
@@ -846,13 +1063,10 @@ export default function StudentDetailPage({
                 : "—"
             }
           />
-          {!hideSensitive && (
+          {!hideSensitive && !isParent && (
             <>
-              <QuickStat
-                label={isParent ? "Paid fees" : "Fees"}
-                value={isParent ? formatPkr(fees.summary.totalPaid) : fees.summary.recordsCount}
-              />
-              {!isParent && <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />}
+              <QuickStat label="Fees" value={fees.summary.recordsCount} />
+              <QuickStat label="Paid" value={formatPkr(fees.summary.totalPaid)} />
             </>
           )}
           <QuickStat label="Tests" value={assessments.summary.count} />
@@ -883,7 +1097,7 @@ export default function StudentDetailPage({
               <TabsTrigger value="attendance" className="gap-1.5">
                 <ClipboardList className="h-3.5 w-3.5" /> Attendance
               </TabsTrigger>
-              {!hideSensitive && (
+              {!hideSensitive && !isParent && (
                 <TabsTrigger value="fees" className="gap-1.5">
                   <Receipt className="h-3.5 w-3.5" /> Fees
                 </TabsTrigger>
@@ -907,9 +1121,9 @@ export default function StudentDetailPage({
               <TimetableTab slots={record.timetable} />
             </TabsContent>
             <TabsContent value="attendance" className="mt-3 focus-visible:outline-none">
-              <AttendanceTab record={record} />
+              <AttendanceTab studentId={studentId} />
             </TabsContent>
-            {!hideSensitive && (
+            {!hideSensitive && !isParent && (
               <TabsContent value="fees" className="mt-3 focus-visible:outline-none">
                 <AcademyFeesManagement
                   caps={caps}

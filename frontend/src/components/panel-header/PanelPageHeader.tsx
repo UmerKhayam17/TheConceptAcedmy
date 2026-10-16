@@ -34,11 +34,13 @@ function PageIdentity({
   icon: Icon,
   breadcrumbParent,
   breadcrumbCurrent,
+  showBreadcrumb = true,
 }: {
   title: string;
   icon: ComponentType<{ className?: string }>;
   breadcrumbParent: string;
   breadcrumbCurrent: string;
+  showBreadcrumb?: boolean;
 }) {
   return (
     <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
@@ -47,11 +49,13 @@ function PageIdentity({
         <h1 className="truncate text-[18px] font-bold leading-6 text-[#10244A] sm:text-[19px]">
           {title}
         </h1>
-        <nav aria-label="Breadcrumb" className="mt-0.5 hidden items-center gap-1 sm:flex">
-          <span className="truncate text-[11px] text-slate-400">{breadcrumbParent}</span>
-          <ChevronRight className="h-3 w-3 shrink-0 text-slate-300" aria-hidden />
-          <span className="truncate text-[11px] font-medium text-slate-500">{breadcrumbCurrent}</span>
-        </nav>
+        {showBreadcrumb ? (
+          <nav aria-label="Breadcrumb" className="mt-0.5 hidden items-center gap-1 sm:flex">
+            <span className="truncate text-[11px] text-slate-400">{breadcrumbParent}</span>
+            <ChevronRight className="h-3 w-3 shrink-0 text-slate-300" aria-hidden />
+            <span className="truncate text-[11px] font-medium text-slate-500">{breadcrumbCurrent}</span>
+          </nav>
+        ) : null}
       </div>
     </div>
   );
@@ -78,6 +82,7 @@ export default function PanelPageHeader({
 }) {
   const { sessionId, setSessionId, headerSearch, setHeaderSearch } = usePanelSession();
   const showMobileExtras = showSession || showSearch;
+  const showBreadcrumb = user.role !== "parent";
 
   return (
     <header className="z-30 w-full shrink-0 border-b border-[#DCE4EF] bg-white">
@@ -89,6 +94,7 @@ export default function PanelPageHeader({
             icon={icon}
             breadcrumbParent={breadcrumbParent}
             breadcrumbCurrent={breadcrumbCurrent}
+            showBreadcrumb={showBreadcrumb}
           />
         </div>
 

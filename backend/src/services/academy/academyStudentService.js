@@ -34,24 +34,7 @@ async function refreshUnpaidSalariesAfterStudentTuitionChange(userId, reason = '
   return safeRefreshUnpaidPercentageSalaries(userId, reason);
 }
 
-/** Matches frontend PARENT_DEFAULT_MODULE_PERMISSIONS / seeded parent role. */
-const PARENT_DEFAULT_MODULE_PERMISSIONS = {
-  student: ['view'],
-  attendance: ['view'],
-  examTests: ['view'],
-  examTerm: ['view'],
-  examDateSheet: ['view'],
-  examReportCard: ['view'],
-  timetableBuilder: ['view'],
-  timetableBoard: ['view'],
-  timetableView: ['view'],
-  chat: ['view', 'create', 'participate'],
-  announcement: ['view'],
-};
-
-function parentModulePermissionsMap() {
-  return new Map(Object.entries(PARENT_DEFAULT_MODULE_PERMISSIONS));
-}
+const { parentModulePermissionsMap } = require('../../config/parentDefaults');
 
 function normalizeDefaultChargeIds(ids) {
   return [...new Set((Array.isArray(ids) ? ids : []).map((id) => String(id)).filter(Boolean))];
@@ -475,6 +458,8 @@ async function listStudents({
   sectionId,
   status,
   guardianEmail,
+  /** Restrict to these student ObjectIds (e.g. parent-linked children). */
+  studentIds = null,
   sessionId,
   sort = '-createdAt',
   forExport = false,
@@ -486,7 +471,9 @@ async function listStudents({
   const q = {};
   if (status) q.status = status;
   if (sectionId) q.sectionId = sectionId;
-  if (guardianEmail) {
+  if (Array.isArray(studentIds)) {
+    q._id = { $in: studentIds };
+  } else if (guardianEmail) {
     const escaped = String(guardianEmail).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     q.guardianEmail = { $regex: `^${escaped}$`, $options: 'i' };
   }
