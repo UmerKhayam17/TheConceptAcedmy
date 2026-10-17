@@ -19,6 +19,8 @@ import DateSheetDetailPage from "./exams/DateSheetDetailPage";
 import ReportCardPanel from "./exams/ReportCardPanel";
 import ReportCardDetailPage from "./exams/ReportCardDetailPage";
 import ParentExamsPanel from "./parent/ParentExamsPanel";
+import ParentDateSheetPanel from "./parent/ParentDateSheetPanel";
+import ParentReportCardPanel from "./parent/ParentReportCardPanel";
 
 const ExamsModule = ({
   perm: _perm,
@@ -47,6 +49,12 @@ const ExamsModule = ({
       return <Navigate to={role ? testExamsHref(role, "term-exams") : ".."} replace />;
     }
     const section: TestExamsSection = findTestExamsSection(sectionParam);
+    if (section === "date-sheet") {
+      return <ParentDateSheetPanel />;
+    }
+    if (section === "report-card") {
+      return <ParentReportCardPanel />;
+    }
     // ParentExamsPanel owns its own page padding.
     return <ParentExamsPanel section={section} />;
   }

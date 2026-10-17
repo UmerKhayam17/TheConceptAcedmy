@@ -693,8 +693,8 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
         `ct-${t._id}`,
         t.examDate,
         t.title ||
-          ASSESSMENT_TYPE_LABELS[t.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
-          "Assessment",
+        ASSESSMENT_TYPE_LABELS[t.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
+        "Assessment",
         subj || "General",
         t.assessmentType,
         t.testTime?.trim() || undefined,
@@ -859,21 +859,21 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
 
   const banner = isDateSheet
     ? {
-        title: "Date Sheet",
-        subtitle: "Exam and test schedule for your child's class.",
-        icon: CalendarDays as typeof CalendarDays,
-      }
+      title: "Date Sheet",
+      subtitle: "Exam and test schedule for your child's class.",
+      icon: CalendarDays as typeof CalendarDays,
+    }
     : isReportCard
       ? {
-          title: "Report Card",
-          subtitle: "View and download your child's published report cards.",
-          icon: FileBadge as typeof CalendarDays,
-        }
+        title: "Report Card",
+        subtitle: "View and download your child's published report cards.",
+        icon: FileBadge as typeof CalendarDays,
+      }
       : {
-          title: "Exams & Results",
-          subtitle: "View your child's exam schedule, results and performance reports.",
-          icon: ClipboardList as typeof CalendarDays,
-        };
+        title: "Exams & Results",
+        subtitle: "View your child's exam schedule, results and performance reports.",
+        icon: ClipboardList as typeof CalendarDays,
+      };
 
   const childPicker =
     children.length > 1 ? (
@@ -1006,239 +1006,239 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
 
           {/* KPI row */}
           {isOverview && (
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
-            <KpiCard
-              title="Class Position"
-              value={
-                loading
-                  ? "…"
-                  : kpis.position != null
-                    ? String(kpis.position)
-                    : "—"
-              }
-              hint={
-                kpis.position != null
-                  ? `Your child is ${ordinal(kpis.position)} in class`
-                  : "Position not published yet"
-              }
-              icon={Trophy}
-              iconClass="bg-emerald-50 text-emerald-600"
-            />
-            <KpiCard
-              title="Total Exams"
-              value={loading ? "…" : String(kpis.totalExams)}
-              hint="This term"
-              icon={ClipboardList}
-              iconClass="bg-sky-50 text-sky-600"
-            />
-            <KpiCard
-              title="Average Marks"
-              value={loading ? "…" : kpis.avg != null ? `${kpis.avg}%` : "—"}
-              hint="Across published results"
-              icon={Star}
-              iconClass="bg-blue-50 text-blue-600"
-              trend={kpis.avgTrend}
-            />
-            <KpiCard
-              title="Highest Marks"
-              value={
-                loading ? "…" : kpis.highest ? `${Math.round(kpis.highest.pct)}%` : "—"
-              }
-              hint={kpis.highest?.name || "—"}
-              icon={Award}
-              iconClass="bg-violet-50 text-violet-600"
-            />
-            <KpiCard
-              title="Lowest Marks"
-              value={
-                loading ? "…" : kpis.lowest ? `${Math.round(kpis.lowest.pct)}%` : "—"
-              }
-              hint={kpis.lowest?.name || "—"}
-              icon={Flag}
-              iconClass="bg-rose-50 text-rose-600"
-            />
-          </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+              <KpiCard
+                title="Class Position"
+                value={
+                  loading
+                    ? "…"
+                    : kpis.position != null
+                      ? String(kpis.position)
+                      : "—"
+                }
+                hint={
+                  kpis.position != null
+                    ? `Your child is ${ordinal(kpis.position)} in class`
+                    : "Position not published yet"
+                }
+                icon={Trophy}
+                iconClass="bg-emerald-50 text-emerald-600"
+              />
+              <KpiCard
+                title="Total Exams"
+                value={loading ? "…" : String(kpis.totalExams)}
+                hint="This term"
+                icon={ClipboardList}
+                iconClass="bg-sky-50 text-sky-600"
+              />
+              <KpiCard
+                title="Average Marks"
+                value={loading ? "…" : kpis.avg != null ? `${kpis.avg}%` : "—"}
+                hint="Across published results"
+                icon={Star}
+                iconClass="bg-blue-50 text-blue-600"
+                trend={kpis.avgTrend}
+              />
+              <KpiCard
+                title="Highest Marks"
+                value={
+                  loading ? "…" : kpis.highest ? `${Math.round(kpis.highest.pct)}%` : "—"
+                }
+                hint={kpis.highest?.name || "—"}
+                icon={Award}
+                iconClass="bg-violet-50 text-violet-600"
+              />
+              <KpiCard
+                title="Lowest Marks"
+                value={
+                  loading ? "…" : kpis.lowest ? `${Math.round(kpis.lowest.pct)}%` : "—"
+                }
+                hint={kpis.lowest?.name || "—"}
+                icon={Flag}
+                iconClass="bg-rose-50 text-rose-600"
+              />
+            </div>
           )}
 
           {/* Charts + upcoming (overview only) */}
           {isOverview && (
-          <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_0.95fr]">
-            <Card
-              ref={chartRef}
-              className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h3 className="text-sm font-bold text-[#0B2347]">Performance Overview</h3>
-                <div className="flex items-center gap-3 text-[11px] text-slate-500">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-sky-500" /> Your Child
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-slate-300" /> Class Avg
-                  </span>
+            <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_0.95fr]">
+              <Card
+                ref={chartRef}
+                className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <h3 className="text-sm font-bold text-[#0B2347]">Performance Overview</h3>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-sky-500" /> Your Child
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-slate-300" /> Class Avg
+                    </span>
+                  </div>
                 </div>
-              </div>
-              {chartData.length === 0 ? (
-                <p className="py-12 text-center text-sm text-slate-400">
-                  No subject performance data yet.
-                </p>
-              ) : (
-                <div className="h-[240px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                      <XAxis
-                        dataKey="subject"
-                        tick={{ fontSize: 11, fill: "#64748B" }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        domain={[0, 100]}
-                        tick={{ fontSize: 11, fill: "#64748B" }}
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={(v) => `${v}%`}
-                      />
-                      <Tooltip
-                        formatter={(value: number) => [`${value}%`, ""]}
-                        contentStyle={{
-                          borderRadius: 12,
-                          border: "1px solid #E2E8F0",
-                          fontSize: 12,
-                        }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="classAvg"
-                        name="Class Avg"
-                        stroke="#CBD5E1"
-                        strokeWidth={2}
-                        strokeDasharray="4 4"
-                        dot={{ r: 3, fill: "#CBD5E1" }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="child"
-                        name="Your Child"
-                        stroke="#2563EB"
-                        strokeWidth={2.5}
-                        dot={{ r: 4, fill: "#2563EB" }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </Card>
-
-            <Card className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-              <h3 className="text-sm font-bold text-[#0B2347] mb-3">
-                Subject-wise Performance
-              </h3>
-              {subjectPerformance.length === 0 ? (
-                <p className="py-10 text-center text-sm text-slate-400">No subjects yet.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {subjectPerformance.slice(0, 6).map((s) => {
-                    const Icon = s.theme.Icon;
-                    return (
-                      <li key={s.name} className="space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0F172A] min-w-0">
-                            <span
-                              className={cn(
-                                "flex h-6 w-6 items-center justify-center rounded-md shrink-0",
-                                s.theme.iconBox,
-                                s.theme.icon,
-                              )}
-                            >
-                              <Icon className="h-3.5 w-3.5" />
-                            </span>
-                            <span className="truncate">{s.name}</span>
-                          </span>
-                          <span className="text-xs font-bold tabular-nums text-[#0F172A]">
-                            {Math.round(s.pct)}%
-                          </span>
-                        </div>
-                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                          <div
-                            className={cn("h-full rounded-full", s.theme.accent)}
-                            style={{ width: `${Math.min(100, s.pct)}%` }}
-                          />
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Card>
-
-            <Card
-              ref={scheduleRef}
-              className="rounded-2xl border border-slate-100/80 bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
-            >
-              <div className="flex items-center justify-between gap-2 mb-4">
-                <h3 className="inline-flex items-center gap-2 text-[15px] font-bold text-[#1E3A8A]">
-                  <CalendarDays className="h-4 w-4 text-sky-500" strokeWidth={2} />
-                  Upcoming Exams
-                </h3>
-                {upcomingExams.length > 4 && (
-                  <button
-                    type="button"
-                    className="text-xs font-semibold text-sky-500 hover:text-sky-600 hover:underline"
-                    onClick={() => setShowAllDateSheet((v) => !v)}
-                  >
-                    {showAllDateSheet ? "Show less" : "View All"}
-                  </button>
+                {chartData.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-slate-400">
+                    No subject performance data yet.
+                  </p>
+                ) : (
+                  <div className="h-[240px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                        <XAxis
+                          dataKey="subject"
+                          tick={{ fontSize: 11, fill: "#64748B" }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          domain={[0, 100]}
+                          tick={{ fontSize: 11, fill: "#64748B" }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(v) => `${v}%`}
+                        />
+                        <Tooltip
+                          formatter={(value: number) => [`${value}%`, ""]}
+                          contentStyle={{
+                            borderRadius: 12,
+                            border: "1px solid #E2E8F0",
+                            fontSize: 12,
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="classAvg"
+                          name="Class Avg"
+                          stroke="#CBD5E1"
+                          strokeWidth={2}
+                          strokeDasharray="4 4"
+                          dot={{ r: 3, fill: "#CBD5E1" }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="child"
+                          name="Your Child"
+                          stroke="#2563EB"
+                          strokeWidth={2.5}
+                          dot={{ r: 4, fill: "#2563EB" }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
                 )}
-              </div>
-              {upcomingExams.length === 0 ? (
-                <p className="py-10 text-center text-sm text-slate-400">
-                  No upcoming exams scheduled.
-                </p>
-              ) : (
-                <ul className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
-                  {(showAllDateSheet ? upcomingExams : upcomingExams.slice(0, 4)).map((u) => {
-                    const timeLabel = formatExamTime(u.time);
-                    return (
-                      <li
-                        key={u.id}
-                        className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
-                      >
-                        <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-[#EEF4FF]">
-                          <p className="text-base font-bold leading-none text-[#1E3A8A]">
-                            {u.day}
-                          </p>
-                          <p className="mt-0.5 text-[11px] font-medium text-sky-600">
-                            {u.month}
-                          </p>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold text-[#1E3A8A]">
-                            {u.title}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs font-medium text-sky-600/90">
-                            {u.subjects}
-                          </p>
-                          <p className="mt-0.5 text-xs text-slate-400">
-                            {timeLabel || formatDateSheetDate(u.sortKey)}
-                          </p>
-                        </div>
-                        <span
-                          className={cn(
-                            "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold",
-                            u.pill.className,
-                          )}
+              </Card>
+
+              <Card className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
+                <h3 className="text-sm font-bold text-[#0B2347] mb-3">
+                  Subject-wise Performance
+                </h3>
+                {subjectPerformance.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-slate-400">No subjects yet.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {subjectPerformance.slice(0, 6).map((s) => {
+                      const Icon = s.theme.Icon;
+                      return (
+                        <li key={s.name} className="space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0F172A] min-w-0">
+                              <span
+                                className={cn(
+                                  "flex h-6 w-6 items-center justify-center rounded-md shrink-0",
+                                  s.theme.iconBox,
+                                  s.theme.icon,
+                                )}
+                              >
+                                <Icon className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="truncate">{s.name}</span>
+                            </span>
+                            <span className="text-xs font-bold tabular-nums text-[#0F172A]">
+                              {Math.round(s.pct)}%
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className={cn("h-full rounded-full", s.theme.accent)}
+                              style={{ width: `${Math.min(100, s.pct)}%` }}
+                            />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Card>
+
+              <Card
+                ref={scheduleRef}
+                className="rounded-2xl border border-slate-100/80 bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
+              >
+                <div className="flex items-center justify-between gap-2 mb-4">
+                  <h3 className="inline-flex items-center gap-2 text-[15px] font-bold text-[#1E3A8A]">
+                    <CalendarDays className="h-4 w-4 text-sky-500" strokeWidth={2} />
+                    Upcoming Exams
+                  </h3>
+                  {upcomingExams.length > 4 && (
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-sky-500 hover:text-sky-600 hover:underline"
+                      onClick={() => setShowAllDateSheet((v) => !v)}
+                    >
+                      {showAllDateSheet ? "Show less" : "View All"}
+                    </button>
+                  )}
+                </div>
+                {upcomingExams.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-slate-400">
+                    No upcoming exams scheduled.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
+                    {(showAllDateSheet ? upcomingExams : upcomingExams.slice(0, 4)).map((u) => {
+                      const timeLabel = formatExamTime(u.time);
+                      return (
+                        <li
+                          key={u.id}
+                          className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
                         >
-                          {u.pill.label}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Card>
-          </div>
+                          <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-[#EEF4FF]">
+                            <p className="text-base font-bold leading-none text-[#1E3A8A]">
+                              {u.day}
+                            </p>
+                            <p className="mt-0.5 text-[11px] font-medium text-sky-600">
+                              {u.month}
+                            </p>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold text-[#1E3A8A]">
+                              {u.title}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs font-medium text-sky-600/90">
+                              {u.subjects}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-400">
+                              {timeLabel || formatDateSheetDate(u.sortKey)}
+                            </p>
+                          </div>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                              u.pill.className,
+                            )}
+                          >
+                            {u.pill.label}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Card>
+            </div>
           )}
 
           {/* Full date sheet module */}
@@ -1323,245 +1323,243 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
           )}
 
           {/* Results table + sidebar */}
-          {(isOverview || isReportCard) && (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-            <Card
-              ref={resultsRef}
-              className="rounded-2xl border-0 bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] overflow-hidden flex flex-col"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 pt-4 sm:pt-5 pb-4">
-                <h3 className="text-sm font-bold text-[#0B2347]">
-                  {isReportCard ? "Report Cards" : "Exam & Test Results"}
-                </h3>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600"
-                    value={termFilter}
-                    onChange={(e) => setTermFilter(e.target.value)}
-                    aria-label="Filter by term"
-                  >
-                    <option value="all">All results</option>
-                    {termOptions.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-9 gap-1.5 text-sky-700 border-sky-200 hover:bg-sky-50"
-                    onClick={downloadLatestReport}
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Download Report
-                  </Button>
-                </div>
-              </div>
-
-              {loading ? (
-                <p className="px-4 sm:px-5 py-10 text-center text-sm text-slate-400">
-                  Loading results…
-                </p>
-              ) : filteredResults.length === 0 ? (
-                <p className="px-4 sm:px-5 py-10 text-center text-sm text-slate-400">
-                  No published exam or test results yet.
-                </p>
-              ) : (
-                <>
-                  <div className="overflow-x-auto px-4 sm:px-5">
-                    <table className="w-full min-w-[720px] text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-[11px] uppercase tracking-wide text-slate-400">
-                          <th className="pb-2.5 font-semibold pr-2">#</th>
-                          <th className="pb-2.5 font-semibold">Name</th>
-                          <th className="pb-2.5 font-semibold">Type</th>
-                          <th className="pb-2.5 font-semibold">Date</th>
-                          <th className="pb-2.5 font-semibold">Total</th>
-                          <th className="pb-2.5 font-semibold">Obtained</th>
-                          <th className="pb-2.5 font-semibold">%</th>
-                          <th className="pb-2.5 font-semibold">Grade</th>
-                          <th className="pb-2.5 font-semibold">Status</th>
-                          <th className="pb-2.5 font-semibold text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedResults.map((r, i) => (
-                          <tr
-                            key={r.id}
-                            className="border-b border-slate-100 last:border-0"
-                          >
-                            <td className="py-3 pr-2 text-slate-400 tabular-nums">
-                              {resultsPage * RESULTS_PAGE_SIZE + i + 1}
-                            </td>
-                            <td className="py-3 font-semibold text-[#0F172A]">
-                              <span className="inline-flex items-center gap-2">
-                                {r.kind === "test" ? (
-                                  <ClipboardList className="h-3.5 w-3.5 text-sky-600 shrink-0" />
-                                ) : (
-                                  <Award className="h-3.5 w-3.5 text-violet-600 shrink-0" />
-                                )}
-                                {r.name}
-                              </span>
-                            </td>
-                            <td className="py-3 text-slate-600 capitalize">{r.term}</td>
-                            <td className="py-3 text-slate-600 whitespace-nowrap">
-                              {r.dateLabel}
-                            </td>
-                            <td className="py-3 tabular-nums">{r.totalMarks}</td>
-                            <td className="py-3 tabular-nums font-medium">
-                              {r.obtainedMarks}
-                            </td>
-                            <td className="py-3 tabular-nums">
-                              {Number(r.percentage).toFixed(0)}%
-                            </td>
-                            <td className="py-3">
-                              <span
-                                className={cn(
-                                  "inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold",
-                                  gradeTone(r.grade),
-                                )}
-                              >
-                                {r.grade || "—"}
-                              </span>
-                            </td>
-                            <td className="py-3">
-                              <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                Published
-                              </span>
-                            </td>
-                            <td className="py-3 text-right">
-                              <Button
-                                type="button"
-                                size="sm"
-                                className="h-8 gap-1 bg-sky-600 hover:bg-sky-700"
-                                onClick={() => setViewRow(r)}
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                                View
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-4 sm:px-5 py-3.5">
-                    <p className="text-sm text-slate-500">
-                      Showing {resultsPage * RESULTS_PAGE_SIZE + 1} to{" "}
-                      {Math.min(
-                        (resultsPage + 1) * RESULTS_PAGE_SIZE,
-                        filteredResults.length,
-                      )}{" "}
-                      of {filteredResults.length} results
-                    </p>
-                    {filteredResults.length > RESULTS_PAGE_SIZE && (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          disabled={resultsPage === 0}
-                          onClick={() => setResultsPage((p) => Math.max(0, p - 1))}
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <span className="min-w-[2rem] text-center text-xs font-semibold tabular-nums">
-                          {resultsPage + 1}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          disabled={resultsPage >= resultsPageCount - 1}
-                          onClick={() =>
-                            setResultsPage((p) => Math.min(resultsPageCount - 1, p + 1))
-                          }
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </Card>
-
-            <aside className="space-y-4">
-              <Card className="rounded-2xl border-0 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-                <h3 className="text-sm font-bold text-[#0B2347] mb-3">Quick Actions</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    {
-                      label: "View Full Result",
-                      icon: Eye,
-                      onClick: () => scrollTo(resultsRef),
-                    },
-                    {
-                      label: "Date Sheet",
-                      icon: CalendarDays,
-                      onClick: () => scrollTo(scheduleRef),
-                    },
-                    {
-                      label: "Download Report",
-                      icon: Download,
-                      onClick: downloadLatestReport,
-                    },
-                    {
-                      label: "Performance Graph",
-                      icon: BarChart3,
-                      onClick: () => scrollTo(chartRef),
-                    },
-                  ].map((a) => (
-                    <button
-                      key={a.label}
-                      type="button"
-                      onClick={a.onClick}
-                      className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-100 px-2 py-3 text-center hover:border-sky-200 hover:shadow-sm transition-all"
+          {isOverview && (
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <Card
+                ref={resultsRef}
+                className="rounded-2xl border-0 bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] overflow-hidden flex flex-col"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 pt-4 sm:pt-5 pb-4">
+                  <h3 className="text-sm font-bold text-[#0B2347]">Exam & Test Results</h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600"
+                      value={termFilter}
+                      onChange={(e) => setTermFilter(e.target.value)}
+                      aria-label="Filter by term"
                     >
-                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
-                        <a.icon className="h-4 w-4" />
-                      </span>
-                      <span className="text-[10px] font-medium text-[#0F172A] leading-tight">
-                        {a.label}
-                      </span>
-                    </button>
-                  ))}
+                      <option value="all">All results</option>
+                      {termOptions.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9 gap-1.5 text-sky-700 border-sky-200 hover:bg-sky-50"
+                      onClick={downloadLatestReport}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download Report
+                    </Button>
+                  </div>
                 </div>
-              </Card>
 
-              <Card className="rounded-2xl border-0 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-                <h3 className="text-sm font-bold text-[#0B2347] mb-3">Recent Activity</h3>
-                {recentActivity.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-4 text-center">No recent activity.</p>
+                {loading ? (
+                  <p className="px-4 sm:px-5 py-10 text-center text-sm text-slate-400">
+                    Loading results…
+                  </p>
+                ) : filteredResults.length === 0 ? (
+                  <p className="px-4 sm:px-5 py-10 text-center text-sm text-slate-400">
+                    No published exam or test results yet.
+                  </p>
                 ) : (
-                  <ul className="space-y-3">
-                    {recentActivity.map((a) => (
-                      <li key={a.id} className="flex gap-2.5">
-                        <span
-                          className={cn(
-                            "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full",
-                            a.tone,
-                          )}
-                          aria-hidden
-                        />
-                        <div className="min-w-0">
-                          <p className="text-[12px] font-semibold text-[#0F172A] leading-snug">
-                            {a.title}
-                          </p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">{a.when}</p>
+                  <>
+                    <div className="overflow-x-auto px-4 sm:px-5">
+                      <table className="w-full min-w-[720px] text-sm">
+                        <thead>
+                          <tr className="border-b text-left text-[11px] uppercase tracking-wide text-slate-400">
+                            <th className="pb-2.5 font-semibold pr-2">#</th>
+                            <th className="pb-2.5 font-semibold">Name</th>
+                            <th className="pb-2.5 font-semibold">Type</th>
+                            <th className="pb-2.5 font-semibold">Date</th>
+                            <th className="pb-2.5 font-semibold">Total</th>
+                            <th className="pb-2.5 font-semibold">Obtained</th>
+                            <th className="pb-2.5 font-semibold">%</th>
+                            <th className="pb-2.5 font-semibold">Grade</th>
+                            <th className="pb-2.5 font-semibold">Status</th>
+                            <th className="pb-2.5 font-semibold text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagedResults.map((r, i) => (
+                            <tr
+                              key={r.id}
+                              className="border-b border-slate-100 last:border-0"
+                            >
+                              <td className="py-3 pr-2 text-slate-400 tabular-nums">
+                                {resultsPage * RESULTS_PAGE_SIZE + i + 1}
+                              </td>
+                              <td className="py-3 font-semibold text-[#0F172A]">
+                                <span className="inline-flex items-center gap-2">
+                                  {r.kind === "test" ? (
+                                    <ClipboardList className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                                  ) : (
+                                    <Award className="h-3.5 w-3.5 text-violet-600 shrink-0" />
+                                  )}
+                                  {r.name}
+                                </span>
+                              </td>
+                              <td className="py-3 text-slate-600 capitalize">{r.term}</td>
+                              <td className="py-3 text-slate-600 whitespace-nowrap">
+                                {r.dateLabel}
+                              </td>
+                              <td className="py-3 tabular-nums">{r.totalMarks}</td>
+                              <td className="py-3 tabular-nums font-medium">
+                                {r.obtainedMarks}
+                              </td>
+                              <td className="py-3 tabular-nums">
+                                {Number(r.percentage).toFixed(0)}%
+                              </td>
+                              <td className="py-3">
+                                <span
+                                  className={cn(
+                                    "inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold",
+                                    gradeTone(r.grade),
+                                  )}
+                                >
+                                  {r.grade || "—"}
+                                </span>
+                              </td>
+                              <td className="py-3">
+                                <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                  Published
+                                </span>
+                              </td>
+                              <td className="py-3 text-right">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-8 gap-1 bg-sky-600 hover:bg-sky-700"
+                                  onClick={() => setViewRow(r)}
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  View
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-4 sm:px-5 py-3.5">
+                      <p className="text-sm text-slate-500">
+                        Showing {resultsPage * RESULTS_PAGE_SIZE + 1} to{" "}
+                        {Math.min(
+                          (resultsPage + 1) * RESULTS_PAGE_SIZE,
+                          filteredResults.length,
+                        )}{" "}
+                        of {filteredResults.length} results
+                      </p>
+                      {filteredResults.length > RESULTS_PAGE_SIZE && (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            disabled={resultsPage === 0}
+                            onClick={() => setResultsPage((p) => Math.max(0, p - 1))}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <span className="min-w-[2rem] text-center text-xs font-semibold tabular-nums">
+                            {resultsPage + 1}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            disabled={resultsPage >= resultsPageCount - 1}
+                            onClick={() =>
+                              setResultsPage((p) => Math.min(resultsPageCount - 1, p + 1))
+                            }
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
                         </div>
-                      </li>
-                    ))}
-                  </ul>
+                      )}
+                    </div>
+                  </>
                 )}
               </Card>
-            </aside>
-          </div>
+
+              <aside className="space-y-4">
+                <Card className="rounded-2xl border-0 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
+                  <h3 className="text-sm font-bold text-[#0B2347] mb-3">Quick Actions</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      {
+                        label: "View Full Result",
+                        icon: Eye,
+                        onClick: () => scrollTo(resultsRef),
+                      },
+                      {
+                        label: "Date Sheet",
+                        icon: CalendarDays,
+                        onClick: () => scrollTo(scheduleRef),
+                      },
+                      {
+                        label: "Download Report",
+                        icon: Download,
+                        onClick: downloadLatestReport,
+                      },
+                      {
+                        label: "Performance Graph",
+                        icon: BarChart3,
+                        onClick: () => scrollTo(chartRef),
+                      },
+                    ].map((a) => (
+                      <button
+                        key={a.label}
+                        type="button"
+                        onClick={a.onClick}
+                        className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-100 px-2 py-3 text-center hover:border-sky-200 hover:shadow-sm transition-all"
+                      >
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+                          <a.icon className="h-4 w-4" />
+                        </span>
+                        <span className="text-[10px] font-medium text-[#0F172A] leading-tight">
+                          {a.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+
+                <Card className="rounded-2xl border-0 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
+                  <h3 className="text-sm font-bold text-[#0B2347] mb-3">Recent Activity</h3>
+                  {recentActivity.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-4 text-center">No recent activity.</p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {recentActivity.map((a) => (
+                        <li key={a.id} className="flex gap-2.5">
+                          <span
+                            className={cn(
+                              "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full",
+                              a.tone,
+                            )}
+                            aria-hidden
+                          />
+                          <div className="min-w-0">
+                            <p className="text-[12px] font-semibold text-[#0F172A] leading-snug">
+                              {a.title}
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">{a.when}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+              </aside>
+            </div>
           )}
         </>
       )}
@@ -1584,42 +1582,42 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
             }[] =
               viewRow.kind === "exam" && viewRow.examResult?.subjectMarks?.length
                 ? viewRow.examResult.subjectMarks.map((m) => {
-                    const pct =
-                      m.total > 0
-                        ? Math.round((m.obtained / m.total) * 1000) / 10
-                        : 0;
-                    return {
-                      name: subjectMarkLabel(m),
-                      total: m.total,
-                      obtained: m.obtained,
-                      pct,
-                      grade: m.grade || pctToGrade(pct),
-                      result: passFail(pct),
-                    };
-                  })
+                  const pct =
+                    m.total > 0
+                      ? Math.round((m.obtained / m.total) * 1000) / 10
+                      : 0;
+                  return {
+                    name: subjectMarkLabel(m),
+                    total: m.total,
+                    obtained: m.obtained,
+                    pct,
+                    grade: m.grade || pctToGrade(pct),
+                    result: passFail(pct),
+                  };
+                })
                 : [
-                    {
-                      name:
-                        viewRow.kind === "test" &&
+                  {
+                    name:
+                      viewRow.kind === "test" &&
                         viewRow.assessment &&
                         typeof viewRow.assessment.subjectId === "object" &&
                         viewRow.assessment.subjectId &&
                         "subjectName" in viewRow.assessment.subjectId
-                          ? String(
-                              (
-                                viewRow.assessment.subjectId as {
-                                  subjectName?: string;
-                                }
-                              ).subjectName || viewRow.name,
-                            )
-                          : viewRow.name,
-                      total: viewRow.totalMarks,
-                      obtained: viewRow.obtainedMarks,
-                      pct: Number(viewRow.percentage) || 0,
-                      grade: viewRow.grade || pctToGrade(Number(viewRow.percentage) || 0),
-                      result: passFail(Number(viewRow.percentage) || 0),
-                    },
-                  ];
+                        ? String(
+                          (
+                            viewRow.assessment.subjectId as {
+                              subjectName?: string;
+                            }
+                          ).subjectName || viewRow.name,
+                        )
+                        : viewRow.name,
+                    total: viewRow.totalMarks,
+                    obtained: viewRow.obtainedMarks,
+                    pct: Number(viewRow.percentage) || 0,
+                    grade: viewRow.grade || pctToGrade(Number(viewRow.percentage) || 0),
+                    result: passFail(Number(viewRow.percentage) || 0),
+                  },
+                ];
 
             const subjectsLabel = subjectRows.map((r) => r.name).join(", ");
             const overallPct = Number(viewRow.percentage) || 0;
@@ -1641,9 +1639,9 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
               viewRow.kind === "test"
                 ? viewRow.assessment?.examDate
                 : viewRow.examResult?.exam &&
-                    typeof viewRow.examResult.exam === "object"
+                  typeof viewRow.examResult.exam === "object"
                   ? viewRow.examResult.exam.endDate ||
-                    viewRow.examResult.exam.startDate
+                  viewRow.examResult.exam.startDate
                   : viewRow.sortKey;
             const passMarks =
               viewRow.totalMarks > 0

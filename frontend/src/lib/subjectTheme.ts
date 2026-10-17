@@ -122,7 +122,7 @@ const NAMED_THEMES: Array<{ match: RegExp; theme: SubjectTheme }> = [
   { match: /\b(chem|chemistry)\b/i, theme: theme("chemistry", "Chemistry", "purple", FlaskConical) },
   { match: /\b(ict|information\s*technology)\b/i, theme: theme("ict", "ICT", "blue", Laptop) },
   {
-    match: /\b(computer\s*science|computing|coding|programming|\bcs\b)\b/i,
+    match: /\b(computer(\s*science)?|computing|coding|programming|\bcs\b)\b/i,
     theme: theme("computer", "Computer Science", "blue", Monitor),
   },
   {
