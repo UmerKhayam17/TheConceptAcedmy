@@ -776,45 +776,35 @@ export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
   },
   {
     id: "examinations",
-    label: "Exams",
+    label: "Exam and Results",
     icon: Award,
     collapsible: true,
     items: [
       {
-        id: "class-tests",
-        label: "Class test results",
-        icon: ClipboardList,
-        moduleKey: "exam-tests",
-        href: (role) => testExamsHref(role, "enter-tests"),
-        isActive: (pathname, role) =>
-          pathname.startsWith(`${p(role)}/exams/enter-tests`),
-      },
-      {
         id: "term-results",
-        label: "Exam results",
+        label: "Exam and Results",
         icon: Award,
         moduleKey: "exam-term",
         href: (role) => testExamsHref(role, "term-exams"),
         isActive: (pathname, role) =>
-          pathname.startsWith(`${p(role)}/exams/term-exams`),
+          pathname.startsWith(`${p(role)}/exams/term-exams`) ||
+          pathname.startsWith(`${p(role)}/exams/enter-tests`),
       },
       {
         id: "date-sheet",
-        label: "Date sheet",
+        label: "Date Sheet",
         icon: CalendarDays,
         moduleKey: "exam-date-sheet",
         href: (role) => testExamsHref(role, "date-sheet"),
-        isActive: (pathname, role) =>
-          pathname.startsWith(`${p(role)}/exams/date-sheet`),
+        isActive: (pathname, role) => pathname.startsWith(`${p(role)}/exams/date-sheet`),
       },
       {
         id: "report-card",
-        label: "Report cards",
+        label: "Report Card",
         icon: FileBadge,
         moduleKey: "exam-report-card",
         href: (role) => testExamsHref(role, "report-card"),
-        isActive: (pathname, role) =>
-          pathname.startsWith(`${p(role)}/exams/report-card`),
+        isActive: (pathname, role) => pathname.startsWith(`${p(role)}/exams/report-card`),
       },
     ],
   },

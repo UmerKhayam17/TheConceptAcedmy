@@ -1,5 +1,7 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, ReactNode, SVGProps } from "react";
 import { CalendarDays } from "lucide-react";
+
+type BannerIcon = ComponentType<SVGProps<SVGSVGElement> & { strokeWidth?: number | string }>;
 
 /**
  * Same top-bar pattern as admin Class Board / Timetable Builder.
@@ -12,7 +14,7 @@ export function ParentStudentBanner({
 }: {
   title?: string;
   subtitle?: string;
-  icon?: ComponentType<{ className?: string; strokeWidth?: number }>;
+  icon?: BannerIcon;
   /** Optional control (e.g. child select) shown under the subtitle on small screens / beside title. */
   childPicker?: ReactNode;
   /** @deprecated kept for call-site compatibility — profile card removed to match admin top bar */

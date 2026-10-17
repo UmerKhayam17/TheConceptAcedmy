@@ -81,8 +81,9 @@ describe("parent role matrix", () => {
     expect(keys).toContain("students");
     expect(keys).toContain("attendance");
     expect(keys).toContain("timetable-view");
-    expect(keys).toContain("exam-tests");
     expect(keys).toContain("exam-term");
+    expect(keys).toContain("exam-date-sheet");
+    expect(keys).toContain("exam-report-card");
     expect(keys).toContain("chat");
     expect(keys).toContain("announcements");
     expect(keys).toContain("notifications");
@@ -91,13 +92,14 @@ describe("parent role matrix", () => {
     expect(keys).not.toContain("timetable-board");
     expect(keys).not.toContain("fees");
     expect(MOBILE_PRIMARY_NAV_IDS.parent).toContain("dashboard");
+    expect(MOBILE_PRIMARY_NAV_IDS.parent).toContain("term-results");
   });
 
-  it("parent exam nav uses result-oriented labels", () => {
+  it("parent exam nav includes Exam and Results, Date Sheet, and Report Card", () => {
     const examGroup = PARENT_SIDEBAR_NAV.find((g) => g.id === "examinations");
+    expect(examGroup?.label).toBe("Exam and Results");
+    expect(examGroup?.collapsible).toBe(true);
     const labels = (examGroup?.items || []).map((i) => i.label);
-    expect(labels).toContain("Class test results");
-    expect(labels).toContain("Exam results");
-    expect(labels).toContain("Report cards");
+    expect(labels).toEqual(["Exam and Results", "Date Sheet", "Report Card"]);
   });
 });

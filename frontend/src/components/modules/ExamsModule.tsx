@@ -47,11 +47,8 @@ const ExamsModule = ({
       return <Navigate to={role ? testExamsHref(role, "term-exams") : ".."} replace />;
     }
     const section: TestExamsSection = findTestExamsSection(sectionParam);
-    return (
-      <div className="px-4 sm:px-6 lg:px-8 py-6">
-        <ParentExamsPanel section={section} />
-      </div>
-    );
+    // ParentExamsPanel owns its own page padding.
+    return <ParentExamsPanel section={section} />;
   }
 
   if (sectionParam === "enter-tests" && action === "series" && subAction && isClassTestSeriesId(subAction)) {

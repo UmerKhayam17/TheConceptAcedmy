@@ -658,7 +658,8 @@ export default function ParentDashboard({
             {[
               { label: "View Attendance", to: moduleHref(role, "attendance"), icon: CalendarDays },
               { label: "View Timetable", to: timetableHref(role, "view"), icon: Clock3 },
-              { label: "View Reports", to: testExamsHref(role, "report-card"), icon: BarChart3 },
+              { label: "Date Sheet", to: testExamsHref(role, "date-sheet"), icon: CalendarDays },
+              { label: "Report Card", to: testExamsHref(role, "report-card"), icon: BarChart3 },
             ].map((a) => (
               <Link
                 key={a.label}

@@ -21,7 +21,6 @@ import {
   UserRound,
   XCircle,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -83,13 +82,6 @@ function ageFromDob(dob?: string) {
   const m = now.getMonth() - d.getMonth();
   if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
   return age;
-}
-
-function statusTone(status: string) {
-  if (status === "active") return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (status === "pending_fee") return "bg-amber-50 text-amber-800 border-amber-200";
-  if (status === "suspended") return "bg-rose-50 text-rose-700 border-rose-200";
-  return "bg-slate-100 text-slate-600 border-slate-200";
 }
 
 function formatDobLong(dob?: string) {
@@ -423,103 +415,55 @@ export default function ParentAttendancePanel() {
         }
       />
 
-      {/* Student profile card */}
-      <Card className="relative overflow-hidden rounded-2xl border border-slate-100/80 bg-white p-5 sm:p-6 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#1E3A8A] via-[#3B82F6] to-[#60A5FA]"
-          aria-hidden
-        />
-        {childrenLoading || !selected ? (
-          <p className="text-sm text-muted-foreground py-10 text-center">Loading…</p>
-        ) : (
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:justify-between">
-            <div className="flex min-w-0 flex-1 gap-4 sm:gap-5">
-              <div className="relative shrink-0">
-                <div className="h-[88px] w-[88px] overflow-hidden rounded-2xl bg-gradient-to-br from-slate-100 to-slate-50 ring-1 ring-slate-200/80 shadow-sm">
-                  {photo ? (
-                    <img src={photo} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="grid h-full w-full place-items-center bg-[#EEF4FF] text-[#64748B]">
-                      <UserRound className="h-10 w-10" strokeWidth={1.5} />
-                    </div>
-                  )}
-                </div>
-                <span
-                  className={cn(
-                    "absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-full border-2 border-white shadow-sm",
-                    selected.status === "active" ? "bg-emerald-500" : "bg-slate-400",
-                  )}
-                  title={selected.status}
-                  aria-hidden
-                />
+      {/* First row: profile + attendance metrics */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_repeat(4,minmax(0,1fr))]">
+        <Card className="rounded-2xl border border-slate-100/80 bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
+          {childrenLoading || !selected ? (
+            <p className="text-sm text-muted-foreground py-10 text-center">Loading…</p>
+          ) : (
+            <div className="flex h-full min-w-0 items-center gap-4">
+              <div className="h-[88px] w-[88px] shrink-0 overflow-hidden rounded-full bg-slate-100 ring-4 ring-[#E8F1FB]">
+                {photo ? (
+                  <img src={photo} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="grid h-full w-full place-items-center bg-[#EEF4FF] text-[#64748B]">
+                    <UserRound className="h-10 w-10" strokeWidth={1.5} />
+                  </div>
+                )}
               </div>
 
-              <div className="min-w-0 flex-1 space-y-3">
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <h2 className="text-[1.35rem] font-bold tracking-tight text-[#0F172A] leading-none">
-                      {selected.studentName}
-                    </h2>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                        statusTone(selected.status),
-                      )}
-                    >
-                      {selected.status === "active"
-                        ? "Active"
-                        : selected.status.replace("_", " ")}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70">
-                      Class{" "}
-                      <span className="ml-1 font-semibold text-[#0F172A]">{className}</span>
-                    </span>
-                    <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70">
-                      Roll{" "}
-                      <span className="ml-1 font-semibold text-[#0F172A]">
-                        {selected.rollNumber || selected.studentId || "—"}
-                      </span>
-                    </span>
-                    <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70">
-                      Section{" "}
-                      <span className="ml-1 font-semibold text-[#0F172A]">
-                        {sectionName || "—"}
-                      </span>
-                    </span>
-                  </div>
+              <div className="min-w-0 flex-1 space-y-2.5">
+                <div className="space-y-1">
+                  <h2 className="truncate text-xl font-bold tracking-tight text-[#1E3A8A] leading-tight">
+                    {selected.studentName}
+                  </h2>
+                  <p className="truncate text-sm text-slate-500">
+                    Class: {className || "—"}
+                    <span className="mx-1.5 text-slate-300">|</span>
+                    Roll No: {selected.rollNumber || selected.studentId || "—"}
+                    <span className="mx-1.5 text-slate-300">|</span>
+                    Section: {sectionName || "—"}
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
-                  <div className="flex items-center gap-2.5 rounded-xl bg-[#F8FAFC] px-3 py-2.5 ring-1 ring-slate-100">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-sky-600 shadow-sm ring-1 ring-slate-100">
-                      <CalendarDays className="h-4 w-4" />
-                    </span>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" />
                     <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                        Date of Birth
-                      </p>
-                      <p className="truncate text-sm font-semibold text-[#0F172A]">
+                      <p className="text-xs text-slate-400">Date of Birth</p>
+                      <p className="truncate text-sm font-semibold text-[#1E3A8A]">
                         {formatDobLong(selected.dateOfBirth)}
-                        {age != null && age >= 0 ? (
-                          <span className="ml-1 font-medium text-slate-400">
-                            · {age} {age === 1 ? "yr" : "yrs"}
-                          </span>
-                        ) : null}
+                        {age != null && age >= 0
+                          ? ` (Age: ${age} ${age === 1 ? "year" : "years"})`
+                          : ""}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2.5 rounded-xl bg-[#F8FAFC] px-3 py-2.5 ring-1 ring-slate-100">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-violet-600 shadow-sm ring-1 ring-slate-100">
-                      <User className="h-4 w-4" />
-                    </span>
+                  <div className="flex min-w-0 items-start gap-2">
+                    <User className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" />
                     <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                        Gender
-                      </p>
-                      <p className="truncate text-sm font-semibold capitalize text-[#0F172A]">
+                      <p className="text-xs text-slate-400">Gender</p>
+                      <p className="truncate text-sm font-semibold capitalize text-[#1E3A8A]">
                         {selected.gender || "—"}
                       </p>
                     </div>
@@ -527,31 +471,19 @@ export default function ParentAttendancePanel() {
                 </div>
               </div>
             </div>
+          )}
+        </Card>
 
-            <div className="hidden lg:flex w-[200px] shrink-0 flex-col justify-center rounded-xl bg-gradient-to-br from-[#EEF4FF] to-[#F8FAFF] px-4 py-4 ring-1 ring-[#DBEAFE]/80">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-600/80">
-                Note
-              </p>
-              <p className="mt-1.5 text-sm italic leading-relaxed text-[#1E3A8A]/90">
-                &ldquo;Small steps every day lead to big achievements.&rdquo;
-              </p>
-            </div>
-          </div>
-        )}
-      </Card>
-
-      {/* Top metrics */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="rounded-2xl border-0 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)] flex flex-col items-center justify-center">
-          <div className="relative h-[108px] w-[108px]">
+        <Card className="rounded-2xl border border-slate-100/80 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)] flex flex-col items-center justify-center text-center">
+          <div className="relative h-[92px] w-[92px]">
             <ChartContainer config={donutConfig} className="h-full w-full aspect-auto">
               <PieChart>
                 <Pie
                   data={overallDonut}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={34}
-                  outerRadius={48}
+                  innerRadius={30}
+                  outerRadius={42}
                   startAngle={90}
                   endAngle={-270}
                   strokeWidth={0}
@@ -563,54 +495,60 @@ export default function ParentAttendancePanel() {
               </PieChart>
             </ChartContainer>
             <div className="absolute inset-0 grid place-items-center pointer-events-none">
-              <p className="text-xl font-bold text-primary leading-none">
+              <p className="text-lg font-bold text-[#0F172A] leading-none">
                 {overallRate != null ? `${Math.round(overallRate)}%` : "—"}
               </p>
             </div>
           </div>
-          <p className="mt-2 text-sm font-semibold text-primary">Overall Attendance</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-1.5 text-sm font-semibold text-[#0F172A]">Overall Attendance</p>
+          <p className="text-xs text-slate-500">
             Present Days: {overallPresent} / {overallTotal || "—"}
           </p>
         </Card>
 
-        <Card className="rounded-2xl border-0 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-          <div className="flex items-start justify-between">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+        <Card className="rounded-2xl border border-slate-100/80 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)] flex flex-col justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-sm">
               <CheckCircle2 className="h-5 w-5" />
             </span>
+            <div className="min-w-0">
+              <p className="text-3xl font-bold tabular-nums leading-none text-[#0F172A]">
+                {isLoading ? "…" : present}
+              </p>
+              <p className="mt-1 text-sm font-medium text-slate-500">Present</p>
+            </div>
           </div>
-          <p className="mt-3 text-3xl font-bold tabular-nums text-primary">{isLoading ? "…" : present}</p>
-          <p className="text-sm font-medium text-slate-600">Present</p>
-          <div className="mt-2">
-            <TrendLine value={presentTrend} upIsGood />
-          </div>
+          <TrendLine value={presentTrend} upIsGood />
         </Card>
 
-        <Card className="rounded-2xl border-0 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-          <div className="flex items-start justify-between">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+        <Card className="rounded-2xl border border-slate-100/80 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)] flex flex-col justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-500 text-white shadow-sm">
               <XCircle className="h-5 w-5" />
             </span>
+            <div className="min-w-0">
+              <p className="text-3xl font-bold tabular-nums leading-none text-[#0F172A]">
+                {isLoading ? "…" : absent}
+              </p>
+              <p className="mt-1 text-sm font-medium text-slate-500">Absent</p>
+            </div>
           </div>
-          <p className="mt-3 text-3xl font-bold tabular-nums text-primary">{isLoading ? "…" : absent}</p>
-          <p className="text-sm font-medium text-slate-600">Absent</p>
-          <div className="mt-2">
-            <TrendLine value={absentTrend} upIsGood={false} />
-          </div>
+          <TrendLine value={absentTrend} upIsGood={false} />
         </Card>
 
-        <Card className="rounded-2xl border-0 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-          <div className="flex items-start justify-between">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+        <Card className="rounded-2xl border border-slate-100/80 bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)] flex flex-col justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-400 text-white shadow-sm">
               <Clock3 className="h-5 w-5" />
             </span>
+            <div className="min-w-0">
+              <p className="text-3xl font-bold tabular-nums leading-none text-[#0F172A]">
+                {isLoading ? "…" : late}
+              </p>
+              <p className="mt-1 text-sm font-medium text-slate-500">Late</p>
+            </div>
           </div>
-          <p className="mt-3 text-3xl font-bold tabular-nums text-primary">{isLoading ? "…" : late}</p>
-          <p className="text-sm font-medium text-slate-600">Late</p>
-          <div className="mt-2">
-            <TrendLine value={lateTrend} upIsGood={false} />
-          </div>
+          <TrendLine value={lateTrend} upIsGood={false} />
         </Card>
       </div>
 
