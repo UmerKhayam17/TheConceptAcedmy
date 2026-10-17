@@ -18,13 +18,17 @@ const ACCESS_KEY = "tces_access";
 const REFRESH_LOCK_KEY = "tces_refresh_lock";
 
 const AUTH_EVT = "tces-auth-change";
+/** Refresh access token this long before JWT exp (works with ~15m access lifetime). */
 const REFRESH_BUFFER_MS = 90_000;
+const REFRESH_RETRY_ATTEMPTS = 3;
+const RESTORE_RETRY_MS = 4_000;
 
 const authChannel =
   typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tces-auth") : null;
 
 /** In-memory only — never persist access JWT in localStorage (XSS can steal it). */
 let memoryAccessToken: string | null = null;
+let restoreRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 function purgeLegacyAccessTokenStorage() {
   try {
@@ -70,6 +74,7 @@ export function clearStorage() {
   localStorage.removeItem(USER_KEY);
   setAccessToken(null);
   stopProactiveRefresh();
+  stopRestoreRetry();
 }
 
 /** Clear session and notify listeners (route guards redirect to login). */
@@ -114,6 +119,13 @@ function stopProactiveRefresh() {
   }
 }
 
+function stopRestoreRetry() {
+  if (restoreRetryTimer) {
+    clearTimeout(restoreRetryTimer);
+    restoreRetryTimer = null;
+  }
+}
+
 function scheduleProactiveRefresh(token: string) {
   stopProactiveRefresh();
   const exp = decodeTokenExpiryMs(token);
@@ -126,6 +138,17 @@ function scheduleProactiveRefresh(token: string) {
   }, delay);
 }
 
+/** Soft retry after temporary restore failures (backend restart / HMR race). */
+function scheduleRestoreRetry() {
+  stopRestoreRetry();
+  restoreRetryTimer = setTimeout(() => {
+    restoreRetryTimer = null;
+    void restoreSessionOnce().catch(() => {
+      /* ignore */
+    });
+  }, RESTORE_RETRY_MS);
+}
+
 function broadcastToken(token: string) {
   authChannel?.postMessage({ type: "token", accessToken: token });
 }
@@ -136,6 +159,7 @@ if (authChannel) {
     if (data?.type === "token" && data.accessToken) {
       setAccessToken(data.accessToken);
       scheduleProactiveRefresh(data.accessToken);
+      stopRestoreRetry();
       dispatch();
     }
     if (data?.type === "logout") {
@@ -179,6 +203,7 @@ async function fetchMe(accessToken: string): Promise<SessionUser | null> {
       credentials: "include",
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    if (res.status === 401 || res.status === 403) return null;
     if (!res.ok) return null;
     const body = await parseJson<{ success?: boolean; data?: SessionUser }>(res);
     const d = body.data;
@@ -199,7 +224,13 @@ async function fetchMe(accessToken: string): Promise<SessionUser | null> {
   }
 }
 
-type RefreshResult = { token: string | null; authFailed: boolean };
+type RefreshResult = {
+  token: string | null;
+  /** Backend confirmed the refresh session is invalid/revoked (401/403). */
+  authFailed: boolean;
+  /** Network error, timeout, or HTTP 5xx / other soft failure. */
+  temporaryFailure: boolean;
+};
 
 async function fetchRefreshOnce(): Promise<RefreshResult> {
   try {
@@ -210,25 +241,48 @@ async function fetchRefreshOnce(): Promise<RefreshResult> {
       body: JSON.stringify({}),
     });
     if (res.status === 401 || res.status === 403) {
-      return { token: null, authFailed: true };
+      return { token: null, authFailed: true, temporaryFailure: false };
+    }
+    if (res.status >= 500 || res.status === 429) {
+      return { token: null, authFailed: false, temporaryFailure: true };
     }
     if (!res.ok) {
-      return { token: null, authFailed: false };
+      return { token: null, authFailed: false, temporaryFailure: true };
     }
     const body = await parseJson<{ success?: boolean; data?: { accessToken?: string } }>(res);
     const token = body.data?.accessToken || null;
-    return { token, authFailed: !token };
+    if (!token) {
+      return { token: null, authFailed: false, temporaryFailure: true };
+    }
+    return { token, authFailed: false, temporaryFailure: false };
   } catch {
-    return { token: null, authFailed: false };
+    return { token: null, authFailed: false, temporaryFailure: true };
   }
 }
 
+async function fetchRefreshWithRetry(attempts = REFRESH_RETRY_ATTEMPTS): Promise<RefreshResult> {
+  let last: RefreshResult = { token: null, authFailed: false, temporaryFailure: true };
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) {
+      await sleep(300 * 2 ** (i - 1));
+    }
+    last = await fetchRefreshOnce();
+    if (last.token || last.authFailed) return last;
+  }
+  return last;
+}
+
 let refreshPromise: Promise<string | null> | null = null;
+/** Outcome of the most recent refresh attempt (for restoreSession soft-fail handling). */
+let lastRefreshMeta: RefreshResult | null = null;
 
 export type RefreshOptions = {
   /** Skip “token still valid” short-circuit — required after a 401 from the API. */
   force?: boolean;
-  /** When true, a definitive refresh 401 clears the client session. */
+  /**
+   * When true, clear the client session only if the backend confirms the refresh
+   * token is invalid/revoked (401/403). Never logs out on network/5xx.
+   */
   logoutOnAuthFailure?: boolean;
 };
 
@@ -250,19 +304,27 @@ export async function refreshAccessToken(options: RefreshOptions = {}): Promise<
       for (let i = 0; i < 40; i++) {
         await sleep(250);
         const token = getAccessToken();
-        if (token && (force ? !isAccessTokenExpiringSoon(token, REFRESH_BUFFER_MS / 2) : !isAccessTokenExpiringSoon(token, 0))) {
+        if (
+          token &&
+          (force
+            ? !isAccessTokenExpiringSoon(token, REFRESH_BUFFER_MS / 2)
+            : !isAccessTokenExpiringSoon(token, 0))
+        ) {
           return token;
         }
       }
+      // Other tab may have failed temporarily — try ourselves below.
     }
 
     try {
-      const result = await fetchRefreshOnce();
+      const result = await fetchRefreshWithRetry();
+      lastRefreshMeta = result;
 
       if (result.token) {
         setAccessToken(result.token);
         scheduleProactiveRefresh(result.token);
         broadcastToken(result.token);
+        stopRestoreRetry();
         dispatch();
         return result.token;
       }
@@ -291,45 +353,61 @@ export async function ensureAccessToken(): Promise<string | null> {
   return refreshAccessToken({ force: !token || isAccessTokenExpiringSoon(token, 0) });
 }
 
-/** Restore session using access token and/or httpOnly refresh cookie. */
+/**
+ * Restore session using access token and/or httpOnly refresh cookie.
+ * Temporary backend/network failures do not clear the session.
+ */
 export async function restoreSession(): Promise<SessionUser | null> {
   const cachedUser = readStoredUser();
-  let token = getAccessToken();
+  const token = getAccessToken();
 
   if (token && !isAccessTokenExpiringSoon(token, 0)) {
     const user = await fetchMe(token);
     if (user) {
       persistUser(user);
       scheduleProactiveRefresh(token);
+      stopRestoreRetry();
       dispatch();
       return user;
     }
   }
 
+  // Soft path: never logout on network/5xx — only when refresh meta says authFailed.
   const newToken = await refreshAccessToken({
     force: true,
-    logoutOnAuthFailure: Boolean(cachedUser),
+    logoutOnAuthFailure: false,
   });
+
   if (newToken) {
     const user = await fetchMe(newToken);
     if (user) {
       persistUser(user);
+      stopRestoreRetry();
       dispatch();
       return user;
     }
+    // Got access token but /me failed softy — keep token, use cache if present.
+    if (cachedUser) {
+      scheduleProactiveRefresh(newToken);
+      stopRestoreRetry();
+      dispatch();
+      return cachedUser;
+    }
   }
 
-  // Soft restore: keep cached profile only when we still have a usable in-memory access token.
-  if (cachedUser && getAccessToken() && !isAccessTokenExpiringSoon(getAccessToken(), 0)) {
-    scheduleProactiveRefresh(getAccessToken()!);
+  if (lastRefreshMeta?.authFailed) {
+    if (cachedUser) {
+      clearStorage();
+      dispatch();
+    }
+    return null;
+  }
+
+  // Temporary failure (backend down / HMR race): keep cached profile, retry soon.
+  if (cachedUser) {
+    scheduleRestoreRetry();
     dispatch();
     return cachedUser;
-  }
-
-  if (cachedUser && !getAccessToken()) {
-    // Stale local user with no way to refresh — clear so guards send to login.
-    clearStorage();
-    dispatch();
   }
 
   return null;
@@ -390,6 +468,7 @@ export async function loginWithPassword(email: string, password: string): Promis
   scheduleProactiveRefresh(accessToken);
   broadcastToken(accessToken);
   persistUser(session);
+  stopRestoreRetry();
   dispatch();
   return session;
 }
@@ -421,6 +500,7 @@ function buildAuthedHeaders(init: RequestInit, token: string | null): Record<str
 
 /**
  * Authenticated fetch with proactive token refresh and automatic 401 → force refresh → retry.
+ * Logs out only when refresh is confirmed invalid — not on network/5xx.
  */
 export async function authedFetch(path: string, init: RequestInit = {}, retried = false): Promise<Response> {
   const token = await ensureAccessToken();

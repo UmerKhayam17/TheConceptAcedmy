@@ -70,8 +70,9 @@ const PanelLayout = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-secondary/30 text-muted-foreground text-sm">
-        Loading portal…
+      <div className="min-h-screen flex flex-col items-center justify-center gap-2 bg-secondary/30 text-muted-foreground text-sm">
+        <span>Restoring your session…</span>
+        <span className="text-xs text-muted-foreground/80">Please wait — do not refresh</span>
       </div>
     );
   }

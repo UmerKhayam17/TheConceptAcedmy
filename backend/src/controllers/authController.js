@@ -10,7 +10,12 @@ const {
   verifyRefreshToken,
   hashToken,
 } = require('../utils/tokenService');
-const { setRefreshCookie, clearRefreshCookie, setAccessCookie, clearAccessCookie } = require('../utils/authCookies');
+const {
+  setRefreshCookie,
+  clearRefreshCookie,
+  setAccessCookie,
+  clearAccessCookie,
+} = require('../utils/authCookies');
 const MODULES = require('../modules/moduleConfig');
 const { isSystemAdmin, isAdminRole } = require('../utils/systemAdmin');
 const { expandModulePermissions } = require('../modules/expandModulePermissions');
@@ -76,6 +81,9 @@ function collectSessionModulePermissions(user) {
   return expandModulePermissions(roleModulePermissions);
 }
 
+const REFRESH_GRACE_MS = 30_000;
+const ACCESS_EXPIRES = () => process.env.JWT_ACCESS_EXPIRES || '15m';
+
 function issueTokens(user) {
   const roleObj = user.role && typeof user.role === 'object' ? user.role : null;
   const roleName = roleObj?.name || String(user.role || '');
@@ -118,7 +126,7 @@ const login = catchAsync(async (req, res) => {
     success: true,
     data: {
       accessToken,
-      expiresIn: process.env.JWT_ACCESS_EXPIRES || '12h',
+      expiresIn: ACCESS_EXPIRES(),
       user: sessionUserPayload(user, modulePermissions),
     },
   });
@@ -132,71 +140,106 @@ const me = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Rotate refresh tokens atomically (findOneAndUpdate) so concurrent tabs cannot
+ * overwrite each other. Within a short grace window, a just-rotated previous
+ * token may still obtain a new access JWT without rotating again.
+ */
 const refresh = catchAsync(async (req, res) => {
   const token = req.cookies?.refreshToken || req.body?.refreshToken;
   if (!token) throw new ApiError(401, 'Refresh token required');
+
   let decoded;
   try {
     decoded = verifyRefreshToken(token);
   } catch {
     throw new ApiError(401, 'Invalid refresh token');
   }
-  const user = await User.findById(decoded.sub)
-    .select('+refreshToken +refreshTokenPrev +refreshTokenRotatedAt')
-    .populate('role');
-  if (!user || !user.isActive) {
-    throw new ApiError(401, 'Invalid refresh token');
-  }
 
+  const userId = decoded.sub;
   const presented = hashToken(token);
-  const current = user.refreshToken;
-  const prev = user.refreshTokenPrev;
-  const rotatedAt = user.refreshTokenRotatedAt ? new Date(user.refreshTokenRotatedAt).getTime() : 0;
-  const withinGrace = prev && rotatedAt && Date.now() - rotatedAt < 30_000;
-  const matchesCurrent = current && current === presented;
-  const matchesPrev = withinGrace && prev === presented;
+  const graceCutoff = new Date(Date.now() - REFRESH_GRACE_MS);
 
-  if (!matchesCurrent && !matchesPrev) {
+  const baseUser = await User.findById(userId).populate('role');
+  if (!baseUser || !baseUser.isActive) {
     throw new ApiError(401, 'Invalid refresh token');
   }
 
-  // Concurrent tab reused the previous token within the grace window — return a fresh
-  // pair without rotating again (keeps both tabs in sync).
-  if (matchesPrev && !matchesCurrent) {
-    const { accessToken, refreshToken } = issueTokens(user);
-    user.refreshTokenPrev = user.refreshToken;
-    user.refreshToken = hashToken(refreshToken);
-    user.refreshTokenRotatedAt = new Date();
-    await user.save();
-    setRefreshCookie(res, req, refreshToken);
+  const { accessToken, refreshToken: newRefresh } = issueTokens(baseUser);
+  const newHash = hashToken(newRefresh);
+
+  // Path A — presented token is the current refresh (atomic rotate).
+  let user = await User.findOneAndUpdate(
+    { _id: userId, isActive: true, refreshToken: presented },
+    {
+      $set: {
+        refreshToken: newHash,
+        refreshTokenPrev: presented,
+        refreshTokenRotatedAt: new Date(),
+      },
+    },
+    { new: true },
+  ).populate('role');
+
+  if (user) {
+    setRefreshCookie(res, req, newRefresh);
     setAccessCookie(res, req, accessToken);
     const modulePermissions = collectSessionModulePermissions(user);
     return res.json({
       success: true,
       data: {
         accessToken,
-        expiresIn: process.env.JWT_ACCESS_EXPIRES || '12h',
+        expiresIn: ACCESS_EXPIRES(),
         modulePermissions,
       },
     });
   }
 
-  const { accessToken, refreshToken } = issueTokens(user);
-  user.refreshTokenPrev = user.refreshToken;
-  user.refreshToken = hashToken(refreshToken);
-  user.refreshTokenRotatedAt = new Date();
-  await user.save();
-  setRefreshCookie(res, req, refreshToken);
-  setAccessCookie(res, req, accessToken);
-  const modulePermissions = collectSessionModulePermissions(user);
-  res.json({
-    success: true,
-    data: {
-      accessToken,
-      expiresIn: process.env.JWT_ACCESS_EXPIRES || '12h',
-      modulePermissions,
-    },
-  });
+  // Path B — another tab already rotated; presented matches previous within grace.
+  // Issue a new access token only — do not rotate again (client keeps its cookie).
+  const graceUser = await User.findOne({
+    _id: userId,
+    isActive: true,
+    refreshTokenPrev: presented,
+    refreshTokenRotatedAt: { $gte: graceCutoff },
+  })
+    .select('+refreshToken +refreshTokenPrev +refreshTokenRotatedAt')
+    .populate('role');
+
+  if (graceUser) {
+    const accessOnly = signAccessToken({
+      sub: graceUser._id.toString(),
+      role:
+        (graceUser.role && typeof graceUser.role === 'object' && graceUser.role.name) ||
+        String(graceUser.role || ''),
+    });
+    setAccessCookie(res, req, accessOnly);
+    const modulePermissions = collectSessionModulePermissions(graceUser);
+    return res.json({
+      success: true,
+      data: {
+        accessToken: accessOnly,
+        expiresIn: ACCESS_EXPIRES(),
+        modulePermissions,
+      },
+    });
+  }
+
+  // Reuse of a previous token outside the grace window → revoke family (possible theft).
+  const reused = await User.findOne({
+    _id: userId,
+    refreshTokenPrev: presented,
+  }).select('_id');
+  if (reused) {
+    await User.updateOne(
+      { _id: userId },
+      { $unset: { refreshToken: 1, refreshTokenPrev: 1, refreshTokenRotatedAt: 1 } },
+    );
+    clearRefreshCookie(res);
+    clearAccessCookie(res);
+  }
+
+  throw new ApiError(401, 'Invalid refresh token');
 });
 
 const logout = catchAsync(async (req, res) => {
@@ -320,6 +363,7 @@ const verifyOtp = catchAsync(async (req, res) => {
     success: true,
     data: {
       accessToken,
+      expiresIn: ACCESS_EXPIRES(),
       user: {
         ...sessionUserPayload(user, modulePermissions),
         phone: user.phone,

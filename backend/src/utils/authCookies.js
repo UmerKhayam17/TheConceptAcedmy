@@ -56,7 +56,7 @@ function getAccessCookieOptions(req) {
     httpOnly: true,
     secure,
     sameSite: crossOrigin && secure ? 'none' : 'lax',
-    maxAge: parseDurationMs(process.env.JWT_ACCESS_EXPIRES || '12h'),
+    maxAge: parseDurationMs(process.env.JWT_ACCESS_EXPIRES || '15m'),
     path: '/',
   };
 }

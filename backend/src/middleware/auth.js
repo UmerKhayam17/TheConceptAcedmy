@@ -2,30 +2,35 @@ const ApiError = require('../utils/ApiError');
 const { verifyAccessToken } = require('../utils/tokenService');
 const User = require('../models/User');
 
-function extractAccessToken(req) {
-  const header = req.headers.authorization;
-  if (header && header.startsWith('Bearer ')) {
-    return header.slice(7).trim();
-  }
-  const cookieToken = req.cookies?.accessToken;
-  if (cookieToken) return String(cookieToken).trim();
-  return null;
-}
-
-/** Prefer Bearer, then cookie; if Bearer is expired/invalid, fall back to cookie. */
-function extractAccessTokenCandidates(req) {
-  const tokens = [];
+/** API auth: Authorization Bearer only (access JWT from JS memory). */
+function extractBearerToken(req) {
   const header = req.headers.authorization;
   if (header && header.startsWith('Bearer ')) {
     const t = header.slice(7).trim();
-    if (t) tokens.push(t);
+    if (t) return t;
   }
+  return null;
+}
+
+/**
+ * Static /uploads: Bearer (fetch) or accessToken cookie (<img src> cannot send Bearer).
+ * Cookie is a secondary channel for media only — not for JSON API protect().
+ */
+function extractAccessTokenCandidates(req) {
+  const tokens = [];
+  const bearer = extractBearerToken(req);
+  if (bearer) tokens.push(bearer);
   const cookieToken = req.cookies?.accessToken;
   if (cookieToken) {
     const t = String(cookieToken).trim();
     if (t && !tokens.includes(t)) tokens.push(t);
   }
   return tokens;
+}
+
+/** @deprecated use extractBearerToken — kept for callers that still import extractAccessToken */
+function extractAccessToken(req) {
+  return extractBearerToken(req) || (req.cookies?.accessToken ? String(req.cookies.accessToken).trim() : null);
 }
 
 async function loadUserFromAccessToken(token) {
@@ -45,32 +50,27 @@ async function loadUserFromAccessToken(token) {
 
 async function protect(req, res, next) {
   try {
-    const candidates = extractAccessTokenCandidates(req);
-    if (!candidates.length) {
+    const token = extractBearerToken(req);
+    if (!token) {
       throw new ApiError(401, 'Access token required');
     }
 
-    let lastError = null;
-    for (const token of candidates) {
-      try {
-        const user = await loadUserFromAccessToken(token);
-        req.user = user;
-        req.user.roleDoc = user.role;
-        return next();
-      } catch (e) {
-        lastError = e;
-      }
+    try {
+      const user = await loadUserFromAccessToken(token);
+      req.user = user;
+      req.user.roleDoc = user.role;
+      return next();
+    } catch (e) {
+      if (e instanceof ApiError) return next(e);
+      return next(new ApiError(401, 'Invalid or expired access token'));
     }
-
-    if (lastError instanceof ApiError) return next(lastError);
-    return next(new ApiError(401, 'Invalid or expired access token'));
   } catch (e) {
     if (e instanceof ApiError) return next(e);
     return next(new ApiError(401, 'Invalid or expired access token'));
   }
 }
 
-/** JWT-only gate for static uploads (no DB user load). */
+/** JWT gate for static uploads (Bearer or access cookie for <img>). */
 function protectUpload(req, res, next) {
   try {
     const candidates = extractAccessTokenCandidates(req);
