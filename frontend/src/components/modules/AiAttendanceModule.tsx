@@ -5,7 +5,9 @@ import {
   Smartphone,
   ScanFace,
   BadgeCheck,
+  Circle,
   UserPlus,
+  UserRound,
   MonitorPlay,
   Cctv,
   Images,
@@ -45,11 +47,13 @@ import {
   type AiPerson,
   type AiCamera,
 } from "@/lib/aiAttendanceApi";
+import { resolveUploadUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type Tab = "enrolled" | "enrollment" | "monitor" | "cameras";
 /** Enrollment only — CCTV is for live attendance, not face registration. */
 type EnrollMethod = "webcam" | "mobile";
+type EnrollStatusFilter = "all" | "enrolled" | "not_enrolled";
 
 const webcamSupported =
   typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
@@ -121,6 +125,85 @@ function FaceThumb({ employeeId, enabled }: { employeeId: string; enabled: boole
         </div>
       )}
     </div>
+  );
+}
+
+/** Profile photo when present; otherwise first enrollment face; otherwise placeholder. */
+function PersonAvatar({
+  person,
+  selected,
+}: {
+  person: AiPerson;
+  selected?: boolean;
+}) {
+  const profileSrc = person.photoUrl ? resolveUploadUrl(person.photoUrl) : "";
+  const [profileFailed, setProfileFailed] = useState(false);
+  useEffect(() => {
+    setProfileFailed(false);
+  }, [person.id, person.kind, person.photoUrl]);
+  const showProfile = Boolean(profileSrc) && !profileFailed;
+
+  if (showProfile) {
+    return (
+      <div
+        className={cn(
+          "h-11 w-11 rounded-lg overflow-hidden bg-muted shrink-0 border",
+          selected && "ring-2 ring-primary-foreground/40",
+        )}
+      >
+        <img
+          src={profileSrc}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => setProfileFailed(true)}
+        />
+      </div>
+    );
+  }
+
+  if ((person.totalImages ?? 0) > 0) {
+    return <FaceThumb employeeId={person.aiEmployeeId} enabled />;
+  }
+
+  return (
+    <div
+      className={cn(
+        "h-11 w-11 rounded-lg overflow-hidden bg-muted shrink-0 border flex items-center justify-center text-muted-foreground",
+        selected && "bg-primary-foreground/15 text-primary-foreground border-primary-foreground/30",
+      )}
+    >
+      <UserRound className="h-4 w-4" />
+    </div>
+  );
+}
+
+function EnrollmentStatusBadge({
+  enrolled,
+  selected,
+}: {
+  enrolled: boolean;
+  selected?: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+        selected
+          ? enrolled
+            ? "bg-emerald-400/25 text-emerald-50"
+            : "bg-primary-foreground/15 text-primary-foreground/90"
+          : enrolled
+            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+            : "bg-slate-100 text-slate-600 border border-slate-200",
+      )}
+    >
+      {enrolled ? (
+        <BadgeCheck className="h-3 w-3" />
+      ) : (
+        <Circle className="h-3 w-3" />
+      )}
+      {enrolled ? "Enrolled" : "Not enrolled"}
+    </span>
   );
 }
 
@@ -273,6 +356,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   const [tab, setTab] = useState<Tab>("enrolled");
   const [selected, setSelected] = useState<AiPerson | null>(null);
   const [search, setSearch] = useState("");
+  const [enrollStatusFilter, setEnrollStatusFilter] = useState<EnrollStatusFilter>("all");
   const [enrollMethod, setEnrollMethod] = useState<EnrollMethod>(() => {
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches) {
       return "mobile";
@@ -462,18 +546,35 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     onError: (e: Error) => toast({ title: "Link failed", description: e.message, variant: "destructive" }),
   });
 
+  const rosterPeople = useMemo(
+    () => [...(people?.students || []), ...(people?.staff || [])],
+    [people],
+  );
+
+  const enrollFilterCounts = useMemo(() => {
+    let enrolled = 0;
+    let notEnrolled = 0;
+    for (const p of rosterPeople) {
+      if (p.isTrained) enrolled += 1;
+      else notEnrolled += 1;
+    }
+    return { all: rosterPeople.length, enrolled, notEnrolled };
+  }, [rosterPeople]);
+
   const filteredPeople = useMemo(() => {
-    const all = [...(people?.students || []), ...(people?.staff || [])];
     const q = search.trim().toLowerCase();
-    if (!q) return all;
-    return all.filter(
-      (p) =>
+    return rosterPeople.filter((p) => {
+      if (enrollStatusFilter === "enrolled" && !p.isTrained) return false;
+      if (enrollStatusFilter === "not_enrolled" && p.isTrained) return false;
+      if (!q) return true;
+      return (
         p.name.toLowerCase().includes(q) ||
         (p.fatherName || "").toLowerCase().includes(q) ||
         p.label.toLowerCase().includes(q) ||
-        p.aiEmployeeId.toLowerCase().includes(q),
-    );
-  }, [people, search]);
+        p.aiEmployeeId.toLowerCase().includes(q)
+      );
+    });
+  }, [rosterPeople, search, enrollStatusFilter]);
 
   const startWebcam = async (
     videoEl: HTMLVideoElement | null,
@@ -686,12 +787,34 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   const imageBusy = uploadBusy || captureMut.isPending || deleteImageMut.isPending || deleteAllMut.isPending;
 
   return (
-    <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 max-w-6xl">
-      <div>
-        <h1 className="font-display text-xl sm:text-2xl font-bold text-primary">AI Attendance</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Enroll faces with webcam or phone camera. CCTV is used only for live attendance.
-        </p>
+    <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 w-full">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <ScanFace className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                AI Attendance
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                Enroll faces with webcam or phone camera. CCTV is used only for live attendance.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
+        </div>
       </div>
 
       <div
@@ -723,7 +846,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       </div>
 
       {tab === "enrolled" && (
-        <Card className="p-3 sm:p-4 space-y-3 max-w-2xl">
+        <Card className="p-3 sm:p-4 space-y-3 w-full">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
               <Label>Enrolled for attendance</Label>
@@ -751,7 +874,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                     className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
                     onClick={() => setExpandedId(open ? null : rowKey)}
                   >
-                    <FaceThumb employeeId={p.aiEmployeeId} enabled={(p.totalImages ?? 0) > 0} />
+                    <PersonAvatar person={p} />
                     <div className="min-w-0 flex-1">
                       <div className="font-medium text-sm truncate">{p.name}</div>
                       {p.kind === "student" && p.fatherName ? (
@@ -763,7 +886,10 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                         {p.kind} · {p.label} · {p.totalImages ?? 0} photos
                       </div>
                     </div>
-                    <span className="text-xs text-primary shrink-0">{open ? "Hide" : "Photos"}</span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <EnrollmentStatusBadge enrolled />
+                      <span className="text-xs text-primary">{open ? "Hide" : "Photos"}</span>
+                    </div>
                   </button>
                   {open && (
                     <div className="px-3 pb-3 space-y-2 border-t bg-muted/20 pt-3">
@@ -822,7 +948,58 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       {tab === "enrollment" && (
         <div className="grid lg:grid-cols-2 gap-4">
           <Card className="p-3 sm:p-4 space-y-3">
-            <Label>Students & staff</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label>Students & staff</Label>
+              <span className="text-xs text-muted-foreground">
+                {filteredPeople.length} shown
+              </span>
+            </div>
+            <div
+              className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/30 p-1"
+              role="group"
+              aria-label="Filter by enrollment status"
+            >
+              {(
+                [
+                  { key: "all" as const, label: "All", count: enrollFilterCounts.all },
+                  {
+                    key: "enrolled" as const,
+                    label: "Enrolled",
+                    count: enrollFilterCounts.enrolled,
+                  },
+                  {
+                    key: "not_enrolled" as const,
+                    label: "Not enrolled",
+                    count: enrollFilterCounts.notEnrolled,
+                  },
+                ] as const
+              ).map((f) => {
+                const active = enrollStatusFilter === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setEnrollStatusFilter(f.key)}
+                    className={cn(
+                      "rounded-md px-1.5 py-1.5 text-[11px] sm:text-xs font-semibold transition-colors",
+                      active
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:bg-background hover:text-foreground",
+                    )}
+                  >
+                    {f.label}
+                    <span
+                      className={cn(
+                        "ml-1 tabular-nums",
+                        active ? "text-primary-foreground/80" : "text-muted-foreground",
+                      )}
+                    >
+                      ({f.count})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
             <Input
               placeholder="Search name, father, ID…"
               value={search}
@@ -834,31 +1011,45 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                 selected ? "max-h-44 lg:max-h-[480px]" : "max-h-[50vh] lg:max-h-[480px]",
               )}
             >
-              {filteredPeople.map((p) => (
-                <button
-                  key={`${p.kind}-${p.id}`}
-                  type="button"
-                  className={cn(
-                    "w-full text-left rounded-md px-2.5 py-2 text-sm border flex items-center gap-2.5",
-                    selected?.id === p.id && selected.kind === p.kind
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "hover:bg-muted/50",
-                  )}
-                  onClick={() => setSelected(p)}
-                >
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{p.name}</div>
-                    {p.kind === "student" && p.fatherName ? (
-                      <div className="text-xs opacity-80 truncate">S/O {p.fatherName}</div>
-                    ) : null}
-                    <div className="text-xs opacity-80 truncate">
-                      {p.kind} · {p.label} · {p.totalImages ?? 0}/5
+              {filteredPeople.map((p) => {
+                const isSelected = selected?.id === p.id && selected.kind === p.kind;
+                const enrolled = Boolean(p.isTrained);
+                return (
+                  <button
+                    key={`${p.kind}-${p.id}`}
+                    type="button"
+                    className={cn(
+                      "w-full text-left rounded-md px-2.5 py-2 text-sm border flex items-center gap-2.5",
+                      isSelected
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "hover:bg-muted/50",
+                    )}
+                    onClick={() => setSelected(p)}
+                  >
+                    <PersonAvatar person={p} selected={isSelected} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{p.name}</div>
+                      {p.kind === "student" && p.fatherName ? (
+                        <div className="text-xs opacity-80 truncate">S/O {p.fatherName}</div>
+                      ) : null}
+                      <div className="text-xs opacity-80 truncate">
+                        {p.kind} · {p.label} · {p.totalImages ?? 0}/5
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                    <EnrollmentStatusBadge enrolled={enrolled} selected={isSelected} />
+                  </button>
+                );
+              })}
               {!filteredPeople.length && (
-                <p className="text-sm text-muted-foreground p-2">No people — sync roster first.</p>
+                <p className="text-sm text-muted-foreground p-2">
+                  {rosterPeople.length === 0
+                    ? "No people — sync roster first."
+                    : enrollStatusFilter === "enrolled"
+                      ? "No enrolled people match this search."
+                      : enrollStatusFilter === "not_enrolled"
+                        ? "No not-enrolled people match this search."
+                        : "No people match this search."}
+                </p>
               )}
             </div>
           </Card>
@@ -1099,7 +1290,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       )}
 
       {tab === "monitor" && (
-        <Card className="p-3 sm:p-4 space-y-3 max-w-xl">
+        <Card className="p-3 sm:p-4 space-y-3 w-full">
           <p className="text-sm text-muted-foreground">
             Quick identify with webcam or a photo (marks attendance when matched).
           </p>

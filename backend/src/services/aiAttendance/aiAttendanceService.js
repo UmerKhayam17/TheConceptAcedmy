@@ -258,6 +258,7 @@ async function listPeopleForEnrollment() {
         label: s.studentId || s.classId?.className || '',
         aiEmployeeId,
         hasPhoto: Boolean(s.photoImage),
+        photoUrl: s.photoImage || '',
         isTrained: Boolean(en?.isTrained),
         totalImages: en?.totalImages || 0,
       };
@@ -272,6 +273,7 @@ async function listPeopleForEnrollment() {
         label: u.role?.name || '',
         aiEmployeeId,
         hasPhoto: Boolean(u.profileImage),
+        photoUrl: u.profileImage || '',
         isTrained: Boolean(en?.isTrained),
         totalImages: en?.totalImages || 0,
       };

@@ -31,6 +31,8 @@ export type AiPerson = {
   label: string;
   aiEmployeeId: string;
   hasPhoto: boolean;
+  /** Profile / student photo path when present in the roster. */
+  photoUrl?: string;
   isTrained?: boolean;
   totalImages?: number;
 };
