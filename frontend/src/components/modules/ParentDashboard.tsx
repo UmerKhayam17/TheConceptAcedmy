@@ -1045,7 +1045,7 @@ export default function ParentDashboard({
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[15px] font-bold text-[#0F172A]">Upcoming Events & Exams</h3>
             <Button asChild variant="ghost" size="sm" className="h-7 text-xs text-[#2563EB] px-2">
-              <Link to={moduleHref(role, "school-calendar")}>View all</Link>
+              <Link to={moduleHref(role, "exam-date-sheet")}>View all</Link>
             </Button>
           </div>
           {upcoming.length === 0 ? (

@@ -3,8 +3,9 @@
  * `PARENT_DEFAULT_MODULE_PERMISSIONS` in staffApi.ts.
  *
  * Allowed: dashboard (always in UI), students, attendance, timetable view only,
- * exams, chat, announcements, notifications, school calendar.
- * Forbidden: fees, registration, staff/admin, salary, settings, timetable builder/board.
+ * exams, chat, announcements, notifications.
+ * Forbidden: fees, registration, staff/admin, salary, settings, timetable builder/board,
+ * school calendar (no parent feature).
  */
 
 const PARENT_DEFAULT_MODULE_PERMISSIONS = {
@@ -18,7 +19,6 @@ const PARENT_DEFAULT_MODULE_PERMISSIONS = {
   chat: ['view', 'create', 'participate'],
   announcement: ['view'],
   notifications: ['view'],
-  schoolCalendar: ['view'],
 };
 
 /** Module keys parents must never retain (even if previously granted). */
@@ -59,6 +59,7 @@ const PARENT_FORBIDDEN_MODULE_KEYS = [
   'reports',
   'myClasses',
   'mySubjects',
+  'schoolCalendar',
 ];
 
 const PARENT_PERMISSION_NAMES = [

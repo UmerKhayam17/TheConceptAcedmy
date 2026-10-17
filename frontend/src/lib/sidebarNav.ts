@@ -727,7 +727,7 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
   },
 ];
 
-/** Parent portal sidebar — children, schedule, exams, messaging, calendar. */
+/** Parent portal sidebar — children, schedule, exams, messaging. */
 export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
   {
     id: "dashboard",
@@ -834,21 +834,6 @@ export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: Bell,
         moduleKey: "notifications",
         href: (role) => moduleHref(role, "notifications"),
-      },
-    ],
-  },
-  {
-    id: "resources",
-    label: "School",
-    icon: Calendar,
-    collapsible: true,
-    items: [
-      {
-        id: "school-calendar",
-        label: "School Calendar",
-        icon: CalendarDays,
-        moduleKey: "school-calendar",
-        href: (role) => moduleHref(role, "school-calendar"),
       },
     ],
   },

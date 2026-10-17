@@ -230,7 +230,6 @@ export const PARENT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   chat: ["view", "create", "participate"],
   announcement: ["view"],
   notifications: ["view"],
-  schoolCalendar: ["view"],
 };
 
 /** Modules selectable for parent accounts (portal matrix only). */

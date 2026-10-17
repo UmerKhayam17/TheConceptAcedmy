@@ -27,7 +27,7 @@ describe("parent role matrix", () => {
     expect(PARENT_DEFAULT_MODULE_PERMISSIONS.timetableBuilder).toBeUndefined();
     expect(PARENT_DEFAULT_MODULE_PERMISSIONS.timetableBoard).toBeUndefined();
     expect(PARENT_DEFAULT_MODULE_PERMISSIONS.notifications).toEqual(["view"]);
-    expect(PARENT_DEFAULT_MODULE_PERMISSIONS.schoolCalendar).toEqual(["view"]);
+    expect(PARENT_DEFAULT_MODULE_PERMISSIONS.schoolCalendar).toBeUndefined();
     expect(PARENT_DEFAULT_MODULE_PERMISSIONS.student).toEqual(["view"]);
     expect(PARENT_DEFAULT_MODULE_PERMISSIONS.attendance).toEqual(["view"]);
     expect(PARENT_DEFAULT_MODULE_PERMISSIONS.examTests).toEqual(["view"]);
@@ -52,7 +52,7 @@ describe("parent role matrix", () => {
     expect(canRead(parent.chat)).toBe(true);
     expect(canRead(parent.announcements)).toBe(true);
     expect(canRead(parent.notifications)).toBe(true);
-    expect(canRead(parent["school-calendar"])).toBe(true);
+    expect(canRead(parent["school-calendar"])).toBe(false);
     expect(canRead(parent.fees)).toBe(false);
     expect(canRead(parent["student-registration"])).toBe(false);
     expect(canRead(parent.salary)).toBe(false);
@@ -71,11 +71,11 @@ describe("parent role matrix", () => {
     expect(canRead(next["timetable-builder"])).toBe(false);
     expect(canRead(next["timetable-board"])).toBe(false);
     expect(canRead(next.notifications)).toBe(true);
-    expect(canRead(next["school-calendar"])).toBe(true);
+    expect(canRead(next["school-calendar"])).toBe(false);
     expect(canRead(next.fees)).toBe(false);
   });
 
-  it("parent sidebar includes exams, notifications, calendar; not builder/board", () => {
+  it("parent sidebar includes exams, notifications; not calendar/builder/board", () => {
     const keys = PARENT_SIDEBAR_NAV.flatMap((g) => g.items.map((i) => i.moduleKey));
     expect(keys).toContain("dashboard");
     expect(keys).toContain("students");
@@ -87,7 +87,7 @@ describe("parent role matrix", () => {
     expect(keys).toContain("chat");
     expect(keys).toContain("announcements");
     expect(keys).toContain("notifications");
-    expect(keys).toContain("school-calendar");
+    expect(keys).not.toContain("school-calendar");
     expect(keys).not.toContain("timetable-builder");
     expect(keys).not.toContain("timetable-board");
     expect(keys).not.toContain("fees");

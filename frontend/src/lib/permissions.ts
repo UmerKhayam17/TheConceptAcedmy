@@ -470,7 +470,6 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     chat: "view",
     announcements: "view",
     notifications: "view",
-    "school-calendar": "view",
   }),
   student: modulePermMatrix({
     dashboard: "view",

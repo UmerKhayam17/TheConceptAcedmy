@@ -18,9 +18,10 @@ describe('parentDefaults', () => {
     assert.equal(PARENT_DEFAULT_MODULE_PERMISSIONS.timetableBuilder, undefined);
     assert.equal(PARENT_DEFAULT_MODULE_PERMISSIONS.timetableBoard, undefined);
     assert.deepEqual(PARENT_DEFAULT_MODULE_PERMISSIONS.notifications, ['view']);
-    assert.deepEqual(PARENT_DEFAULT_MODULE_PERMISSIONS.schoolCalendar, ['view']);
+    assert.equal(PARENT_DEFAULT_MODULE_PERMISSIONS.schoolCalendar, undefined);
     assert.ok(PARENT_FORBIDDEN_MODULE_KEYS.includes('timetableBuilder'));
     assert.ok(PARENT_FORBIDDEN_MODULE_KEYS.includes('fee'));
+    assert.ok(PARENT_FORBIDDEN_MODULE_KEYS.includes('schoolCalendar'));
     assert.ok(PARENT_PERMISSION_NAMES.includes('view_academy_students'));
   });
 
@@ -31,14 +32,15 @@ describe('parentDefaults', () => {
       timetableBoard: ['view'],
       fee: ['view'],
       profile: ['view', 'edit'],
+      schoolCalendar: ['view'],
     });
     assert.equal(next.has('timetableBuilder'), false);
     assert.equal(next.has('timetableBoard'), false);
     assert.equal(next.has('fee'), false);
     assert.equal(next.has('profile'), false);
+    assert.equal(next.has('schoolCalendar'), false);
     assert.deepEqual(next.get('timetableView'), ['view']);
     assert.deepEqual(next.get('notifications'), ['view']);
-    assert.deepEqual(next.get('schoolCalendar'), ['view']);
     assert.deepEqual(next.get('examTests'), ['view']);
   });
 
