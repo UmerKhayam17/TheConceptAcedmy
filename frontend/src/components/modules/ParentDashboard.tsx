@@ -19,7 +19,6 @@ import {
   CalendarDays,
   ClipboardList,
   Clock3,
-  Download,
   FileText,
   Shield,
   TrendingUp,
@@ -204,28 +203,6 @@ function feeTypeLabel(fee: AcademyFeeRecord) {
   const comps = fee.components?.map((c) => c.name).filter(Boolean) || [];
   if (comps.length) return comps.slice(0, 2).join(" + ");
   return `Monthly Fee (${MONTH_SHORT[(fee.month || 1) - 1]} ${fee.year})`;
-}
-
-function downloadStudentProfile(student: AcademyStudent) {
-  const lines = [
-    `Student Profile`,
-    `Name: ${student.studentName}`,
-    `Father: ${student.fatherName || "—"}`,
-    `Class: ${classLabel(student.classId)}`,
-    `Section: ${refName(student.sectionId, "sectionName") || "—"}`,
-    `Roll / ID: ${student.rollNumber || student.studentId || "—"}`,
-    `DOB: ${formatDate(student.dateOfBirth)}`,
-    `Gender: ${student.gender || "—"}`,
-    `Phone: ${student.phone || "—"}`,
-    `Status: ${student.status}`,
-  ];
-  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${student.studentName.replace(/\s+/g, "-").toLowerCase()}-profile.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function relativeTime(iso?: string) {
@@ -531,10 +508,6 @@ export default function ParentDashboard({
       {/* Header: Student profile (+ quote) | Quick Actions */}
       <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
         <Card className="relative overflow-hidden rounded-2xl border border-slate-100/80 bg-white p-5 sm:p-6 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#1E3A8A] via-[#3B82F6] to-[#60A5FA]"
-            aria-hidden
-          />
           {loading || !student ? (
             <p className="text-sm text-muted-foreground py-10 text-center">Loading student…</p>
           ) : (
@@ -670,19 +643,6 @@ export default function ParentDashboard({
                 <span className="text-[11px] font-medium text-[#0F172A] leading-tight">{a.label}</span>
               </Link>
             ))}
-            <button
-              type="button"
-              disabled={!student}
-              onClick={() => student && downloadStudentProfile(student)}
-              className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-100 bg-white px-2 py-3.5 text-center shadow-sm hover:border-sky-200 hover:shadow-md transition-all disabled:opacity-50"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
-                <Download className="h-4 w-4" />
-              </span>
-              <span className="text-[11px] font-medium text-[#0F172A] leading-tight">
-                Download Profile
-              </span>
-            </button>
           </div>
         </Card>
       </div>
