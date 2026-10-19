@@ -474,7 +474,7 @@ const SYSTEM_MODULES = [
     showInPermissions: false,
   },
 
-  // ── Teacher portal modules ──────────────────────────────────────
+  // ── Teacher portal modules (Coming soon — hidden from permission matrix) ──
   {
     key: 'myClasses',
     panelSlug: 'my-classes',
@@ -484,6 +484,7 @@ const SYSTEM_MODULES = [
     order: 33,
     actions: ['view'],
     parentGroup: 'teaching',
+    showInPermissions: false,
   },
   {
     key: 'mySubjects',
@@ -494,6 +495,7 @@ const SYSTEM_MODULES = [
     order: 34,
     actions: ['view'],
     parentGroup: 'teaching',
+    showInPermissions: false,
   },
   {
     key: 'homework',
@@ -622,6 +624,7 @@ const SYSTEM_MODULES = [
     order: 92,
     actions: ['view', 'create'],
     parentGroup: 'communication',
+    showInPermissions: false,
   },
 ];
 

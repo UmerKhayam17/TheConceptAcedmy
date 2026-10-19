@@ -347,14 +347,7 @@ export default function StaffDetailPage({
               )}
             </span>
             <div className="min-w-0">
-              <Link
-                to={backHref}
-                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Back to Staff
-              </Link>
-              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight truncate">
                   {staff.name}
                 </h2>

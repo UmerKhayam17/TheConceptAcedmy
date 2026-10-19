@@ -39,6 +39,8 @@ function shortLabel(label: string): string {
     "Teacher Management": "Teachers",
     Finance: "Finance",
     Administration: "Admin",
+    Communication: "Comms",
+    Reports: "Reports",
     Students: "Students",
     "Student Attendance": "Attend",
     "AI Attendance": "AI Face",
@@ -208,7 +210,10 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
         "academic-setup": "sessions",
         "student-management": "students",
         "teacher-management": "staff-attendance",
+        examinations: "term-results",
         finance: "fee-management",
+        communication: "chat",
+        reports: "reports",
         administration: "parents",
       };
       const out: MobileTab[] = [];

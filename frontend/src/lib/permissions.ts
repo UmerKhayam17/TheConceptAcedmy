@@ -19,9 +19,9 @@ export const PERM_RANK: Record<PermLevel, number> = {
   none: 0, view: 1, mark: 2, grade: 3, process: 4, crud: 5, full: 6,
 };
 
-export const canRead  = (p: PermLevel) => PERM_RANK[p] >= PERM_RANK.view;
+export const canRead = (p: PermLevel) => PERM_RANK[p] >= PERM_RANK.view;
 export const canWrite = (p: PermLevel) => PERM_RANK[p] >= PERM_RANK.mark;
-export const canCRUD  = (p: PermLevel) => PERM_RANK[p] >= PERM_RANK.crud;
+export const canCRUD = (p: PermLevel) => PERM_RANK[p] >= PERM_RANK.crud;
 
 export type ModuleKey =
   | "dashboard"

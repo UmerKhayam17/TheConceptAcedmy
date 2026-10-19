@@ -12,7 +12,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  ArrowLeft,
   Eye,
   EyeOff,
   ImageIcon,
@@ -280,7 +279,6 @@ export default function UserFormPage({
         : isAdminsScope
           ? Shield
           : Users;
-  const scopeListLabel = isStaffScope ? "staff" : isAdminsScope ? "admins" : "parents";
 
   const [form, setForm] = useState<UserFormValues>(() => emptyUserForm());
   const [modulePerms, setModulePerms] = useState<Record<string, string[]>>({});
@@ -625,8 +623,7 @@ export default function UserFormPage({
       : "Save changes";
 
   return (
-    <div className="flex min-h-full flex-col">
-      <div className="flex-1 px-4 sm:px-6 lg:px-8 py-6 space-y-4 pb-28">
+    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
         <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
@@ -634,14 +631,7 @@ export default function UserFormPage({
                 <HeaderIcon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
               </span>
               <div className="min-w-0">
-                <Link
-                  to={listHref}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                  Back to {scopeListLabel}
-                </Link>
-                <h2 className="mt-0.5 text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
                   {pageTitle}
                 </h2>
                 <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
@@ -871,31 +861,28 @@ export default function UserFormPage({
             )}
           </StepSection>
         </div>
-      </div>
 
-      <div className="border-t border-slate-200 px-4 sm:px-6 lg:px-8 py-4">
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button variant="outline" className="h-10 gap-2 border-primary/30 text-primary" asChild>
-            <Link to={listHref}>
-              <X className="h-4 w-4" />
-              Cancel
-            </Link>
-          </Button>
-          <Button
-            className="h-10 gap-2"
-            disabled={!canSave}
-            onClick={() => saveMutation.mutate()}
-          >
-            {saveMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : mode === "create" ? (
-              <UserPlus className="h-4 w-4" />
-            ) : (
-              <UserCog className="h-4 w-4" />
-            )}
-            {saveMutation.isPending ? "Saving…" : primaryActionLabel}
-          </Button>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+        <Button variant="outline" className="h-10 gap-2 border-primary/30 text-primary" asChild>
+          <Link to={listHref}>
+            <X className="h-4 w-4" />
+            Cancel
+          </Link>
+        </Button>
+        <Button
+          className="h-10 gap-2"
+          disabled={!canSave}
+          onClick={() => saveMutation.mutate()}
+        >
+          {saveMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : mode === "create" ? (
+            <UserPlus className="h-4 w-4" />
+          ) : (
+            <UserCog className="h-4 w-4" />
+          )}
+          {saveMutation.isPending ? "Saving…" : primaryActionLabel}
+        </Button>
       </div>
 
       <Dialog
