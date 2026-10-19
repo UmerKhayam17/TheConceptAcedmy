@@ -40,7 +40,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { moduleHref } from "@/lib/panelMenus";
 import { timetableHref } from "@/lib/timetableMenus";
 import { testExamsHref } from "@/lib/testExamsMenus";
-import { academyStudentRoutes } from "@/lib/studentManagementMenus";
 import { fetchAnnouncements } from "@/lib/announcementApi";
 import { fetchNotifications } from "@/lib/notificationsApi";
 import {
@@ -262,7 +261,6 @@ export default function ParentDashboard({
 }) {
   const { user } = useAuth();
   const role = "parent" as const;
-  const routes = academyStudentRoutes(role, "records");
   const [selectedId, setSelectedId] = useState(() => {
     if (studentIdProp) return studentIdProp;
     try {
@@ -976,14 +974,6 @@ export default function ParentDashboard({
         <Card className="overflow-hidden rounded-2xl border-0 bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
           <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
             <h3 className="text-[15px] font-bold text-[#0F172A]">Fee Structure & Payments</h3>
-            {student && (
-              <Link
-                to={routes.detail(student._id)}
-                className="text-sm font-medium text-[#3B82F6] hover:underline shrink-0"
-              >
-                View All
-              </Link>
-            )}
           </div>
           {feeRows.length === 0 ? (
             <p className="text-sm text-slate-400 px-4 sm:px-5 py-8 text-center">

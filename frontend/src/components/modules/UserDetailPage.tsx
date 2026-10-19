@@ -850,36 +850,36 @@ export default function UserDetailPage({
   const isParentScope = scope === "parents";
 
   if (isParentScope) {
-    return (
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-        <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
+  return (
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
                 <Users className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
-              </span>
-              <div className="min-w-0">
+            </span>
+            <div className="min-w-0">
                 <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
                   Parent Account Details
                 </h2>
                 <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
                   Manage parent information, account status and access.
-                </p>
-              </div>
-            </div>
-            <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
-              <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
-                <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
-                  &ldquo;
-                </span>
-                Education is the key to a better tomorrow.
-                <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
-                  &rdquo;
-                </span>
               </p>
             </div>
           </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
         </div>
+      </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
           <div className="xl:col-span-7 rounded-2xl border-0 bg-white p-5 sm:p-6 shadow-sm ring-1 ring-black/[0.04]">
@@ -952,16 +952,16 @@ export default function UserDetailPage({
           </div>
 
           <div className="xl:col-span-5 grid grid-cols-2 gap-3 sm:gap-4">
-            <PanelStatCard
+        <PanelStatCard
               label="Account Status"
-              value={account.isActive ? "Active" : "Inactive"}
+          value={account.isActive ? "Active" : "Inactive"}
               hint={account.isActive ? "Can access the portal" : "Login disabled"}
-              icon={account.isActive ? CheckCircle2 : UserX}
-              iconWrapClass={account.isActive ? "bg-[#d1fae5]" : "bg-[#fee2e2]"}
-              iconClass={account.isActive ? "text-[#059669]" : "text-[#dc2626]"}
-            />
-            <PanelStatCard
-              label="Role"
+          icon={account.isActive ? CheckCircle2 : UserX}
+          iconWrapClass={account.isActive ? "bg-[#d1fae5]" : "bg-[#fee2e2]"}
+          iconClass={account.isActive ? "text-[#059669]" : "text-[#dc2626]"}
+        />
+        <PanelStatCard
+          label="Role"
               value="Parent"
               hint="Parent account"
               icon={User}
@@ -973,27 +973,27 @@ export default function UserDetailPage({
               className="text-left rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               onClick={() => setActiveTab("students")}
             >
-              <PanelStatCard
+          <PanelStatCard
                 label="Linked Students"
-                value={studentsLoading ? "…" : students.length}
+            value={studentsLoading ? "…" : students.length}
                 hint="View linked children"
                 hintClass="text-primary"
-                icon={Users}
+            icon={Users}
                 iconWrapClass="bg-[#dbeafe]"
                 iconClass="text-[#2563eb]"
-              />
+          />
             </button>
-            <PanelStatCard
+          <PanelStatCard
               label="Last Login"
               value={account.lastLogin ? fmtDateTime(account.lastLogin) : "Never"}
               valueClass="text-base sm:text-lg leading-snug"
               hint={account.lastLogin ? "Most recent sign-in" : "Has not signed in yet"}
-              icon={Clock}
-              iconWrapClass="bg-[#ffedd5]"
-              iconClass="text-[#ea580c]"
-            />
+          icon={Clock}
+          iconWrapClass="bg-[#ffedd5]"
+          iconClass="text-[#ea580c]"
+        />
           </div>
-        </div>
+      </div>
 
         {caps.canEdit && (
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1028,26 +1028,26 @@ export default function UserDetailPage({
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="w-full flex flex-wrap h-auto gap-0.5 p-0.5 bg-muted/40">
-            <TabsTrigger value="overview" className="gap-1.5">
-              <User className="h-3.5 w-3.5" /> Overview
-            </TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="w-full flex flex-wrap h-auto gap-0.5 p-0.5 bg-muted/40">
+          <TabsTrigger value="overview" className="gap-1.5">
+            <User className="h-3.5 w-3.5" /> Overview
+          </TabsTrigger>
             <TabsTrigger value="students" className="gap-1.5">
               <GraduationCap className="h-3.5 w-3.5" /> Students ({students.length})
             </TabsTrigger>
-            <TabsTrigger value="access" className="gap-1.5">
-              <KeyRound className="h-3.5 w-3.5" /> Access
-            </TabsTrigger>
-          </TabsList>
+          <TabsTrigger value="access" className="gap-1.5">
+            <KeyRound className="h-3.5 w-3.5" /> Access
+          </TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="overview" className="mt-3 focus-visible:outline-none space-y-4">
+        <TabsContent value="overview" className="mt-3 focus-visible:outline-none space-y-4">
             <section className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-sm ring-1 ring-black/[0.04] space-y-3">
-              <SectionTitle>Contact</SectionTitle>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
-                <DetailRow label="Full name" value={account.name} />
-                <DetailRow label="Email" value={account.email || "—"} />
-                <DetailRow label="Phone" value={account.phone || "—"} />
+            <SectionTitle>Contact</SectionTitle>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+              <DetailRow label="Full name" value={account.name} />
+              <DetailRow label="Email" value={account.email || "—"} />
+              <DetailRow label="Phone" value={account.phone || "—"} />
                 <DetailRow
                   label="Portal password"
                   value={
@@ -1066,22 +1066,22 @@ export default function UserDetailPage({
                     </button>
                   }
                 />
-              </div>
-            </section>
+            </div>
+          </section>
 
             <section className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-sm ring-1 ring-black/[0.04] space-y-3">
-              <SectionTitle>Account</SectionTitle>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+            <SectionTitle>Account</SectionTitle>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
                 <DetailRow label="Parent ID" value={parentDisplayId(account._id)} />
-                <DetailRow label="Role" value={roleLabel} />
-                <DetailRow label="Status" value={<ActiveBadge active={account.isActive} />} />
-                <DetailRow label="Last login" value={fmtDateTime(account.lastLogin)} />
+              <DetailRow label="Role" value={roleLabel} />
+              <DetailRow label="Status" value={<ActiveBadge active={account.isActive} />} />
+              <DetailRow label="Last login" value={fmtDateTime(account.lastLogin)} />
                 <DetailRow label="Joined on" value={fmtDate(account.createdAt)} />
-                <DetailRow label="Created" value={fmtDateTime(account.createdAt)} />
-                <DetailRow label="Updated" value={fmtDateTime(account.updatedAt)} />
-              </div>
-            </section>
-          </TabsContent>
+              <DetailRow label="Created" value={fmtDateTime(account.createdAt)} />
+              <DetailRow label="Updated" value={fmtDateTime(account.updatedAt)} />
+            </div>
+          </section>
+        </TabsContent>
 
           <TabsContent value="students" className="mt-3 focus-visible:outline-none space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">

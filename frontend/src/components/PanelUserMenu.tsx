@@ -130,13 +130,17 @@ export default function PanelUserMenu({
             </div>
           </div>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link to={profileHref} className="cursor-pointer">
-            <UserRound className="mr-2 h-4 w-4" />
-            View profile
-          </Link>
-        </DropdownMenuItem>
+        {user.role !== "parent" && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to={profileHref} className="cursor-pointer">
+                <UserRound className="mr-2 h-4 w-4" />
+                View profile
+              </Link>
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="cursor-pointer text-destructive focus:text-destructive"
