@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -14,12 +15,14 @@ import {
 import {
   Eye,
   EyeOff,
+  GraduationCap,
   ImageIcon,
   Loader2,
   Lock,
   Mail,
   Percent,
   Phone,
+  Search,
   Shield,
   Upload,
   User,
@@ -283,6 +286,7 @@ export default function UserFormPage({
   const [form, setForm] = useState<UserFormValues>(() => emptyUserForm());
   const [modulePerms, setModulePerms] = useState<Record<string, string[]>>({});
   const [parentStudentIds, setParentStudentIds] = useState<string[]>([]);
+  const [parentStudentSearch, setParentStudentSearch] = useState("");
   const [parentCreate, setParentCreate] = useState<ParentCreateSelection>(() =>
     emptyParentCreateSelection(),
   );
@@ -392,6 +396,28 @@ export default function UserFormPage({
     if (!(mode === "edit" && isParentRole)) return;
     setParentStudentIds(currentParentStudents.map((r: { _id: string }) => r._id));
   }, [mode, isParentRole, currentParentStudents]);
+
+  const parentStudentChoicesFiltered = useMemo(() => {
+    const q = parentStudentSearch.trim().toLowerCase();
+    if (!q) return parentStudentChoices;
+    return parentStudentChoices.filter((s) => {
+      const name = String(s.studentName || "").toLowerCase();
+      const id = String(s.studentId || "").toLowerCase();
+      return name.includes(q) || id.includes(q);
+    });
+  }, [parentStudentChoices, parentStudentSearch]);
+
+  const selectedParentStudents = useMemo(() => {
+    const selected = new Set(parentStudentIds);
+    return parentStudentChoices.filter((s) => selected.has(s._id));
+  }, [parentStudentChoices, parentStudentIds]);
+
+  const toggleParentStudent = (studentId: string, checked: boolean) => {
+    setParentStudentIds((prev) => {
+      if (checked) return prev.includes(studentId) ? prev : [...prev, studentId];
+      return prev.filter((id) => id !== studentId);
+    });
+  };
 
   const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -788,31 +814,107 @@ export default function UserFormPage({
 
                   {isParentRole && mode === "edit" && (
                     <div className="sm:col-span-2 space-y-2">
-                      <Label className="mb-1.5 block text-sm font-medium text-slate-700">
-                        Parent students
-                        <span className="text-destructive"> *</span>
-                      </Label>
-                      <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/80">
+                      <div className="flex flex-wrap items-end justify-between gap-2">
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">
+                            Linked students
+                            <span className="text-destructive"> *</span>
+                          </Label>
+                          <p className="text-xs text-slate-500">
+                            Select which students can access this parent portal.
+                          </p>
+                        </div>
+                        <p className="text-xs font-medium text-slate-500 tabular-nums">
+                          {parentStudentIds.length} selected
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-black/[0.02] overflow-hidden">
                         {parentStudentChoicesLoading ? (
-                          <p className="text-sm text-muted-foreground">Loading students…</p>
+                          <div className="flex items-center gap-2 px-4 py-8 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading students…
+                          </div>
                         ) : parentStudentChoices.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No active students found.</p>
+                          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                            No active students found.
+                          </div>
                         ) : (
-                          <select
-                            multiple
-                            value={parentStudentIds}
-                            onChange={(e) => {
-                              const opts = Array.from(e.target.selectedOptions);
-                              setParentStudentIds(opts.map((o) => o.value));
-                            }}
-                            className="w-full h-40 rounded-md border border-input bg-background px-3 text-sm"
-                          >
-                            {parentStudentChoices.map((s: AcademyStudent) => (
-                              <option key={s._id} value={s._id}>
-                                {s.studentName} ({s.studentId})
-                              </option>
-                            ))}
-                          </select>
+                          <>
+                            {selectedParentStudents.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 border-b border-slate-100 bg-slate-50/80 px-3 py-2.5">
+                                {selectedParentStudents.map((s) => (
+                                  <span
+                                    key={s._id}
+                                    className="inline-flex max-w-full items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                                  >
+                                    <GraduationCap className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">{s.studentName}</span>
+                                    <button
+                                      type="button"
+                                      className="rounded-full p-0.5 hover:bg-primary/15"
+                                      onClick={() => toggleParentStudent(s._id, false)}
+                                      aria-label={`Remove ${s.studentName}`}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="relative border-b border-slate-100 px-3 py-2">
+                              <Search className="pointer-events-none absolute left-5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                              <Input
+                                value={parentStudentSearch}
+                                onChange={(e) => setParentStudentSearch(e.target.value)}
+                                placeholder="Search by name or student ID…"
+                                className="h-9 border-0 bg-transparent pl-8 shadow-none focus-visible:ring-0"
+                              />
+                            </div>
+
+                            <div className="max-h-56 overflow-y-auto overscroll-contain">
+                              {parentStudentChoicesFiltered.length === 0 ? (
+                                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                                  No students match “{parentStudentSearch.trim()}”.
+                                </p>
+                              ) : (
+                                <ul className="divide-y divide-slate-100">
+                                  {parentStudentChoicesFiltered.map((s: AcademyStudent) => {
+                                    const checked = parentStudentIds.includes(s._id);
+                                    return (
+                                      <li key={s._id}>
+                                        <label
+                                          className={cn(
+                                            "flex cursor-pointer items-center gap-3 px-3.5 py-2.5 transition-colors",
+                                            checked ? "bg-primary/[0.04]" : "hover:bg-slate-50",
+                                          )}
+                                        >
+                                          <Checkbox
+                                            checked={checked}
+                                            onCheckedChange={(v) =>
+                                              toggleParentStudent(s._id, v === true)
+                                            }
+                                          />
+                                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                                            <GraduationCap className="h-3.5 w-3.5" />
+                                          </span>
+                                          <span className="min-w-0 flex-1">
+                                            <span className="block truncate text-sm font-medium text-[#1a2b4b]">
+                                              {s.studentName}
+                                            </span>
+                                            <span className="block truncate text-xs text-slate-500 tabular-nums">
+                                              {s.studentId || "—"}
+                                            </span>
+                                          </span>
+                                        </label>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              )}
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>
