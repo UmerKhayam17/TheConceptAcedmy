@@ -10,6 +10,8 @@ export default function PanelStatCard({
   icon: Icon,
   iconWrapClass,
   iconClass,
+  hintClass,
+  valueClass,
 }: {
   label: string;
   value: string | number;
@@ -17,9 +19,11 @@ export default function PanelStatCard({
   icon: ComponentType<{ className?: string }>;
   iconWrapClass: string;
   iconClass: string;
+  hintClass?: string;
+  valueClass?: string;
 }) {
   return (
-    <Card className="rounded-2xl border-0 bg-white p-4 shadow-sm ring-1 ring-black/[0.04]">
+    <Card className="rounded-2xl border-0 bg-white p-4 shadow-sm ring-1 ring-black/[0.04] h-full">
       <div className="flex items-center gap-3.5">
         <span
           className={cn(
@@ -31,10 +35,17 @@ export default function PanelStatCard({
         </span>
         <div className="min-w-0">
           <p className="text-[13px] font-medium text-slate-500">{label}</p>
-          <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-[#1a2b4b]">
+          <p
+            className={cn(
+              "mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-[#1a2b4b]",
+              valueClass,
+            )}
+          >
             {value}
           </p>
-          {hint ? <p className="mt-0.5 text-xs font-medium text-slate-500">{hint}</p> : null}
+          {hint ? (
+            <p className={cn("mt-0.5 text-xs font-medium text-slate-500", hintClass)}>{hint}</p>
+          ) : null}
         </div>
       </div>
     </Card>

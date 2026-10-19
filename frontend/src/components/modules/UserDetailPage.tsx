@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Calendar,
   CheckCircle2,
   Clock,
   Eye,
@@ -12,6 +13,10 @@ import {
   KeyRound,
   Link2,
   Loader2,
+  Lock,
+  Mail,
+  Pencil,
+  Phone,
   Plus,
   Shield,
   Unlink,
@@ -37,6 +42,7 @@ import { resolveUploadUrl } from "@/lib/api";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
   assignParentStudents,
+  bulkUsersAction,
   fetchModuleRegistry,
   fetchParentStudents,
   fetchUsersByScope,
@@ -48,7 +54,7 @@ import {
   type RoleOption,
   type StaffUser,
 } from "@/lib/staffApi";
-import { usersListHref, type UserFormScope } from "@/lib/userFormRoutes";
+import { userEditHref, usersListHref, type UserFormScope } from "@/lib/userFormRoutes";
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
 import { fetchSessions, isSessionWritable } from "@/lib/configApi";
 import {
@@ -94,6 +100,12 @@ function fmtDateTime(iso?: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Stable display code for parent accounts (no dedicated Parent ID field yet). */
+function parentDisplayId(userId: string) {
+  const tail = userId.replace(/[^a-f0-9]/gi, "").slice(-4).toUpperCase() || "0000";
+  return `PNT-${tail}`;
 }
 
 function moduleLabel(key: string, registry: ModuleRegistryEntry[]) {
@@ -735,13 +747,31 @@ export default function UserDetailPage({
   caps: ModuleActionCaps;
 }) {
   const { user: session } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const role = session?.role;
   const meta = SCOPE_META[scope];
   const listHref = role ? usersListHref(role, scope) : "#";
+  const editHref = role ? userEditHref(role, userId, scope) : "#";
   const studentRoutes = role ? academyStudentRoutes(role, "registration") : null;
   const [showPassword, setShowPassword] = useState(false);
   const [linkStudentOpen, setLinkStudentOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const resetMutation = useMutation({
+    mutationFn: () => bulkUsersAction("resetPassword", [userId], DEFAULT_PARENT_PASSWORD),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["users-module-list", scope] });
+      setResetOpen(true);
+      setShowResetPassword(false);
+      toast({ title: "Password reset", description: "Parent can sign in with the new password." });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Reset failed", description: e.message, variant: "destructive" });
+    },
+  });
 
   const allowedTabs =
     scope === "parents"
@@ -816,6 +846,290 @@ export default function UserDetailPage({
     .filter(Boolean)
     .join(" · ");
 
+  const isParentScope = scope === "parents";
+
+  if (isParentScope) {
+    return (
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a2b4b]">
+              Parent Account Details
+            </h1>
+            <p className="mt-1 text-sm text-slate-500 max-w-xl">
+              View and manage parent information, account status and module permissions.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              className="h-10 gap-2 border-primary/40 text-primary hover:bg-primary/5"
+              asChild
+            >
+              <Link to={listHref}>
+                <ArrowLeft className="h-4 w-4" />
+                Back to Parents
+              </Link>
+            </Button>
+            {caps.canEdit && (
+              <Button className="h-10 gap-2" asChild>
+                <Link to={editHref}>
+                  <Pencil className="h-4 w-4" />
+                  Edit Parent
+                </Link>
+              </Button>
+            )}
+            {caps.canEdit && (
+              <Button
+                variant="outline"
+                className="h-10 gap-2 border-rose-300 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                disabled={resetMutation.isPending}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Reset password for ${account.name} to ${DEFAULT_PARENT_PASSWORD}?`,
+                    )
+                  ) {
+                    return;
+                  }
+                  resetMutation.mutate();
+                }}
+              >
+                {resetMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Lock className="h-4 w-4" />
+                )}
+                Reset Password
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+          <div className="xl:col-span-7 rounded-2xl border-0 bg-white p-5 sm:p-6 shadow-sm ring-1 ring-black/[0.04]">
+            <div className="flex flex-col sm:flex-row gap-5 sm:items-start">
+              <div className="h-24 w-24 sm:h-28 sm:w-28 shrink-0 rounded-full overflow-hidden bg-slate-100 ring-4 ring-slate-50 flex items-center justify-center">
+                {imgSrc ? (
+                  <img src={imgSrc} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <Users className="h-10 w-10 text-slate-400" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#1a2b4b] truncate">
+                    {account.name}
+                  </h2>
+                  <span
+                    className={cn(
+                      "inline-flex text-xs font-semibold rounded-full px-2.5 py-0.5",
+                      account.isActive
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-100 text-slate-600",
+                    )}
+                  >
+                    {account.isActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-4">
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <User className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-500">Parent ID</p>
+                        <p className="text-sm font-semibold text-[#1a2b4b] tabular-nums">
+                          {parentDisplayId(account._id)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <Calendar className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-500">Joined on</p>
+                        <p className="text-sm font-semibold text-[#1a2b4b]">
+                          {fmtDate(account.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <Mail className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-500">Email</p>
+                      <p className="text-sm font-medium text-primary break-all">
+                        {account.email || "—"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <Phone className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-500">Phone</p>
+                      <p className="text-sm font-semibold text-[#1a2b4b]">
+                        {account.phone || "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="xl:col-span-5 grid grid-cols-2 gap-3 sm:gap-4">
+            <PanelStatCard
+              label="Account Status"
+              value={account.isActive ? "Active" : "Inactive"}
+              hint={account.isActive ? "Can access the portal" : "Login disabled"}
+              icon={account.isActive ? CheckCircle2 : UserX}
+              iconWrapClass={account.isActive ? "bg-[#d1fae5]" : "bg-[#fee2e2]"}
+              iconClass={account.isActive ? "text-[#059669]" : "text-[#dc2626]"}
+            />
+            <PanelStatCard
+              label="Role"
+              value="Parent"
+              hint="Parent account"
+              icon={User}
+              iconWrapClass="bg-[#ede9fe]"
+              iconClass="text-[#7c3aed]"
+            />
+            <button
+              type="button"
+              className="text-left rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              onClick={() => setActiveTab("students")}
+            >
+              <PanelStatCard
+                label="Linked Students"
+                value={studentsLoading ? "…" : students.length}
+                hint="View linked children"
+                hintClass="text-primary"
+                icon={Users}
+                iconWrapClass="bg-[#dbeafe]"
+                iconClass="text-[#2563eb]"
+              />
+            </button>
+            <PanelStatCard
+              label="Last Login"
+              value={account.lastLogin ? fmtDateTime(account.lastLogin) : "Never"}
+              valueClass="text-base sm:text-lg leading-snug"
+              hint={account.lastLogin ? "Most recent sign-in" : "Has not signed in yet"}
+              icon={Clock}
+              iconWrapClass="bg-[#ffedd5]"
+              iconClass="text-[#ea580c]"
+            />
+          </div>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="w-full flex flex-wrap h-auto gap-0.5 p-0.5 bg-muted/40">
+            <TabsTrigger value="overview" className="gap-1.5">
+              <User className="h-3.5 w-3.5" /> Overview
+            </TabsTrigger>
+            <TabsTrigger value="students" className="gap-1.5">
+              <GraduationCap className="h-3.5 w-3.5" /> Students ({students.length})
+            </TabsTrigger>
+            <TabsTrigger value="access" className="gap-1.5">
+              <KeyRound className="h-3.5 w-3.5" /> Access
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="mt-3 focus-visible:outline-none space-y-4">
+            <section className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-sm ring-1 ring-black/[0.04] space-y-3">
+              <SectionTitle>Portal credentials</SectionTitle>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+                <DetailRow
+                  label="Portal password"
+                  value={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="inline-flex items-center gap-1.5 text-sm font-medium hover:text-primary"
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                      <span>{showPassword ? DEFAULT_PARENT_PASSWORD : "••••••••"}</span>
+                    </button>
+                  }
+                />
+                <DetailRow label="Created" value={fmtDateTime(account.createdAt)} />
+                <DetailRow label="Updated" value={fmtDateTime(account.updatedAt)} />
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="students" className="mt-3 focus-visible:outline-none space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-primary">
+                Linked students
+                <span className="ml-2 text-xs font-normal text-muted-foreground tabular-nums">
+                  ({students.length})
+                </span>
+              </h3>
+              {caps.canEdit && (
+                <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setLinkStudentOpen(true)}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Link student
+                </Button>
+              )}
+            </div>
+            <ParentLinkedStudentsPanel
+              summaries={students}
+              listLoading={studentsLoading}
+              parentUserId={userId}
+              canEdit={caps.canEdit}
+              studentDetailHref={studentRoutes ? (id) => studentRoutes.detail(id) : undefined}
+            />
+            <LinkStudentDialog
+              open={linkStudentOpen}
+              onOpenChange={setLinkStudentOpen}
+              parentUserId={userId}
+              alreadyLinkedIds={students.map((s) => s._id)}
+            />
+          </TabsContent>
+
+          <TabsContent value="access" className="mt-3 focus-visible:outline-none">
+            <PermissionsPanel user={account} registry={modules} />
+          </TabsContent>
+        </Tabs>
+
+        <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Password reset</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Password for <span className="font-medium text-foreground">{account.name}</span> was
+                reset. Share this once with the parent:
+              </p>
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2">
+                <p className="font-mono text-sm flex-1">
+                  {showResetPassword ? DEFAULT_PARENT_PASSWORD : "••••••••"}
+                </p>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={() => setShowResetPassword((v) => !v)}
+                >
+                  {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setResetOpen(false)}>Done</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-4">
       <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
@@ -871,25 +1185,14 @@ export default function UserDetailPage({
           iconWrapClass="bg-[#dbeafe]"
           iconClass="text-[#2563eb]"
         />
-        {scope === "parents" ? (
-          <PanelStatCard
-            label="Linked students"
-            value={studentsLoading ? "…" : students.length}
-            hint="Students on this portal"
-            icon={Users}
-            iconWrapClass="bg-[#ede9fe]"
-            iconClass="text-[#7c3aed]"
-          />
-        ) : (
-          <PanelStatCard
-            label="Modules"
-            value={moduleCount}
-            hint="With access granted"
-            icon={KeyRound}
-            iconWrapClass="bg-[#ede9fe]"
-            iconClass="text-[#7c3aed]"
-          />
-        )}
+        <PanelStatCard
+          label="Modules"
+          value={moduleCount}
+          hint="With access granted"
+          icon={KeyRound}
+          iconWrapClass="bg-[#ede9fe]"
+          iconClass="text-[#7c3aed]"
+        />
         <PanelStatCard
           label="Last login"
           value={account.lastLogin ? fmtDate(account.lastLogin) : "—"}
@@ -905,11 +1208,6 @@ export default function UserDetailPage({
           <TabsTrigger value="overview" className="gap-1.5">
             <User className="h-3.5 w-3.5" /> Overview
           </TabsTrigger>
-          {scope === "parents" && (
-            <TabsTrigger value="students" className="gap-1.5">
-              <GraduationCap className="h-3.5 w-3.5" /> Students ({students.length})
-            </TabsTrigger>
-          )}
           <TabsTrigger value="access" className="gap-1.5">
             <KeyRound className="h-3.5 w-3.5" /> Access
           </TabsTrigger>
@@ -936,26 +1234,6 @@ export default function UserDetailPage({
               <DetailRow label="Full name" value={account.name} />
               <DetailRow label="Email" value={account.email || "—"} />
               <DetailRow label="Phone" value={account.phone || "—"} />
-              {scope === "parents" && (
-                <DetailRow
-                  label="Portal password"
-                  value={
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      className="inline-flex items-center gap-1.5 text-sm font-medium hover:text-primary"
-                      title={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      )}
-                      <span>{showPassword ? DEFAULT_PARENT_PASSWORD : "••••••••"}</span>
-                    </button>
-                  }
-                />
-              )}
             </div>
           </section>
 
@@ -970,38 +1248,6 @@ export default function UserDetailPage({
             </div>
           </section>
         </TabsContent>
-
-        {scope === "parents" && (
-          <TabsContent value="students" className="mt-3 focus-visible:outline-none space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-primary">
-                Linked students
-                <span className="ml-2 text-xs font-normal text-muted-foreground tabular-nums">
-                  ({students.length})
-                </span>
-              </h3>
-              {caps.canEdit && (
-                <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setLinkStudentOpen(true)}>
-                  <Plus className="h-3.5 w-3.5" />
-                  Link student
-                </Button>
-              )}
-            </div>
-            <ParentLinkedStudentsPanel
-              summaries={students}
-              listLoading={studentsLoading}
-              parentUserId={userId}
-              canEdit={caps.canEdit}
-              studentDetailHref={studentRoutes ? (id) => studentRoutes.detail(id) : undefined}
-            />
-            <LinkStudentDialog
-              open={linkStudentOpen}
-              onOpenChange={setLinkStudentOpen}
-              parentUserId={userId}
-              alreadyLinkedIds={students.map((s) => s._id)}
-            />
-          </TabsContent>
-        )}
 
         <TabsContent value="access" className="mt-3 focus-visible:outline-none">
           <PermissionsPanel user={account} registry={modules} />
