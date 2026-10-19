@@ -102,10 +102,18 @@ function fmtDateTime(iso?: string) {
   });
 }
 
-/** Stable display code for parent accounts (no dedicated Parent ID field yet). */
-function parentDisplayId(userId: string) {
+/** Stable display code for accounts (no dedicated ID field yet). */
+function accountDisplayId(prefix: string, userId: string) {
   const tail = userId.replace(/[^a-f0-9]/gi, "").slice(-4).toUpperCase() || "0000";
-  return `PNT-${tail}`;
+  return `${prefix}-${tail}`;
+}
+
+function parentDisplayId(userId: string) {
+  return accountDisplayId("PNT", userId);
+}
+
+function adminDisplayId(userId: string) {
+  return accountDisplayId("ADM", userId);
 }
 
 function moduleLabel(key: string, registry: ModuleRegistryEntry[]) {
@@ -838,71 +846,38 @@ export default function UserDetailPage({
     (a) => a.length > 0,
   ).length;
   const HeaderIcon = meta.Icon;
-  const pageHint = [
-    roleLabel,
-    account.email,
-    account.isActive ? "Active" : "Inactive",
-  ]
-    .filter(Boolean)
-    .join(" · ");
 
   const isParentScope = scope === "parents";
 
   if (isParentScope) {
     return (
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a2b4b]">
-              Parent Account Details
-            </h1>
-            <p className="mt-1 text-sm text-slate-500 max-w-xl">
-              View and manage parent information, account status and module permissions.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Button
-              variant="outline"
-              className="h-10 gap-2 border-primary/40 text-primary hover:bg-primary/5"
-              asChild
-            >
-              <Link to={listHref}>
-                <ArrowLeft className="h-4 w-4" />
-                Back to Parents
-              </Link>
-            </Button>
-            {caps.canEdit && (
-              <Button className="h-10 gap-2" asChild>
-                <Link to={editHref}>
-                  <Pencil className="h-4 w-4" />
-                  Edit Parent
-                </Link>
-              </Button>
-            )}
-            {caps.canEdit && (
-              <Button
-                variant="outline"
-                className="h-10 gap-2 border-rose-300 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                disabled={resetMutation.isPending}
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      `Reset password for ${account.name} to ${DEFAULT_PARENT_PASSWORD}?`,
-                    )
-                  ) {
-                    return;
-                  }
-                  resetMutation.mutate();
-                }}
-              >
-                {resetMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Lock className="h-4 w-4" />
-                )}
-                Reset Password
-              </Button>
-            )}
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+        <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+                <Users className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                  Parent Account Details
+                </h2>
+                <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                  Manage parent information, account status and access.
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+              <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+                <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                  &ldquo;
+                </span>
+                Education is the key to a better tomorrow.
+                <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                  &rdquo;
+                </span>
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1020,6 +995,39 @@ export default function UserDetailPage({
           </div>
         </div>
 
+        {caps.canEdit && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button className="h-10 gap-2" asChild>
+              <Link to={editHref}>
+                <Pencil className="h-4 w-4" />
+                Edit Parent
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-10 gap-2 border-rose-300 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+              disabled={resetMutation.isPending}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `Reset password for ${account.name} to ${DEFAULT_PARENT_PASSWORD}?`,
+                  )
+                ) {
+                  return;
+                }
+                resetMutation.mutate();
+              }}
+            >
+              {resetMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Lock className="h-4 w-4" />
+              )}
+              Reset Password
+            </Button>
+          </div>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full flex flex-wrap h-auto gap-0.5 p-0.5 bg-muted/40">
             <TabsTrigger value="overview" className="gap-1.5">
@@ -1035,8 +1043,11 @@ export default function UserDetailPage({
 
           <TabsContent value="overview" className="mt-3 focus-visible:outline-none space-y-4">
             <section className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-sm ring-1 ring-black/[0.04] space-y-3">
-              <SectionTitle>Portal credentials</SectionTitle>
+              <SectionTitle>Contact</SectionTitle>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+                <DetailRow label="Full name" value={account.name} />
+                <DetailRow label="Email" value={account.email || "—"} />
+                <DetailRow label="Phone" value={account.phone || "—"} />
                 <DetailRow
                   label="Portal password"
                   value={
@@ -1055,6 +1066,17 @@ export default function UserDetailPage({
                     </button>
                   }
                 />
+              </div>
+            </section>
+
+            <section className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-sm ring-1 ring-black/[0.04] space-y-3">
+              <SectionTitle>Account</SectionTitle>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+                <DetailRow label="Parent ID" value={parentDisplayId(account._id)} />
+                <DetailRow label="Role" value={roleLabel} />
+                <DetailRow label="Status" value={<ActiveBadge active={account.isActive} />} />
+                <DetailRow label="Last login" value={fmtDateTime(account.lastLogin)} />
+                <DetailRow label="Joined on" value={fmtDate(account.createdAt)} />
                 <DetailRow label="Created" value={fmtDateTime(account.createdAt)} />
                 <DetailRow label="Updated" value={fmtDateTime(account.updatedAt)} />
               </div>
@@ -1135,22 +1157,15 @@ export default function UserDetailPage({
       <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary overflow-hidden">
-              {imgSrc ? (
-                <img src={imgSrc} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <HeaderIcon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
-              )}
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <HeaderIcon className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
             </span>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight truncate">
-                  {account.name}
-                </h2>
-                <ActiveBadge active={account.isActive} />
-              </div>
-              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl truncate">
-                {pageHint}
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                {meta.title} Account Details
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                Manage {meta.title.toLowerCase()} information, account status and access.
               </p>
             </div>
           </div>
@@ -1168,40 +1183,130 @@ export default function UserDetailPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-        <PanelStatCard
-          label="Status"
-          value={account.isActive ? "Active" : "Inactive"}
-          hint={account.isActive ? "Portal can sign in" : "Login disabled"}
-          icon={account.isActive ? CheckCircle2 : UserX}
-          iconWrapClass={account.isActive ? "bg-[#d1fae5]" : "bg-[#fee2e2]"}
-          iconClass={account.isActive ? "text-[#059669]" : "text-[#dc2626]"}
-        />
-        <PanelStatCard
-          label="Role"
-          value={roleLabel}
-          hint={`${meta.title} account`}
-          icon={Shield}
-          iconWrapClass="bg-[#dbeafe]"
-          iconClass="text-[#2563eb]"
-        />
-        <PanelStatCard
-          label="Modules"
-          value={moduleCount}
-          hint="With access granted"
-          icon={KeyRound}
-          iconWrapClass="bg-[#ede9fe]"
-          iconClass="text-[#7c3aed]"
-        />
-        <PanelStatCard
-          label="Last login"
-          value={account.lastLogin ? fmtDate(account.lastLogin) : "—"}
-          hint={account.lastLogin ? "Most recent sign-in" : "Never signed in"}
-          icon={Clock}
-          iconWrapClass="bg-[#ffedd5]"
-          iconClass="text-[#ea580c]"
-        />
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+        <div className="xl:col-span-7 rounded-2xl border-0 bg-white p-5 sm:p-6 shadow-sm ring-1 ring-black/[0.04]">
+          <div className="flex flex-col sm:flex-row gap-5 sm:items-start">
+            <div className="h-24 w-24 sm:h-28 sm:w-28 shrink-0 rounded-full overflow-hidden bg-slate-100 ring-4 ring-slate-50 flex items-center justify-center">
+              {imgSrc ? (
+                <img src={imgSrc} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <HeaderIcon className="h-10 w-10 text-slate-400" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#1a2b4b] truncate">
+                  {account.name}
+                </h2>
+                <span
+                  className={cn(
+                    "inline-flex text-xs font-semibold rounded-full px-2.5 py-0.5",
+                    account.isActive
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-slate-100 text-slate-600",
+                  )}
+                >
+                  {account.isActive ? "Active" : "Inactive"}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-4">
+                <div className="space-y-4">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <User className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-500">{meta.title} ID</p>
+                      <p className="text-sm font-semibold text-[#1a2b4b] tabular-nums">
+                        {adminDisplayId(account._id)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <Calendar className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-500">Joined on</p>
+                      <p className="text-sm font-semibold text-[#1a2b4b]">
+                        {fmtDate(account.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <Mail className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">Email</p>
+                    <p className="text-sm font-medium text-primary break-all">
+                      {account.email || "—"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <Phone className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">Phone</p>
+                    <p className="text-sm font-semibold text-[#1a2b4b]">
+                      {account.phone || "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="xl:col-span-5 grid grid-cols-2 gap-3 sm:gap-4">
+          <PanelStatCard
+            label="Account Status"
+            value={account.isActive ? "Active" : "Inactive"}
+            hint={account.isActive ? "Can access the portal" : "Login disabled"}
+            icon={account.isActive ? CheckCircle2 : UserX}
+            iconWrapClass={account.isActive ? "bg-[#d1fae5]" : "bg-[#fee2e2]"}
+            iconClass={account.isActive ? "text-[#059669]" : "text-[#dc2626]"}
+          />
+          <PanelStatCard
+            label="Role"
+            value={roleLabel || meta.title}
+            hint={`${meta.title} account`}
+            icon={Shield}
+            iconWrapClass="bg-[#ede9fe]"
+            iconClass="text-[#7c3aed]"
+          />
+          <button
+            type="button"
+            className="text-left rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            onClick={() => setActiveTab("access")}
+          >
+            <PanelStatCard
+              label="Modules"
+              value={moduleCount}
+              hint="View access"
+              hintClass="text-primary"
+              icon={KeyRound}
+              iconWrapClass="bg-[#dbeafe]"
+              iconClass="text-[#2563eb]"
+            />
+          </button>
+          <PanelStatCard
+            label="Last Login"
+            value={account.lastLogin ? fmtDateTime(account.lastLogin) : "Never"}
+            valueClass="text-base sm:text-lg leading-snug"
+            hint={account.lastLogin ? "Most recent sign-in" : "Has not signed in yet"}
+            icon={Clock}
+            iconWrapClass="bg-[#ffedd5]"
+            iconClass="text-[#ea580c]"
+          />
+        </div>
       </div>
+
+      {caps.canEdit && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button className="h-10 gap-2" asChild>
+            <Link to={editHref}>
+              <Pencil className="h-4 w-4" />
+              Edit {meta.title}
+            </Link>
+          </Button>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full flex flex-wrap h-auto gap-0.5 p-0.5 bg-muted/40">
@@ -1214,21 +1319,7 @@ export default function UserDetailPage({
         </TabsList>
 
         <TabsContent value="overview" className="mt-3 focus-visible:outline-none space-y-4">
-          {imgSrc ? (
-            <div className="flex items-center gap-4 rounded-lg border p-4">
-              <img
-                src={imgSrc}
-                alt={account.name}
-                className="h-24 w-24 rounded-full object-cover border"
-              />
-              <div>
-                <p className="font-medium">{account.name}</p>
-                <p className="text-sm text-muted-foreground">{roleLabel}</p>
-              </div>
-            </div>
-          ) : null}
-
-          <section className="rounded-lg border p-4 space-y-3">
+          <section className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-sm ring-1 ring-black/[0.04] space-y-3">
             <SectionTitle>Contact</SectionTitle>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
               <DetailRow label="Full name" value={account.name} />
@@ -1237,12 +1328,14 @@ export default function UserDetailPage({
             </div>
           </section>
 
-          <section className="rounded-lg border p-4 space-y-3">
+          <section className="rounded-2xl border-0 bg-white p-4 sm:p-5 shadow-sm ring-1 ring-black/[0.04] space-y-3">
             <SectionTitle>Account</SectionTitle>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+              <DetailRow label={`${meta.title} ID`} value={adminDisplayId(account._id)} />
               <DetailRow label="Role" value={roleLabel} />
               <DetailRow label="Status" value={<ActiveBadge active={account.isActive} />} />
               <DetailRow label="Last login" value={fmtDateTime(account.lastLogin)} />
+              <DetailRow label="Joined on" value={fmtDate(account.createdAt)} />
               <DetailRow label="Created" value={fmtDateTime(account.createdAt)} />
               <DetailRow label="Updated" value={fmtDateTime(account.updatedAt)} />
             </div>

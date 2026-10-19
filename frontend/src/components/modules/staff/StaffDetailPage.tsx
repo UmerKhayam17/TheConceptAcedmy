@@ -11,8 +11,11 @@ import {
   FileSpreadsheet,
   FileText,
   KeyRound,
+  Mail,
+  Phone,
   Receipt,
   User,
+  UserX,
   Wallet,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -74,7 +77,25 @@ function fmtDate(iso?: string) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString();
+  return d.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+}
+
+function fmtDateTime(iso?: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function staffDisplayId(userId: string) {
+  const tail = userId.replace(/[^a-f0-9]/gi, "").slice(-4).toUpperCase() || "0000";
+  return `STF-${tail}`;
 }
 
 function StatusPill({ status }: { status: string }) {
@@ -322,79 +343,152 @@ export default function StaffDetailPage({
 
   const imgSrc = staff.profileImage ? resolveUploadUrl(staff.profileImage) : undefined;
   const roleLabel = roleDisplayLabel(roleNameOf(staff));
-
-  const pageHint = [
-    roleLabel,
-    staff.email,
-    staff.isActive ? "Active" : "Inactive",
-    staff.payType === "percentage"
-      ? `Percentage (${Number(staff.salaryPercentage ?? 0)}%)`
-      : `Salary ${formatPkr(staff.salary)}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const moduleCount = Object.values(normalizeModulePermissions(staff.modulePermissions)).filter(
+    (a) => a.length > 0,
+  ).length;
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-4">
       <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary overflow-hidden">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <User className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Staff Account Details
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                Manage staff information, account status and access.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              Teachers plant seeds that grow forever.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+        <div className="xl:col-span-7 rounded-2xl border-0 bg-white p-5 sm:p-6 shadow-sm ring-1 ring-black/[0.04]">
+          <div className="flex flex-col sm:flex-row gap-5 sm:items-start">
+            <div className="h-24 w-24 sm:h-28 sm:w-28 shrink-0 rounded-full overflow-hidden bg-slate-100 ring-4 ring-slate-50 flex items-center justify-center">
               {imgSrc ? (
                 <img src={imgSrc} alt="" className="h-full w-full object-cover" />
               ) : (
-                <User className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+                <User className="h-10 w-10 text-slate-400" />
               )}
-            </span>
-            <div className="min-w-0">
+            </div>
+            <div className="min-w-0 flex-1 space-y-4">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight truncate">
+                <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#1a2b4b] truncate">
                   {staff.name}
                 </h2>
                 <span
                   className={cn(
-                    "inline-flex text-xs font-semibold rounded-full px-2 py-0.5",
-                    staff.isActive ? "bg-accent/15 text-accent" : "bg-muted text-muted-foreground",
+                    "inline-flex text-xs font-semibold rounded-full px-2.5 py-0.5",
+                    staff.isActive
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-slate-100 text-slate-600",
                   )}
                 >
                   {staff.isActive ? "Active" : "Inactive"}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl truncate">
-                {pageHint}
-              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-4">
+                <div className="space-y-4">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <User className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-500">Staff ID</p>
+                      <p className="text-sm font-semibold text-[#1a2b4b] tabular-nums">
+                        {staffDisplayId(staff._id)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <Calendar className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-500">Joined on</p>
+                      <p className="text-sm font-semibold text-[#1a2b4b]">
+                        {fmtDate(staff.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <Mail className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">Email</p>
+                    <p className="text-sm font-medium text-primary break-all">
+                      {staff.email || "—"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <Phone className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">Phone</p>
+                    <p className="text-sm font-semibold text-[#1a2b4b]">
+                      {staff.phone || "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1" disabled={!!exporting}>
-                  <Download className="h-4 w-4" />
-                  {exporting ? "Exporting…" : "Complete report"}
-                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
-                  <FileSpreadsheet className="h-4 w-4" /> Excel (.xlsx)
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
-                  <FileText className="h-4 w-4" /> PDF report
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <div className="rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
-              <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
-                <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
-                  &ldquo;
-                </span>
-                Teachers plant seeds that grow forever.
-                <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
-                  &rdquo;
-                </span>
-              </p>
-            </div>
-          </div>
+        </div>
+
+        <div className="xl:col-span-5 grid grid-cols-2 gap-3 sm:gap-4">
+          <PanelStatCard
+            label="Account Status"
+            value={staff.isActive ? "Active" : "Inactive"}
+            hint={staff.isActive ? "Can access the portal" : "Login disabled"}
+            icon={staff.isActive ? CheckCircle2 : UserX}
+            iconWrapClass={staff.isActive ? "bg-[#d1fae5]" : "bg-[#fee2e2]"}
+            iconClass={staff.isActive ? "text-[#059669]" : "text-[#dc2626]"}
+          />
+          <PanelStatCard
+            label="Role"
+            value={roleLabel || "Staff"}
+            hint="Staff account"
+            icon={User}
+            iconWrapClass="bg-[#ede9fe]"
+            iconClass="text-[#7c3aed]"
+          />
+          <button
+            type="button"
+            className="text-left rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            onClick={() => setActiveTab("permissions")}
+          >
+            <PanelStatCard
+              label="Modules"
+              value={moduleCount}
+              hint="View permissions"
+              hintClass="text-primary"
+              icon={KeyRound}
+              iconWrapClass="bg-[#dbeafe]"
+              iconClass="text-[#2563eb]"
+            />
+          </button>
+          <PanelStatCard
+            label="Last Login"
+            value={staff.lastLogin ? fmtDateTime(staff.lastLogin) : "Never"}
+            valueClass="text-base sm:text-lg leading-snug"
+            hint={staff.lastLogin ? "Most recent sign-in" : "Has not signed in yet"}
+            icon={Clock}
+            iconWrapClass="bg-[#ffedd5]"
+            iconClass="text-[#ea580c]"
+          />
         </div>
       </div>
 
@@ -431,6 +525,26 @@ export default function StaffDetailPage({
           iconWrapClass="bg-[#ede9fe]"
           iconClass="text-[#7c3aed]"
         />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="h-10 gap-2" disabled={!!exporting}>
+              <Download className="h-4 w-4" />
+              {exporting ? "Exporting…" : "Complete report"}
+              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
+              <FileSpreadsheet className="h-4 w-4" /> Excel (.xlsx)
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
+              <FileText className="h-4 w-4" /> PDF report
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
