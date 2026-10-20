@@ -1067,8 +1067,8 @@ async function prepareEnrollmentVoucher(id, payload, userId) {
  */
 /**
  * Move an active student to another section in the same class.
- * Re-validates subjects against the new section layout, recalculates fees,
- * and syncs unpaid challans (same rules as updateStudent).
+ * Keeps the student's saved discipline and subjects (review-only on the UI);
+ * syncs unpaid challans after the section change.
  */
 async function changeStudentSection(id, payload) {
   const student = await AcademyStudent.findById(id);
@@ -1098,22 +1098,11 @@ async function changeStudentSection(id, payload) {
     throw new ApiError(400, 'Student is already in this section');
   }
 
-  const isFullPackage =
-    payload.isFullPackage !== undefined ? Boolean(payload.isFullPackage) : Boolean(student.isFullPackage);
-  const disciplineId = await resolveEnrollmentDiscipline(classId, student.disciplineId);
-  const subjectIds = await validateSubjects(
-    classId,
-    sectionId,
-    payload.selectedSubjects || student.selectedSubjects || [],
-    isFullPackage,
-    disciplineId
-  );
-
+  // Preserve enrollment: do not force re-select of discipline / subjects on section move.
+  const isFullPackage = Boolean(student.isFullPackage);
+  const subjectIds = (student.selectedSubjects || []).map((s) => String(s));
   const previousSectionId = student.sectionId ? String(student.sectionId) : null;
   student.sectionId = sectionId;
-  student.disciplineId = disciplineId || undefined;
-  student.isFullPackage = isFullPackage;
-  student.selectedSubjects = subjectIds;
 
   const feeStructure = await getByClass(classId);
   if (!feeStructure) throw new ApiError(400, 'No active fee structure for class');

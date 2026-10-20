@@ -3,9 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowLeftRight,
+  BookOpen,
   Check,
   Clock,
-  Eye,
   Filter,
   GraduationCap,
   Hash,
@@ -18,13 +18,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { resolveUploadUrl } from "@/lib/api";
@@ -33,11 +26,9 @@ import {
   changeStudentSection,
   fetchAcademyClasses,
   fetchAcademyStudents,
-  fetchEnrollmentSubjects,
   fetchSectionsByClass,
   getAcademyStudent,
   type AcademyStudent,
-  type AcademySubject,
 } from "@/lib/studentManagementApi";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
@@ -48,7 +39,6 @@ const STEPS = [
   "Select Student",
   "Current Info",
   "Select New Section",
-  "Check Subjects",
   "Confirm",
 ] as const;
 
@@ -62,8 +52,9 @@ function sectionNameOf(s: AcademyStudent | null | undefined): string {
   return typeof s.sectionId === "object" ? s.sectionId.sectionName || "—" : "—";
 }
 
-function subjectIdsOf(s: AcademyStudent | null | undefined): string[] {
-  return (s?.selectedSubjects || []).map((x) => (typeof x === "string" ? x : x._id));
+function disciplineNameOf(s: AcademyStudent | null | undefined): string {
+  if (!s?.disciplineId) return "—";
+  return typeof s.disciplineId === "object" ? s.disciplineId.name || "—" : "—";
 }
 
 function rollOf(s: AcademyStudent) {
@@ -109,109 +100,6 @@ function ActiveBadge() {
   );
 }
 
-function SubjectChecklist({
-  coreSubjects,
-  choiceGroups,
-  sharedSubjects,
-  streamSubjects,
-  selectedSubjects,
-  isFullPackage,
-  onToggleFullPackage,
-  onToggleSubject,
-}: {
-  coreSubjects: AcademySubject[];
-  choiceGroups: { _id: string; groupName: string; pickCount: number; subjects: AcademySubject[] }[];
-  sharedSubjects: AcademySubject[];
-  streamSubjects: AcademySubject[];
-  selectedSubjects: string[];
-  isFullPackage: boolean;
-  onToggleFullPackage: (checked: boolean) => void;
-  onToggleSubject: (id: string, opts?: { keepFullPackage?: boolean }) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <label className="flex items-center gap-2 text-sm font-medium">
-        <input
-          type="checkbox"
-          checked={isFullPackage}
-          onChange={(e) => onToggleFullPackage(e.target.checked)}
-        />
-        Full package
-      </label>
-      <div className="space-y-1.5 max-h-56 overflow-y-auto rounded-md border p-2">
-        {sharedSubjects.length > 0 || streamSubjects.length > 0 ? (
-          <>
-            {streamSubjects.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-1">Stream</p>
-                {streamSubjects.map((s) => (
-                  <label key={s._id} className="flex items-center gap-2 text-sm py-0.5">
-                    <input
-                      type="checkbox"
-                      checked={isFullPackage || selectedSubjects.includes(s._id)}
-                      disabled={isFullPackage}
-                      onChange={() => onToggleSubject(s._id)}
-                    />
-                    {s.subjectName}
-                  </label>
-                ))}
-              </div>
-            )}
-            {sharedSubjects.length > 0 && (
-              <div className={streamSubjects.length ? "pt-2 border-t" : ""}>
-                <p className="text-xs font-semibold text-muted-foreground mb-1">Shared</p>
-                {sharedSubjects.map((s) => (
-                  <label key={s._id} className="flex items-center gap-2 text-sm py-0.5">
-                    <input
-                      type="checkbox"
-                      checked={isFullPackage || selectedSubjects.includes(s._id)}
-                      disabled={isFullPackage}
-                      onChange={() => onToggleSubject(s._id)}
-                    />
-                    {s.subjectName}
-                  </label>
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          coreSubjects.map((s) => (
-            <label key={s._id} className="flex items-center gap-2 text-sm py-0.5">
-              <input
-                type="checkbox"
-                checked={isFullPackage || selectedSubjects.includes(s._id)}
-                disabled={isFullPackage}
-                onChange={() => onToggleSubject(s._id)}
-              />
-              {s.subjectName}
-            </label>
-          ))
-        )}
-        {choiceGroups.map((g) => (
-          <div key={g._id} className="pt-2 border-t">
-            <p className="text-xs font-semibold text-muted-foreground mb-1">
-              {g.groupName} (pick {g.pickCount})
-            </p>
-            {g.subjects.map((s) => (
-              <label key={s._id} className="flex items-center gap-2 text-sm py-0.5">
-                <input
-                  type="checkbox"
-                  checked={selectedSubjects.includes(s._id)}
-                  onChange={() => onToggleSubject(s._id, { keepFullPackage: isFullPackage })}
-                />
-                {s.subjectName}
-              </label>
-            ))}
-          </div>
-        ))}
-        {!coreSubjects.length && !choiceGroups.length ? (
-          <p className="text-xs text-muted-foreground">No subjects for this section.</p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 export default function ChangeSectionTab({
   caps,
   sessionId,
@@ -226,31 +114,22 @@ export default function ChangeSectionTab({
   const [classId, setClassId] = useState("");
   const [studentId, setStudentId] = useState("");
   const [sectionId, setSectionId] = useState("");
-  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
-  const [isFullPackage, setIsFullPackage] = useState(false);
   const [notes, setNotes] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
-  const [subjectsOpen, setSubjectsOpen] = useState(false);
 
   useEffect(() => {
     setClassId("");
     setStudentId("");
     setSectionId("");
-    setSelectedSubjects([]);
-    setIsFullPackage(false);
     setNotes("");
     setStudentSearch("");
-    setSubjectsOpen(false);
   }, [sessionId]);
 
   useEffect(() => {
     setStudentId("");
     setSectionId("");
-    setSelectedSubjects([]);
-    setIsFullPackage(false);
     setNotes("");
     setStudentSearch("");
-    setSubjectsOpen(false);
   }, [classId]);
 
   const { data: classes = [] } = useQuery({
@@ -286,11 +165,8 @@ export default function ChangeSectionTab({
 
   useEffect(() => {
     if (!student) return;
-    setIsFullPackage(Boolean(student.isFullPackage));
-    setSelectedSubjects(subjectIdsOf(student));
     setSectionId("");
     setNotes("");
-    setSubjectsOpen(false);
   }, [student?._id]);
 
   const { data: sections = [], isLoading: sectionsLoading } = useQuery({
@@ -304,57 +180,10 @@ export default function ChangeSectionTab({
     [sections, currentSectionId],
   );
 
-  const disciplineId = idOf(student?.disciplineId);
-
-  const { data: layout, isLoading: layoutLoading } = useQuery({
-    queryKey: ["change-section-subjects", classId, sectionId, disciplineId],
-    queryFn: () => fetchEnrollmentSubjects(classId, sectionId, disciplineId || undefined),
-    enabled: Boolean(classId && sectionId),
-  });
-
-  const coreSubjects = layout?.coreSubjects || [];
-  const choiceGroups = layout?.choiceGroups || [];
-  const sharedSubjects = layout?.sharedSubjects || [];
-  const streamSubjects = layout?.streamSubjects || [];
-
-  useEffect(() => {
-    if (!layout || !student) return;
-    const allowed = new Set([
-      ...coreSubjects.map((s) => s._id),
-      ...choiceGroups.flatMap((g) => g.subjects.map((s) => s._id)),
-    ]);
-    if (student.isFullPackage) {
-      setIsFullPackage(true);
-      setSelectedSubjects(coreSubjects.map((s) => s._id));
-      return;
-    }
-    setIsFullPackage(false);
-    setSelectedSubjects(subjectIdsOf(student).filter((id) => allowed.has(id)));
-  }, [layout, sectionId, student]);
-
-  const subjectsMayDiffer = useMemo(() => {
-    if (!student || !sectionId || !layout) return false;
-    const allowed = new Set([
-      ...coreSubjects.map((s) => s._id),
-      ...choiceGroups.flatMap((g) => g.subjects.map((s) => s._id)),
-    ]);
-    const current = subjectIdsOf(student);
-    return current.some((id) => !allowed.has(id)) || allowed.size !== current.length;
-  }, [student, sectionId, layout, coreSubjects, choiceGroups]);
-
-  const toggleSubject = (id: string, opts?: { keepFullPackage?: boolean }) => {
-    if (!opts?.keepFullPackage) setIsFullPackage(false);
-    setSelectedSubjects((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
-
   const mut = useMutation({
     mutationFn: () =>
       changeStudentSection(studentId, {
         sectionId,
-        selectedSubjects,
-        isFullPackage,
         notes: notes.trim() || undefined,
       }),
     onSuccess: (result) => {
@@ -364,27 +193,21 @@ export default function ChangeSectionTab({
           : targetSections.find((s) => s._id === sectionId)?.sectionName;
       toast({
         title: "Section updated",
-        description: `${result.student.studentName} moved to ${name || "new section"}. Unpaid challans synced.`,
+        description: `${result.student.studentName} moved to ${name || "new section"}. Discipline and subjects kept as saved. Unpaid challans synced.`,
       });
       qc.invalidateQueries({ queryKey: ["change-section-students"] });
       qc.invalidateQueries({ queryKey: ["change-section-student", studentId] });
       qc.invalidateQueries({ queryKey: ["academy-students"] });
       setSectionId("");
       setNotes("");
-      setSubjectsOpen(false);
     },
     onError: (err: Error) => {
       toast({ title: "Could not change section", description: err.message, variant: "destructive" });
     },
   });
 
-  const subjectsReady = isFullPackage || selectedSubjects.length > 0;
   const canSubmit =
-    caps.canEdit &&
-    writable &&
-    Boolean(studentId && sectionId) &&
-    subjectsReady &&
-    !mut.isPending;
+    caps.canEdit && writable && Boolean(studentId && sectionId) && !mut.isPending;
 
   const activeStepIndex = !classId
     ? 0
@@ -394,9 +217,7 @@ export default function ChangeSectionTab({
         ? student
           ? 3
           : 2
-        : !subjectsReady
-          ? 4
-          : 5;
+        : 4;
 
   const completedThrough = !classId
     ? -1
@@ -406,9 +227,7 @@ export default function ChangeSectionTab({
         ? 1
         : !sectionId
           ? 2
-          : !subjectsReady
-            ? 3
-            : 4;
+          : 3;
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
@@ -420,8 +239,8 @@ export default function ChangeSectionTab({
           <div className="min-w-0">
             <h2 className="text-lg font-bold tracking-tight text-primary">Change Section</h2>
             <p className="mt-1 text-sm leading-snug text-muted-foreground whitespace-pre-line">
-              {`Move an active student from one section to another without opening the full edit form.
-Only active students can be moved here — use Assign Section after payment for pending enrollments.`}
+              {`Move an active student to another section in the same class.
+Discipline and subjects stay as already saved — review only; no re-selection.`}
             </p>
           </div>
         </div>
@@ -437,9 +256,8 @@ Only active students can be moved here — use Assign Section after payment for 
         </div>
       ) : null}
 
-      {/* Stepper */}
       <Card className="px-3 py-4 sm:px-5 overflow-x-auto">
-        <ol className="flex items-center min-w-[640px] gap-0">
+        <ol className="flex items-center min-w-[560px] gap-0">
           {STEPS.map((label, i) => {
             const done = i <= completedThrough;
             const active = i === activeStepIndex;
@@ -481,7 +299,6 @@ Only active students can be moved here — use Assign Section after payment for 
         </ol>
       </Card>
 
-      {/* Class + Student */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-4 sm:p-5 space-y-3">
           <div>
@@ -567,7 +384,6 @@ Only active students can be moved here — use Assign Section after payment for 
         </Card>
       </div>
 
-      {/* Current info + New section */}
       {studentId ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card className="overflow-hidden">
@@ -610,7 +426,23 @@ Only active students can be moved here — use Assign Section after payment for 
                     <dt className="text-sm text-muted-foreground w-32 shrink-0">Roll No</dt>
                     <dd className="text-sm font-medium">{rollOf(student)}</dd>
                   </div>
+                  <div className="flex items-start gap-3 px-4 py-3">
+                    <BookOpen className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                    <dt className="text-sm text-muted-foreground w-32 shrink-0 pt-0.5">Discipline</dt>
+                    <dd className="text-sm font-medium">{disciplineNameOf(student)}</dd>
+                  </div>
+                  <div className="flex items-start gap-3 px-4 py-3 bg-muted/20">
+                    <BookOpen className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                    <dt className="text-sm text-muted-foreground w-32 shrink-0 pt-0.5">Subjects</dt>
+                    <dd className="text-sm font-medium leading-relaxed">
+                      {subjectList(student.selectedSubjects, student.isFullPackage)}
+                    </dd>
+                  </div>
                 </dl>
+                <p className="px-4 py-3 text-xs text-muted-foreground border-t">
+                  Discipline and subjects are kept as saved in the database. They are shown for
+                  review only and are not changed when you move the student.
+                </p>
               </div>
             )}
           </Card>
@@ -650,32 +482,6 @@ Only active students can be moved here — use Assign Section after payment for 
               )}
 
               {sectionId ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 space-y-2">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-semibold text-amber-900">Subjects May Differ</p>
-                      <p className="text-xs text-amber-800/90 mt-0.5 leading-relaxed">
-                        {subjectsMayDiffer
-                          ? "The new section has a different subject layout. Please review and re-select the subjects if needed."
-                          : "Review subjects for the new section before confirming the change."}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 gap-1.5 text-primary hover:text-primary hover:bg-primary/5 px-2"
-                    onClick={() => setSubjectsOpen(true)}
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    View Subject Comparison
-                  </Button>
-                </div>
-              ) : null}
-
-              {sectionId ? (
                 <div>
                   <Label className="text-muted-foreground">Notes (optional)</Label>
                   <Textarea
@@ -693,15 +499,14 @@ Only active students can be moved here — use Assign Section after payment for 
         </div>
       ) : null}
 
-      {/* Footer */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-primary/15 bg-primary/5 px-4 py-3.5">
         <div className="flex items-start gap-2.5 min-w-0">
           <Clock className="h-4 w-4 text-primary shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-primary">What happens after you confirm?</p>
             <p className="text-xs sm:text-sm text-primary/80 mt-0.5 leading-relaxed">
-              The system will update the section, recalculate fees (if needed) and sync unpaid
-              challans automatically.
+              Only the section is updated. Saved discipline and subjects stay the same; unpaid
+              challans are synced if fees change.
             </p>
           </div>
         </div>
@@ -723,53 +528,6 @@ Only active students can be moved here — use Assign Section after payment for 
           <p className="text-sm text-muted-foreground shrink-0">No permission to change sections.</p>
         )}
       </div>
-
-      {/* Subject comparison dialog */}
-      <Dialog open={subjectsOpen} onOpenChange={setSubjectsOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Subject comparison</DialogTitle>
-          </DialogHeader>
-          {student ? (
-            <div className="space-y-4 text-sm">
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-xs font-semibold text-muted-foreground mb-1">Current subjects</p>
-                <p>{subjectList(student.selectedSubjects, student.isFullPackage)}</p>
-              </div>
-              {layoutLoading ? (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading new section subjects…
-                </div>
-              ) : (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">
-                    Subjects for{" "}
-                    {targetSections.find((s) => s._id === sectionId)?.sectionName || "new section"}
-                  </p>
-                  <SubjectChecklist
-                    coreSubjects={coreSubjects}
-                    choiceGroups={choiceGroups}
-                    sharedSubjects={sharedSubjects}
-                    streamSubjects={streamSubjects}
-                    selectedSubjects={selectedSubjects}
-                    isFullPackage={isFullPackage}
-                    onToggleFullPackage={(checked) => {
-                      setIsFullPackage(checked);
-                      if (checked) setSelectedSubjects(coreSubjects.map((s) => s._id));
-                    }}
-                    onToggleSubject={toggleSubject}
-                  />
-                </div>
-              )}
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button type="button" onClick={() => setSubjectsOpen(false)}>
-              Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

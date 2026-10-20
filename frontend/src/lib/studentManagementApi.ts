@@ -835,6 +835,7 @@ export async function assignSectionAfterPayment(id: string, body: AssignSectionB
 
 export type ChangeSectionBody = {
   sectionId: string;
+  /** Kept for backward compatibility; server always preserves saved subjects/discipline. */
   selectedSubjects?: string[];
   isFullPackage?: boolean;
   notes?: string;
