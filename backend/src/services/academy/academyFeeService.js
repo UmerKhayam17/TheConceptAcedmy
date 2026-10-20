@@ -591,13 +591,31 @@ async function buildFeeQuery({
   sectionId,
   feeType,
   sessionId,
+  /** When true, only fee rows for active students (hides inactive / suspended). */
+  activeStudentsOnly = false,
 }) {
   const q = {};
   if (status) q.status = status;
   if (feeType) q.feeType = feeType;
   if (month) q.month = Number(month);
   if (year) q.year = Number(year);
+
+  const toObjectIds = (ids) =>
+    ids
+      .filter(Boolean)
+      .map((id) => (mongoose.isValidObjectId(id) ? new mongoose.Types.ObjectId(String(id)) : id));
+
+  const restrictToActive = async (ids) => {
+    if (!activeStudentsOnly) return ids;
+    if (!ids.length) return ids;
+    const active = await AcademyStudent.find({ _id: { $in: ids }, status: 'active' })
+      .select('_id')
+      .lean();
+    return active.map((s) => s._id);
+  };
+
   if (studentId) {
+    // Explicit student scope (e.g. parent portal) — keep access even if inactive/suspended.
     // Aggregate $match does not cast strings — must use ObjectId.
     q.studentId = mongoose.isValidObjectId(studentId)
       ? new mongoose.Types.ObjectId(String(studentId))
@@ -606,24 +624,30 @@ async function buildFeeQuery({
   }
   // Array (including empty) means an explicit scope — never fall through to all fees
   if (Array.isArray(studentIds)) {
-    q.studentId = {
-      $in: studentIds
-        .filter(Boolean)
-        .map((id) => (mongoose.isValidObjectId(id) ? new mongoose.Types.ObjectId(String(id)) : id)),
-    };
+    const scoped = toObjectIds(studentIds);
+    q.studentId = { $in: await restrictToActive(scoped) };
     return q;
   }
   if (classId || sectionId) {
-    const studentQ = {};
+    const studentQ = activeStudentsOnly ? { status: 'active' } : {};
     if (classId) studentQ.classId = classId;
     if (sectionId) studentQ.sectionId = sectionId;
-    const students = await AcademyStudent.find(studentQ).select('_id');
+    const students = await AcademyStudent.find(studentQ).select('_id').lean();
     q.studentId = { $in: students.map((s) => s._id) };
     return q;
   }
   if (sessionId) {
-    const classes = await AcademyClass.find({ sessionId }).select('_id');
-    const students = await AcademyStudent.find({ classId: { $in: classes.map((c) => c._id) } }).select('_id');
+    const classes = await AcademyClass.find({ sessionId }).select('_id').lean();
+    const studentQ = {
+      classId: { $in: classes.map((c) => c._id) },
+      ...(activeStudentsOnly ? { status: 'active' } : {}),
+    };
+    const students = await AcademyStudent.find(studentQ).select('_id').lean();
+    q.studentId = { $in: students.map((s) => s._id) };
+    return q;
+  }
+  if (activeStudentsOnly) {
+    const students = await AcademyStudent.find({ status: 'active' }).select('_id').lean();
     q.studentId = { $in: students.map((s) => s._id) };
   }
   return q;
@@ -901,6 +925,8 @@ async function listFeeRecords({
     await absorbUnpaidStationeryIntoMonthly(orphan.studentId, orphan.month, orphan.year, null);
   }
 
+  // Paid history keeps inactive/suspended students; collection views are active-only.
+  const activeStudentsOnly = status !== 'paid';
   const base = await buildFeeQuery({
     studentId,
     studentIds,
@@ -911,6 +937,7 @@ async function listFeeRecords({
     sectionId,
     feeType,
     sessionId,
+    activeStudentsOnly,
   });
   const q = await applyFeeRecordSearch(base, search);
 
@@ -945,7 +972,7 @@ async function listFeeRecords({
         AcademyFeeRecord.find({ _id: { $in: ids } }).populate({
           path: 'studentId',
           select:
-            'studentId studentName fatherName phone classId monthlyFee admissionFee monthlyFeeDiscount admissionFeeDiscount',
+            'studentId studentName fatherName phone classId status monthlyFee admissionFee monthlyFeeDiscount admissionFeeDiscount',
           populate: {
             path: 'classId',
             select: 'className sessionId',
@@ -1860,17 +1887,42 @@ async function getStudentFeeHistory(studentId) {
 async function getFeeSummary({ month, year, classId, sectionId, studentId, studentIds, sessionId }) {
   await syncOverdueFees({ month, year, classId, sectionId, studentId, studentIds, sessionId });
   const q = await buildFeeQuery({ month, year, classId, sectionId, studentId, studentIds, sessionId });
-  const records = await AcademyFeeRecord.find(q).lean();
+  const records = await AcademyFeeRecord.find(q).select('amount status studentId month year feeType dueDate').lean();
+
+  // Paid history stays for inactive/suspended; unpaid KPIs are active students only.
+  const scopedStudentIds = [
+    ...new Set(records.map((r) => String(r.studentId)).filter(Boolean)),
+  ];
+  const activeIdSet = new Set(
+    scopedStudentIds.length
+      ? (
+        await AcademyStudent.find({
+          _id: { $in: scopedStudentIds.map((id) => new mongoose.Types.ObjectId(id)) },
+          status: 'active',
+        })
+          .select('_id')
+          .lean()
+      ).map((s) => String(s._id))
+      : []
+  );
+  // Explicit single-student scope (parent): treat as visible regardless of status.
+  if (studentId) activeIdSet.add(String(studentId));
 
   const byStatus = { pending: 0, paid: 0, overdue: 0, waived: 0 };
   let totalPaid = 0;
   let totalPending = 0;
   let oldestPending = null;
+  let recordsCount = 0;
 
   records.forEach((r) => {
+    const isPaid = r.status === 'paid';
+    const isActiveStudent = activeIdSet.has(String(r.studentId));
+    if (!isPaid && !isActiveStudent) return;
+
+    recordsCount += 1;
     if (byStatus[r.status] != null) byStatus[r.status] += 1;
-    if (r.status === 'paid') totalPaid += r.amount;
-    if (r.status === 'pending' || r.status === 'overdue') {
+    if (isPaid) totalPaid += r.amount;
+    if (isActiveStudent && (r.status === 'pending' || r.status === 'overdue')) {
       totalPending += r.amount;
       const key = (Number(r.year) || 0) * 12 + (Number(r.month) || 0);
       if (!oldestPending || key < oldestPending.key) {
@@ -1921,19 +1973,42 @@ async function getFeeSummary({ month, year, classId, sectionId, studentId, stude
       studentIds,
       sessionId,
     });
-    const prevRecords = await AcademyFeeRecord.find(prevQ).lean();
+    const prevRecords = await AcademyFeeRecord.find(prevQ)
+      .select('amount status studentId')
+      .lean();
+    const prevStudentIds = [...new Set(prevRecords.map((r) => String(r.studentId)).filter(Boolean))];
+    const prevActive = new Set(
+      prevStudentIds.length
+        ? (
+          await AcademyStudent.find({
+            _id: { $in: prevStudentIds.map((id) => new mongoose.Types.ObjectId(id)) },
+            status: 'active',
+          })
+            .select('_id')
+            .lean()
+        ).map((s) => String(s._id))
+        : []
+    );
+    if (studentId) prevActive.add(String(studentId));
     let prevPaid = 0;
     let prevPending = 0;
+    let prevCount = 0;
     prevRecords.forEach((r) => {
-      if (r.status === 'paid') prevPaid += r.amount;
-      if (r.status === 'pending' || r.status === 'overdue') prevPending += r.amount;
+      const isPaid = r.status === 'paid';
+      const isActiveStudent = prevActive.has(String(r.studentId));
+      if (!isPaid && !isActiveStudent) return;
+      prevCount += 1;
+      if (isPaid) prevPaid += r.amount;
+      if (isActiveStudent && (r.status === 'pending' || r.status === 'overdue')) {
+        prevPending += r.amount;
+      }
     });
     previous = {
       month: prevMonth,
       year: prevYear,
       totalPaid: prevPaid,
       totalPending: prevPending,
-      recordsCount: prevRecords.length,
+      recordsCount: prevCount,
     };
 
     // Last 6 months sparkline points ending at selected month.
@@ -1961,19 +2036,42 @@ async function getFeeSummary({ month, year, classId, sectionId, studentId, stude
           studentIds,
           sessionId,
         });
-        return AcademyFeeRecord.find(tq).select('amount status').lean();
+        return AcademyFeeRecord.find(tq).select('amount status studentId').lean();
       })
     );
+    const trendStudentIds = [
+      ...new Set(windowRows.flat().map((r) => String(r.studentId)).filter(Boolean)),
+    ];
+    const trendActive = new Set(
+      trendStudentIds.length
+        ? (
+          await AcademyStudent.find({
+            _id: { $in: trendStudentIds.map((id) => new mongoose.Types.ObjectId(id)) },
+            status: 'active',
+          })
+            .select('_id')
+            .lean()
+        ).map((s) => String(s._id))
+        : []
+    );
+    if (studentId) trendActive.add(String(studentId));
     windowRows.forEach((rows) => {
       let p = 0;
       let u = 0;
+      let count = 0;
       rows.forEach((r) => {
-        if (r.status === 'paid') p += r.amount;
-        if (r.status === 'pending' || r.status === 'overdue') u += r.amount;
+        const isPaid = r.status === 'paid';
+        const isActiveStudent = trendActive.has(String(r.studentId));
+        if (!isPaid && !isActiveStudent) return;
+        count += 1;
+        if (isPaid) p += r.amount;
+        if (isActiveStudent && (r.status === 'pending' || r.status === 'overdue')) {
+          u += r.amount;
+        }
       });
       paidSeries.push(p);
       pendingSeries.push(u);
-      recordsSeries.push(rows.length);
+      recordsSeries.push(count);
     });
     trends = { paid: paidSeries, pending: pendingSeries, records: recordsSeries };
   }
@@ -1987,10 +2085,10 @@ async function getFeeSummary({ month, year, classId, sectionId, studentId, stude
   }
 
   return {
-    recordsCount: records.length,
+    recordsCount,
     totalPaid,
     totalPending,
-    totalAmount: records.reduce((s, r) => s + r.amount, 0),
+    totalAmount: totalPaid + totalPending,
     byStatus,
     activeStudents,
     previous,
@@ -2403,6 +2501,7 @@ async function loadPaidFees({ classId, month, year, search, sessionId, feeType }
     feeType,
   });
   const q = await applyFeeRecordSearch(base, search);
+  // Keep paid history for inactive / suspended students (collection lists exclude them separately).
   const records = await AcademyFeeRecord.find(q)
     .populate({
       path: 'studentId',
@@ -2411,7 +2510,7 @@ async function loadPaidFees({ classId, month, year, search, sessionId, feeType }
     })
     .sort({ paidAt: -1, year: -1, month: -1 })
     .lean();
-  return records.filter((r) => r.studentId && r.studentId.status === 'active');
+  return records.filter((r) => r.studentId);
 }
 
 /** Split paid voucher into tuition/admission base vs additional charges (incl. stationery). */
