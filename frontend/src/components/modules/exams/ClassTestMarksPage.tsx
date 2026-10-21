@@ -45,7 +45,11 @@ import {
   type AssessmentType,
   type ClassTestEntryRow,
 } from "@/lib/studentManagementApi";
-import { clampMarksInput, validateObtainedVsTotal } from "@/lib/marksValidation";
+import {
+  clampMarksInput,
+  handleMarksFieldEnterKey,
+  validateObtainedVsTotal,
+} from "@/lib/marksValidation";
 import { cn } from "@/lib/utils";
 
 function classNameOf(test: AcademyClassTest) {
@@ -521,7 +525,7 @@ export default function ClassTestMarksPage({
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, ID, father, roll, phone..."
+              placeholder="Search name, ID, father, roll..."
               className="h-10 pl-9"
             />
           </div>
@@ -585,7 +589,6 @@ export default function ClassTestMarksPage({
                     <th className="text-left p-3 font-medium w-10">#</th>
                     <th className="text-left p-3 font-medium min-w-[160px]">Student</th>
                     <th className="text-left p-3 font-medium min-w-[120px]">Father name</th>
-                    <th className="text-left p-3 font-medium min-w-[110px]">Phone</th>
                     <th className="text-left p-3 font-medium min-w-[110px]">Roll number</th>
                     <th className="text-left p-3 font-medium">Section</th>
                     <th className="text-center p-3 font-medium w-[9.5rem]">Obtained</th>
@@ -633,9 +636,6 @@ export default function ClassTestMarksPage({
                         <td className="p-3 text-muted-foreground whitespace-nowrap">
                           {row.student.fatherName || "—"}
                         </td>
-                        <td className="p-3 text-muted-foreground whitespace-nowrap">
-                          {row.student.phone || "—"}
-                        </td>
                         <td className="p-3 font-mono text-xs whitespace-nowrap">{roll}</td>
                         <td className="p-3">
                           {row.student.sectionName ? (
@@ -662,9 +662,11 @@ export default function ClassTestMarksPage({
                                 step="any"
                                 inputMode="decimal"
                                 placeholder="—"
+                                data-marks-field
                                 value={cell.obtained}
                                 disabled={!canEnter}
                                 aria-label={`Obtained marks out of ${totalMarks}`}
+                                onKeyDown={handleMarksFieldEnterKey}
                                 onChange={(e) =>
                                   setMarks((m) => ({
                                     ...m,

@@ -27,7 +27,11 @@ import MarksReportButton from "@/components/modules/exams/MarksReportButton";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import CreatedByLine from "@/components/modules/CreatedByLine";
 import { matchesPanelSearch } from "@/lib/panelSearch";
-import { clampMarksInput, validateObtainedVsTotal } from "@/lib/marksValidation";
+import {
+  clampMarksInput,
+  handleMarksFieldEnterKey,
+  validateObtainedVsTotal,
+} from "@/lib/marksValidation";
 
 function classNameOf(exam?: Exam | null) {
   const c = exam?.academyClass;
@@ -404,7 +408,9 @@ export default function TermExamsPanel({ caps }: { caps: ModuleActionCaps }) {
                                             max={col.total}
                                             step="any"
                                             placeholder="0"
+                                            data-marks-field
                                             value={cell?.obtained ?? ""}
+                                            onKeyDown={handleMarksFieldEnterKey}
                                             onChange={(e) =>
                                               setMarksDraft((prev) => ({
                                                 ...prev,

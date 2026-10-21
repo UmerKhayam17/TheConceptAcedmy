@@ -79,15 +79,6 @@ function testBatchGroupKey(test: AcademyClassTest) {
   ].join("|");
 }
 
-function studentContact(s: {
-  phone?: string;
-  contactPhoneRes?: string;
-} | null | undefined) {
-  const phone = String(s?.phone || "").trim();
-  const res = String(s?.contactPhoneRes || "").trim();
-  return phone || res || "—";
-}
-
 function reportPct(obtained: number, total: number) {
   if (!total || total <= 0) return 0;
   return Math.round((obtained / total) * 1000) / 10;
@@ -552,7 +543,6 @@ export default function ReportCardDetailPage({
                   <th className={cn(tableHeadClass, "w-10")}>#</th>
                   <th className={tableHeadClass}>Student name</th>
                   <th className={tableHeadClass}>Father name</th>
-                  <th className={tableHeadClass}>Contact</th>
                   <th className={tableHeadClass}>Roll no.</th>
                   <th className={tableHeadClass}>Student ID</th>
                   <th className={tableHeadClass}>Total marks</th>
@@ -588,9 +578,6 @@ export default function ReportCardDetailPage({
                       </td>
                       <td className={cn(tableCellClass, "text-muted-foreground whitespace-nowrap")}>
                         {row.student.fatherName || "—"}
-                      </td>
-                      <td className={cn(tableCellClass, "tabular-nums whitespace-nowrap")}>
-                        {studentContact(row.student)}
                       </td>
                       <td
                         className={cn(
@@ -678,7 +665,6 @@ export default function ReportCardDetailPage({
                   <th className={cn(tableHeadClass, "w-10")}>#</th>
                   <th className={tableHeadClass}>Student name</th>
                   <th className={tableHeadClass}>Father name</th>
-                  <th className={tableHeadClass}>Contact</th>
                   <th className={tableHeadClass}>Roll no.</th>
                   <th className={tableHeadClass}>Student ID</th>
                   <th className={tableHeadClass}>Total marks</th>
@@ -717,9 +703,6 @@ export default function ReportCardDetailPage({
                       </td>
                       <td className={cn(tableCellClass, "text-muted-foreground whitespace-nowrap")}>
                         {r.academyStudent?.fatherName || "—"}
-                      </td>
-                      <td className={cn(tableCellClass, "tabular-nums whitespace-nowrap")}>
-                        {studentContact(r.academyStudent)}
                       </td>
                       <td
                         className={cn(

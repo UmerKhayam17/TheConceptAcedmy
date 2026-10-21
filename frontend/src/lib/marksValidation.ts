@@ -1,3 +1,22 @@
+/** Enter → next marks field in the same table; Shift+Enter → previous. */
+export function handleMarksFieldEnterKey(
+  e: { key: string; shiftKey: boolean; preventDefault: () => void; currentTarget: HTMLElement },
+) {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const current = e.currentTarget;
+  const root = current.closest("table") ?? document;
+  const fields = Array.from(
+    root.querySelectorAll<HTMLInputElement>("[data-marks-field]:not(:disabled)"),
+  ).filter((el) => el.offsetParent !== null);
+  const i = fields.indexOf(current as HTMLInputElement);
+  if (i < 0) return;
+  const next = fields[e.shiftKey ? i - 1 : i + 1];
+  if (!next) return;
+  next.focus();
+  next.select();
+}
+
 /** Keep typed marks within [0, maxTotal]. Empty string stays empty for unfinished cells. */
 export function clampMarksInput(raw: string, maxTotal: number): string {
   if (raw.trim() === "") return "";
