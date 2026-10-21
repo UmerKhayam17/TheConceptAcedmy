@@ -52,6 +52,8 @@ import { createdByLabel } from "@/lib/createdBy";
 import CreatedByLine from "@/components/modules/CreatedByLine";
 import { getApiRoot } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { recordIsAbsent } from "@/lib/marksValidation";
+import { AbsentBadge } from "@/components/modules/exams/MarksAbsentToggle";
 import {
   academyStudentRoutes,
   type AcademyStudentRoutes,
@@ -790,9 +792,18 @@ function TestsTab({
                 ASSESSMENT_TYPE_LABELS[r.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
                 r.assessmentType,
                 r.subjectId ? subjectName(r.subjectId as AcademySubject) : "—",
-                r.obtainedMarks,
+                recordIsAbsent(r) ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <AbsentBadge />
+                    <span className="tabular-nums text-muted-foreground">Ab</span>
+                  </span>
+                ) : (
+                  r.obtainedMarks
+                ),
                 r.totalMarks,
-                examPercentage(r.obtainedMarks, r.totalMarks),
+                recordIsAbsent(r)
+                  ? "—"
+                  : examPercentage(r.obtainedMarks, r.totalMarks),
                 r.testPaperImage ? (
                   <TestPaperCapture
                     value={r.testPaperImage}
@@ -846,16 +857,31 @@ function TestsTab({
             {termResults.map((r: ExamResult) => {
               const examTitle =
                 typeof r.exam === "object" && r.exam ? r.exam.title : "Exam";
+              const marks = r.subjectMarks || [];
+              const fullyAbsent =
+                marks.length > 0 && marks.every((m) => recordIsAbsent(m));
+              const hasAbsent = marks.some((m) => recordIsAbsent(m));
               return (
                 <div
                   key={r._id}
                   className="border rounded-lg p-4 flex flex-wrap items-center justify-between gap-3"
                 >
                   <div>
-                    <p className="font-medium">{examTitle}</p>
+                    <p className="font-medium inline-flex items-center gap-2">
+                      {examTitle}
+                      {(fullyAbsent || hasAbsent) && <AbsentBadge />}
+                    </p>
                     <p className="text-sm text-muted-foreground">
-                      {Math.round(r.percentage)}% · Grade {r.grade}
-                      {r.position != null ? ` · Position #${r.position}` : ""}
+                      {fullyAbsent
+                        ? `Ab / ${r.totalMarks}`
+                        : `${r.obtainedMarks} / ${r.totalMarks}`}
+                      {" · "}
+                      {fullyAbsent
+                        ? "Absent"
+                        : `${Math.round(r.percentage)}% · Grade ${r.grade}`}
+                      {!fullyAbsent && r.position != null
+                        ? ` · Position #${r.position}`
+                        : ""}
                     </p>
                   </div>
                   <Button

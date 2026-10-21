@@ -24,6 +24,8 @@ const academyAssessmentSchema = new mongoose.Schema(
     examDate: { type: Date, required: true, index: true },
     totalMarks: { type: Number, required: true, min: 0 },
     obtainedMarks: { type: Number, required: true, min: 0 },
+    /** True when the student did not sit the test (obtained stored as 0). */
+    isAbsent: { type: Boolean, default: false },
     remarks: { type: String, trim: true },
     /** URL path to scanned/photo of the student's test paper (e.g. /uploads/test-papers/...). */
     testPaperImage: { type: String, trim: true },

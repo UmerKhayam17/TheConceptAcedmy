@@ -37,7 +37,9 @@ import {
   type ExamResult,
 } from "@/lib/examApi";
 import { matchesPanelSearch } from "@/lib/panelSearch";
+import { recordIsAbsent } from "@/lib/marksValidation";
 import { cn } from "@/lib/utils";
+import { AbsentBadge } from "@/components/modules/exams/MarksAbsentToggle";
 
 function idOf(ref: string | { _id: string } | undefined | null): string {
   if (!ref) return "";
@@ -104,6 +106,9 @@ type TestStudentListRow = ClassTestEntryRow & {
   obtainedTotal: number;
   marksTotal: number;
   subjectMarkCount: number;
+  absentCount: number;
+  isFullyAbsent: boolean;
+  hasAbsent: boolean;
 };
 
 export default function ReportCardDetailPage({
@@ -213,6 +218,7 @@ export default function ReportCardDetailPage({
       obtainedTotal: number;
       marksTotal: number;
       subjectMarkCount: number;
+      absentCount: number;
     };
     const byStudent = new Map<string, Acc>();
     const addRow = (row: ClassTestEntryRow) => {
@@ -220,6 +226,7 @@ export default function ReportCardDetailPage({
       const sid = String(row.student._id);
       const obtained = Number(row.assessment.obtainedMarks) || 0;
       const total = Number(row.assessment.totalMarks) || 0;
+      const absent = recordIsAbsent(row.assessment) ? 1 : 0;
       const prev = byStudent.get(sid);
       if (!prev) {
         byStudent.set(sid, {
@@ -227,12 +234,14 @@ export default function ReportCardDetailPage({
           obtainedTotal: obtained,
           marksTotal: total,
           subjectMarkCount: 1,
+          absentCount: absent,
         });
         return;
       }
       prev.obtainedTotal += obtained;
       prev.marksTotal += total;
       prev.subjectMarkCount += 1;
+      prev.absentCount += absent;
     };
 
     const peers = peerTestsQ.data || [];
@@ -247,6 +256,9 @@ export default function ReportCardDetailPage({
       obtainedTotal: a.obtainedTotal,
       marksTotal: a.marksTotal,
       subjectMarkCount: a.subjectMarkCount,
+      absentCount: a.absentCount,
+      isFullyAbsent: a.subjectMarkCount > 0 && a.absentCount === a.subjectMarkCount,
+      hasAbsent: a.absentCount > 0,
     }));
   }, [kind, peerTestsQ.data, primaryTestQ.data]);
 
@@ -560,8 +572,10 @@ export default function ReportCardDetailPage({
                   const obtained = row.obtainedTotal;
                   const total = row.marksTotal;
                   const pct = reportPct(obtained, total);
-                  const grade = reportLetterGrade(pct);
-                  const result = reportOverallResult(pct);
+                  const grade = row.isFullyAbsent ? "—" : reportLetterGrade(pct);
+                  const result = row.isFullyAbsent
+                    ? "Absent"
+                    : reportOverallResult(pct);
                   const fail = result === "Fail";
                   return (
                     <tr key={row.student._id} className="hover:bg-slate-50/60">
@@ -596,24 +610,33 @@ export default function ReportCardDetailPage({
                         {row.student.studentId || "—"}
                       </td>
                       <td className={cn(tableCellClass, "tabular-nums whitespace-nowrap")}>
-                        <span className="font-medium">
-                          {obtained}/{total}
-                        </span>
-                        {row.subjectMarkCount > 1 && (
-                          <span className="ml-1.5 text-[11px] text-muted-foreground">
-                            ({row.subjectMarkCount} subj.)
+                        <span className="inline-flex items-center gap-2">
+                          {row.hasAbsent && <AbsentBadge />}
+                          <span className="font-medium">
+                            {row.isFullyAbsent ? `Ab/${total}` : `${obtained}/${total}`}
                           </span>
-                        )}
+                          {row.subjectMarkCount > 1 && (
+                            <span className="text-[11px] text-muted-foreground">
+                              ({row.subjectMarkCount} subj.)
+                            </span>
+                          )}
+                        </span>
                       </td>
-                      <td className={cn(tableCellClass, "tabular-nums")}>{pct}%</td>
+                      <td className={cn(tableCellClass, "tabular-nums")}>
+                        {row.isFullyAbsent ? "—" : `${pct}%`}
+                      </td>
                       <td className={cn(tableCellClass, "font-medium")}>{grade}</td>
                       <td className={tableCellClass}>
-                        <Badge
-                          variant={fail ? "destructive" : "secondary"}
-                          className="text-[10px]"
-                        >
-                          {result}
-                        </Badge>
+                        {row.isFullyAbsent ? (
+                          <AbsentBadge />
+                        ) : (
+                          <Badge
+                            variant={fail ? "destructive" : "secondary"}
+                            className="text-[10px]"
+                          >
+                            {result}
+                          </Badge>
+                        )}
                       </td>
                       <td className={cn(tableCellClass, "text-right")}>
                         <div className="inline-flex items-center justify-end gap-0.5">
@@ -681,12 +704,21 @@ export default function ReportCardDetailPage({
                   const busy = viewing || printing;
                   const obtained = Number(r.obtainedMarks) || 0;
                   const total = Number(r.totalMarks) || 0;
+                  const subjectMarks = r.subjectMarks || [];
+                  const isFullyAbsent =
+                    subjectMarks.length > 0 &&
+                    subjectMarks.every((m) => recordIsAbsent(m));
+                  const hasAbsent = subjectMarks.some((m) => recordIsAbsent(m));
                   const pct =
                     r.percentage != null
                       ? Math.round(Number(r.percentage) * 10) / 10
                       : reportPct(obtained, total);
-                  const grade = r.grade || reportLetterGrade(pct);
-                  const result = reportOverallResult(pct);
+                  const grade = isFullyAbsent
+                    ? "—"
+                    : r.grade || reportLetterGrade(pct);
+                  const result = isFullyAbsent
+                    ? "Absent"
+                    : reportOverallResult(pct);
                   const fail = result === "Fail";
                   return (
                     <tr key={r._id} className="hover:bg-slate-50/60">
@@ -726,17 +758,28 @@ export default function ReportCardDetailPage({
                           "tabular-nums font-medium whitespace-nowrap"
                         )}
                       >
-                        {obtained}/{total}
+                        <span className="inline-flex items-center gap-2">
+                          {hasAbsent && <AbsentBadge />}
+                          <span>
+                            {isFullyAbsent ? `Ab/${total}` : `${obtained}/${total}`}
+                          </span>
+                        </span>
                       </td>
-                      <td className={cn(tableCellClass, "tabular-nums")}>{pct}%</td>
+                      <td className={cn(tableCellClass, "tabular-nums")}>
+                        {isFullyAbsent ? "—" : `${pct}%`}
+                      </td>
                       <td className={cn(tableCellClass, "font-medium")}>{grade}</td>
                       <td className={tableCellClass}>
-                        <Badge
-                          variant={fail ? "destructive" : "secondary"}
-                          className="text-[10px]"
-                        >
-                          {result}
-                        </Badge>
+                        {isFullyAbsent ? (
+                          <AbsentBadge />
+                        ) : (
+                          <Badge
+                            variant={fail ? "destructive" : "secondary"}
+                            className="text-[10px]"
+                          >
+                            {result}
+                          </Badge>
+                        )}
                       </td>
                       <td className={cn(tableCellClass, "text-right")}>
                         <div className="inline-flex items-center justify-end gap-0.5">

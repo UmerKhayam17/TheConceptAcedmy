@@ -124,28 +124,44 @@ async function enterMarks(examId, marksRows, userId) {
       throw new ApiError(400, `${student.studentName} is not enrolled in any subject`);
     }
     const allowedIds = new Set(enrolledSubjectIds(student, subjects));
+    const normalizedSubjectMarks = [];
     for (const sm of row.subjectMarks || []) {
       const sid = String(sm.subject || sm.subjectId);
       if (sid && !allowedIds.has(sid)) {
         throw new ApiError(400, `${student.studentName} is not enrolled in one or more marked subjects`);
       }
-      const obtained = Number(sm.obtained);
+      const rawObtained = Number(sm.obtained);
       const total = Number(sm.total);
-      if (!Number.isFinite(obtained) || !Number.isFinite(total) || total < 1) {
+      const isAbsent =
+        Boolean(sm.isAbsent) ||
+        rawObtained === -1 ||
+        /absent/i.test(String(sm.remarks || ''));
+      const obtained = isAbsent ? 0 : rawObtained;
+      if (!Number.isFinite(total) || total < 1) {
         throw new ApiError(400, `Invalid marks for ${student.studentName}`);
       }
-      if (obtained < 0) {
-        throw new ApiError(400, `Obtained marks cannot be negative for ${student.studentName}`);
+      if (!isAbsent && (!Number.isFinite(obtained) || obtained < 0)) {
+        throw new ApiError(400, `Invalid marks for ${student.studentName}`);
       }
-      if (obtained > total) {
+      if (!isAbsent && obtained > total) {
         throw new ApiError(
           400,
           `Obtained marks cannot exceed total marks (${total}) for ${student.studentName}`
         );
       }
+      normalizedSubjectMarks.push({
+        subject: sid,
+        obtained,
+        total,
+        isAbsent,
+        remarks: isAbsent
+          ? String(sm.remarks || '').trim() || 'Absent'
+          : sm.remarks || '',
+        grade: sm.grade,
+      });
     }
 
-    const totals = computeResultTotals(row.subjectMarks);
+    const totals = computeResultTotals(normalizedSubjectMarks);
     // eslint-disable-next-line no-await-in-loop
     const result = await Result.findOneAndUpdate(
       { academyStudent: row.studentId, exam: exam._id },

@@ -236,10 +236,17 @@ async function saveClassTestMarks(testId, entries, userId, actor, sessionId) {
   const saved = [];
 
   for (const row of entries) {
-    if (row.obtainedMarks === '' || row.obtainedMarks == null) continue;
-    const obtained = Number(row.obtainedMarks);
-    if (Number.isNaN(obtained) || obtained < 0) continue;
-    if (obtained > test.totalMarks) {
+    if (row.obtainedMarks === '' || row.obtainedMarks == null) {
+      if (!row.isAbsent) continue;
+    }
+    const rawObtained = Number(row.obtainedMarks);
+    const isAbsent =
+      Boolean(row.isAbsent) ||
+      rawObtained === -1 ||
+      /absent/i.test(String(row.remarks || ''));
+    const obtained = isAbsent ? 0 : rawObtained;
+    if (!isAbsent && (Number.isNaN(obtained) || obtained < 0)) continue;
+    if (!isAbsent && obtained > test.totalMarks) {
       throw new ApiError(400, `Obtained marks cannot exceed ${test.totalMarks}`);
     }
 
@@ -253,6 +260,7 @@ async function saveClassTestMarks(testId, entries, userId, actor, sessionId) {
     if (disciplineId && String(student.disciplineId || '') !== disciplineId) {
       throw new ApiError(400, 'Invalid student for this discipline');
     }
+    const remarksRaw = String(row.remarks || '').trim();
     const payload = {
       classTestId: testId,
       subjectId: test.subjectId,
@@ -261,7 +269,12 @@ async function saveClassTestMarks(testId, entries, userId, actor, sessionId) {
       examDate: test.examDate,
       totalMarks: test.totalMarks,
       obtainedMarks: obtained,
-      remarks: row.remarks || '',
+      isAbsent,
+      remarks: isAbsent
+        ? remarksRaw && !/absent/i.test(remarksRaw)
+          ? remarksRaw
+          : remarksRaw || 'Absent'
+        : remarksRaw,
       testPaperImage: row.testPaperImage || '',
     };
 

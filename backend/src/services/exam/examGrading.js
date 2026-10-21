@@ -16,15 +16,33 @@ function gpaFromPct(pct) {
   return 0.0;
 }
 
+function subjectIsAbsent(sm) {
+  if (sm?.isAbsent) return true;
+  if (Number(sm?.obtained) === -1) return true;
+  return /absent/i.test(String(sm?.remarks || ''));
+}
+
 function computeResultTotals(subjectMarks) {
   let totalMarks = 0;
   let obtainedMarks = 0;
   const enriched = (subjectMarks || []).map((sm) => {
-    const pct = sm.total ? (sm.obtained / sm.total) * 100 : 0;
-    const grade = sm.grade || letterGrade(pct);
-    totalMarks += sm.total;
-    obtainedMarks += sm.obtained;
-    return { ...sm, grade };
+    const isAbsent = subjectIsAbsent(sm);
+    const obtained = isAbsent ? 0 : Number(sm.obtained) || 0;
+    const total = Number(sm.total) || 0;
+    const pct = total ? (obtained / total) * 100 : 0;
+    const grade = isAbsent ? 'Ab' : sm.grade || letterGrade(pct);
+    totalMarks += total;
+    obtainedMarks += obtained;
+    return {
+      ...sm,
+      obtained,
+      total,
+      isAbsent,
+      remarks: isAbsent
+        ? String(sm.remarks || '').trim() || 'Absent'
+        : sm.remarks,
+      grade,
+    };
   });
   const percentage = totalMarks ? (obtainedMarks / totalMarks) * 100 : 0;
   const grade = letterGrade(percentage);

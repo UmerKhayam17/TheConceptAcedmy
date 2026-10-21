@@ -6,6 +6,8 @@ const subjectMarkSchema = new mongoose.Schema(
     obtained: { type: Number, required: true, min: 0 },
     total: { type: Number, required: true, min: 0 },
     grade: { type: String, trim: true },
+    /** True when the student was absent for this subject paper. */
+    isAbsent: { type: Boolean, default: false },
     remarks: { type: String, trim: true },
   },
   { _id: false }

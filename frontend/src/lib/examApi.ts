@@ -38,6 +38,7 @@ export interface SubjectMark {
   obtained: number;
   total: number;
   grade?: string;
+  isAbsent?: boolean;
   remarks?: string;
 }
 
@@ -114,7 +115,13 @@ export function saveExamMarks(
   examId: string,
   marks: {
     studentId: string;
-    subjectMarks: { subject: string; obtained: number; total: number }[];
+    subjectMarks: {
+      subject: string;
+      obtained: number;
+      total: number;
+      isAbsent?: boolean;
+      remarks?: string;
+    }[];
   }[]
 ) {
   return api<ExamResult[]>(`/exams/${examId}/results`, {

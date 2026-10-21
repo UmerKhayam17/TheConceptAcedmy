@@ -85,7 +85,7 @@ export default function PanelPageHeader({
   const showBreadcrumb = user.role !== "parent";
 
   return (
-    <header className="z-30 w-full shrink-0 border-b border-[#DCE4EF] bg-white">
+    <header className="sticky top-0 z-30 w-full shrink-0 border-b border-[#DCE4EF] bg-white">
       <div className="flex h-[72px] w-full items-center justify-between gap-3 px-4 sm:px-5 lg:px-6">
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <SidebarToggle />

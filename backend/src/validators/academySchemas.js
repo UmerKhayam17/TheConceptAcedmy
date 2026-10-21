@@ -585,7 +585,8 @@ const academyClassTestMarksBody = Joi.object({
       Joi.object({
         studentId: objectId.required(),
         assessmentId: objectId.optional(),
-        obtainedMarks: Joi.alternatives().try(Joi.number().min(0), Joi.string().allow('')),
+        obtainedMarks: Joi.alternatives().try(Joi.number().min(-1), Joi.string().allow('')),
+        isAbsent: Joi.boolean().optional(),
         remarks: Joi.string().allow('').trim(),
         testPaperImage: Joi.string().max(2048).allow('').trim(),
       })
@@ -606,7 +607,8 @@ const academyAssessmentBulkBody = Joi.object({
       Joi.object({
         studentId: objectId.required(),
         assessmentId: objectId.optional(),
-        obtainedMarks: Joi.alternatives().try(Joi.number().min(0), Joi.string().allow('')),
+        obtainedMarks: Joi.alternatives().try(Joi.number().min(-1), Joi.string().allow('')),
+        isAbsent: Joi.boolean().optional(),
         remarks: Joi.string().allow('').trim(),
       })
     )

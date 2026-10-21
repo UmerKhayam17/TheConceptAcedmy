@@ -308,6 +308,7 @@ export interface AcademyAssessmentRecord {
   examDate: string;
   totalMarks: number;
   obtainedMarks: number;
+  isAbsent?: boolean;
   remarks?: string;
   testPaperImage?: string;
   createdBy?: CreatedByUser | string;
@@ -2327,6 +2328,7 @@ export function saveClassTestMarks(
     studentId: string;
     assessmentId?: string;
     obtainedMarks: number | string;
+    isAbsent?: boolean;
     remarks?: string;
     testPaperImage?: string;
   }[]

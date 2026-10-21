@@ -39,7 +39,7 @@ function PanelChrome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["u
   }, [pathname, setHeaderSearch]);
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PanelPageHeader
         user={user}
         title={meta.title}
@@ -54,7 +54,7 @@ function PanelChrome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["u
         <Outlet />
       </main>
       <PanelMobileNav user={user} />
-    </>
+    </div>
   );
 }
 
@@ -63,6 +63,10 @@ const PanelLayout = () => {
 
   useEffect(() => {
     document.body.classList.add("cms-active");
+    // Outer document scroll would hide the panel header under the browser chrome.
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
     return () => document.body.classList.remove("cms-active");
   }, []);
 
@@ -80,10 +84,10 @@ const PanelLayout = () => {
   if (!user) return <Navigate to="/login" replace />;
 
   return (
-    <SidebarProvider className="h-dvh max-h-dvh min-h-0 overflow-hidden !min-h-0">
+    <SidebarProvider className="h-full max-h-full min-h-0 overflow-hidden !min-h-0">
       <div className="cms-root flex h-full max-h-full w-full overflow-hidden bg-secondary/30">
         <PanelSidebar user={user} />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <PanelSessionProvider>
             <PanelChrome user={user} />
           </PanelSessionProvider>

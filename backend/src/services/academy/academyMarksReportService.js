@@ -121,14 +121,20 @@ function matricPctOf(student) {
   return String(pctOf(matric.obtainedMarks, matric.totalMarks));
 }
 
-function isAbsent(remarks) {
+function isAbsent(remarks, isAbsentFlag) {
+  if (isAbsentFlag) return true;
   return String(remarks || '')
     .toLowerCase()
     .includes('absent');
 }
 
-function isFailMark(obtained, total, remarks) {
-  if (isAbsent(remarks)) return true;
+function cellIsAbsent(cell) {
+  if (!cell) return false;
+  return isAbsent(cell.remarks, cell.isAbsent);
+}
+
+function isFailMark(obtained, total, remarks, isAbsentFlag) {
+  if (isAbsent(remarks, isAbsentFlag)) return true;
   if (obtained == null || obtained === '') return false;
   const t = Number(total) || 0;
   const o = Number(obtained);
@@ -137,25 +143,29 @@ function isFailMark(obtained, total, remarks) {
   return (o / t) * 100 < FAIL_PCT;
 }
 
-function shouldHighlightMark(obtained, total, remarks) {
-  if (isAbsent(remarks)) return true;
+function shouldHighlightMark(obtained, total, remarks, isAbsentFlag) {
+  if (isAbsent(remarks, isAbsentFlag)) return true;
   if (obtained == null || obtained === '') return false;
   const o = Number(obtained);
   const t = Number(total) || 0;
   if (Number.isNaN(o)) return true;
   if (o === 0) return true;
   if (t > 0 && (o / t) * 100 <= LOW_MARK_PCT) return true;
-  return isFailMark(obtained, total, remarks);
+  return isFailMark(obtained, total, remarks, isAbsentFlag);
 }
 
 function overallResultLabel({ percentage, grade, subjectCells }) {
   const g = String(grade || '').toUpperCase();
   const pct = Number(percentage) || 0;
   if (g === 'F' || pct < OVERALL_FAIL_PCT) return 'Fail';
-  if ((subjectCells || []).some((c) => c && isFailMark(c.obtained, c.total, c.remarks))) {
+  if (
+    (subjectCells || []).some(
+      (c) => c && isFailMark(c.obtained, c.total, c.remarks, c.isAbsent)
+    )
+  ) {
     return 'Fail';
   }
-  if ((subjectCells || []).some((c) => c && isAbsent(c.remarks))) return 'Fail';
+  if ((subjectCells || []).some((c) => c && cellIsAbsent(c))) return 'Fail';
   return 'Pass';
 }
 
@@ -461,13 +471,13 @@ function renderClassMarksheetPdf(payload) {
           return;
         }
         const total = Number(cell.total ?? sub.total) || 0;
-        const absent = isAbsent(cell.remarks);
+        const absent = cellIsAbsent(cell);
         const hasMark = cell.obtained != null && cell.obtained !== '';
         const omText = absent ? 'Absent' : hasMark ? String(cell.obtained) : '';
         const pct = absent ? 0 : hasMark ? pctOf(cell.obtained, total) : '';
         const highlight =
           hasMark || absent
-            ? shouldHighlightMark(cell.obtained, total, cell.remarks)
+            ? shouldHighlightMark(cell.obtained, total, cell.remarks, cell.isAbsent)
             : false;
         drawCell(doc, omText, x, y, omW, rowH, {
           fontSize: fs,
@@ -678,11 +688,12 @@ function buildExamRows(students, subjects, resultByStudent, { subjectOnly = fals
       const cells = subjects.map((sub) => {
         if (!isEnrolledInSubject(student, sub.id)) return null;
         const sm = markBySubject[sub.id];
-        if (!sm) return { obtained: null, total: sub.total, remarks: '' };
+        if (!sm) return { obtained: null, total: sub.total, remarks: '', isAbsent: false };
         return {
           obtained: sm.obtained,
           total: sm.total != null ? sm.total : sub.total,
           remarks: sm.remarks || '',
+          isAbsent: Boolean(sm.isAbsent),
         };
       });
       return {
@@ -791,6 +802,7 @@ async function renderExamStudentWisePdf(exam, students, resultByStudent, student
             obtained: sm.obtained,
             total: sm.total,
             remarks: sm.remarks,
+            isAbsent: Boolean(sm.isAbsent),
           })),
         });
         const isFail = resultLabel === 'Fail';
@@ -863,10 +875,10 @@ async function renderExamStudentWisePdf(exam, students, resultByStudent, student
             doc.addPage();
             y = margin;
           }
-          const absent = isAbsent(sm.remarks);
+          const absent = cellIsAbsent(sm);
           const omText = absent ? 'Absent' : sm.obtained != null ? String(sm.obtained) : '—';
           const pct = absent ? 0 : pctOf(sm.obtained, sm.total);
-          const fail = isFailMark(sm.obtained, sm.total, sm.remarks);
+          const fail = isFailMark(sm.obtained, sm.total, sm.remarks, sm.isAbsent);
           const subName =
             typeof sm.subject === 'object' && sm.subject
               ? sm.subject.subjectName || sm.subject.subjectCode || 'Subject'
@@ -1067,6 +1079,7 @@ async function renderClassTestMarksReportPdf(
             obtained: a ? a.obtainedMarks : null,
             total: a && a.totalMarks != null ? a.totalMarks : sub.total,
             remarks: a ? a.remarks || '' : '',
+            isAbsent: Boolean(a?.isAbsent),
             hasMark: Boolean(a),
           };
         });
@@ -1139,11 +1152,12 @@ async function renderClassTestMarksReportPdf(
     const cells = subjects.map((sub) => {
       if (!isEnrolledInSubject(student, sub.id)) return null;
       const a = markByTestStudent[`${sub.testId}:${student._id}`];
-      if (!a) return { obtained: null, total: sub.total, remarks: '' };
+      if (!a) return { obtained: null, total: sub.total, remarks: '', isAbsent: false };
       return {
         obtained: a.obtainedMarks,
         total: a.totalMarks != null ? a.totalMarks : sub.total,
         remarks: a.remarks || '',
+        isAbsent: Boolean(a.isAbsent),
       };
     });
     return { student, cells };
@@ -1201,6 +1215,7 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
               total:
                 row.assessment.totalMarks != null ? row.assessment.totalMarks : test.totalMarks,
               remarks: row.assessment.remarks || '',
+              isAbsent: Boolean(row.assessment.isAbsent),
               hasMark: true,
             },
           ],
@@ -1244,9 +1259,10 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
           obtained: c.obtained,
           total: c.total,
           remarks: c.remarks,
+          isAbsent: Boolean(c.isAbsent),
         }));
         const obtainedSum = subjectRows.reduce(
-          (sum, c) => sum + (isAbsent(c.remarks) ? 0 : Number(c.obtained) || 0),
+          (sum, c) => sum + (cellIsAbsent(c) ? 0 : Number(c.obtained) || 0),
           0
         );
         // Totals only for subjects with marks on this card (selective / partial entry).
@@ -1337,10 +1353,10 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
         y += headerH;
 
         subjectRows.forEach((cell, idx) => {
-          const absent = isAbsent(cell.remarks);
+          const absent = cellIsAbsent(cell);
           const cellPct = absent ? 0 : pctOf(cell.obtained, cell.total);
           const cellGrade = absent ? '—' : letterGrade(cellPct);
-          const cellFail = isFailMark(cell.obtained, cell.total, cell.remarks);
+          const cellFail = isFailMark(cell.obtained, cell.total, cell.remarks, cell.isAbsent);
           const subjectResult = absent ? 'Absent' : cellFail ? 'Fail' : 'Pass';
           const zebra = idx % 2 === 1 ? '#F4F4F4' : null;
           const vals = [

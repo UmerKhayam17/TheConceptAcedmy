@@ -68,6 +68,8 @@ import { classLabel as academyClassLabel } from "@/components/modules/student-ma
 import { formatDateSheetDate } from "@/components/modules/exams/dateSheetBatch";
 import { ParentStudentBanner } from "@/components/modules/timetable/parent-schedule/ParentStudentBanner";
 import { cn } from "@/lib/utils";
+import { recordIsAbsent } from "@/lib/marksValidation";
+import { AbsentBadge } from "@/components/modules/exams/MarksAbsentToggle";
 import { useToast } from "@/hooks/use-toast";
 import academyLogo from "@/assets/logo.png";
 
@@ -283,6 +285,8 @@ type UnifiedResultRow = {
   obtainedMarks: number;
   percentage: number;
   grade: string;
+  isFullyAbsent: boolean;
+  hasAbsent: boolean;
   examResult?: ExamResult;
   assessment?: AcademyAssessmentRecord;
 };
@@ -450,6 +454,10 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
     const examRows: UnifiedResultRow[] = publishedResults.map((r) => {
       const end =
         r.exam && typeof r.exam === "object" ? String(r.exam.endDate || "") : "";
+      const marks = r.subjectMarks || [];
+      const isFullyAbsent =
+        marks.length > 0 && marks.every((m) => recordIsAbsent(m));
+      const hasAbsent = marks.some((m) => recordIsAbsent(m));
       return {
         id: `exam-${r._id}`,
         kind: "exam",
@@ -461,6 +469,8 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
         obtainedMarks: r.obtainedMarks,
         percentage: Number(r.percentage) || 0,
         grade: r.grade || pctToGrade(Number(r.percentage) || 0),
+        isFullyAbsent,
+        hasAbsent,
         examResult: r,
       };
     });
@@ -471,6 +481,7 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
         ASSESSMENT_TYPE_LABELS[a.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
         a.assessmentType?.replace(/_/g, " ") ||
         "Class test";
+      const absent = recordIsAbsent(a);
       return {
         id: `test-${a._id}`,
         kind: "test",
@@ -482,6 +493,8 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
         obtainedMarks: a.obtainedMarks,
         percentage: pct,
         grade: pctToGrade(pct),
+        isFullyAbsent: absent,
+        hasAbsent: absent,
         assessment: a,
       };
     });
@@ -1409,20 +1422,29 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                               </td>
                               <td className="py-3 tabular-nums">{r.totalMarks}</td>
                               <td className="py-3 tabular-nums font-medium">
-                                {r.obtainedMarks}
+                                <span className="inline-flex items-center gap-2">
+                                  {r.hasAbsent && <AbsentBadge />}
+                                  {r.isFullyAbsent ? "Ab" : r.obtainedMarks}
+                                </span>
                               </td>
                               <td className="py-3 tabular-nums">
-                                {Number(r.percentage).toFixed(0)}%
+                                {r.isFullyAbsent
+                                  ? "—"
+                                  : `${Number(r.percentage).toFixed(0)}%`}
                               </td>
                               <td className="py-3">
-                                <span
-                                  className={cn(
-                                    "inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold",
-                                    gradeTone(r.grade),
-                                  )}
-                                >
-                                  {r.grade || "—"}
-                                </span>
+                                {r.isFullyAbsent ? (
+                                  <AbsentBadge />
+                                ) : (
+                                  <span
+                                    className={cn(
+                                      "inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold",
+                                      gradeTone(r.grade),
+                                    )}
+                                  >
+                                    {r.grade || "—"}
+                                  </span>
+                                )}
                               </td>
                               <td className="py-3">
                                 <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700">
@@ -1579,9 +1601,11 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
               pct: number;
               grade: string;
               result: string;
+              isAbsent: boolean;
             }[] =
               viewRow.kind === "exam" && viewRow.examResult?.subjectMarks?.length
                 ? viewRow.examResult.subjectMarks.map((m) => {
+                  const absent = recordIsAbsent(m);
                   const pct =
                     m.total > 0
                       ? Math.round((m.obtained / m.total) * 1000) / 10
@@ -1591,8 +1615,9 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                     total: m.total,
                     obtained: m.obtained,
                     pct,
-                    grade: m.grade || pctToGrade(pct),
-                    result: passFail(pct),
+                    grade: absent ? "—" : m.grade || pctToGrade(pct),
+                    result: absent ? "Absent" : passFail(pct),
+                    isAbsent: absent,
                   };
                 })
                 : [
@@ -1614,14 +1639,21 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                     total: viewRow.totalMarks,
                     obtained: viewRow.obtainedMarks,
                     pct: Number(viewRow.percentage) || 0,
-                    grade: viewRow.grade || pctToGrade(Number(viewRow.percentage) || 0),
-                    result: passFail(Number(viewRow.percentage) || 0),
+                    grade: viewRow.isFullyAbsent
+                      ? "—"
+                      : viewRow.grade || pctToGrade(Number(viewRow.percentage) || 0),
+                    result: viewRow.isFullyAbsent
+                      ? "Absent"
+                      : passFail(Number(viewRow.percentage) || 0),
+                    isAbsent: viewRow.isFullyAbsent,
                   },
                 ];
 
             const subjectsLabel = subjectRows.map((r) => r.name).join(", ");
             const overallPct = Number(viewRow.percentage) || 0;
-            const overallResult = passFail(overallPct);
+            const overallResult = viewRow.isFullyAbsent
+              ? "Absent"
+              : passFail(overallPct);
             const ct =
               viewRow.kind === "test" && viewRow.assessment
                 ? viewRow.assessment.classTestId
@@ -1807,10 +1839,14 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                               {row.total}
                             </td>
                             <td className="border-t border-slate-300 px-2 py-1.5 text-center tabular-nums">
-                              {row.obtained}
+                              {row.isAbsent ? (
+                                <span className="font-semibold text-rose-700">Ab</span>
+                              ) : (
+                                row.obtained
+                              )}
                             </td>
                             <td className="border-t border-slate-300 px-2 py-1.5 text-center tabular-nums">
-                              {Math.round(row.pct)}%
+                              {row.isAbsent ? "—" : `${Math.round(row.pct)}%`}
                             </td>
                             <td className="border-t border-slate-300 px-2 py-1.5 text-center font-semibold">
                               {row.grade}
@@ -1838,10 +1874,22 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                     [
                       [
                         "Obtained",
-                        `${viewRow.obtainedMarks} / ${viewRow.totalMarks}`,
+                        viewRow.isFullyAbsent
+                          ? `Ab / ${viewRow.totalMarks}`
+                          : `${viewRow.obtainedMarks} / ${viewRow.totalMarks}`,
                       ],
-                      ["Percentage", `${Math.round(overallPct)}%`],
-                      ["Grade", viewRow.grade || pctToGrade(overallPct)],
+                      [
+                        "Percentage",
+                        viewRow.isFullyAbsent
+                          ? "—"
+                          : `${Math.round(overallPct)}%`,
+                      ],
+                      [
+                        "Grade",
+                        viewRow.isFullyAbsent
+                          ? "—"
+                          : viewRow.grade || pctToGrade(overallPct),
+                      ],
                       ["Overall Result", overallResult],
                     ] as const
                   ).map(([label, value], i) => (

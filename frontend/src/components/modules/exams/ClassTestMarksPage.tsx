@@ -48,9 +48,16 @@ import {
 import {
   clampMarksInput,
   handleMarksFieldEnterKey,
+  focusAdjacentMarksField,
+  marksInputMeansAbsent,
+  normalizeMarksForSave,
+  recordIsAbsent,
   validateObtainedVsTotal,
 } from "@/lib/marksValidation";
 import { cn } from "@/lib/utils";
+import MarksAbsentToggle, {
+  AbsentBadge,
+} from "@/components/modules/exams/MarksAbsentToggle";
 
 function classNameOf(test: AcademyClassTest) {
   const c = test.classId;
@@ -205,6 +212,7 @@ export default function ClassTestMarksPage({
       {
         obtained: string;
         remarks: string;
+        isAbsent: boolean;
         assessmentId?: string;
         testPaperImage?: string;
         uploadingPaper?: boolean;
@@ -279,13 +287,24 @@ export default function ClassTestMarksPage({
     if (!rows.length) return;
     const draft: Record<
       string,
-      { obtained: string; remarks: string; assessmentId?: string; testPaperImage?: string }
+      {
+        obtained: string;
+        remarks: string;
+        isAbsent: boolean;
+        assessmentId?: string;
+        testPaperImage?: string;
+      }
     > = {};
     rows.forEach((row: ClassTestEntryRow) => {
       const sid = row.student._id;
+      const absent = recordIsAbsent(row.assessment);
       draft[sid] = {
-        obtained: row.assessment != null ? String(row.assessment.obtainedMarks) : "",
+        obtained:
+          row.assessment != null && !absent
+            ? String(row.assessment.obtainedMarks)
+            : "",
         remarks: row.assessment?.remarks || "",
+        isAbsent: absent,
         assessmentId: row.assessment?._id,
         testPaperImage: row.assessment?.testPaperImage,
       };
@@ -294,23 +313,30 @@ export default function ClassTestMarksPage({
   }, [entry]);
 
   const marksEnteredCount = useMemo(
-    () => rows.filter((r) => (marks[r.student._id]?.obtained ?? "") !== "").length,
+    () =>
+      rows.filter((r) => {
+        const cell = marks[r.student._id];
+        if (!cell) return false;
+        return cell.isAbsent || cell.obtained !== "";
+      }).length,
     [rows, marks],
   );
   const marksPct =
     rows.length > 0 ? Math.round((marksEnteredCount / rows.length) * 100) : 0;
 
+  const emptyCell = { obtained: "", remarks: "", isAbsent: false as boolean };
+
   const handleTestPaperUpload = async (studentId: string, file: File) => {
     setMarks((m) => ({
       ...m,
-      [studentId]: { ...(m[studentId] || { obtained: "", remarks: "" }), uploadingPaper: true },
+      [studentId]: { ...(m[studentId] || emptyCell), uploadingPaper: true },
     }));
     try {
       const { testPaperImage } = await uploadClassTestPaper(testId, studentId, file);
       setMarks((m) => ({
         ...m,
         [studentId]: {
-          ...(m[studentId] || { obtained: "", remarks: "" }),
+          ...(m[studentId] || emptyCell),
           testPaperImage,
           uploadingPaper: false,
         },
@@ -322,7 +348,7 @@ export default function ClassTestMarksPage({
     } catch (e) {
       setMarks((m) => ({
         ...m,
-        [studentId]: { ...(m[studentId] || { obtained: "", remarks: "" }), uploadingPaper: false },
+        [studentId]: { ...(m[studentId] || emptyCell), uploadingPaper: false },
       }));
       toast({
         title: "Upload failed",
@@ -348,8 +374,12 @@ export default function ClassTestMarksPage({
     if (!test) return;
     for (const row of rows) {
       const cell = marks[row.student._id];
-      if (!cell || cell.obtained === "") continue;
-      const err = validateObtainedVsTotal(Number(cell.obtained), totalMarks);
+      if (!cell) continue;
+      const absent = cell.isAbsent || marksInputMeansAbsent(cell.obtained);
+      if (!absent && cell.obtained === "") continue;
+      const err = validateObtainedVsTotal(Number(cell.obtained), totalMarks, {
+        isAbsent: absent,
+      });
       if (err) {
         toast({
           title: "Invalid marks",
@@ -362,12 +392,18 @@ export default function ClassTestMarksPage({
     const entries = rows
       .map((row) => {
         const cell = marks[row.student._id];
-        if (!cell || cell.obtained === "") return null;
+        if (!cell) return null;
+        const absent = cell.isAbsent || marksInputMeansAbsent(cell.obtained);
+        if (!absent && cell.obtained === "") return null;
+        const normalized = normalizeMarksForSave(cell.obtained, cell.isAbsent);
         return {
           studentId: row.student._id,
           assessmentId: cell.assessmentId,
-          obtainedMarks: Number(cell.obtained),
-          remarks: cell.remarks,
+          obtainedMarks: normalized.obtained,
+          isAbsent: normalized.isAbsent,
+          remarks: normalized.isAbsent
+            ? cell.remarks?.trim() || "Absent"
+            : cell.remarks,
           testPaperImage: cell.testPaperImage,
         };
       })
@@ -574,7 +610,7 @@ export default function ClassTestMarksPage({
           </p>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b">
                   <tr>
@@ -591,7 +627,10 @@ export default function ClassTestMarksPage({
                     <th className="text-left p-3 font-medium min-w-[120px]">Father name</th>
                     <th className="text-left p-3 font-medium min-w-[110px]">Roll number</th>
                     <th className="text-left p-3 font-medium">Section</th>
-                    <th className="text-center p-3 font-medium w-[9.5rem]">Obtained</th>
+                    <th className="text-center p-3 font-medium min-w-[9.5rem]">Attendance</th>
+                    <th className="text-center p-3 font-medium min-w-[8.5rem]">
+                      Obtained / Total
+                    </th>
                     <th className="text-center p-3 font-medium w-[7rem]">Test paper</th>
                     <th className="text-left p-3 font-medium min-w-[140px]">Remarks</th>
                     <th className="text-right p-3 font-medium w-12">Actions</th>
@@ -600,10 +639,15 @@ export default function ClassTestMarksPage({
                 <tbody>
                   {pageRows.map((row, idx) => {
                     const sid = row.student._id;
-                    const cell = marks[sid] || { obtained: "", remarks: "" };
+                    const cell = marks[sid] || {
+                      obtained: "",
+                      remarks: "",
+                      isAbsent: false,
+                    };
                     const isSelected = selectedIds.includes(sid);
                     const name = row.student.studentName;
                     const roll = row.student.rollNumber || "—";
+                    const absent = cell.isAbsent || marksInputMeansAbsent(cell.obtained);
                     return (
                       <tr
                         key={sid}
@@ -628,15 +672,21 @@ export default function ClassTestMarksPage({
                               {initialOf(name)}
                             </span>
                             <div className="min-w-0">
-                              <div className="font-semibold text-[#1a2b4b] truncate">{name}</div>
-                              <div className="text-xs text-muted-foreground">Roll No: {roll}</div>
+                              <div className="truncate text-sm font-semibold capitalize leading-snug text-[#1a2b4b]">
+                                {name}
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-slate-400">
+                                Roll No: {roll}
+                              </div>
                             </div>
                           </div>
                         </td>
-                        <td className="p-3 text-muted-foreground whitespace-nowrap">
+                        <td className="p-3 text-sm text-slate-600 whitespace-nowrap">
                           {row.student.fatherName || "—"}
                         </td>
-                        <td className="p-3 font-mono text-xs whitespace-nowrap">{roll}</td>
+                        <td className="p-3 whitespace-nowrap text-xs tabular-nums text-slate-500">
+                          {roll}
+                        </td>
                         <td className="p-3">
                           {row.student.sectionName ? (
                             <span
@@ -652,30 +702,90 @@ export default function ClassTestMarksPage({
                           )}
                         </td>
                         <td className="p-3 align-middle">
-                          <div className="mx-auto flex h-9 w-fit items-center gap-2">
-                            <label className="flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 transition-colors focus-within:border-[#2563eb]/40 focus-within:ring-2 focus-within:ring-[#2563eb]/15">
+                          <div className="mx-auto flex justify-center">
+                            {canEnter ? (
+                              <MarksAbsentToggle
+                                absent={absent}
+                                disabled={!canEnter}
+                                onChange={(nextAbsent) => {
+                                  setMarks((m) => ({
+                                    ...m,
+                                    [sid]: {
+                                      ...cell,
+                                      isAbsent: nextAbsent,
+                                      obtained: "",
+                                      remarks: nextAbsent
+                                        ? cell.remarks?.trim() || "Absent"
+                                        : cell.remarks === "Absent"
+                                          ? ""
+                                          : cell.remarks,
+                                    },
+                                  }));
+                                  if (nextAbsent) {
+                                    const toggle = document.activeElement;
+                                    if (toggle instanceof HTMLElement) {
+                                      focusAdjacentMarksField(toggle, "next");
+                                    }
+                                  }
+                                }}
+                              />
+                            ) : absent ? (
+                              <AbsentBadge />
+                            ) : (
+                              <span className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-[#1a2b4b]">
+                                Present
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-3 align-middle">
+                          <div className="mx-auto flex h-9 w-fit items-center justify-center">
+                            <label
+                              className={cn(
+                                "flex h-9 items-center gap-1.5 rounded-md border px-2.5 transition-colors focus-within:ring-2",
+                                absent
+                                  ? "border-red-200 bg-red-50/60 focus-within:border-red-300 focus-within:ring-red-500/15"
+                                  : "border-border bg-background focus-within:border-[#2563eb]/40 focus-within:ring-[#2563eb]/15",
+                              )}
+                            >
                               <input
-                                className="h-8 w-11 border-0 bg-transparent p-0 text-center text-sm tabular-nums outline-none [appearance:textfield] placeholder:text-muted-foreground/50 disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                className={cn(
+                                  "h-8 w-11 border-0 bg-transparent p-0 text-center text-sm tabular-nums outline-none [appearance:textfield] disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                                  absent
+                                    ? "font-semibold text-[#b91c1c] placeholder:font-semibold placeholder:text-[#b91c1c]"
+                                    : "placeholder:text-muted-foreground/50",
+                                )}
                                 type="number"
                                 min={0}
                                 max={totalMarks}
                                 step="any"
                                 inputMode="decimal"
-                                placeholder="—"
+                                placeholder={absent ? "Ab" : "—"}
                                 data-marks-field
                                 value={cell.obtained}
                                 disabled={!canEnter}
                                 aria-label={`Obtained marks out of ${totalMarks}`}
                                 onKeyDown={handleMarksFieldEnterKey}
-                                onChange={(e) =>
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const nextAbsent = marksInputMeansAbsent(raw);
+                                  const next = nextAbsent
+                                    ? ""
+                                    : clampMarksInput(raw, totalMarks);
                                   setMarks((m) => ({
                                     ...m,
                                     [sid]: {
                                       ...cell,
-                                      obtained: clampMarksInput(e.target.value, totalMarks),
+                                      obtained: next,
+                                      isAbsent: nextAbsent,
+                                      remarks: nextAbsent
+                                        ? cell.remarks?.trim() || "Absent"
+                                        : cell.remarks === "Absent"
+                                          ? ""
+                                          : cell.remarks,
                                     },
-                                  }))
-                                }
+                                  }));
+                                }}
                               />
                               <span className="select-none text-xs tabular-nums text-muted-foreground">
                                 / {totalMarks}
@@ -732,7 +842,12 @@ export default function ClassTestMarksPage({
                                   onClick={() => {
                                     setMarks((m) => ({
                                       ...m,
-                                      [sid]: { ...cell, obtained: "", remarks: "" },
+                                      [sid]: {
+                                        ...cell,
+                                        obtained: "",
+                                        remarks: "",
+                                        isAbsent: false,
+                                      },
                                     }));
                                   }}
                                 >

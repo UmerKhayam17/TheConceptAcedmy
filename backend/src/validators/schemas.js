@@ -203,8 +203,9 @@ const examMarks = Joi.object({
           .items(
             Joi.object({
               subject: Joi.string().hex().length(24).required(),
-              obtained: Joi.number().required(),
+              obtained: Joi.number().min(-1).required(),
               total: Joi.number().required(),
+              isAbsent: Joi.boolean().optional(),
               grade: Joi.string().allow(''),
               remarks: Joi.string().allow(''),
             })
