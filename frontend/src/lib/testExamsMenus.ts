@@ -45,6 +45,17 @@ export function classTestMarksHref(role: Role, testId: string) {
   return `/panel/${role}/exams/enter-tests/${testId}`;
 }
 
+export function isExamId(value: string | undefined): value is string {
+  return isClassTestId(value);
+}
+
+/** Marks entry page for one term exam (optional subject deep-link). */
+export function examMarksHref(role: Role, examId: string, subjectId?: string) {
+  const base = `/panel/${role}/exams/term-exams/${examId}`;
+  if (!subjectId) return base;
+  return `${base}?subject=${encodeURIComponent(subjectId)}`;
+}
+
 /** Report card student list for one class-test batch. */
 export function reportCardTestHref(role: Role, testId: string) {
   return `/panel/${role}/exams/report-card/test/${testId}`;

@@ -208,6 +208,7 @@ const examMarks = Joi.object({
               isAbsent: Joi.boolean().optional(),
               grade: Joi.string().allow(''),
               remarks: Joi.string().allow(''),
+              paperImage: Joi.string().max(2048).allow('').trim().optional(),
             })
           )
           .required(),

@@ -9,6 +9,8 @@ const subjectMarkSchema = new mongoose.Schema(
     /** True when the student was absent for this subject paper. */
     isAbsent: { type: Boolean, default: false },
     remarks: { type: String, trim: true },
+    /** Scanned / photographed answer sheet for this subject (URL under /uploads). */
+    paperImage: { type: String, trim: true },
   },
   { _id: false }
 );

@@ -480,16 +480,16 @@ export default function ClassTestMarksPage({
       <Card className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]">
-              <ClipboardList className="h-5 w-5 text-white" strokeWidth={2.25} />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <ClipboardList className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
             </span>
             <div className="min-w-0">
               <p className="text-[11px] font-medium text-slate-400">
-                <Link to={listHref} className="hover:text-[#2563eb]">
+                <Link to={listHref} className="hover:text-primary">
                   Exams
                 </Link>
                 <span className="mx-1 text-slate-300">›</span>
-                <Link to={seriesHref ?? listHref} className="hover:text-[#2563eb]">
+                <Link to={seriesHref ?? listHref} className="hover:text-primary">
                   {seriesHref ? "Schedule" : "Test Scheduling"}
                 </Link>
                 <span className="mx-1 text-slate-300">›</span>
@@ -505,13 +505,13 @@ export default function ClassTestMarksPage({
               </p>
             </div>
           </div>
-          <div className="shrink-0 rounded-lg bg-[#e8f2ff] px-3 py-2 max-w-[15rem]">
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[15rem]">
             <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
-              <span className="mr-1 text-[#3b82f6] not-italic font-serif text-base leading-none">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
                 &ldquo;
               </span>
-              A great school builds great futures.
-              <span className="ml-0.5 text-[#3b82f6] not-italic font-serif text-base leading-none">
+              Education is the key to a better tomorrow.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
                 &rdquo;
               </span>
             </p>
@@ -525,8 +525,8 @@ export default function ClassTestMarksPage({
           value={String(rows.length)}
           description="Students registered for this test"
           icon={Users}
-          iconBg="#DBEAFE"
-          iconColor="#2563EB"
+          iconBg="hsl(var(--primary) / 0.1)"
+          iconColor="hsl(var(--primary))"
         />
         <MetricCard
           title="Marks Entered"
@@ -668,7 +668,7 @@ export default function ClassTestMarksPage({
                         </td>
                         <td className="p-3">
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#dbeafe] text-sm font-semibold text-[#2563eb]">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                               {initialOf(name)}
                             </span>
                             <div className="min-w-0">
@@ -745,7 +745,7 @@ export default function ClassTestMarksPage({
                                 "flex h-9 items-center gap-1.5 rounded-md border px-2.5 transition-colors focus-within:ring-2",
                                 absent
                                   ? "border-red-200 bg-red-50/60 focus-within:border-red-300 focus-within:ring-red-500/15"
-                                  : "border-border bg-background focus-within:border-[#2563eb]/40 focus-within:ring-[#2563eb]/15",
+                                  : "border-border bg-background focus-within:border-primary/40 focus-within:ring-primary/15",
                               )}
                             >
                               <input

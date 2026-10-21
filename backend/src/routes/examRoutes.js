@@ -4,6 +4,7 @@ const { protect } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
 const { validate } = require('../middleware/validate');
 const schemas = require('../validators/schemas');
+const { uploadImage } = require('../middleware/uploadImage');
 
 const router = Router();
 router.use(protect);
@@ -24,6 +25,12 @@ router.get(
   ctrl.marksReportPdf
 );
 router.post('/exams/:id/results', requirePermission('enter_exam_marks'), validate(schemas.examMarks), ctrl.enterMarks);
+router.post(
+  '/exams/:id/students/:studentId/subjects/:subjectId/paper',
+  requirePermission('enter_exam_marks'),
+  uploadImage.single('testPaper'),
+  ctrl.uploadExamPaper
+);
 router.get('/exams/:id/results', requirePermission('view_results'), ctrl.getExamResults);
 router.post('/exams/:id/publish-all', requirePermission('publish_results'), ctrl.publishAll);
 router.get('/results/student/:id', requirePermission('view_results'), ctrl.studentResults);

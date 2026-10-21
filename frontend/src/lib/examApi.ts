@@ -40,6 +40,8 @@ export interface SubjectMark {
   grade?: string;
   isAbsent?: boolean;
   remarks?: string;
+  /** Scanned answer sheet URL (same idea as class-test testPaperImage). */
+  paperImage?: string;
 }
 
 export interface ExamResult {
@@ -71,6 +73,8 @@ export interface ExamStudentRow {
     studentId: string;
     studentName: string;
     fatherName?: string;
+    rollNumber?: string;
+    sectionName?: string;
     isFullPackage?: boolean;
   };
   subjects: AcademySubject[];
@@ -121,6 +125,7 @@ export function saveExamMarks(
       total: number;
       isAbsent?: boolean;
       remarks?: string;
+      paperImage?: string;
     }[];
   }[]
 ) {
@@ -128,6 +133,28 @@ export function saveExamMarks(
     method: "POST",
     body: JSON.stringify({ marks }),
   });
+}
+
+export async function uploadExamPaper(
+  examId: string,
+  studentId: string,
+  subjectId: string,
+  file: File
+): Promise<{ paperImage: string }> {
+  const fd = new FormData();
+  fd.append("testPaper", file);
+  const res = await authedFetch(
+    `/exams/${examId}/students/${studentId}/subjects/${subjectId}/paper`,
+    { method: "POST", body: fd }
+  );
+  const body = await parseJson<{
+    success?: boolean;
+    data?: { paperImage: string };
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(body.message || "Upload failed");
+  if (!body.data?.paperImage) throw new Error("Invalid upload response");
+  return body.data;
 }
 
 export function publishResult(resultId: string) {

@@ -108,7 +108,6 @@ type TestStudentListRow = ClassTestEntryRow & {
   subjectMarkCount: number;
   absentCount: number;
   isFullyAbsent: boolean;
-  hasAbsent: boolean;
 };
 
 export default function ReportCardDetailPage({
@@ -258,7 +257,6 @@ export default function ReportCardDetailPage({
       subjectMarkCount: a.subjectMarkCount,
       absentCount: a.absentCount,
       isFullyAbsent: a.subjectMarkCount > 0 && a.absentCount === a.subjectMarkCount,
-      hasAbsent: a.absentCount > 0,
     }));
   }, [kind, peerTestsQ.data, primaryTestQ.data]);
 
@@ -609,18 +607,8 @@ export default function ReportCardDetailPage({
                       >
                         {row.student.studentId || "—"}
                       </td>
-                      <td className={cn(tableCellClass, "tabular-nums whitespace-nowrap")}>
-                        <span className="inline-flex items-center gap-2">
-                          {row.hasAbsent && <AbsentBadge />}
-                          <span className="font-medium">
-                            {row.isFullyAbsent ? `Ab/${total}` : `${obtained}/${total}`}
-                          </span>
-                          {row.subjectMarkCount > 1 && (
-                            <span className="text-[11px] text-muted-foreground">
-                              ({row.subjectMarkCount} subj.)
-                            </span>
-                          )}
-                        </span>
+                      <td className={cn(tableCellClass, "tabular-nums whitespace-nowrap font-medium")}>
+                        {obtained}/{total}
                       </td>
                       <td className={cn(tableCellClass, "tabular-nums")}>
                         {row.isFullyAbsent ? "—" : `${pct}%`}
@@ -708,7 +696,6 @@ export default function ReportCardDetailPage({
                   const isFullyAbsent =
                     subjectMarks.length > 0 &&
                     subjectMarks.every((m) => recordIsAbsent(m));
-                  const hasAbsent = subjectMarks.some((m) => recordIsAbsent(m));
                   const pct =
                     r.percentage != null
                       ? Math.round(Number(r.percentage) * 10) / 10
@@ -758,12 +745,7 @@ export default function ReportCardDetailPage({
                           "tabular-nums font-medium whitespace-nowrap"
                         )}
                       >
-                        <span className="inline-flex items-center gap-2">
-                          {hasAbsent && <AbsentBadge />}
-                          <span>
-                            {isFullyAbsent ? `Ab/${total}` : `${obtained}/${total}`}
-                          </span>
-                        </span>
+                        {obtained}/{total}
                       </td>
                       <td className={cn(tableCellClass, "tabular-nums")}>
                         {isFullyAbsent ? "—" : `${pct}%`}

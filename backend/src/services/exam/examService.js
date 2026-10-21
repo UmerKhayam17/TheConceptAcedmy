@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const ApiError = require('../../utils/ApiError');
 const Exam = require('../../models/Exam');
 const Result = require('../../models/Result');
@@ -6,6 +8,21 @@ const AcademySubject = require('../../models/academy/AcademySubject');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const { computeResultTotals } = require('./examGrading');
 const { hasAnySubjectEnrollment, selectedSubjectIds } = require('../academy/studentEnrollment');
+
+const EXAM_PAPER_DIR = path.join(__dirname, '../../../uploads/exam-papers');
+
+function saveExamPaperFile(examId, studentId, subjectId, file) {
+  if (!file?.buffer?.length) throw new ApiError(400, 'Image file required');
+  fs.mkdirSync(EXAM_PAPER_DIR, { recursive: true });
+  const ext = path.extname(file.originalname || '') || '.jpg';
+  const safeExt = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext.toLowerCase())
+    ? ext
+    : '.jpg';
+  const filename = `${examId}-${studentId}-${subjectId}-${Date.now()}${safeExt}`;
+  const dest = path.join(EXAM_PAPER_DIR, filename);
+  fs.writeFileSync(dest, file.buffer);
+  return `/uploads/exam-papers/${filename}`;
+}
 
 function resolveClassId(student) {
   const c = student.classId;
@@ -76,7 +93,10 @@ async function getExamStudents(examId) {
   if (exam.disciplineId) studentQ.disciplineId = exam.disciplineId;
 
   const [students, subjects, results] = await Promise.all([
-    AcademyStudent.find(studentQ).populate('selectedSubjects', 'subjectName subjectCode').lean(),
+    AcademyStudent.find(studentQ)
+      .populate('selectedSubjects', 'subjectName subjectCode')
+      .populate('sectionId', 'sectionName')
+      .lean(),
     AcademySubject.find({ classId: exam.academyClass, status: 'active' }).sort({ subjectName: 1 }).lean(),
     Result.find({ exam: examId }).lean(),
   ]);
@@ -92,12 +112,16 @@ async function getExamStudents(examId) {
       const enrolled = enrolledSubjectIds(student, subjects);
       const enrolledSubjects = subjects.filter((s) => enrolled.includes(String(s._id)));
       const existing = resultByStudent[String(student._id)];
+      const section = student.sectionId;
       return {
         student: {
           _id: student._id,
           studentId: student.studentId,
           studentName: student.studentName,
           fatherName: student.fatherName,
+          rollNumber: student.rollNumber,
+          sectionName:
+            section && typeof section === 'object' ? section.sectionName || '' : '',
           isFullPackage: student.isFullPackage,
         },
         subjects: enrolledSubjects,
@@ -124,7 +148,26 @@ async function enterMarks(examId, marksRows, userId) {
       throw new ApiError(400, `${student.studentName} is not enrolled in any subject`);
     }
     const allowedIds = new Set(enrolledSubjectIds(student, subjects));
-    const normalizedSubjectMarks = [];
+    // eslint-disable-next-line no-await-in-loop
+    const existing = await Result.findOne({
+      academyStudent: row.studentId,
+      exam: exam._id,
+    }).lean();
+    const mergedBySubject = new Map();
+    for (const prev of existing?.subjectMarks || []) {
+      const pid = String(prev.subject?._id || prev.subject);
+      if (!pid) continue;
+      mergedBySubject.set(pid, {
+        subject: pid,
+        obtained: Number(prev.obtained) || 0,
+        total: Number(prev.total) || 0,
+        isAbsent: Boolean(prev.isAbsent),
+        remarks: prev.remarks || '',
+        grade: prev.grade,
+        paperImage: prev.paperImage || '',
+      });
+    }
+
     for (const sm of row.subjectMarks || []) {
       const sid = String(sm.subject || sm.subjectId);
       if (sid && !allowedIds.has(sid)) {
@@ -149,7 +192,12 @@ async function enterMarks(examId, marksRows, userId) {
           `Obtained marks cannot exceed total marks (${total}) for ${student.studentName}`
         );
       }
-      normalizedSubjectMarks.push({
+      const prev = mergedBySubject.get(sid) || {};
+      const paperImage =
+        sm.paperImage !== undefined && sm.paperImage !== null
+          ? String(sm.paperImage || '')
+          : prev.paperImage || '';
+      mergedBySubject.set(sid, {
         subject: sid,
         obtained,
         total,
@@ -158,10 +206,11 @@ async function enterMarks(examId, marksRows, userId) {
           ? String(sm.remarks || '').trim() || 'Absent'
           : sm.remarks || '',
         grade: sm.grade,
+        paperImage,
       });
     }
 
-    const totals = computeResultTotals(normalizedSubjectMarks);
+    const totals = computeResultTotals([...mergedBySubject.values()]);
     // eslint-disable-next-line no-await-in-loop
     const result = await Result.findOneAndUpdate(
       { academyStudent: row.studentId, exam: exam._id },
@@ -175,7 +224,7 @@ async function enterMarks(examId, marksRows, userId) {
           percentage: totals.percentage,
           grade: totals.grade,
           gpa: totals.gpa,
-          proofImages: row.proofImages || [],
+          ...(row.proofImages !== undefined ? { proofImages: row.proofImages || [] } : {}),
           enteredBy: userId,
           isPublished: false,
         },
@@ -186,6 +235,39 @@ async function enterMarks(examId, marksRows, userId) {
     saved.push(result);
   }
   return saved;
+}
+
+async function uploadStudentExamPaper(examId, studentId, subjectId, file) {
+  const exam = await Exam.findById(examId);
+  if (!exam) throw new ApiError(404, 'Exam not found');
+  const student = await AcademyStudent.findById(studentId);
+  if (!student || String(resolveClassId(student)) !== String(exam.academyClass)) {
+    throw new ApiError(400, 'Student not in this exam class');
+  }
+  const subjects = await AcademySubject.find({ classId: exam.academyClass, status: 'active' }).lean();
+  const allowedIds = new Set(enrolledSubjectIds(student, subjects));
+  const sid = String(subjectId || '');
+  if (!sid || !allowedIds.has(sid)) {
+    throw new ApiError(400, 'Student is not enrolled in this subject');
+  }
+  const subject = subjects.find((s) => String(s._id) === sid);
+  if (!subject) throw new ApiError(400, 'Subject not found for this exam class');
+
+  const url = saveExamPaperFile(examId, studentId, sid, file);
+  const existing = await Result.findOne({ academyStudent: studentId, exam: exam._id });
+  let savedToRecord = false;
+  if (existing) {
+    const marks = Array.isArray(existing.subjectMarks) ? existing.subjectMarks : [];
+    const idx = marks.findIndex((m) => String(m.subject) === sid);
+    if (idx >= 0) {
+      marks[idx].paperImage = url;
+      existing.subjectMarks = marks;
+      existing.markModified('subjectMarks');
+      await existing.save();
+      savedToRecord = true;
+    }
+  }
+  return { paperImage: url, studentId, subjectId: sid, savedToRecord };
 }
 
 async function getExamResults(examId) {
@@ -247,6 +329,7 @@ module.exports = {
   updateExam,
   getExamStudents,
   enterMarks,
+  uploadStudentExamPaper,
   getExamResults,
   publishResult,
   publishAllForExam,

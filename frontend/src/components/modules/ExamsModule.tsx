@@ -6,6 +6,7 @@ import {
   findTestExamsSection,
   isClassTestId,
   isClassTestSeriesId,
+  isExamId,
   isTestExamsSection,
   testExamsHref,
   type TestExamsSection,
@@ -14,6 +15,7 @@ import ClassTestMarksPage from "./exams/ClassTestMarksPage";
 import ClassTestSeriesPage from "./exams/ClassTestSeriesPage";
 import ClassTestsPanel from "./exams/ClassTestsPanel";
 import TermExamsPanel from "./exams/TermExamsPanel";
+import ExamMarksPage from "./exams/ExamMarksPage";
 import DateSheetPanel from "./exams/DateSheetPanel";
 import DateSheetDetailPage from "./exams/DateSheetDetailPage";
 import ReportCardPanel from "./exams/ReportCardPanel";
@@ -79,6 +81,19 @@ const ExamsModule = ({
 
   if (sectionParam === "enter-tests" && action) {
     return <Navigate to={role ? testExamsHref(role, "enter-tests") : ".."} replace />;
+  }
+
+  if (sectionParam === "term-exams" && action && isExamId(action)) {
+    if (!role) return null;
+    return (
+      <div className="px-4 sm:px-6 lg:px-8 py-6">
+        <ExamMarksPage examId={action} role={role} caps={caps} />
+      </div>
+    );
+  }
+
+  if (sectionParam === "term-exams" && action) {
+    return <Navigate to={role ? testExamsHref(role, "term-exams") : ".."} replace />;
   }
 
   if (

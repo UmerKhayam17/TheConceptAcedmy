@@ -45,6 +45,17 @@ const enterMarks = catchAsync(async (req, res) => {
   res.json({ success: true, data: saved });
 });
 
+const uploadExamPaper = catchAsync(async (req, res) => {
+  assertNotParent(req, 'Parents cannot upload exam papers');
+  const data = await examService.uploadStudentExamPaper(
+    req.params.id,
+    req.params.studentId,
+    req.params.subjectId,
+    req.file
+  );
+  res.status(201).json({ success: true, data });
+});
+
 const getExamResults = catchAsync(async (req, res) => {
   assertNotParent(req, 'Parents cannot open class-wide exam results');
   const results = await examService.getExamResults(req.params.id);
@@ -149,6 +160,7 @@ module.exports = {
   updateExam,
   getExamStudents,
   enterMarks,
+  uploadExamPaper,
   getExamResults,
   studentResults,
   publishResult,

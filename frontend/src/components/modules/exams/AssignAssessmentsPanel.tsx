@@ -180,7 +180,7 @@ export default function AssignAssessmentsPanel({
 }: {
   caps: ModuleActionCaps;
   category: "test" | "exam";
-  onEnterExam?: (examId: string) => void;
+  onEnterExam?: (examId: string, subjectId?: string) => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -696,9 +696,9 @@ export default function AssignAssessmentsPanel({
           if (!open) setSubjectsAssignment(null);
         }}
         onEnterMarks={(testId) => navigate(classTestMarksHref(role, testId))}
-        onEnterExam={(examId) => {
+        onEnterExam={(examId, subjectId) => {
           setSubjectsAssignment(null);
-          onEnterExam?.(examId);
+          onEnterExam?.(examId, subjectId);
         }}
       />
 
@@ -885,11 +885,15 @@ function TestSubjectsDialog({
   canEnterMarks?: boolean;
   onOpenChange: (open: boolean) => void;
   onEnterMarks: (testId: string) => void;
-  onEnterExam: (examId: string) => void;
+  onEnterExam: (examId: string, subjectId?: string) => void;
 }) {
   const papers = (assignment?.papers || []).filter((p) =>
     subjectFilter && subjectFilter.size ? subjectFilter.has(idOf(p.subjectId)) : true,
   );
+  const examId =
+    assignment?.category === "exam" && assignment.examId
+      ? String(assignment.examId)
+      : "";
   return (
     <Dialog open={Boolean(assignment)} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -900,11 +904,23 @@ function TestSubjectsDialog({
             {assignment && sectionNameOf(assignment) ? ` · ${sectionNameOf(assignment)}` : ""}
           </DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          {assignment
-            ? `${ASSESSMENT_TYPE_LABELS[assignment.assessmentType as AssessmentType] || assignment.assessmentType} — subjects in your teaching scope.`
-            : ""}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">
+            {assignment
+              ? `${ASSESSMENT_TYPE_LABELS[assignment.assessmentType as AssessmentType] || assignment.assessmentType} — subjects in your teaching scope.`
+              : ""}
+          </p>
+          {canEnterMarks && examId ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 shrink-0"
+              onClick={() => onEnterExam(examId)}
+            >
+              Enter all marks
+            </Button>
+          ) : null}
+        </div>
         {!papers.length ? (
           <p className="text-sm text-muted-foreground py-4">
             No subjects yet. Open syllabus to set the date, marks, and syllabus for each subject.
@@ -949,7 +965,12 @@ function TestSubjectsDialog({
                               size="sm"
                               variant="outline"
                               className="h-8 px-3"
-                              onClick={() => onEnterExam(String(assignment.examId))}
+                              onClick={() =>
+                                onEnterExam(
+                                  String(assignment.examId),
+                                  idOf(p.subjectId) || undefined,
+                                )
+                              }
                             >
                               Enter marks
                             </Button>
