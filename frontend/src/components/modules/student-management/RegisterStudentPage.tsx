@@ -180,12 +180,14 @@ function sectionShellClass(isActivate: boolean, last = false) {
 }
 
 function FormField({
+  id,
   label,
   required,
   className,
   error,
   children,
 }: {
+  id?: string;
   label: string;
   required?: boolean;
   className?: string;
@@ -193,15 +195,27 @@ function FormField({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn("space-y-1.5", className)}>
-      <Label>
+    <div id={id} className={cn("space-y-1.5", className)}>
+      <Label className={cn(error && "text-destructive")}>
         {label}
         {required && <span className="text-destructive ml-0.5">*</span>}
       </Label>
       {children}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
+}
+
+type SubmitBlocker = { message: string; fieldId: string };
+
+function scrollToSubmitField(fieldId: string) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  const focusable = el.matches("input, select, textarea, button")
+    ? el
+    : el.querySelector<HTMLElement>("input, select, textarea, button");
+  window.setTimeout(() => focusable?.focus?.(), 280);
 }
 
 function IconInput({
@@ -292,6 +306,7 @@ export default function RegisterStudentPage({
     mobileNo: false,
     contactPhoneRes: false,
   });
+  const [showSubmitErrors, setShowSubmitErrors] = useState(false);
   const autoPackageSectionRef = useRef<string | null>(null);
   /** When true, next fee preview fills payables to list price (after subject/class change). */
   const defaultPayablesRef = useRef(true);
@@ -751,61 +766,96 @@ export default function RegisterStudentPage({
     return form.selectedSubjects.length > 0;
   })();
 
-  const submitBlockers = (() => {
-    const missing: string[] = [];
-    if (!form.studentName.trim()) missing.push("Student name");
-    if (!form.fatherName.trim()) missing.push("Father's name");
-    if (!form.dateOfBirth) missing.push("Date of birth");
-    if (!form.gender) missing.push("Gender");
-    if (!isValidMobile(form.mobileNo)) missing.push("Valid mobile number (03XX-XXXXXXX)");
+  const submitBlockers = ((): SubmitBlocker[] => {
+    const missing: SubmitBlocker[] = [];
+    if (!form.studentName.trim()) {
+      missing.push({ message: "Student name is required", fieldId: "field-student-name" });
+    }
+    if (!form.fatherName.trim()) {
+      missing.push({ message: "Father's name is required", fieldId: "field-father-name" });
+    }
+    if (!form.dateOfBirth) {
+      missing.push({ message: "Date of birth is required", fieldId: "field-date-of-birth" });
+    }
+    if (!form.gender) {
+      missing.push({ message: "Gender is required", fieldId: "field-gender" });
+    }
+    if (!isValidMobile(form.mobileNo)) {
+      missing.push({
+        message: mobileValidationMessage(form.mobileNo) || "Mobile number is required",
+        fieldId: "field-mobile-no",
+      });
+    }
     if (form.fatherGuardianCnic.trim() && !isValidCnic(form.fatherGuardianCnic)) {
-      missing.push("Valid CNIC (13 digits)");
+      missing.push({
+        message: cnicValidationMessage(form.fatherGuardianCnic) || "CNIC must be 13 digits",
+        fieldId: "field-cnic",
+      });
     }
     if (form.contactPhoneRes.trim() && !isValidMobile(form.contactPhoneRes)) {
-      missing.push("Valid residence phone (03XX-XXXXXXX)");
+      missing.push({
+        message: mobileValidationMessage(form.contactPhoneRes) || "Residence phone is invalid",
+        fieldId: "field-contact-phone",
+      });
     }
-    if (!form.classId) missing.push("Class");
-    if (!form.sectionId) missing.push("Section");
-    if (requiresDiscipline && !form.disciplineId) missing.push("Discipline / Stream");
+    if (!form.classId) {
+      missing.push({ message: "Class is required", fieldId: "field-class" });
+    }
+    if (!form.sectionId) {
+      missing.push({ message: "Section is required", fieldId: "field-section" });
+    }
+    if (requiresDiscipline && !form.disciplineId) {
+      missing.push({ message: "Discipline / Stream is required", fieldId: "field-discipline" });
+    }
     if (!subjectSelectionValid) {
-      if (form.isFullPackage && hasChoiceGroups) {
-        missing.push("One elective per group (section 6)");
-      } else {
-        missing.push("Subjects or full package (section 6)");
-      }
+      missing.push({
+        message: form.isFullPackage && hasChoiceGroups
+          ? "Select one elective per group (section 6)"
+          : "Select subjects or full package (section 6)",
+        fieldId: "field-subjects",
+      });
     }
     if (!isEdit && !isAccountsEnrollment) {
-      if (!form.guardianEmail.trim()) missing.push("Guardian email (section 2)");
+      if (!form.guardianEmail.trim()) {
+        missing.push({
+          message: "Guardian email is required (section 2)",
+          fieldId: "field-guardian-email",
+        });
+      }
       if (form.parentPassword.trim().length < 8) {
-        missing.push("Parent login password — min 8 characters (section 2)");
+        missing.push({
+          message: "Parent login password must be at least 8 characters (section 2)",
+          fieldId: "field-parent-password",
+        });
       }
     }
     return missing;
   })();
 
-  const canSubmit =
-    form.studentName.trim()
-    && form.fatherName.trim()
-    && form.dateOfBirth
-    && form.gender
-    && isValidMobile(form.mobileNo)
-    && (!form.fatherGuardianCnic.trim() || isValidCnic(form.fatherGuardianCnic))
-    && (!form.contactPhoneRes.trim() || isValidMobile(form.contactPhoneRes))
-    && form.classId
-    && form.sectionId
-    && (!requiresDiscipline || Boolean(form.disciplineId))
-    && subjectSelectionValid
-    && (isEdit || isAccountsEnrollment
-      ? true
-      : Boolean(form.guardianEmail.trim()) && form.parentPassword.trim().length >= 8);
+  const canSubmit = submitBlockers.length === 0;
+
+  const fieldErrors = (() => {
+    if (!showSubmitErrors) return {} as Record<string, string>;
+    const map: Record<string, string> = {};
+    for (const b of submitBlockers) map[b.fieldId] = b.message;
+    return map;
+  })();
+
+  const fieldErr = (fieldId: string) => fieldErrors[fieldId] ?? null;
 
   const selectedClassName = classes.find((c) => c._id === form.classId)?.className;
 
-  const cnicError = fieldTouched.fatherGuardianCnic ? cnicValidationMessage(form.fatherGuardianCnic) : null;
-  const mobileError = fieldTouched.mobileNo ? mobileValidationMessage(form.mobileNo) : null;
-  const contactError = fieldTouched.contactPhoneRes && form.contactPhoneRes.trim()
-    ? mobileValidationMessage(form.contactPhoneRes)
-    : null;
+  const cnicError =
+    fieldErr("field-cnic")
+    ?? (fieldTouched.fatherGuardianCnic ? cnicValidationMessage(form.fatherGuardianCnic) : null);
+  const mobileError =
+    fieldErr("field-mobile-no")
+    ?? (fieldTouched.mobileNo ? mobileValidationMessage(form.mobileNo) : null);
+  const contactError =
+    fieldErr("field-contact-phone")
+    ?? (fieldTouched.contactPhoneRes && form.contactPhoneRes.trim()
+      ? mobileValidationMessage(form.contactPhoneRes)
+      : null);
 
   const handleClose = () => {
     if (asDialog) onOpenChange?.(false);
@@ -920,29 +970,52 @@ export default function RegisterStudentPage({
             </div>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <FormField label="Student name" required>
+            <FormField
+              id="field-student-name"
+              label="Student name"
+              required
+              error={fieldErr("field-student-name")}
+            >
               <IconInput
                 icon={User}
+                id="input-student-name"
                 placeholder="e.g. Ali Ahmed Khan"
+                className={cn(fieldErr("field-student-name") && "border-destructive")}
                 value={form.studentName}
                 onChange={(e) => setForm((f) => ({ ...f, studentName: e.target.value }))}
               />
             </FormField>
-            <FormField label="Father's name" required>
+            <FormField
+              id="field-father-name"
+              label="Father's name"
+              required
+              error={fieldErr("field-father-name")}
+            >
               <IconInput
                 icon={Users}
+                id="input-father-name"
                 placeholder="e.g. Muhammad Ahmed Khan"
+                className={cn(fieldErr("field-father-name") && "border-destructive")}
                 value={form.fatherName}
                 onChange={(e) => setForm((f) => ({ ...f, fatherName: e.target.value }))}
               />
             </FormField>
-            <FormField label="Date of birth" required>
+            <FormField
+              id="field-date-of-birth"
+              label="Date of birth"
+              required
+              error={fieldErr("field-date-of-birth")}
+            >
               <DateDmYInput
+                id="input-date-of-birth"
                 value={form.dateOfBirth}
                 onChange={(iso) => setForm((f) => ({ ...f, dateOfBirth: iso }))}
                 maxIso={new Date().toISOString().slice(0, 10)}
+                className={cn(fieldErr("field-date-of-birth") && "[&_input]:border-destructive")}
               />
-              <p className="text-xs text-muted-foreground mt-1">Format: dd/mm/yyyy</p>
+              {!fieldErr("field-date-of-birth") && (
+                <p className="text-xs text-muted-foreground mt-1">Format: dd/mm/yyyy</p>
+              )}
             </FormField>
             <FormField label="Nationality">
               <IconInput
@@ -952,9 +1025,16 @@ export default function RegisterStudentPage({
                 onChange={(e) => setForm((f) => ({ ...f, nationality: e.target.value }))}
               />
             </FormField>
-            <FormField label="Gender" required>
+            <FormField
+              id="field-gender"
+              label="Gender"
+              required
+              error={fieldErr("field-gender")}
+            >
               <IconSelect
                 icon={Users}
+                id="input-gender"
+                className={cn(fieldErr("field-gender") && "border-destructive")}
                 value={form.gender}
                 onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
               >
@@ -1012,11 +1092,13 @@ export default function RegisterStudentPage({
               />
             </FormField>
             <FormField
+              id="field-cnic"
               label="Father / Guardian CNIC no."
               error={cnicError}
             >
               <IconInput
                 icon={IdCard}
+                id="input-cnic"
                 type="tel"
                 inputMode="numeric"
                 placeholder="35201-1234567-1"
@@ -1043,22 +1125,38 @@ export default function RegisterStudentPage({
                 onChange={(e) => setForm((f) => ({ ...f, guardianWorkAddress: e.target.value }))}
               />
             </FormField>
-            <FormField label="Guardian email" required={!isEdit && !isAccountsEnrollment}>
+            <FormField
+              id="field-guardian-email"
+              label="Guardian email"
+              required={!isEdit && !isAccountsEnrollment}
+              error={fieldErr("field-guardian-email")}
+            >
               <IconInput
                 icon={Mail}
+                id="input-guardian-email"
                 type="email"
                 placeholder="guardian@email.com"
+                className={cn(fieldErr("field-guardian-email") && "border-destructive")}
                 value={form.guardianEmail}
                 onChange={(e) => setForm((f) => ({ ...f, guardianEmail: e.target.value }))}
               />
             </FormField>
             {!isEdit && !isAccountsEnrollment && (
-              <FormField label="Parent login password" required>
+              <FormField
+                id="field-parent-password"
+                label="Parent login password"
+                required
+                error={fieldErr("field-parent-password")}
+              >
                 <div className="relative">
                   <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
+                    id="input-parent-password"
                     type="text"
-                    className="pl-9 font-mono"
+                    className={cn(
+                      "pl-9 font-mono",
+                      fieldErr("field-parent-password") && "border-destructive",
+                    )}
                     placeholder="Concept@1234"
                     value={form.parentPassword}
                     onChange={(e) => setForm((f) => ({ ...f, parentPassword: e.target.value }))}
@@ -1076,9 +1174,10 @@ export default function RegisterStudentPage({
         <section className={sectionShellClass(isActivate || isDirect)}>
           <SectionTitle>3. Contact & address</SectionTitle>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <FormField label="Mobile no." required error={mobileError}>
+            <FormField id="field-mobile-no" label="Mobile no." required error={mobileError}>
               <IconInput
                 icon={Smartphone}
+                id="input-mobile-no"
                 type="tel"
                 inputMode="numeric"
                 placeholder="03XX-XXXXXXX"
@@ -1089,9 +1188,10 @@ export default function RegisterStudentPage({
                 onBlur={() => setFieldTouched((t) => ({ ...t, mobileNo: true }))}
               />
             </FormField>
-            <FormField label="Contact no. (residence)" error={contactError}>
+            <FormField id="field-contact-phone" label="Contact no. (residence)" error={contactError}>
               <IconInput
                 icon={Phone}
+                id="input-contact-phone"
                 type="tel"
                 inputMode="numeric"
                 placeholder="03XX-XXXXXXX"
@@ -1217,10 +1317,11 @@ export default function RegisterStudentPage({
           >
             6. Class & subject selection
           </SectionTitle>
-          <FormField label="Class" required>
+          <FormField id="field-class" label="Class" required error={fieldErr("field-class")}>
             <IconSelect
               id="enroll-class"
               icon={GraduationCap}
+              className={cn(fieldErr("field-class") && "border-destructive")}
               value={form.classId}
               onChange={(e) => {
                 setForm((f) => ({
@@ -1238,10 +1339,11 @@ export default function RegisterStudentPage({
             </IconSelect>
           </FormField>
 
-          <FormField label="Section" required>
+          <FormField id="field-section" label="Section" required error={fieldErr("field-section")}>
             <IconSelect
               id="enroll-section"
               icon={GraduationCap}
+              className={cn(fieldErr("field-section") && "border-destructive")}
               value={form.sectionId}
               onChange={(e) => {
                 setForm((f) => ({
@@ -1262,10 +1364,16 @@ export default function RegisterStudentPage({
           </FormField>
 
           {requiresDiscipline && (
-            <FormField label="Discipline / Stream" required>
+            <FormField
+              id="field-discipline"
+              label="Discipline / Stream"
+              required
+              error={fieldErr("field-discipline")}
+            >
               <IconSelect
                 id="enroll-discipline"
                 icon={GraduationCap}
+                className={cn(fieldErr("field-discipline") && "border-destructive")}
                 value={form.disciplineId}
                 onChange={(e) => {
                   setForm((f) => ({
@@ -1294,8 +1402,14 @@ export default function RegisterStudentPage({
           )}
 
           {form.classId && form.sectionId && (!requiresDiscipline || form.disciplineId) && (
-            <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
-              <p className="text-sm font-medium">
+            <div
+              id="field-subjects"
+              className={cn(
+                "space-y-4 rounded-lg border bg-muted/20 p-4",
+                fieldErr("field-subjects") && "border-destructive",
+              )}
+            >
+              <p className={cn("text-sm font-medium", fieldErr("field-subjects") && "text-destructive")}>
                 Subjects for {selectedClassName}
                 {form.disciplineId
                   ? ` · ${disciplines.find((d) => d._id === form.disciplineId)?.name || "stream"}`
@@ -1491,13 +1605,16 @@ export default function RegisterStudentPage({
                           {form.selectedSubjects.length} subject{form.selectedSubjects.length > 1 ? "s" : ""} selected
                         </p>
                       )}
-                      {!subjectSelectionValid && displayCoreSubjects.length > 0 && (
+                      {!subjectSelectionValid && displayCoreSubjects.length > 0 && !fieldErr("field-subjects") && (
                         <p className="text-sm text-destructive">Select at least one subject or choose full package.</p>
                       )}
                     </>
                   )}
                 </div>
               )}
+              {fieldErr("field-subjects") ? (
+                <p className="text-xs text-destructive">{fieldErr("field-subjects")}</p>
+              ) : null}
             </div>
           )}
 
@@ -1672,8 +1789,7 @@ export default function RegisterStudentPage({
             Cancel
           </Button>
           <Button
-            disabled={saveMut.isPending || !canSubmit}
-            title={!canSubmit ? submitBlockers.join("; ") : undefined}
+            disabled={saveMut.isPending}
             className={cn((isActivate || isDirect) && "gap-2")}
             onClick={() => {
               setFieldTouched({
@@ -1681,6 +1797,19 @@ export default function RegisterStudentPage({
                 mobileNo: true,
                 contactPhoneRes: true,
               });
+              if (!canSubmit) {
+                setShowSubmitErrors(true);
+                const first = submitBlockers[0];
+                toast({
+                  title: "Missing required fields",
+                  description: first?.message
+                    ?? submitBlockers.map((b) => b.message).join("; "),
+                  variant: "destructive",
+                });
+                if (first) scrollToSubmitField(first.fieldId);
+                return;
+              }
+              setShowSubmitErrors(false);
               saveMut.mutate();
             }}
           >

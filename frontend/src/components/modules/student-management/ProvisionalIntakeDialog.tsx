@@ -18,6 +18,7 @@ import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchAcademyClasses, fetchFeeStructureByClass, registerProvisionalStudent } from "@/lib/studentManagementApi";
 import { formatMobileInput, isValidMobile, mobileValidationMessage } from "@/lib/pkFieldFormat";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
+import { cn } from "@/lib/utils";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
 
 const emptyForm = {
@@ -45,6 +46,7 @@ export default function ProvisionalIntakeDialog({
   const qc = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [phoneTouched, setPhoneTouched] = useState(false);
+  const [showSubmitErrors, setShowSubmitErrors] = useState(false);
 
   const { data: classes = [] } = useQuery({
     queryKey: ["academy-classes", sessionId],
@@ -64,6 +66,7 @@ export default function ProvisionalIntakeDialog({
     if (!open) {
       setForm(emptyForm);
       setPhoneTouched(false);
+      setShowSubmitErrors(false);
     }
   }, [open]);
 
@@ -89,16 +92,56 @@ export default function ProvisionalIntakeDialog({
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const phoneError = phoneTouched ? mobileValidationMessage(form.phone) : null;
+  const submitBlockers = (() => {
+    const missing: { message: string; fieldId: string }[] = [];
+    if (!(caps.canCreate || caps.canEdit)) {
+      missing.push({ message: "You do not have permission to save intake", fieldId: "intake-student-name" });
+    }
+    if (!form.studentName.trim()) {
+      missing.push({ message: "Student name is required", fieldId: "intake-student-name" });
+    }
+    if (!form.fatherName.trim()) {
+      missing.push({ message: "Father name is required", fieldId: "intake-father-name" });
+    }
+    if (!isValidMobile(form.phone)) {
+      missing.push({
+        message: mobileValidationMessage(form.phone) || "Mobile number is required",
+        fieldId: "intake-phone",
+      });
+    }
+    if (!form.dateOfBirth) {
+      missing.push({ message: "Date of birth is required", fieldId: "intake-dob" });
+    }
+    if (!form.gender) {
+      missing.push({ message: "Gender is required", fieldId: "intake-gender" });
+    }
+    if (!form.classId) {
+      missing.push({ message: "Class is required", fieldId: "intake-class" });
+    }
+    return missing;
+  })();
 
-  const canSubmit =
-    (caps.canCreate || caps.canEdit)
-    && form.studentName.trim()
-    && form.fatherName.trim()
-    && isValidMobile(form.phone)
-    && form.dateOfBirth
-    && form.gender
-    && form.classId;
+  const canSubmit = submitBlockers.length === 0;
+
+  const fieldErrors = (() => {
+    if (!showSubmitErrors) return {} as Record<string, string>;
+    const map: Record<string, string> = {};
+    for (const b of submitBlockers) map[b.fieldId] = b.message;
+    return map;
+  })();
+
+  const fieldErr = (fieldId: string) => fieldErrors[fieldId] ?? null;
+
+  const phoneError =
+    fieldErr("intake-phone")
+    ?? (phoneTouched ? mobileValidationMessage(form.phone) : null);
+
+  const scrollToField = (fieldId: string) => {
+    const el = document.getElementById(fieldId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => el.focus?.(), 280);
+  };
 
   const handleOpenChange = (next: boolean) => {
     if (!next) setForm(emptyForm);
@@ -117,53 +160,91 @@ export default function ProvisionalIntakeDialog({
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="intake-student-name">Student name</Label>
+            <Label
+              htmlFor="intake-student-name"
+              className={cn(fieldErr("intake-student-name") && "text-destructive")}
+            >
+              Student name
+            </Label>
             <Input
               id="intake-student-name"
               placeholder="Enter student's full name"
+              className={cn(fieldErr("intake-student-name") && "border-destructive")}
               value={form.studentName}
               onChange={(e) => setForm((f) => ({ ...f, studentName: e.target.value }))}
             />
+            {fieldErr("intake-student-name") ? (
+              <p className="text-xs text-destructive">{fieldErr("intake-student-name")}</p>
+            ) : null}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="intake-father-name">Father name</Label>
+            <Label
+              htmlFor="intake-father-name"
+              className={cn(fieldErr("intake-father-name") && "text-destructive")}
+            >
+              Father name
+            </Label>
             <Input
               id="intake-father-name"
               placeholder="Enter father's full name"
+              className={cn(fieldErr("intake-father-name") && "border-destructive")}
               value={form.fatherName}
               onChange={(e) => setForm((f) => ({ ...f, fatherName: e.target.value }))}
             />
+            {fieldErr("intake-father-name") ? (
+              <p className="text-xs text-destructive">{fieldErr("intake-father-name")}</p>
+            ) : null}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="intake-phone">Phone number</Label>
+            <Label htmlFor="intake-phone" className={cn(phoneError && "text-destructive")}>
+              Phone number
+            </Label>
             <Input
               id="intake-phone"
               type="tel"
               inputMode="numeric"
               placeholder="03XX-XXXXXXX"
               maxLength={12}
-              className={phoneError ? "border-destructive" : undefined}
+              className={cn(phoneError && "border-destructive")}
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: formatMobileInput(e.target.value) }))}
               onBlur={() => setPhoneTouched(true)}
             />
-            {phoneError && <p className="text-xs text-destructive">{phoneError}</p>}
+            {phoneError ? <p className="text-xs text-destructive">{phoneError}</p> : null}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="intake-dob">Date of birth</Label>
+            <Label
+              htmlFor="intake-dob"
+              className={cn(fieldErr("intake-dob") && "text-destructive")}
+            >
+              Date of birth
+            </Label>
             <DateDmYInput
               id="intake-dob"
               value={form.dateOfBirth}
               onChange={(iso) => setForm((f) => ({ ...f, dateOfBirth: iso }))}
               maxIso={new Date().toISOString().slice(0, 10)}
+              className={cn(fieldErr("intake-dob") && "[&_input]:border-destructive")}
             />
-            <p className="text-xs text-muted-foreground">Format: dd/mm/yyyy</p>
+            {fieldErr("intake-dob") ? (
+              <p className="text-xs text-destructive">{fieldErr("intake-dob")}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Format: dd/mm/yyyy</p>
+            )}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="intake-gender">Gender</Label>
+            <Label
+              htmlFor="intake-gender"
+              className={cn(fieldErr("intake-gender") && "text-destructive")}
+            >
+              Gender
+            </Label>
             <select
               id="intake-gender"
-              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm font-sans"
+              className={cn(
+                "w-full h-10 rounded-md border border-input bg-background px-3 text-sm font-sans",
+                fieldErr("intake-gender") && "border-destructive",
+              )}
               value={form.gender}
               onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
             >
@@ -172,15 +253,31 @@ export default function ProvisionalIntakeDialog({
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
+            {fieldErr("intake-gender") ? (
+              <p className="text-xs text-destructive">{fieldErr("intake-gender")}</p>
+            ) : null}
           </div>
-          <ClassProgramSelect
-            id="intake-class"
-            className="w-full"
-            value={form.classId}
-            onChange={(v) => setForm((f) => ({ ...f, classId: v }))}
-            classes={classes}
-            emptyLabel="Choose class…"
-          />
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="intake-class"
+              className={cn(fieldErr("intake-class") && "text-destructive")}
+            >
+              Class
+            </Label>
+            <ClassProgramSelect
+              id="intake-class"
+              label={false}
+              className="w-full"
+              selectClassName={cn(fieldErr("intake-class") && "border-destructive")}
+              value={form.classId}
+              onChange={(v) => setForm((f) => ({ ...f, classId: v }))}
+              classes={classes}
+              emptyLabel="Choose class…"
+            />
+            {fieldErr("intake-class") ? (
+              <p className="text-xs text-destructive">{fieldErr("intake-class")}</p>
+            ) : null}
+          </div>
 
           {form.classId && (
             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
@@ -232,14 +329,22 @@ export default function ProvisionalIntakeDialog({
           </Button>
           <Button
             className="gap-2"
-            disabled={!canSubmit || saveMut.isPending}
+            disabled={saveMut.isPending}
             onClick={() => {
               setPhoneTouched(true);
-              const err = mobileValidationMessage(form.phone);
-              if (err) {
-                toast({ title: "Invalid phone number", description: err, variant: "destructive" });
+              if (!canSubmit) {
+                setShowSubmitErrors(true);
+                const first = submitBlockers[0];
+                toast({
+                  title: "Missing required fields",
+                  description: first?.message
+                    ?? submitBlockers.map((b) => b.message).join("; "),
+                  variant: "destructive",
+                });
+                if (first) scrollToField(first.fieldId);
                 return;
               }
+              setShowSubmitErrors(false);
               saveMut.mutate();
             }}
           >
