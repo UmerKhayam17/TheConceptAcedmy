@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/** Present / Absent segment — outline style aligned with Award list buttons. */
+/** Compact P / A attendance toggle — green Present, red Absent when selected. */
 export default function MarksAbsentToggle({
   absent,
   onChange,
@@ -13,12 +13,14 @@ export default function MarksAbsentToggle({
   size?: "default" | "sm";
 }) {
   const sm = size === "sm";
+  const box = sm ? "h-7 w-7 text-[11px]" : "h-8 w-8 text-xs";
+
   return (
     <div
       role="group"
       aria-label="Attendance"
       className={cn(
-        "inline-flex shrink-0 items-center rounded-md border border-slate-200 bg-slate-50/80 p-0.5",
+        "inline-flex shrink-0 items-center gap-1",
         disabled && "pointer-events-none opacity-50",
       )}
     >
@@ -29,15 +31,15 @@ export default function MarksAbsentToggle({
         title="Present"
         onClick={() => onChange(false)}
         className={cn(
-          "rounded-[5px] font-medium tracking-tight transition-all",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a2b4b]/20",
-          sm ? "h-7 min-w-[1.85rem] px-2 text-[11px]" : "h-8 min-w-[4.5rem] px-3 text-xs",
+          box,
+          "inline-flex items-center justify-center rounded-lg font-bold leading-none transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
           !absent
-            ? "bg-white text-[#1a2b4b] shadow-sm ring-1 ring-slate-200/80"
-            : "bg-transparent text-slate-500 hover:text-[#1a2b4b]",
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "bg-slate-100 text-slate-500 hover:bg-slate-200/80 hover:text-slate-700",
         )}
       >
-        {sm ? "P" : "Present"}
+        P
       </button>
       <button
         type="button"
@@ -46,15 +48,15 @@ export default function MarksAbsentToggle({
         title="Absent"
         onClick={() => onChange(true)}
         className={cn(
-          "rounded-[5px] font-medium tracking-tight transition-all",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/20",
-          sm ? "h-7 min-w-[1.85rem] px-2 text-[11px]" : "h-8 min-w-[4.5rem] px-3 text-xs",
+          box,
+          "inline-flex items-center justify-center rounded-lg font-bold leading-none transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30",
           absent
-            ? "bg-white text-[#b91c1c] shadow-sm ring-1 ring-red-200"
-            : "bg-transparent text-slate-500 hover:text-[#1a2b4b]",
+            ? "bg-destructive text-destructive-foreground shadow-sm"
+            : "bg-slate-100 text-slate-500 hover:bg-slate-200/80 hover:text-slate-700",
         )}
       >
-        {sm ? "A" : "Absent"}
+        A
       </button>
     </div>
   );

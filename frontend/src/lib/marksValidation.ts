@@ -41,10 +41,23 @@ export function focusAdjacentMarksField(
   });
 }
 
-/** Enter → next marks field in the same table; Shift+Enter → previous. */
+/**
+ * Enter / ArrowDown → next marks field; Shift+Enter / ArrowUp → previous.
+ * Prevents number inputs from spinning the value on arrow keys.
+ */
 export function handleMarksFieldEnterKey(
   e: { key: string; shiftKey: boolean; preventDefault: () => void; currentTarget: HTMLElement },
 ) {
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    focusAdjacentMarksField(e.currentTarget, "next");
+    return;
+  }
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    focusAdjacentMarksField(e.currentTarget, "prev");
+    return;
+  }
   if (e.key !== "Enter") return;
   e.preventDefault();
   focusAdjacentMarksField(e.currentTarget, e.shiftKey ? "prev" : "next");
