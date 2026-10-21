@@ -16,6 +16,7 @@ const {
 const {
   createEnrollmentFeeVouchers,
   syncUnpaidChallansForStudent,
+  isStudentFullFeeWaiver,
 } = require('./academyFeeService');
 const { validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
 const { resolveEnrollmentDiscipline } = require('./academyDisciplineService');
@@ -418,7 +419,11 @@ async function updateStudent(id, payload) {
 
   // Keep Fee Management challans aligned with the recalculated student fee profile.
   // Do not force defaultChargeIds onto existing vouchers — charges stay opt-in at pay/print.
-  if (needsFeeRecalc && student.status === 'active') {
+  // Full waiver always settles open challans to Paid (even if only discounts changed).
+  if (
+    student.status === 'active' &&
+    (needsFeeRecalc || isStudentFullFeeWaiver(student))
+  ) {
     await syncUnpaidChallansForStudent(student);
   }
 

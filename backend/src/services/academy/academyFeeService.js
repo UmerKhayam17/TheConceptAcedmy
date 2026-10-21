@@ -215,11 +215,45 @@ function applyFullWaiverSettlement(record, userId) {
   record.paidAt = record.paidAt || new Date();
   record.paymentMethod = record.paymentMethod || 'other';
   record.recordedBy = userId;
+  if (Array.isArray(record.components) && record.components.length) {
+    record.components = record.components.map((line) => {
+      const plain = typeof line?.toObject === 'function' ? line.toObject() : { ...line };
+      return { ...plain, amount: 0 };
+    });
+  }
   const notes = String(record.notes || '').trim();
   if (!notes.includes('Full fee waiver')) {
     record.notes = [notes, FULL_WAIVER_NOTE].filter(Boolean).join(' · ');
   }
   return record;
+}
+
+/** Tuition + admission payable are both ₨ 0 after discounts. */
+function isStudentFullFeeWaiver(student) {
+  const monthlyDue = monthlyBillAmount(student);
+  const { admissionAmount } = splitEnrollmentAmounts(student || {});
+  return monthlyDue <= 0 && admissionAmount <= 0;
+}
+
+/**
+ * When a student is switched to full waiver, every unpaid challan
+ * (monthly / admission / stationery / etc.) is auto-settled as Paid at ₨ 0.
+ */
+async function settleAllUnpaidForFullWaiver(student) {
+  const unpaid = await AcademyFeeRecord.find({
+    studentId: student._id,
+    status: { $in: ['pending', 'overdue'] },
+  });
+  if (!unpaid.length) return { updated: 0, skipped: 0 };
+
+  const userId = student.updatedBy || student.createdBy;
+  let updated = 0;
+  for (const record of unpaid) {
+    applyFullWaiverSettlement(record, userId);
+    await record.save();
+    updated += 1;
+  }
+  return { updated, skipped: 0 };
 }
 
 function roundMoney(n) {
@@ -350,6 +384,7 @@ function splitEnrollmentAmounts(fees) {
  * Same composition as generateMonthlyFees / enrollment vouchers:
  * monthlyBillAmount → charges → (admission on admission vouchers) → total.
  *
+ * Full fee waiver → all pending/overdue challans auto-settled as Paid at ₨ 0
  * PAID / WAIVED → never touched
  * PENDING / OVERDUE → amount + components updated together
  * Manual charge lines (stationery without chargeId) → preserved on the same challan
@@ -359,6 +394,12 @@ function splitEnrollmentAmounts(fees) {
  */
 async function syncUnpaidChallansForStudent(student, { chargeIds } = {}) {
   if (!student?._id) return { updated: 0, skipped: 0 };
+
+  // Editing a student onto full waiver must clear every open challan, including
+  // ones that still carry additional/stationery charges from before the waiver.
+  if (isStudentFullFeeWaiver(student)) {
+    return settleAllUnpaidForFullWaiver(student);
+  }
 
   const unpaid = await AcademyFeeRecord.find({
     studentId: student._id,
@@ -2742,6 +2783,7 @@ module.exports = {
   generateMonthlyFees,
   createEnrollmentFeeVouchers,
   syncUnpaidChallansForStudent,
+  isStudentFullFeeWaiver,
   monthlyBillAmount,
   recordPayment,
   recordPayments,
