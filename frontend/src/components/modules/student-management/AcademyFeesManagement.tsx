@@ -58,6 +58,7 @@ import {
   exportFeeDefaultersMonthWise,
   exportPaidFeesReport,
   type DefaulterReportFormat,
+  type PaidFeeExportParams,
   applyFeeCharges,
   fetchAdditionalCharges,
   generateMonthlyFees,
@@ -95,6 +96,22 @@ import {
   ChallanPrintDialog,
   type ChallanPrintRequest,
 } from "./ChallanPrintDialog";
+
+/** Stable empty lists — `useQuery` defaults like `= []` create new arrays each render and retrigger effects. */
+const EMPTY_ADDITIONAL_CHARGES: Awaited<ReturnType<typeof fetchAdditionalCharges>> = [];
+const EMPTY_PARENT_STUDENTS: AcademyStudent[] = [];
+const EMPTY_FEE_RECORDS: AcademyFeeRecord[] = [];
+const PAID_EXPORT_FEE_TYPES = new Set<NonNullable<PaidFeeExportParams["feeType"]>>([
+  "admission",
+  "monthly",
+  "stationery",
+]);
+
+function paidExportFeeType(value: string): PaidFeeExportParams["feeType"] {
+  return PAID_EXPORT_FEE_TYPES.has(value as NonNullable<PaidFeeExportParams["feeType"]>)
+    ? (value as NonNullable<PaidFeeExportParams["feeType"]>)
+    : undefined;
+}
 
 function todayInputValue() {
   const d = new Date();
@@ -611,7 +628,7 @@ export default function AcademyFeesManagement({
     }
   }, [isParent, selectedParentStudentId]);
 
-  const { data: parentStudents = [] } = useQuery({
+  const { data: parentStudents = EMPTY_PARENT_STUDENTS } = useQuery({
     queryKey: ["parent-students-fees"],
     queryFn: async () => {
       const r = await fetchAcademyStudents({ page: 1, limit: 200, status: "active" });
@@ -734,7 +751,7 @@ export default function AcademyFeesManagement({
     enabled: Boolean(payStudentId),
   });
 
-  const { data: allCharges = [] } = useQuery({
+  const { data: allCharges = EMPTY_ADDITIONAL_CHARGES } = useQuery({
     queryKey: ["additional-charges"],
     queryFn: fetchAdditionalCharges,
     enabled: Boolean(payRecord) && payModalMode !== "edit",
@@ -944,7 +961,7 @@ export default function AcademyFeesManagement({
   });
 
   const matchingTransferFees = useMemo(() => {
-    if (!correction || !transferHistoryQ.data?.records) return [];
+    if (!correction || !transferHistoryQ.data?.records) return EMPTY_FEE_RECORDS;
     const src = correction.record;
     return transferHistoryQ.data.records.filter(
       (f) =>
@@ -1085,12 +1102,12 @@ export default function AcademyFeesManagement({
     (showPaidPaymentCols ? 3 : 0) +
     (showPendingMonthsCol ? 1 : 0);
 
-  const paidExportParams = useMemo(
+  const paidExportParams = useMemo<PaidFeeExportParams>(
     () => ({
       month: month ? Number(month) : undefined,
       year: year ? Number(year) : undefined,
       classId: classFilter || undefined,
-      feeType: feeTypeFilter || undefined,
+      feeType: paidExportFeeType(feeTypeFilter),
       search: search.trim() || undefined,
       sessionId: apiSessionId,
     }),
@@ -1338,40 +1355,40 @@ export default function AcademyFeesManagement({
             ((showBulkActions &&
               (canGenerate || caps.canView || caps.canEdit || caps.canCreate)) ||
               (paidOnlyView && caps.canView)) && (
-            <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border pt-3 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
-              {paidOnlyView && caps.canView && (
-                <div className="w-full sm:w-auto">
-                  <DefaulterListDownload
-                    variant="default"
-                    className="w-full justify-center sm:w-auto"
-                    label="Paid report"
-                    exporting={exportingPaidReport}
-                    onDownload={(format) => void downloadPaidReport(format)}
-                  />
-                </div>
-              )}
-              {showBulkActions && !studentId && (caps.canEdit || caps.canCreate) && writable && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10 w-full justify-center gap-1.5 rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground sm:h-9 sm:w-auto sm:whitespace-nowrap"
-                  onClick={() => setEnrollmentWizardOpen(true)}
-                >
-                  <Receipt className="h-4 w-4 shrink-0 text-primary" />
-                  Enrollment voucher
-                </Button>
-              )}
-              {showBulkActions && canGenerate && (
-                <Button
-                  className="h-10 w-full justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-9 sm:w-auto sm:whitespace-nowrap"
-                  disabled={genMut.isPending}
-                  onClick={() => genMut.mutate()}
-                >
-                  <Download className="h-4 w-4 shrink-0" />
-                  {genMut.isPending ? "Generating…" : "Generate Report"}
-                </Button>
-              )}
-              {/* {showBulkActions && canGenerate && (
+              <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border pt-3 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+                {paidOnlyView && caps.canView && (
+                  <div className="w-full sm:w-auto">
+                    <DefaulterListDownload
+                      variant="default"
+                      className="w-full justify-center sm:w-auto"
+                      label="Paid report"
+                      exporting={exportingPaidReport}
+                      onDownload={(format) => void downloadPaidReport(format)}
+                    />
+                  </div>
+                )}
+                {showBulkActions && !studentId && (caps.canEdit || caps.canCreate) && writable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 w-full justify-center gap-1.5 rounded-md border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted hover:text-foreground sm:h-9 sm:w-auto sm:whitespace-nowrap"
+                    onClick={() => setEnrollmentWizardOpen(true)}
+                  >
+                    <Receipt className="h-4 w-4 shrink-0 text-primary" />
+                    Enrollment voucher
+                  </Button>
+                )}
+                {showBulkActions && canGenerate && (
+                  <Button
+                    className="h-10 w-full justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-9 sm:w-auto sm:whitespace-nowrap"
+                    disabled={genMut.isPending}
+                    onClick={() => genMut.mutate()}
+                  >
+                    <Download className="h-4 w-4 shrink-0" />
+                    {genMut.isPending ? "Generating…" : "Generate Report"}
+                  </Button>
+                )}
+                {/* {showBulkActions && canGenerate && (
                 <Button
                   type="button"
                   variant="outline"
@@ -1384,18 +1401,18 @@ export default function AcademyFeesManagement({
                   {resyncMut.isPending ? "Resyncing…" : "Resync charges"}
                 </Button>
               )} */}
-              {showBulkActions && !studentId && caps.canView && (
-                <div className="w-full sm:w-auto">
-                  <DefaulterListDownload
-                    className="w-full justify-center sm:w-auto"
-                    label="Defaulter list"
-                    exporting={exportingMonthWise}
-                    onDownload={(format) => void downloadMonthWise(format)}
-                  />
-                </div>
-              )}
-            </div>
-          )}
+                {showBulkActions && !studentId && caps.canView && (
+                  <div className="w-full sm:w-auto">
+                    <DefaulterListDownload
+                      className="w-full justify-center sm:w-auto"
+                      label="Defaulter list"
+                      exporting={exportingMonthWise}
+                      onDownload={(format) => void downloadMonthWise(format)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
         </div>
       )}
 
@@ -1859,11 +1876,11 @@ export default function AcademyFeesManagement({
                           const lines =
                             payModalMode === "pay"
                               ? feePreviewLines(
-                                  fee,
-                                  payHistory?.student,
-                                  allCharges,
-                                  selectedChargeIds
-                                )
+                                fee,
+                                payHistory?.student,
+                                allCharges,
+                                selectedChargeIds
+                              )
                               : [];
                           return (
                             <li key={fee._id} className="px-3 py-2 hover:bg-muted/40">

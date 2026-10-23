@@ -21,7 +21,11 @@ import {
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { DefaulterListDownload } from "./DefaulterListDownload";
-import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
+import {
+  deliverReportBlob,
+  openReportPreviewTab,
+  type ReportFileFormat,
+} from "@/lib/reportDownload";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { resolveUploadUrl } from "@/lib/api";
@@ -39,7 +43,6 @@ import {
   fetchAcademyStudents,
   type AcademyStudent,
   type AcademyStudentStatus,
-  type StudentExportFormat,
   type StudentExportReportType,
 } from "@/lib/studentManagementApi";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
@@ -221,7 +224,7 @@ export default function RegistrationTab({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [intakeOpen, setIntakeOpen] = useState(false);
-  const [exporting, setExporting] = useState<StudentExportFormat | null>(null);
+  const [exporting, setExporting] = useState<ReportFileFormat | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const intakeParamHandled = useRef(false);
 
@@ -380,7 +383,7 @@ export default function RegistrationTab({
   const canExportStudentList = Boolean(exportClassId && sectionFilter);
 
   const handleExport = async (
-    format: StudentExportFormat,
+    format: ReportFileFormat,
     reportKind?: string,
   ) => {
     if (!exportClassId || !sectionFilter) {

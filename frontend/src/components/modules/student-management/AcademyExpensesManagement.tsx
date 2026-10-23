@@ -57,7 +57,7 @@ const selectClass =
 
 const emptyForm = () => ({
   title: "",
-  category: "other" as ExpenseCategory,
+  category: "rent" as ExpenseCategory,
   categoryOther: "",
   amount: "",
   expenseDate: new Date().toISOString().slice(0, 10),

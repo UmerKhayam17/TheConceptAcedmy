@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   ClipboardList,
-  Clock,
   Clock3,
   Palmtree,
   UserX,
@@ -13,7 +11,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
-import PanelToolbar from "@/components/modules/PanelToolbar";
+import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import {
   exportAcademyAttendance,
@@ -29,8 +28,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import { localTodayYmd } from "@/lib/localDate";
-import { moduleHref } from "@/lib/panelMenus";
-import type { Role } from "@/lib/auth";
 import ParentAttendancePanel from "@/components/modules/parent/ParentAttendancePanel";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
@@ -223,8 +220,8 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
         <Card className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]">
-                <ClipboardList className="h-5 w-5 text-white" strokeWidth={2.25} />
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+                <ClipboardList className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
               </span>
               <div className="min-w-0">
                 <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
@@ -235,26 +232,16 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {user?.role === "admin" || user?.role === "accountant" ? (
-                <Button asChild variant="default" className="gap-2">
-                  <Link to={moduleHref((user.role || "admin") as Role, "staff-attendance")}>
-                    <Clock className="h-4 w-4" />
-                    Open Staff Attendance
-                  </Link>
-                </Button>
-              ) : null}
-              <div className="rounded-lg bg-[#e8f2ff] px-3 py-2 max-w-[15rem]">
-                <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
-                  <span className="mr-1 text-[#3b82f6] not-italic font-serif text-base leading-none">
-                    &ldquo;
-                  </span>
-                  Consistency builds excellence.
-                  <span className="ml-0.5 text-[#3b82f6] not-italic font-serif text-base leading-none">
-                    &rdquo;
-                  </span>
-                </p>
-              </div>
+            <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+              <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+                <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                  &ldquo;
+                </span>
+                Consistency builds excellence.
+                <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                  &rdquo;
+                </span>
+              </p>
             </div>
           </div>
         </Card>
@@ -303,66 +290,60 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
         </div>
 
         <Card className="p-3 sm:p-4 shadow-sm border-border/80">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Date</label>
-              <input
-                type="date"
-                className="h-10 rounded-lg border border-input bg-background px-2 text-sm"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Class</label>
-              <select
-                className="h-10 rounded-lg border border-input bg-background px-2 text-sm min-w-[10rem]"
-                value={classFilter}
-                onChange={(e) => setClassFilter(e.target.value)}
-                disabled={!hasScope}
-              >
-                <option value="">All classes</option>
-                {classes.map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {c.className}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Section</label>
-              <select
-                className="h-10 rounded-lg border border-input bg-background px-2 text-sm min-w-[8rem]"
-                value={sectionFilter}
-                onChange={(e) => setSectionFilter(e.target.value)}
-                disabled={!classFilter || sections.length === 0}
-              >
-                <option value="">{classFilter ? "All sections" : "Select class first"}</option>
-                {sections.map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.sectionName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Student</label>
-              <select
-                className="h-10 rounded-lg border border-input bg-background px-2 text-sm min-w-[14rem]"
-                value={studentFilter}
-                onChange={(e) => setStudentFilter(e.target.value)}
-                disabled={!classFilter}
-              >
-                <option value="">{classFilter ? "All students" : "Select class first"}</option>
-                {students.map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.studentName}
-                    {studentRef(s) ? ` (${studentRef(s)})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-end shrink-0 ml-auto">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              aria-label="Date"
+            />
+            <ClassProgramSelect
+              className="w-[16.5rem] shrink-0"
+              label={false}
+              value={classFilter}
+              onChange={setClassFilter}
+              classes={classes}
+              allowAll
+              disabled={!hasScope}
+              selectClassName="rounded-md border-input h-10"
+            />
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+              value={sectionFilter}
+              onChange={(e) => setSectionFilter(e.target.value)}
+              disabled={!classFilter || sections.length === 0}
+              aria-label="Section filter"
+            >
+              <option value="">{classFilter ? "All Sections" : "Select class first"}</option>
+              {sections.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.sectionName}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[12rem] shrink-0"
+              value={studentFilter}
+              onChange={(e) => setStudentFilter(e.target.value)}
+              disabled={!classFilter}
+              aria-label="Student filter"
+            >
+              <option value="">{classFilter ? "All students" : "Select class first"}</option>
+              {students.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.studentName}
+                  {studentRef(s) ? ` (${studentRef(s)})` : ""}
+                </option>
+              ))}
+            </select>
+            <PanelSearchBar
+              value={search}
+              onChange={setSearch}
+              placeholder="Search student, class, or section…"
+              className="min-w-[12rem] flex-1 max-w-md"
+            />
+            <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
               <DefaulterListDownload
                 size="default"
                 label="Print / Export"
@@ -373,12 +354,6 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
             </div>
           </div>
         </Card>
-
-        <PanelToolbar
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search student, class, or section…"
-        />
 
         <Card className="overflow-hidden">
           <div className="px-4 py-3 border-b border-border font-semibold text-primary">

@@ -11,6 +11,7 @@ import {
 import {
   fetchAdditionalCharges,
   fetchStudentFeeHistory,
+  type AdditionalCharge,
   type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
 import {
@@ -28,9 +29,16 @@ export type ChallanPrintRequest = {
   months?: number;
 };
 
+/** Stable empty list — `data = []` in useQuery creates a new [] every render and loops effects. */
+const EMPTY_CHARGES: AdditionalCharge[] = [];
+
 function periodLabel(fee: { feeType: string; month?: number; year?: number }) {
   if (fee.feeType === "admission") return "Admission";
   return `${MONTH_NAMES[(Number(fee.month) || 1) - 1]} ${fee.year || ""}`.trim();
+}
+
+function sameIdList(a: string[], b: string[]) {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
 export function ChallanPrintDialog({
@@ -52,11 +60,12 @@ export function ChallanPrintDialog({
     enabled: Boolean(request?.studentId),
   });
 
-  const { data: allCharges = [], isLoading: chargesLoading } = useQuery({
+  const { data: chargesData, isLoading: chargesLoading } = useQuery({
     queryKey: ["additional-charges"],
     queryFn: fetchAdditionalCharges,
     enabled: Boolean(request),
   });
+  const allCharges = chargesData ?? EMPTY_CHARGES;
 
   const unpaid = useMemo(
     () =>
@@ -80,13 +89,14 @@ export function ChallanPrintDialog({
 
   useEffect(() => {
     if (!request?.studentId || !history) {
-      setSelectedChargeIds([]);
+      setSelectedChargeIds((prev) => (prev.length === 0 ? prev : []));
       return;
     }
     // Only pre-check charges already baked on the voucher — do not rewrite from student defaults.
     const fromFees = chargeableFees.flatMap((fee) => chargeIdsOnFee(fee));
     const applicableIds = new Set(applicable.map((c) => c._id));
-    setSelectedChargeIds([...new Set(fromFees)].filter((id) => applicableIds.has(id)));
+    const next = [...new Set(fromFees)].filter((id) => applicableIds.has(id));
+    setSelectedChargeIds((prev) => (sameIdList(prev, next) ? prev : next));
   }, [request?.studentId, history, chargeableFees, applicable]);
 
   const totalPreview = useMemo(() => {
