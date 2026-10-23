@@ -27,6 +27,8 @@ function signAccessToken(payload) {
 function signRefreshToken(payload) {
   return jwt.sign(payload, refreshSecret(), {
     expiresIn: process.env.JWT_REFRESH_EXPIRES || '30d',
+    // Unique per token so two refresh tokens issued in the same second never collide.
+    jwtid: crypto.randomUUID(),
   });
 }
 

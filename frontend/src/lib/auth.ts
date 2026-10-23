@@ -15,7 +15,8 @@ export interface SessionUser {
 
 const USER_KEY = "tces_user";
 const ACCESS_KEY = "tces_access";
-const REFRESH_LOCK_KEY = "tces_refresh_lock";
+/** Legacy cross-tab refresh lock — no longer used (backend no longer rotates per refresh). */
+const LEGACY_REFRESH_LOCK_KEY = "tces_refresh_lock";
 
 const AUTH_EVT = "tces-auth-change";
 /** Refresh access token this long before JWT exp (works with ~15m access lifetime). */
@@ -33,6 +34,7 @@ let restoreRetryTimer: ReturnType<typeof setTimeout> | null = null;
 function purgeLegacyAccessTokenStorage() {
   try {
     localStorage.removeItem(ACCESS_KEY);
+    localStorage.removeItem(LEGACY_REFRESH_LOCK_KEY);
     sessionStorage.removeItem(ACCESS_KEY);
   } catch {
     /* ignore */
@@ -149,19 +151,13 @@ function scheduleRestoreRetry() {
   }, RESTORE_RETRY_MS);
 }
 
-function broadcastToken(token: string) {
-  authChannel?.postMessage({ type: "token", accessToken: token });
-}
-
+/**
+ * Only logout is shared across tabs. Each tab refreshes its own access token: the backend
+ * keeps the refresh cookie stable between refreshes, so tabs never invalidate each other.
+ */
 if (authChannel) {
   authChannel.onmessage = (event) => {
-    const data = event.data as { type?: string; accessToken?: string };
-    if (data?.type === "token" && data.accessToken) {
-      setAccessToken(data.accessToken);
-      scheduleProactiveRefresh(data.accessToken);
-      stopRestoreRetry();
-      dispatch();
-    }
+    const data = event.data as { type?: string };
     if (data?.type === "logout") {
       clearStorage();
       dispatch();
@@ -171,29 +167,6 @@ if (authChannel) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function tryAcquireRefreshLock(): boolean {
-  try {
-    const now = Date.now();
-    const raw = localStorage.getItem(REFRESH_LOCK_KEY);
-    if (raw) {
-      const lock = JSON.parse(raw) as { ts?: number };
-      if (lock.ts && now - lock.ts < 15_000) return false;
-    }
-    localStorage.setItem(REFRESH_LOCK_KEY, JSON.stringify({ ts: now }));
-    return true;
-  } catch {
-    return true;
-  }
-}
-
-function releaseRefreshLock() {
-  try {
-    localStorage.removeItem(REFRESH_LOCK_KEY);
-  } catch {
-    /* ignore */
-  }
 }
 
 async function fetchMe(accessToken: string): Promise<SessionUser | null> {
@@ -286,7 +259,7 @@ export type RefreshOptions = {
   logoutOnAuthFailure?: boolean;
 };
 
-/** Refresh access token using httpOnly cookie. Single-flight per tab; coordinates across tabs. */
+/** Refresh access token using httpOnly cookie. Single-flight per tab. */
 export async function refreshAccessToken(options: RefreshOptions = {}): Promise<string | null> {
   const { force = false, logoutOnAuthFailure = false } = options;
 
@@ -298,45 +271,21 @@ export async function refreshAccessToken(options: RefreshOptions = {}): Promise<
       return existing;
     }
 
-    const hasLock = tryAcquireRefreshLock();
-    if (!hasLock) {
-      // Wait for the other tab to finish refresh + BroadcastChannel update.
-      for (let i = 0; i < 40; i++) {
-        await sleep(250);
-        const token = getAccessToken();
-        if (
-          token &&
-          (force
-            ? !isAccessTokenExpiringSoon(token, REFRESH_BUFFER_MS / 2)
-            : !isAccessTokenExpiringSoon(token, 0))
-        ) {
-          return token;
-        }
-      }
-      // Other tab may have failed temporarily — try ourselves below.
+    const result = await fetchRefreshWithRetry();
+    lastRefreshMeta = result;
+
+    if (result.token) {
+      setAccessToken(result.token);
+      scheduleProactiveRefresh(result.token);
+      stopRestoreRetry();
+      return result.token;
     }
 
-    try {
-      const result = await fetchRefreshWithRetry();
-      lastRefreshMeta = result;
-
-      if (result.token) {
-        setAccessToken(result.token);
-        scheduleProactiveRefresh(result.token);
-        broadcastToken(result.token);
-        stopRestoreRetry();
-        dispatch();
-        return result.token;
-      }
-
-      if (result.authFailed && logoutOnAuthFailure) {
-        invalidateSession();
-      }
-
-      return null;
-    } finally {
-      if (hasLock) releaseRefreshLock();
+    if (result.authFailed && logoutOnAuthFailure) {
+      invalidateSession();
     }
+
+    return null;
   })().finally(() => {
     refreshPromise = null;
   });
@@ -466,7 +415,6 @@ export async function loginWithPassword(email: string, password: string): Promis
   };
   setAccessToken(accessToken);
   scheduleProactiveRefresh(accessToken);
-  broadcastToken(accessToken);
   persistUser(session);
   stopRestoreRetry();
   dispatch();
