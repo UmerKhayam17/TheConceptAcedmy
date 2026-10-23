@@ -7,13 +7,14 @@ const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocumen
  */
 const LIST_COLUMNS = [
   { key: 'serial', header: 'SR No', excelWidth: 7, pdfWidth: 28, align: 'center' },
-  { key: 'regNo', header: 'Reg No', excelWidth: 13, pdfWidth: 62, wrap: true },
-  { key: 'name', header: 'Student Name', excelWidth: 22, pdfWidth: 110, wrap: true },
-  { key: 'father', header: 'Father Name', excelWidth: 20, pdfWidth: 100, wrap: true },
-  { key: 'phone', header: 'Contact', excelWidth: 16, pdfWidth: 78, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 12, pdfWidth: 58 },
-  { key: 'blank2', header: ' ', excelWidth: 12, pdfWidth: 58 },
-  { key: 'blank3', header: ' ', excelWidth: 12, pdfWidth: 58 },
+  // Single-line Reg No (no wrap) — widen slightly so REG-2026-00xx fits.
+  { key: 'regNo', header: 'Reg No', excelWidth: 16, pdfWidth: 82, align: 'center' },
+  { key: 'name', header: 'Student Name', excelWidth: 20, pdfWidth: 100, wrap: true },
+  { key: 'father', header: 'Father Name', excelWidth: 18, pdfWidth: 92, wrap: true },
+  { key: 'phone', header: 'Contact', excelWidth: 15, pdfWidth: 72, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 12, pdfWidth: 56 },
+  { key: 'blank2', header: ' ', excelWidth: 12, pdfWidth: 56 },
+  { key: 'blank3', header: ' ', excelWidth: 12, pdfWidth: 56 },
 ];
 
 /**
@@ -21,11 +22,11 @@ const LIST_COLUMNS = [
  */
 const CONTACT_COLUMNS = [
   { key: 'serial', header: 'SR No', excelWidth: 8, pdfWidth: 32, align: 'center' },
-  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 68, wrap: true },
-  { key: 'name', header: 'Student Name', excelWidth: 22, pdfWidth: 115, wrap: true },
-  { key: 'father', header: 'Father Name', excelWidth: 20, pdfWidth: 105, wrap: true },
-  { key: 'phone', header: 'Contact', excelWidth: 22, pdfWidth: 110, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 14, pdfWidth: 70 },
+  { key: 'regNo', header: 'Reg No', excelWidth: 16, pdfWidth: 82, align: 'center' },
+  { key: 'name', header: 'Student Name', excelWidth: 22, pdfWidth: 110, wrap: true },
+  { key: 'father', header: 'Father Name', excelWidth: 20, pdfWidth: 100, wrap: true },
+  { key: 'phone', header: 'Contact', excelWidth: 22, pdfWidth: 105, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 14, pdfWidth: 68 },
 ];
 
 const REPORT_PRESETS = {
