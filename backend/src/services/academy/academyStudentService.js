@@ -549,25 +549,35 @@ async function listStudents({
 
 function studentsToCsv(rows, { omitSensitive = false, reportType = 'list' } = {}) {
   // Contact column only on Contact List export — not on Student List print/export.
-  const includeContact = String(reportType || 'list').toLowerCase() === 'contact' && !omitSensitive;
+  const isContact = String(reportType || 'list').toLowerCase() === 'contact';
+  const includeContact = isContact && !omitSensitive;
   const header = includeContact
     ? ['SR No', 'Reg No', 'Student Name', 'Father Name', 'Contact', '', '', '']
-    : ['SR No', 'Reg No', 'Student Name', 'Father Name', '', '', ''];
+    : ['SR No', 'Roll #', 'Student Name', '', ''];
   const lines = [header.join(',')];
-  const sorted = [...(rows || [])].sort((a, b) =>
-    String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
+  const sorted = [...(rows || [])].sort((a, b) => {
+    const ra = String(a.rollNumber || a.studentId || a.registrationNumber || '').trim();
+    const rb = String(b.rollNumber || b.studentId || b.registrationNumber || '').trim();
+    if (ra && rb && ra !== rb) {
+      return ra.localeCompare(rb, undefined, { numeric: true, sensitivity: 'base' });
+    }
+    if (ra && !rb) return -1;
+    if (!ra && rb) return 1;
+    return String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
       sensitivity: 'base',
-    })
-  );
+    });
+  });
   sorted.forEach((s, i) => {
-    const regNo = resolveRegistrationDisplay(s);
+    const idCol = isContact
+      ? resolveRegistrationDisplay(s)
+      : String(s.rollNumber || s.studentId || '').trim();
     const cells = [
       i + 1,
-      `"${regNo.replace(/"/g, '""')}"`,
+      `"${idCol.replace(/"/g, '""')}"`,
       `"${(s.studentName || '').replace(/"/g, '""')}"`,
-      `"${(s.fatherName || '').replace(/"/g, '""')}"`,
     ];
     if (includeContact) {
+      cells.push(`"${(s.fatherName || '').replace(/"/g, '""')}"`);
       const phoneSeen = new Set();
       const phoneParts = [];
       for (const raw of [s.phone, s.mobileNo, s.contactPhoneRes]) {
@@ -579,8 +589,11 @@ function studentsToCsv(rows, { omitSensitive = false, reportType = 'list' } = {}
         phoneParts.push(value);
       }
       cells.push(`"${phoneParts.join(' / ').replace(/"/g, '""')}"`);
+      cells.push('', '', '');
+    } else {
+      // Student List: two wide empty columns (no father name).
+      cells.push('', '');
     }
-    cells.push('', '', '');
     lines.push(cells.join(','));
   });
   return lines.join('\n');

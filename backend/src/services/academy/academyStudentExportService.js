@@ -12,21 +12,21 @@ const { resolveRegistrationDisplay } = require('../../utils/academyRegistrationN
 
 /**
  * Student List — class + section scoped sheet.
- * Columns: SR No, Reg No, Name, Father, + blank (for notes / signature).
+ * Columns: SR No, Roll # (narrow), Name, + 2 wide empty columns.
  * PDF: two side-by-side tables per page (award-list style).
+ * Sorted ascending by roll number.
  */
 const LIST_COLUMNS = [
   { key: 'serial', header: 'SR No', excelWidth: 6, pdfWidth: 28, align: 'center' },
-  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 78, align: 'center' },
-  { key: 'name', header: 'Student Name', excelWidth: 18, pdfWidth: 100, wrap: true },
-  { key: 'father', header: 'Father Name', excelWidth: 17, pdfWidth: 95, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 18, pdfWidth: 90 },
-  { key: 'blank2', header: ' ', excelWidth: 18, pdfWidth: 90 },
-  { key: 'blank3', header: ' ', excelWidth: 18, pdfWidth: 91 },
+  { key: 'regNo', header: 'Roll #', excelWidth: 8, pdfWidth: 42, align: 'center' },
+  { key: 'name', header: 'Student Name', excelWidth: 22, pdfWidth: 120, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 22, pdfWidth: 130 },
+  { key: 'blank2', header: ' ', excelWidth: 22, pdfWidth: 130 },
 ];
 
 /**
  * Contact List — same scope; title "Contact"; one trailing blank column.
+ * Sorted ascending by roll number (same order as Student List).
  */
 const CONTACT_COLUMNS = [
   { key: 'serial', header: 'SR No', excelWidth: 7, pdfWidth: 28, align: 'center' },
@@ -95,6 +95,32 @@ function regNoOf(s) {
   return resolveRegistrationDisplay(s);
 }
 
+function rollNoOf(s) {
+  return (
+    String(s.rollNumber || '').trim() ||
+    String(s.studentId || '').trim() ||
+    ''
+  );
+}
+
+/** Sort key for ascending numeric order (1, 2, 10… not 1, 10, 2). */
+function rollSortKey(s) {
+  return String(s.rollNumber || s.studentId || s.registrationNumber || '').trim();
+}
+
+function compareByRollAsc(a, b) {
+  const ra = rollSortKey(a);
+  const rb = rollSortKey(b);
+  if (ra && rb && ra !== rb) {
+    return ra.localeCompare(rb, undefined, { numeric: true, sensitivity: 'base' });
+  }
+  if (ra && !rb) return -1;
+  if (!ra && rb) return 1;
+  return String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
+    sensitivity: 'base',
+  });
+}
+
 function classNameOf(s) {
   return s.classId?.className || '';
 }
@@ -120,15 +146,13 @@ function phonesOf(s) {
   return parts.join(' / ');
 }
 
-function mapStudentsToRows(students, { omitSensitive = false } = {}) {
-  const sorted = [...(students || [])].sort((a, b) =>
-    String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
-      sensitivity: 'base',
-    })
-  );
+function mapStudentsToRows(students, { omitSensitive = false, reportType = 'list' } = {}) {
+  const kind = normalizeReportType(reportType);
+  const sorted = [...(students || [])].sort(compareByRollAsc);
   return sorted.map((s, i) => ({
     serial: i + 1,
-    regNo: regNoOf(s),
+    // Student List shows Roll #; Contact List keeps Reg No (same column key for layout).
+    regNo: kind === 'list' ? rollNoOf(s) : regNoOf(s),
     name: s.studentName || '',
     father: s.fatherName || '',
     phone: omitSensitive ? '' : phonesOf(s),
@@ -178,14 +202,18 @@ function buildDualCols(tableW, kind, omitSensitive) {
     cols[4].w = Math.max(40, tableW - cols[0].w - cols[1].w - cols[2].w - cols[3].w);
     return cols;
   }
+  // Student list: narrow Roll #, no father, two wide empty columns.
   const cols = [
     { key: 'serial', w: 20, label: 'Sr #', align: 'center', wrap: false },
-    { key: 'regNo', w: 56, label: 'Reg No', align: 'center', wrap: true },
-    { key: 'name', w: 86, label: 'Student Name', align: 'left', wrap: true },
-    { key: 'father', w: 72, label: 'Father Name', align: 'left', wrap: true },
+    { key: 'regNo', w: 36, label: 'Roll #', align: 'center', wrap: true },
+    { key: 'name', w: 88, label: 'Student Name', align: 'left', wrap: true },
     { key: 'blank1', w: 0, label: ' ', align: 'center', wrap: false },
+    { key: 'blank2', w: 0, label: ' ', align: 'center', wrap: false },
   ];
-  cols[4].w = Math.max(28, tableW - cols[0].w - cols[1].w - cols[2].w - cols[3].w);
+  const used = cols[0].w + cols[1].w + cols[2].w;
+  const blankW = Math.max(40, Math.floor((tableW - used) / 2));
+  cols[3].w = blankW;
+  cols[4].w = Math.max(40, tableW - used - blankW);
   return cols;
 }
 
