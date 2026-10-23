@@ -5,6 +5,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,11 @@ import type { ReportFileFormat } from "@/lib/reportDownload";
 
 const itemClass =
   "cursor-pointer gap-3 rounded-md px-2 py-2 focus:bg-muted focus:text-foreground";
+
+export type ReportExportKind = {
+  id: string;
+  label: string;
+};
 
 /** Shared Print / Export menu (Excel + PDF preview) used across fee, salary, attendance, etc. */
 export function DefaulterListDownload({
@@ -22,17 +28,53 @@ export function DefaulterListDownload({
   variant = "outline",
   size = "sm",
   disabled = false,
+  reportKinds,
 }: {
   exporting: ReportFileFormat | null;
-  onDownload: (format: ReportFileFormat) => void;
+  onDownload: (format: ReportFileFormat, reportKind?: string) => void;
   className?: string;
   label?: string;
   variant?: "outline" | "default";
   size?: "sm" | "default";
   disabled?: boolean;
+  /** When set, groups Excel/PDF under each report kind (e.g. Student List / Contact List). */
+  reportKinds?: ReportExportKind[];
 }) {
   const isPrimary = variant === "default";
   const busy = Boolean(exporting);
+  const kinds = reportKinds?.length ? reportKinds : null;
+
+  const formatItems = (reportKind?: string) => (
+    <>
+      <DropdownMenuItem
+        className={itemClass}
+        onClick={() => onDownload("xlsx", reportKind)}
+      >
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+          <FileSpreadsheet className="h-4 w-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-medium leading-tight">Excel</span>
+          <span className="block text-xs text-muted-foreground">Spreadsheet (.xlsx)</span>
+        </span>
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        className={itemClass}
+        onClick={() => onDownload("pdf", reportKind)}
+      >
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+          <FileText className="h-4 w-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-medium leading-tight">PDF</span>
+          <span className="block text-xs text-muted-foreground">
+            Preview, then print or download
+          </span>
+        </span>
+      </DropdownMenuItem>
+    </>
+  );
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -65,30 +107,28 @@ export function DefaulterListDownload({
           />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60 p-1.5 shadow-lg">
-        <DropdownMenuLabel className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          Export format
-        </DropdownMenuLabel>
-        <DropdownMenuItem className={itemClass} onClick={() => onDownload("xlsx")}>
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-            <FileSpreadsheet className="h-4 w-4" />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-medium leading-tight">Excel</span>
-            <span className="block text-xs text-muted-foreground">Spreadsheet (.xlsx)</span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem className={itemClass} onClick={() => onDownload("pdf")}>
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
-            <FileText className="h-4 w-4" />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-medium leading-tight">PDF</span>
-            <span className="block text-xs text-muted-foreground">
-              Preview, then print or download
-            </span>
-          </span>
-        </DropdownMenuItem>
+      <DropdownMenuContent
+        align="end"
+        className={cn("p-1.5 shadow-lg", kinds ? "w-64" : "w-60")}
+      >
+        {kinds ? (
+          kinds.map((kind, index) => (
+            <div key={kind.id}>
+              {index > 0 ? <DropdownMenuSeparator className="my-1.5" /> : null}
+              <DropdownMenuLabel className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                {kind.label}
+              </DropdownMenuLabel>
+              {formatItems(kind.id)}
+            </div>
+          ))
+        ) : (
+          <>
+            <DropdownMenuLabel className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Export format
+            </DropdownMenuLabel>
+            {formatItems()}
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -1,30 +1,74 @@
 const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
 
-/** Portrait A4 widths; plain mode scales to fit. */
-const EXPORT_COLUMNS = [
-  { key: 'serial', header: 'S.No', excelWidth: 7, pdfWidth: 26, align: 'center' },
-  { key: 'studentId', header: 'Roll / ID', excelWidth: 15, pdfWidth: 72, wrap: true },
-  { key: 'name', header: 'Student Name', excelWidth: 15, pdfWidth: 78, wrap: true },
-  { key: 'father', header: 'Father Name', excelWidth: 13, pdfWidth: 68, wrap: true },
-  { key: 'phone', header: 'Phone', excelWidth: 14, pdfWidth: 68, wrap: true },
-  { key: 'className', header: 'Class', excelWidth: 9, pdfWidth: 38, align: 'center' },
-  { key: 'section', header: 'Section', excelWidth: 9, pdfWidth: 42, align: 'center' },
-  { key: 'monthlyFeeLabel', header: 'Monthly Fee', excelWidth: 11, pdfWidth: 52, align: 'right' },
-  { key: 'status', header: 'Status', excelWidth: 10, pdfWidth: 44, align: 'center' },
-  { key: 'blank1', header: ' ', excelWidth: 10, pdfWidth: 40 },
-  { key: 'blank2', header: ' ', excelWidth: 10, pdfWidth: 40 },
-  { key: 'blank3', header: ' ', excelWidth: 10, pdfWidth: 40 },
+/**
+ * Student List — class + section scoped sheet.
+ * Columns: SR No, Reg No, Name, Father, Contact, + 3 large blank columns.
+ * Portrait A4, fit to one page.
+ */
+const LIST_COLUMNS = [
+  { key: 'serial', header: 'SR No', excelWidth: 7, pdfWidth: 32, align: 'center' },
+  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 70, wrap: true },
+  { key: 'name', header: 'Student Name', excelWidth: 18, pdfWidth: 95, wrap: true },
+  { key: 'father', header: 'Father Name', excelWidth: 16, pdfWidth: 85, wrap: true },
+  { key: 'phone', header: 'Contact', excelWidth: 20, pdfWidth: 95, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 14, pdfWidth: 68 },
+  { key: 'blank2', header: ' ', excelWidth: 14, pdfWidth: 68 },
+  { key: 'blank3', header: ' ', excelWidth: 14, pdfWidth: 68 },
 ];
+
+/**
+ * Contact List — same scope; title "Contact"; one trailing blank column.
+ */
+const CONTACT_COLUMNS = [
+  { key: 'serial', header: 'SR No', excelWidth: 8, pdfWidth: 36, align: 'center' },
+  { key: 'regNo', header: 'Reg No', excelWidth: 15, pdfWidth: 72, wrap: true },
+  { key: 'name', header: 'Student Name', excelWidth: 20, pdfWidth: 100, wrap: true },
+  { key: 'father', header: 'Father Name', excelWidth: 18, pdfWidth: 95, wrap: true },
+  { key: 'phone', header: 'Contact', excelWidth: 24, pdfWidth: 120, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 16, pdfWidth: 80 },
+];
+
+const REPORT_PRESETS = {
+  list: {
+    title: 'Student List',
+    sheetName: 'Student List',
+    subject: 'Official student list export',
+    confidentialLabel: 'Confidential student list',
+    emptyMessage: 'No students match the selected class and section.',
+    filterFallback: 'Student list',
+    columns: LIST_COLUMNS,
+  },
+  contact: {
+    title: 'Contact',
+    sheetName: 'Contact',
+    subject: 'Official contact list export',
+    confidentialLabel: 'Confidential contact list',
+    emptyMessage: 'No contacts match the selected class and section.',
+    filterFallback: 'Contact list',
+    columns: CONTACT_COLUMNS,
+  },
+};
 
 const REPORT_OPTS = {
   plain: true,
   layout: 'portrait',
-  confidentialLabel: 'Confidential student register',
+  fitOnePage: true,
+  lightHeader: true,
 };
 
-function columnsForExport({ omitSensitive = false } = {}) {
-  if (!omitSensitive) return EXPORT_COLUMNS;
-  return EXPORT_COLUMNS.filter((c) => c.key !== 'phone' && c.key !== 'monthlyFeeLabel');
+function normalizeReportType(reportType) {
+  const key = String(reportType || 'list').toLowerCase();
+  return key === 'contact' ? 'contact' : 'list';
+}
+
+function resolvePreset(options = {}) {
+  return REPORT_PRESETS[normalizeReportType(options.reportType)];
+}
+
+function columnsForExport(options = {}) {
+  const columns = resolvePreset(options).columns;
+  if (!options.omitSensitive) return columns;
+  return columns.filter((c) => c.key !== 'phone');
 }
 
 function statusLabel(status) {
@@ -33,11 +77,13 @@ function statusLabel(status) {
   return String(status).charAt(0).toUpperCase() + String(status).slice(1);
 }
 
-function studentRef(s) {
-  if (s.status === 'pending_fee') {
-    return s.rollNumber || s.registrationNumber || 'Pending';
-  }
-  return s.studentId || s.rollNumber || '';
+function regNoOf(s) {
+  return (
+    String(s.registrationNumber || '').trim() ||
+    String(s.studentId || '').trim() ||
+    String(s.rollNumber || '').trim() ||
+    ''
+  );
 }
 
 function classNameOf(s) {
@@ -50,30 +96,22 @@ function sectionNameOf(s) {
   return '';
 }
 
-function formatPkr(n) {
-  if (n == null || n === '') return '';
-  const num = Number(n);
-  if (Number.isNaN(num)) return '';
-  return `PKR ${num.toLocaleString('en-PK')}`;
-}
-
-function moneyValue(n) {
-  if (n == null || n === '') return null;
-  const num = Number(n);
-  return Number.isNaN(num) ? null : num;
-}
-
-/** Primary + residential/alternate contact when both exist. */
+/** Primary + residential/alternate contact when both exist (shown together in Contact). */
 function phonesOf(s) {
-  const primary = String(s.phone || '').trim();
-  const residential = String(s.contactPhoneRes || '').trim();
-  if (primary && residential && primary !== residential) {
-    return `${primary}\n${residential}`;
+  const seen = new Set();
+  const parts = [];
+  for (const raw of [s.phone, s.mobileNo, s.contactPhoneRes]) {
+    const value = String(raw || '').trim();
+    if (!value) continue;
+    const key = value.replace(/\D/g, '') || value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    parts.push(value);
   }
-  return primary || residential || '';
+  return parts.join(' / ');
 }
 
-function mapStudentsToRows(students) {
+function mapStudentsToRows(students, { omitSensitive = false } = {}) {
   const sorted = [...(students || [])].sort((a, b) =>
     String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
       sensitivity: 'base',
@@ -81,28 +119,23 @@ function mapStudentsToRows(students) {
   );
   return sorted.map((s, i) => ({
     serial: i + 1,
-    studentId: studentRef(s),
+    regNo: regNoOf(s),
     name: s.studentName || '',
     father: s.fatherName || '',
-    phone: phonesOf(s),
+    phone: omitSensitive ? '' : phonesOf(s),
     className: classNameOf(s) || '',
     section: sectionNameOf(s) || '',
-    monthlyFee: s.status === 'pending_fee' ? null : moneyValue(s.monthlyFee),
-    monthlyFeeLabel: s.status === 'pending_fee' ? '' : formatPkr(s.monthlyFee),
-    admissionFee: moneyValue(s.admissionFee),
-    totalFee: moneyValue(s.totalFee),
-    status: statusLabel(s.status),
     blank1: '',
     blank2: '',
     blank3: '',
   }));
 }
 
-function buildMeta(meta, count) {
+function buildMeta(meta, count, preset) {
   return {
     generatedAt: meta.generatedAt || new Date(),
     sessionLabel: meta.sessionName || '',
-    leftFilter: meta.className ? `Class: ${meta.className}` : 'All classes',
+    leftFilter: meta.className ? `Class: ${meta.className}` : 'Class required',
     centerFilter: meta.sectionName
       ? `Section: ${meta.sectionName}`
       : `${count} student${count === 1 ? '' : 's'}`,
@@ -115,35 +148,39 @@ function buildMeta(meta, count) {
       meta.search ? `Search: ${meta.search}` : null,
     ]
       .filter(Boolean)
-      .join('   |   ') || 'All students',
+      .join('   |   ') || preset.filterFallback,
     countLabel: `${count} student${count === 1 ? '' : 's'}`,
   };
 }
 
 async function renderStudentsExcel(students, meta = {}, options = {}) {
+  const preset = resolvePreset(options);
   const columns = columnsForExport(options);
-  const rows = mapStudentsToRows(students);
+  const rows = mapStudentsToRows(students, options);
   return renderBrandedExcel({
-    title: 'Student Register',
-    sheetName: 'Student Register',
-    subject: 'Official student register export',
+    title: preset.title,
+    sheetName: preset.sheetName,
+    subject: preset.subject,
     columns,
     rows,
-    meta: buildMeta(meta, rows.length),
+    meta: buildMeta(meta, rows.length, preset),
+    confidentialLabel: preset.confidentialLabel,
     ...REPORT_OPTS,
   });
 }
 
 async function renderStudentsPdf(students, meta = {}, options = {}) {
+  const preset = resolvePreset(options);
   const columns = columnsForExport(options);
-  const rows = mapStudentsToRows(students);
+  const rows = mapStudentsToRows(students, options);
   return renderBrandedPdf({
-    title: 'Student Register',
-    subject: 'Official student register export',
+    title: preset.title,
+    subject: preset.subject,
     columns,
     rows,
-    meta: buildMeta(meta, rows.length),
-    emptyMessage: 'No students match the selected filters.',
+    meta: buildMeta(meta, rows.length, preset),
+    emptyMessage: preset.emptyMessage,
+    confidentialLabel: preset.confidentialLabel,
     ...REPORT_OPTS,
   });
 }
@@ -153,4 +190,5 @@ module.exports = {
   renderStudentsExcel,
   renderStudentsPdf,
   statusLabel,
+  normalizeReportType,
 };

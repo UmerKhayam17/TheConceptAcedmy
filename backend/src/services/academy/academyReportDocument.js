@@ -191,7 +191,7 @@ function plainCellAlign(col) {
   return 'left';
 }
 
-function drawPdfTableHeader(doc, columns, startX, y, brand, { plain = false } = {}) {
+function drawPdfTableHeader(doc, columns, startX, y, brand, { plain = false, lightHeader = false } = {}) {
   const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
   const headerPad = 3;
   const headerFontSize = plain ? 7 : 7.5;
@@ -207,7 +207,10 @@ function drawPdfTableHeader(doc, columns, startX, y, brand, { plain = false } = 
   }
 
   doc.save();
-  if (plain) {
+  if (plain && lightHeader) {
+    doc.rect(startX, y, tableWidth, headerH).fill('#FFFFFF');
+    doc.fillColor('#111111').font('Helvetica-Bold').fontSize(headerFontSize);
+  } else if (plain) {
     doc.rect(startX, y, tableWidth, headerH).fill('#3D3D3D');
     doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(headerFontSize);
   } else {
@@ -261,15 +264,26 @@ function pdfRowHeight(doc, columns, row, { minRowH = 16, pad = 4, fontSize = 7.5
   return rowH;
 }
 
-function drawPdfRow(doc, columns, row, startX, y, zebra, brand, { plain = false } = {}) {
+function drawPdfRow(
+  doc,
+  columns,
+  row,
+  startX,
+  y,
+  zebra,
+  brand,
+  { plain = false, fontSize: fontSizeOpt, minRowH: minRowHOpt, fixedRowH } = {}
+) {
   const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
   const pad = plain ? 4 : 4;
-  const fontSize = plain ? 7 : 7.5;
+  const fontSize = fontSizeOpt ?? (plain ? 7 : 7.5);
   const totalRow = isPdfTotalRow(row);
-  const rowH = Math.max(
-    pdfRowHeight(doc, columns, row, { minRowH: totalRow ? 20 : 17, pad, fontSize }),
-    totalRow ? 20 : 17
-  );
+  const defaultMin = totalRow ? 20 : 17;
+  const minRowH = minRowHOpt ?? defaultMin;
+  const rowH =
+    fixedRowH != null
+      ? fixedRowH
+      : Math.max(pdfRowHeight(doc, columns, row, { minRowH, pad, fontSize }), minRowH);
 
   doc.save();
   if (plain && totalRow) {
@@ -508,6 +522,8 @@ async function renderBrandedPdf({
   plain = false,
   additionalSections = [],
   layout = 'landscape',
+  fitOnePage = false,
+  lightHeader = false,
 }) {
   const brand = ACADEMY_BRAND;
   const logoPath = resolveLogoPath();
@@ -572,7 +588,10 @@ async function renderBrandedPdf({
             letterheadBottom + 12
           );
         }
-        return drawPdfTableHeader(doc, scaledColumns, startX, nextY, brand, { plain });
+        return drawPdfTableHeader(doc, scaledColumns, startX, nextY, brand, {
+          plain,
+          lightHeader,
+        });
       };
 
       const drawTable = (pageTitle, pageMeta, tableColumns, tableRows, emptyMsg) => {
@@ -588,17 +607,37 @@ async function renderBrandedPdf({
           });
           return;
         }
+
+        let rowOpts = { plain };
+        if (fitOnePage) {
+          const available = Math.max(80, bottomLimit() - y);
+          const n = tableRows.length;
+          let fontSize = plain ? 7 : 7.5;
+          let fixedRowH = Math.floor(available / n);
+          if (fixedRowH < 11) {
+            fontSize = 5.5;
+            fixedRowH = Math.max(9, Math.floor(available / n));
+          } else if (fixedRowH < 14) {
+            fontSize = 6;
+          } else if (fixedRowH > 18) {
+            fixedRowH = 18;
+          }
+          rowOpts = { plain, fontSize, minRowH: fixedRowH, fixedRowH };
+        }
+
         tableRows.forEach((row, idx) => {
-          const nextRowH = pdfRowHeight(doc, scaledColumns, row, {
-            pad: plain ? 4 : 4,
-            minRowH: isPdfTotalRow(row) ? 18 : 16,
-          });
-          if (y + nextRowH > bottomLimit()) {
-            doc.addPage();
-            y = startTablePage(pageTitle, sectionMeta, scaledColumns);
+          if (!fitOnePage) {
+            const nextRowH = pdfRowHeight(doc, scaledColumns, row, {
+              pad: plain ? 4 : 4,
+              minRowH: isPdfTotalRow(row) ? 18 : 16,
+            });
+            if (y + nextRowH > bottomLimit()) {
+              doc.addPage();
+              y = startTablePage(pageTitle, sectionMeta, scaledColumns);
+            }
           }
           const zebra = idx % 2 === 1 && !isPdfTotalRow(row);
-          y = drawPdfRow(doc, scaledColumns, row, startX, y, zebra, brand, { plain });
+          y = drawPdfRow(doc, scaledColumns, row, startX, y, zebra, brand, rowOpts);
         });
       };
 
@@ -642,6 +681,8 @@ function populateExcelSheet(workbook, {
   plain = false,
   brand,
   layout = 'landscape',
+  fitOnePage = false,
+  lightHeader = false,
 }) {
   const headerRows = plain ? 5 : 6;
   const orientation = layout === 'portrait' ? 'portrait' : 'landscape';
@@ -651,7 +692,7 @@ function populateExcelSheet(workbook, {
       orientation,
       fitToPage: true,
       fitToWidth: 1,
-      fitToHeight: 0,
+      fitToHeight: fitOnePage ? 1 : 0,
       margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
     },
     views: [{ state: 'frozen', ySplit: headerRows }],
@@ -713,8 +754,15 @@ function populateExcelSheet(workbook, {
     columns.forEach((col, i) => {
       const cell = headerRow.getCell(i + 1);
       cell.value = col.header;
-      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF555555' } };
+      cell.font = {
+        name: 'Calibri',
+        size: 10,
+        bold: true,
+        color: { argb: lightHeader ? 'FF111111' : 'FFFFFFFF' },
+      };
+      cell.fill = lightHeader
+        ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }
+        : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF555555' } };
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
       cell.border = gridBorder;
     });
@@ -862,6 +910,8 @@ async function renderBrandedExcel({
   plain = false,
   additionalSheets = [],
   layout = 'landscape',
+  fitOnePage = false,
+  lightHeader = false,
 }) {
   const brand = ACADEMY_BRAND;
   const workbook = new ExcelJS.Workbook();
@@ -880,6 +930,8 @@ async function renderBrandedExcel({
     plain,
     brand,
     layout,
+    fitOnePage,
+    lightHeader,
   });
 
   (Array.isArray(additionalSheets) ? additionalSheets : []).forEach((extra, idx) => {
@@ -894,6 +946,8 @@ async function renderBrandedExcel({
       plain,
       brand,
       layout: extra.layout || layout,
+      fitOnePage: extra.fitOnePage ?? fitOnePage,
+      lightHeader: extra.lightHeader ?? lightHeader,
     });
   });
 

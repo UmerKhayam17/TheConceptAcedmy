@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -40,6 +40,7 @@ import {
   type AcademyStudent,
   type AcademyStudentStatus,
   type StudentExportFormat,
+  type StudentExportReportType,
 } from "@/lib/studentManagementApi";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { classLabel, formatPkr } from "./studentDisplayUtils";
@@ -65,12 +66,17 @@ function sectionNameOf(s: AcademyStudent): string {
 }
 
 function phonesOf(s: AcademyStudent): string {
-  const primary = String(s.phone || "").trim();
-  const residential = String(s.contactPhoneRes || "").trim();
-  if (primary && residential && primary !== residential) {
-    return `${primary}\n${residential}`;
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const raw of [s.phone, (s as { mobileNo?: string }).mobileNo, s.contactPhoneRes]) {
+    const value = String(raw || "").trim();
+    if (!value) continue;
+    const key = value.replace(/\D/g, "") || value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    parts.push(value);
   }
-  return primary || residential || "";
+  return parts.join(" / ");
 }
 
 function sectionBadgeClass(name: string) {
@@ -361,21 +367,47 @@ export default function RegistrationTab({
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const handleExport = async (format: StudentExportFormat) => {
+  /** Section options include class when no class filter is set (e.g. "A · 9th"). */
+  const exportClassId = useMemo(() => {
+    if (classFilter) return classFilter;
+    if (!sectionFilter) return "";
+    const sec = sections.find((s) => s._id === sectionFilter);
+    if (!sec) return "";
+    const cid = typeof sec.classId === "object" ? sec.classId?._id : sec.classId;
+    return cid ? String(cid) : "";
+  }, [classFilter, sectionFilter, sections]);
+
+  const canExportStudentList = Boolean(exportClassId && sectionFilter);
+
+  const handleExport = async (
+    format: StudentExportFormat,
+    reportKind?: string,
+  ) => {
+    if (!exportClassId || !sectionFilter) {
+      toast({
+        title: "Select class and section",
+        description: "Export requires both class and section filters.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const reportType: StudentExportReportType =
+      reportKind === "contact" ? "contact" : "list";
     setExporting(format);
     const preview = openReportPreviewTab(format);
     try {
       const blob = await exportStudents(
         {
           search: search || undefined,
-          classId: classFilter || undefined,
-          sectionId: sectionFilter || undefined,
+          classId: exportClassId,
+          sectionId: sectionFilter,
           status: statusFilter || undefined,
           sessionId: apiSessionId,
+          reportType,
         },
         format,
       );
-      const parts = ["Student-Register"];
+      const parts = [reportType === "contact" ? "Contact-List" : "Student-List"];
       if (statusFilter) parts.push(statusFilter);
       const mode = deliverReportBlob(blob, `${parts.join("_")}.${format}`, format, preview);
       toast({
@@ -383,9 +415,13 @@ export default function RegistrationTab({
         description:
           mode === "preview" ? "Use Print or Download from the preview window." : undefined,
       });
-    } catch {
+    } catch (e) {
       preview?.close();
-      toast({ title: "Export failed", variant: "destructive" });
+      toast({
+        title: "Export failed",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
     } finally {
       setExporting(null);
     }
@@ -612,7 +648,12 @@ export default function RegistrationTab({
               size="default"
               label="Print / Export"
               exporting={exporting}
-              onDownload={(format) => void handleExport(format)}
+              disabled={!canExportStudentList}
+              reportKinds={[
+                { id: "list", label: "Student List" },
+                { id: "contact", label: "Contact List" },
+              ]}
+              onDownload={(format, reportKind) => void handleExport(format, reportKind)}
             />
           </div>
         </div>

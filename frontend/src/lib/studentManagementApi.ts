@@ -917,6 +917,7 @@ export const deleteAcademyStudent = (id: string) =>
   api<{ deleted: boolean; studentId?: string }>(`/students/${id}`, { method: "DELETE" });
 
 export type StudentExportFormat = "xlsx" | "pdf" | "csv";
+export type StudentExportReportType = "list" | "contact";
 
 export const exportStudents = async (
   params?: {
@@ -925,6 +926,7 @@ export const exportStudents = async (
     sectionId?: string;
     status?: string;
     sessionId?: string;
+    reportType?: StudentExportReportType;
   },
   format: StudentExportFormat = "xlsx",
 ) => {
@@ -935,8 +937,20 @@ export const exportStudents = async (
   if (params?.sectionId) q.set("sectionId", params.sectionId);
   if (params?.status) q.set("status", params.status);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.reportType && params.reportType !== "list") {
+    q.set("reportType", params.reportType);
+  }
   const res = await authedFetch(`/student-management/students/export?${q}`, { method: "GET" });
-  if (!res.ok) throw new Error("Export failed");
+  if (!res.ok) {
+    let message = "Export failed";
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      /* ignore non-JSON error bodies */
+    }
+    throw new Error(message);
+  }
   return res.blob();
 };
 

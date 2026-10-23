@@ -362,13 +362,15 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                 ))}
               </select>
             </div>
-            <DefaulterListDownload
-              size="default"
-              label="Print / Export"
-              exporting={exporting}
-              disabled={!hasScope}
-              onDownload={(format) => void handleExport(format)}
-            />
+            <div className="flex items-end shrink-0 ml-auto">
+              <DefaulterListDownload
+                size="default"
+                label="Print / Export"
+                exporting={exporting}
+                disabled={!hasScope}
+                onDownload={(format) => void handleExport(format)}
+              />
+            </div>
           </div>
         </Card>
 

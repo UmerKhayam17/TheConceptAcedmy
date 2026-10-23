@@ -9,6 +9,7 @@ const feeStructureService = require('../../services/academy/academyFeeStructureS
 const {
   renderStudentsExcel,
   renderStudentsPdf,
+  normalizeReportType,
 } = require('../../services/academy/academyStudentExportService');
 const rt = require('../../services/realtime/academyRealtime');
 const {
@@ -170,6 +171,9 @@ const exportStudents = catchAsync(async (req, res) => {
   if (!['xlsx', 'pdf', 'csv'].includes(format)) {
     throw new ApiError(400, 'Export format must be xlsx, pdf, or csv');
   }
+  if (!req.query.classId || !req.query.sectionId) {
+    throw new ApiError(400, 'Select both class and section to export the student list');
+  }
 
   const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
   if (teacherScope) {
@@ -190,6 +194,8 @@ const exportStudents = catchAsync(async (req, res) => {
   });
   const meta = await resolveExportMeta(req);
   const omitSensitive = Boolean(teacherScope);
+  const reportType = normalizeReportType(req.query.reportType || req.query.report);
+  const renderOpts = { omitSensitive, reportType };
 
   const safeToken = (value, fallback = 'All') => {
     const cleaned = String(value || fallback)
@@ -198,23 +204,24 @@ const exportStudents = catchAsync(async (req, res) => {
     return cleaned || fallback;
   };
   const fileBase = [
-    'Student-Register',
+    reportType === 'contact' ? 'Contact-List' : 'Student-List',
     meta.sessionName ? safeToken(meta.sessionName) : null,
     meta.className ? safeToken(meta.className) : null,
+    meta.sectionName ? safeToken(meta.sectionName) : null,
     meta.status ? safeToken(meta.status) : null,
   ]
     .filter(Boolean)
     .join('_');
 
   if (format === 'pdf') {
-    const buffer = await renderStudentsPdf(result.items, meta, { omitSensitive });
+    const buffer = await renderStudentsPdf(result.items, meta, renderOpts);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${fileBase}.pdf"`);
     return res.send(buffer);
   }
 
   if (format === 'xlsx') {
-    const buffer = await renderStudentsExcel(result.items, meta, { omitSensitive });
+    const buffer = await renderStudentsExcel(result.items, meta, renderOpts);
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

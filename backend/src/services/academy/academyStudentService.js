@@ -543,67 +543,40 @@ async function listStudents({
 
 function studentsToCsv(rows, { omitSensitive = false } = {}) {
   const header = omitSensitive
-    ? ['Student ID', 'Name', 'Father', 'Class', 'Section', 'Status', '', '', '']
-    : [
-      'Student ID',
-      'Name',
-      'Father',
-      'Phone',
-      'Class',
-      'Section',
-      'Monthly Fee',
-      'Admission Fee',
-      'Total Fee',
-      'Status',
-      '',
-      '',
-      '',
-    ];
+    ? ['SR No', 'Reg No', 'Student Name', 'Father Name', '', '', '']
+    : ['SR No', 'Reg No', 'Student Name', 'Father Name', 'Contact', '', '', ''];
   const lines = [header.join(',')];
-  rows.forEach((s) => {
-    const className = s.classId?.className || '';
-    const sectionName =
-      s.sectionId && typeof s.sectionId === 'object' ? s.sectionId.sectionName || '' : '';
-    const idCol = s.studentId || s.rollNumber || s.registrationNumber || '';
-    const primary = String(s.phone || '').trim();
-    const residential = String(s.contactPhoneRes || '').trim();
-    const phones =
-      primary && residential && primary !== residential
-        ? `${primary} / ${residential}`
-        : primary || residential || '';
-    if (omitSensitive) {
-      lines.push(
-        [
-          idCol,
-          `"${(s.studentName || '').replace(/"/g, '""')}"`,
-          `"${(s.fatherName || '').replace(/"/g, '""')}"`,
-          `"${className.replace(/"/g, '""')}"`,
-          `"${sectionName.replace(/"/g, '""')}"`,
-          s.status || '',
-          '',
-          '',
-          '',
-        ].join(',')
-      );
-      return;
+  const sorted = [...(rows || [])].sort((a, b) =>
+    String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
+      sensitivity: 'base',
+    })
+  );
+  sorted.forEach((s, i) => {
+    const regNo =
+      String(s.registrationNumber || '').trim() ||
+      String(s.studentId || '').trim() ||
+      String(s.rollNumber || '').trim() ||
+      '';
+    const phoneSeen = new Set();
+    const phoneParts = [];
+    for (const raw of [s.phone, s.mobileNo, s.contactPhoneRes]) {
+      const value = String(raw || '').trim();
+      if (!value) continue;
+      const key = value.replace(/\D/g, '') || value.toLowerCase();
+      if (phoneSeen.has(key)) continue;
+      phoneSeen.add(key);
+      phoneParts.push(value);
     }
-    lines.push(
-      [
-        idCol,
-        `"${(s.studentName || '').replace(/"/g, '""')}"`,
-        `"${(s.fatherName || '').replace(/"/g, '""')}"`,
-        `"${phones.replace(/"/g, '""')}"`,
-        `"${className.replace(/"/g, '""')}"`,
-        `"${sectionName.replace(/"/g, '""')}"`,
-        s.monthlyFee ?? '',
-        s.admissionFee ?? '',
-        s.totalFee ?? '',
-        s.status || '',
-        '',
-        '',
-        '',
-      ].join(',')
-    );
+    const phones = phoneParts.join(' / ');
+    const cells = [
+      i + 1,
+      `"${regNo.replace(/"/g, '""')}"`,
+      `"${(s.studentName || '').replace(/"/g, '""')}"`,
+      `"${(s.fatherName || '').replace(/"/g, '""')}"`,
+    ];
+    if (!omitSensitive) cells.push(`"${phones.replace(/"/g, '""')}"`);
+    cells.push('', '', '');
+    lines.push(cells.join(','));
   });
   return lines.join('\n');
 }
