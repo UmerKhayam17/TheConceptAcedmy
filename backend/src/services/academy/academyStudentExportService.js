@@ -6,27 +6,27 @@ const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocumen
  * Portrait A4; names wrap fully (may continue onto page 2).
  */
 const LIST_COLUMNS = [
-  { key: 'serial', header: 'SR No', excelWidth: 7, pdfWidth: 28, align: 'center' },
+  { key: 'serial', header: 'SR No', excelWidth: 6, pdfWidth: 26, align: 'center' },
   // Single-line Reg No (no wrap) — widen slightly so REG-2026-00xx fits.
-  { key: 'regNo', header: 'Reg No', excelWidth: 16, pdfWidth: 82, align: 'center' },
-  { key: 'name', header: 'Student Name', excelWidth: 20, pdfWidth: 100, wrap: true },
-  { key: 'father', header: 'Father Name', excelWidth: 18, pdfWidth: 92, wrap: true },
-  { key: 'phone', header: 'Contact', excelWidth: 15, pdfWidth: 72, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 12, pdfWidth: 56 },
-  { key: 'blank2', header: ' ', excelWidth: 12, pdfWidth: 56 },
-  { key: 'blank3', header: ' ', excelWidth: 12, pdfWidth: 56 },
+  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 74, align: 'center' },
+  { key: 'name', header: 'Student Name', excelWidth: 16, pdfWidth: 88, wrap: true },
+  { key: 'father', header: 'Father Name', excelWidth: 15, pdfWidth: 80, wrap: true },
+  { key: 'phone', header: 'Contact', excelWidth: 13, pdfWidth: 64, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 16, pdfWidth: 78 },
+  { key: 'blank2', header: ' ', excelWidth: 16, pdfWidth: 78 },
+  { key: 'blank3', header: ' ', excelWidth: 16, pdfWidth: 78 },
 ];
 
 /**
  * Contact List — same scope; title "Contact"; one trailing blank column.
  */
 const CONTACT_COLUMNS = [
-  { key: 'serial', header: 'SR No', excelWidth: 8, pdfWidth: 32, align: 'center' },
-  { key: 'regNo', header: 'Reg No', excelWidth: 16, pdfWidth: 82, align: 'center' },
-  { key: 'name', header: 'Student Name', excelWidth: 22, pdfWidth: 110, wrap: true },
-  { key: 'father', header: 'Father Name', excelWidth: 20, pdfWidth: 100, wrap: true },
-  { key: 'phone', header: 'Contact', excelWidth: 22, pdfWidth: 105, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 14, pdfWidth: 68 },
+  { key: 'serial', header: 'SR No', excelWidth: 7, pdfWidth: 28, align: 'center' },
+  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 74, align: 'center' },
+  { key: 'name', header: 'Student Name', excelWidth: 18, pdfWidth: 95, wrap: true },
+  { key: 'father', header: 'Father Name', excelWidth: 17, pdfWidth: 90, wrap: true },
+  { key: 'phone', header: 'Contact', excelWidth: 18, pdfWidth: 95, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 20, pdfWidth: 100 },
 ];
 
 const REPORT_PRESETS = {
