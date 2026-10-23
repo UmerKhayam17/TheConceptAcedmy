@@ -2,30 +2,30 @@ const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocumen
 
 /**
  * Student List — class + section scoped sheet.
- * Columns: SR No, Reg No, Name, Father, Contact, + 3 large blank columns.
- * Portrait A4, fit to one page.
+ * Columns: SR No, Reg No, Name, Father, Contact, + 3 blank columns.
+ * Portrait A4; names wrap fully (may continue onto page 2).
  */
 const LIST_COLUMNS = [
-  { key: 'serial', header: 'SR No', excelWidth: 7, pdfWidth: 32, align: 'center' },
-  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 70, wrap: true },
-  { key: 'name', header: 'Student Name', excelWidth: 18, pdfWidth: 95, wrap: true },
-  { key: 'father', header: 'Father Name', excelWidth: 16, pdfWidth: 85, wrap: true },
-  { key: 'phone', header: 'Contact', excelWidth: 20, pdfWidth: 95, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 14, pdfWidth: 68 },
-  { key: 'blank2', header: ' ', excelWidth: 14, pdfWidth: 68 },
-  { key: 'blank3', header: ' ', excelWidth: 14, pdfWidth: 68 },
+  { key: 'serial', header: 'SR No', excelWidth: 7, pdfWidth: 28, align: 'center' },
+  { key: 'regNo', header: 'Reg No', excelWidth: 13, pdfWidth: 62, wrap: true },
+  { key: 'name', header: 'Student Name', excelWidth: 22, pdfWidth: 110, wrap: true },
+  { key: 'father', header: 'Father Name', excelWidth: 20, pdfWidth: 100, wrap: true },
+  { key: 'phone', header: 'Contact', excelWidth: 16, pdfWidth: 78, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 12, pdfWidth: 58 },
+  { key: 'blank2', header: ' ', excelWidth: 12, pdfWidth: 58 },
+  { key: 'blank3', header: ' ', excelWidth: 12, pdfWidth: 58 },
 ];
 
 /**
  * Contact List — same scope; title "Contact"; one trailing blank column.
  */
 const CONTACT_COLUMNS = [
-  { key: 'serial', header: 'SR No', excelWidth: 8, pdfWidth: 36, align: 'center' },
-  { key: 'regNo', header: 'Reg No', excelWidth: 15, pdfWidth: 72, wrap: true },
-  { key: 'name', header: 'Student Name', excelWidth: 20, pdfWidth: 100, wrap: true },
-  { key: 'father', header: 'Father Name', excelWidth: 18, pdfWidth: 95, wrap: true },
-  { key: 'phone', header: 'Contact', excelWidth: 24, pdfWidth: 120, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 16, pdfWidth: 80 },
+  { key: 'serial', header: 'SR No', excelWidth: 8, pdfWidth: 32, align: 'center' },
+  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 68, wrap: true },
+  { key: 'name', header: 'Student Name', excelWidth: 22, pdfWidth: 115, wrap: true },
+  { key: 'father', header: 'Father Name', excelWidth: 20, pdfWidth: 105, wrap: true },
+  { key: 'phone', header: 'Contact', excelWidth: 22, pdfWidth: 110, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 14, pdfWidth: 70 },
 ];
 
 const REPORT_PRESETS = {
@@ -52,7 +52,8 @@ const REPORT_PRESETS = {
 const REPORT_OPTS = {
   plain: true,
   layout: 'portrait',
-  fitOnePage: true,
+  // Full names wrap; do not crush rows onto one page (that caused truncation/overlap).
+  fitOnePage: false,
   lightHeader: true,
 };
 
