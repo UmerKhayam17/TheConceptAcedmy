@@ -121,11 +121,12 @@ function toTimeInput(iso?: string) {
   }
 }
 
-/** Normalize typed times like 8:30, 08.30, 830 → HH:mm */
+/** Normalize typed/native times like 8:30, 08.30, 830, 16:45:00 → HH:mm */
 function normalizeTimeHm(raw: string) {
   const t = raw.trim().replace(".", ":");
   if (!t) return "";
-  const m = t.match(/^(\d{1,2}):(\d{2})$/) || t.match(/^(\d{1,2})(\d{2})$/);
+  const m =
+    t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/) || t.match(/^(\d{1,2})(\d{2})$/);
   if (!m) return t;
   const h = Number(m[1]);
   const min = Number(m[2]);
@@ -174,7 +175,8 @@ function emptyDraft(hours: AcademyHours = FALLBACK_ACADEMY_HOURS): RowDraft {
     timeIn: hours.timeIn,
     timeOut: hours.timeOut,
     notes: "",
-    dirty: false,
+    // Defaults are complete — enable Save all without requiring manual edits.
+    dirty: true,
   };
 }
 
@@ -821,16 +823,15 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                           <td className="p-2.5">
                             {canMark && needsTimes ? (
                               <Input
-                                className="h-9 w-[6.5rem] font-mono"
-                                inputMode="numeric"
-                                placeholder={academyHours.timeIn}
+                                type="time"
+                                className="h-9 w-[8.5rem]"
                                 value={draft.timeIn}
-                                onChange={(e) => updateDraft(t._id, { timeIn: e.target.value })}
-                                onBlur={(e) =>
+                                onChange={(e) =>
                                   updateDraft(t._id, {
                                     timeIn: normalizeTimeHm(e.target.value),
                                   })
                                 }
+                                aria-label={`Time in — ${t.name}`}
                               />
                             ) : (
                               <span>{fmtTime(existing?.checkIn)}</span>
@@ -839,16 +840,15 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                           <td className="p-2.5">
                             {canMark && needsTimes ? (
                               <Input
-                                className="h-9 w-[6.5rem] font-mono"
-                                inputMode="numeric"
-                                placeholder={academyHours.timeOut}
+                                type="time"
+                                className="h-9 w-[8.5rem]"
                                 value={draft.timeOut}
-                                onChange={(e) => updateDraft(t._id, { timeOut: e.target.value })}
-                                onBlur={(e) =>
+                                onChange={(e) =>
                                   updateDraft(t._id, {
                                     timeOut: normalizeTimeHm(e.target.value),
                                   })
                                 }
+                                aria-label={`Time out — ${t.name}`}
                               />
                             ) : (
                               <span>{fmtTime(existing?.checkOut)}</span>
