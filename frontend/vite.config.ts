@@ -82,15 +82,37 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
-        navigateFallback: "index.html",
-        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//, /^\/socket\.io\//],
+        // index.html is not precached: page loads go network-first (below) so a new
+        // deploy shows up on the next open instead of after a background update.
+        globPatterns: ["**/*.{js,css,ico,png,svg,woff2}"],
+        navigateFallback: null,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
         // Ensure browsers revalidate the service worker script after deploy
         navigationPreload: false,
         runtimeCaching: [
+          {
+            // App shell: always try the server first; fall back to the last copy offline.
+            urlPattern: ({ request, url }) =>
+              request.mode === "navigate" &&
+              !url.pathname.startsWith("/api/") &&
+              !url.pathname.startsWith("/uploads/") &&
+              !url.pathname.startsWith("/socket.io"),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "app-shell",
+              networkTimeoutSeconds: 4,
+              // Skip the browser/CDN HTTP cache so a stale index.html is never served.
+              fetchOptions: { cache: "no-cache" },
+              plugins: [
+                {
+                  // Every SPA route is the same index.html; store one copy for offline use.
+                  cacheKeyWillBeUsed: async () => "/index.html",
+                },
+              ],
+            },
+          },
           {
             urlPattern: ({ url }) =>
               url.pathname.startsWith("/api/") ||

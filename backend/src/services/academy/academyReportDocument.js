@@ -319,11 +319,13 @@ function drawPdfRow(
     });
   } else {
     let x = startX;
+    // Fixed-height (fit-one-page) rows must stay single-line — wrapping overlaps the next row.
+    const allowWrap = fixedRowH == null;
     columns.forEach((col) => {
       const raw = formatPdfCellValue(col, row[col.key]);
       const innerW = Math.max(8, col.pdfWidth - pad * 2);
       const align = plain ? plainCellAlign(col) : colAlign(col);
-      if (col.wrap && raw) {
+      if (allowWrap && col.wrap && raw) {
         const textH = doc.heightOfString(raw, { width: innerW, lineGap: 0.5 });
         const textY = y + Math.max(3, (rowH - textH) / 2);
         doc.text(raw, x + pad, textY, { width: innerW, lineBreak: true, align, lineGap: 0.5 });
@@ -609,24 +611,26 @@ async function renderBrandedPdf({
         }
 
         let rowOpts = { plain };
+        // Fit one page only while rows stay readable; otherwise spill to page 2 with wrapping.
+        let useFitOnePage = fitOnePage;
         if (fitOnePage) {
           const available = Math.max(80, bottomLimit() - y);
-          const n = tableRows.length;
+          const n = Math.max(1, tableRows.length);
           let fontSize = plain ? 7 : 7.5;
           let fixedRowH = Math.floor(available / n);
-          if (fixedRowH < 11) {
-            fontSize = 5.5;
-            fixedRowH = Math.max(9, Math.floor(available / n));
-          } else if (fixedRowH < 14) {
-            fontSize = 6;
-          } else if (fixedRowH > 18) {
-            fixedRowH = 18;
+          if (fixedRowH < 10) {
+            // Too many rows for a readable single page — use normal multi-page layout.
+            useFitOnePage = false;
+          } else {
+            if (fixedRowH < 12) fontSize = 5.5;
+            else if (fixedRowH < 14) fontSize = 6;
+            else if (fixedRowH > 18) fixedRowH = 18;
+            rowOpts = { plain, fontSize, minRowH: fixedRowH, fixedRowH };
           }
-          rowOpts = { plain, fontSize, minRowH: fixedRowH, fixedRowH };
         }
 
         tableRows.forEach((row, idx) => {
-          if (!fitOnePage) {
+          if (!useFitOnePage) {
             const nextRowH = pdfRowHeight(doc, scaledColumns, row, {
               pad: plain ? 4 : 4,
               minRowH: isPdfTotalRow(row) ? 18 : 16,
