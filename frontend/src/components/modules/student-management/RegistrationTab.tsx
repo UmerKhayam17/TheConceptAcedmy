@@ -68,20 +68,6 @@ function sectionNameOf(s: AcademyStudent): string {
   return "";
 }
 
-function phonesOf(s: AcademyStudent): string {
-  const seen = new Set<string>();
-  const parts: string[] = [];
-  for (const raw of [s.phone, (s as { mobileNo?: string }).mobileNo, s.contactPhoneRes]) {
-    const value = String(raw || "").trim();
-    if (!value) continue;
-    const key = value.replace(/\D/g, "") || value.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    parts.push(value);
-  }
-  return parts.join(" / ");
-}
-
 function sectionBadgeClass(name: string) {
   const letter = name.trim().charAt(0).toUpperCase();
   if (letter === "A") return "bg-sky-100 text-sky-800 border-sky-200";
@@ -232,13 +218,11 @@ export default function RegistrationTab({
     routesProp ?? (user?.role ? academyStudentRoutes(user.role, "registration") : null);
   const { apiSessionId, writable, hasScope } = useSessionScope(sessionId);
   const isTeacher = user?.role === "teacher";
-  const showPhoneCol = !isTeacher;
   const showMonthlyCol = !isTeacher;
   const hasActions = caps.canView || (writable && (caps.canEdit || caps.canDelete));
   const colSpan =
     1 +
     (hasActions ? 7 : 6) +
-    (showPhoneCol ? 1 : 0) +
     (showMonthlyCol ? 2 : 0);
 
   const showIntake = enrollmentFlow === "intake" || enrollmentFlow === "both";
@@ -482,8 +466,8 @@ export default function RegistrationTab({
         <Card className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]">
-                <Users className="h-5 w-5 text-white" strokeWidth={2.25} />
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+                <Users className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
               </span>
               <div className="min-w-0">
                 <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
@@ -495,13 +479,13 @@ export default function RegistrationTab({
                 </p>
               </div>
             </div>
-            <div className="shrink-0 rounded-lg bg-[#e8f2ff] px-3 py-2 max-w-[15rem]">
+            <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[15rem]">
               <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
-                <span className="mr-1 text-[#3b82f6] not-italic font-serif text-base leading-none">
+                <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
                   &ldquo;
                 </span>
                 A great school builds great futures.
-                <span className="ml-0.5 text-[#3b82f6] not-italic font-serif text-base leading-none">
+                <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
                   &rdquo;
                 </span>
               </p>
@@ -678,7 +662,6 @@ export default function RegistrationTab({
                 <th className="text-left p-3 font-medium whitespace-nowrap">Roll / ID</th>
                 <th className="text-left p-3 font-medium">Name</th>
                 <th className="text-left p-3 font-medium whitespace-nowrap">Father Name</th>
-                {showPhoneCol && <th className="text-left p-3 font-medium">Phone</th>}
                 <th className="text-left p-3 font-medium">Class</th>
                 <th className="text-left p-3 font-medium">Section</th>
                 {showMonthlyCol && (
@@ -750,11 +733,6 @@ export default function RegistrationTab({
                       </div>
                     </td>
                     <td className="p-3 text-muted-foreground whitespace-nowrap">{s.fatherName}</td>
-                    {showPhoneCol && (
-                      <td className="p-3 text-muted-foreground whitespace-pre-line text-xs leading-snug">
-                        {phonesOf(s)}
-                      </td>
-                    )}
                     <td className="p-3 whitespace-nowrap">{classLabel(s.classId)}</td>
                     <td className="p-3">
                       {sectionName ? (
