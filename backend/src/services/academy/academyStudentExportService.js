@@ -1,13 +1,22 @@
-const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
+const PDFDocument = require('pdfkit');
+const {
+  renderBrandedExcel,
+  drawPdfLetterheadPlain,
+  drawPdfTitlePlain,
+  drawPdfFooterTextPlain,
+  ACADEMY_BRAND,
+  resolveLogoPath,
+  fitText,
+} = require('./academyReportDocument');
+const { resolveRegistrationDisplay } = require('../../utils/academyRegistrationNumber');
 
 /**
  * Student List — class + section scoped sheet.
- * Columns: SR No, Reg No, Name, Father, + 3 blank columns (no Contact).
- * Portrait A4; names wrap fully (may continue onto page 2).
+ * Columns: SR No, Reg No, Name, Father, + blank (for notes / signature).
+ * PDF: two side-by-side tables per page (award-list style).
  */
 const LIST_COLUMNS = [
   { key: 'serial', header: 'SR No', excelWidth: 6, pdfWidth: 28, align: 'center' },
-  // Single-line Reg No (no wrap) — widen slightly so REG-2026-00xx fits.
   { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 78, align: 'center' },
   { key: 'name', header: 'Student Name', excelWidth: 18, pdfWidth: 100, wrap: true },
   { key: 'father', header: 'Father Name', excelWidth: 17, pdfWidth: 95, wrap: true },
@@ -37,6 +46,7 @@ const REPORT_PRESETS = {
     emptyMessage: 'No students match the selected class and section.',
     filterFallback: 'Student list',
     columns: LIST_COLUMNS,
+    kind: 'list',
   },
   contact: {
     title: 'Contact',
@@ -46,16 +56,19 @@ const REPORT_PRESETS = {
     emptyMessage: 'No contacts match the selected class and section.',
     filterFallback: 'Contact list',
     columns: CONTACT_COLUMNS,
+    kind: 'contact',
   },
 };
 
 const REPORT_OPTS = {
   plain: true,
   layout: 'portrait',
-  // Full names wrap; do not crush rows onto one page (that caused truncation/overlap).
   fitOnePage: false,
   lightHeader: true,
 };
+
+const GRAY = '#C8C8C8';
+const LINE = '#000000';
 
 function normalizeReportType(reportType) {
   const key = String(reportType || 'list').toLowerCase();
@@ -79,12 +92,7 @@ function statusLabel(status) {
 }
 
 function regNoOf(s) {
-  return (
-    String(s.registrationNumber || '').trim() ||
-    String(s.studentId || '').trim() ||
-    String(s.rollNumber || '').trim() ||
-    ''
-  );
+  return resolveRegistrationDisplay(s);
 }
 
 function classNameOf(s) {
@@ -154,6 +162,119 @@ function buildMeta(meta, count, preset) {
   };
 }
 
+/**
+ * Dual-column table defs (award-list style). Name/father/contact wrap fully —
+ * no ellipsis truncation.
+ */
+function buildDualCols(tableW, kind, omitSensitive) {
+  if (kind === 'contact' && !omitSensitive) {
+    const cols = [
+      { key: 'serial', w: 20, label: 'Sr #', align: 'center', wrap: false },
+      { key: 'regNo', w: 54, label: 'Reg No', align: 'center', wrap: true },
+      { key: 'name', w: 72, label: 'Student Name', align: 'left', wrap: true },
+      { key: 'father', w: 62, label: 'Father Name', align: 'left', wrap: true },
+      { key: 'phone', w: 0, label: 'Contact', align: 'left', wrap: true },
+    ];
+    cols[4].w = Math.max(40, tableW - cols[0].w - cols[1].w - cols[2].w - cols[3].w);
+    return cols;
+  }
+  const cols = [
+    { key: 'serial', w: 20, label: 'Sr #', align: 'center', wrap: false },
+    { key: 'regNo', w: 56, label: 'Reg No', align: 'center', wrap: true },
+    { key: 'name', w: 86, label: 'Student Name', align: 'left', wrap: true },
+    { key: 'father', w: 72, label: 'Father Name', align: 'left', wrap: true },
+    { key: 'blank1', w: 0, label: ' ', align: 'center', wrap: false },
+  ];
+  cols[4].w = Math.max(28, tableW - cols[0].w - cols[1].w - cols[2].w - cols[3].w);
+  return cols;
+}
+
+function dualCellFontSize(key) {
+  if (key === 'regNo' || key === 'phone') return 6;
+  return 6.5;
+}
+
+/** Full text height for a row — wraps name/father/contact/reg so nothing is cut off. */
+function dualRowHeight(doc, row, cols, { minRowH = 15, pad = 3 } = {}) {
+  let maxH = minRowH;
+  cols.forEach((c) => {
+    const raw = row[c.key];
+    const value = raw == null || raw === '' ? '' : String(raw);
+    if (!value || !c.wrap) return;
+    const fontSize = dualCellFontSize(c.key);
+    doc.font('Helvetica').fontSize(fontSize);
+    const textH = doc.heightOfString(value, { width: Math.max(8, c.w - 4), lineGap: 0.5 });
+    maxH = Math.max(maxH, Math.ceil(textH + pad * 2));
+  });
+  return maxH;
+}
+
+function drawDualTableHeader(doc, blockX, y, tableW, cols, headerH) {
+  doc.save();
+  doc.rect(blockX, y, tableW, headerH).fill(GRAY);
+  doc.restore();
+  doc.rect(blockX, y, tableW, headerH).strokeColor(LINE).lineWidth(0.8).stroke();
+  let x = blockX;
+  doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#000');
+  cols.forEach((c, i) => {
+    const label = fitText(doc, c.label, c.w - 2);
+    doc.text(label, x + 1, y + 4.5, {
+      width: c.w - 2,
+      height: 9,
+      align: 'center',
+      lineBreak: false,
+    });
+    x += c.w;
+    if (i < cols.length - 1) {
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + headerH)
+        .strokeColor(LINE)
+        .lineWidth(0.6)
+        .stroke();
+    }
+  });
+}
+
+function drawDualStudentRow(doc, blockX, y, row, tableW, cols, rowH) {
+  doc.rect(blockX, y, tableW, rowH).strokeColor(LINE).lineWidth(0.5).stroke();
+  let x = blockX;
+  cols.forEach((c, i) => {
+    const raw = row[c.key];
+    const value = raw == null || raw === '' ? '' : String(raw);
+    if (value) {
+      const fontSize = dualCellFontSize(c.key);
+      doc.font('Helvetica').fontSize(fontSize).fillColor('#000');
+      const innerW = Math.max(8, c.w - 4);
+      if (c.wrap) {
+        const textH = doc.heightOfString(value, { width: innerW, lineGap: 0.5 });
+        const textY = y + Math.max(2, (rowH - textH) / 2);
+        doc.text(value, x + 2, textY, {
+          width: innerW,
+          align: c.align || 'left',
+          lineGap: 0.5,
+        });
+      } else {
+        doc.text(value, x + 2, y + (rowH - fontSize) / 2, {
+          width: innerW,
+          height: fontSize + 2,
+          align: c.align || 'left',
+          lineBreak: false,
+        });
+      }
+    }
+    x += c.w;
+    if (i < cols.length - 1) {
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + rowH)
+        .strokeColor(LINE)
+        .lineWidth(0.5)
+        .stroke();
+    }
+  });
+}
+
 async function renderStudentsExcel(students, meta = {}, options = {}) {
   const preset = resolvePreset(options);
   const columns = columnsForExport(options);
@@ -170,19 +291,154 @@ async function renderStudentsExcel(students, meta = {}, options = {}) {
   });
 }
 
+/**
+ * PDF: branded letterhead + two side-by-side tables (same format as award list).
+ * Data/columns stay Student List / Contact List — layout is dual-column.
+ */
 async function renderStudentsPdf(students, meta = {}, options = {}) {
   const preset = resolvePreset(options);
-  const columns = columnsForExport(options);
   const rows = mapStudentsToRows(students, options);
-  return renderBrandedPdf({
-    title: preset.title,
-    subject: preset.subject,
-    columns,
-    rows,
-    meta: buildMeta(meta, rows.length, preset),
-    emptyMessage: preset.emptyMessage,
-    confidentialLabel: preset.confidentialLabel,
-    ...REPORT_OPTS,
+  const reportMeta = buildMeta(meta, rows.length, preset);
+  const brand = ACADEMY_BRAND;
+  const logoPath = resolveLogoPath();
+  const omitSensitive = Boolean(options.omitSensitive);
+  const kind = preset.kind;
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4',
+        layout: 'portrait',
+        margin: 28,
+        bufferPages: true,
+        info: {
+          Title: `${preset.title} — ${brand.name}`,
+          Author: brand.name,
+          Subject: preset.subject,
+          Creator: brand.legalName,
+        },
+      });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const margin = 28;
+      const contentW = doc.page.width - margin * 2;
+      const pageH = doc.page.height;
+      const gap = 8;
+      const rowH = 15;
+      const headerH = 16;
+      const footerReserve = 36;
+
+      const startBodyY = () => {
+        let y = drawPdfLetterheadPlain(doc, brand, logoPath);
+        y = drawPdfTitlePlain(
+          doc,
+          {
+            title: preset.title,
+            filterLine: reportMeta.filterLine || '',
+            countLabel: reportMeta.countLabel,
+            sessionLabel: reportMeta.sessionLabel || '',
+            leftFilter: reportMeta.leftFilter || '',
+            centerFilter: reportMeta.centerFilter || '',
+            rightFilter: reportMeta.rightFilter || '',
+          },
+          y
+        );
+        return y + 2;
+      };
+
+      if (rows.length === 0) {
+        const y = startBodyY();
+        doc.fillColor('#444444').font('Helvetica-Oblique').fontSize(10);
+        doc.text(preset.emptyMessage, margin, y + 16, {
+          width: contentW,
+          align: 'center',
+        });
+        drawPdfFooterTextPlain(doc, brand, preset.confidentialLabel, reportMeta, 1, 1);
+        doc.end();
+        return;
+      }
+
+      // Probe letterhead height on page 1, then pack rows with full-name wrapping.
+      const probeY = startBodyY();
+      let remaining = rows.slice();
+      let firstPage = true;
+
+      const fillColumn = (cols, availableH) => {
+        const packed = [];
+        let used = 0;
+        while (remaining.length) {
+          const next = remaining[0];
+          const h = dualRowHeight(doc, next, cols, { minRowH: rowH });
+          if (packed.length > 0 && used + h > availableH) break;
+          // Always place at least one row even if it is taller than the column.
+          if (packed.length === 0 && h > availableH) {
+            packed.push({ row: remaining.shift(), h });
+            used += h;
+            break;
+          }
+          packed.push({ row: remaining.shift(), h });
+          used += h;
+        }
+        return packed;
+      };
+
+      const drawColumn = (blockX, top, tableW, cols, packed) => {
+        drawDualTableHeader(doc, blockX, top, tableW, cols, headerH);
+        let y = top + headerH;
+        packed.forEach(({ row, h }) => {
+          drawDualStudentRow(doc, blockX, y, row, tableW, cols, h);
+          y += h;
+        });
+      };
+
+      while (remaining.length > 0 || firstPage) {
+        let top;
+        if (firstPage) {
+          top = probeY;
+          firstPage = false;
+        } else {
+          doc.addPage();
+          top = startBodyY();
+        }
+
+        const availableH = Math.max(rowH, pageH - top - footerReserve - margin - headerH);
+        // Prefer dual columns whenever more than ~one column of min-height rows remain.
+        const preferDual = remaining.length > Math.max(1, Math.floor(availableH / rowH));
+        const tableW = preferDual ? (contentW - gap) / 2 : contentW;
+        const cols = buildDualCols(tableW, kind, omitSensitive);
+
+        const leftPacked = fillColumn(cols, availableH);
+        drawColumn(margin, top, tableW, cols, leftPacked);
+
+        if (preferDual && remaining.length > 0) {
+          const rightPacked = fillColumn(cols, availableH);
+          if (rightPacked.length) {
+            drawColumn(margin + tableW + gap, top, tableW, cols, rightPacked);
+          }
+        }
+
+        if (!remaining.length) break;
+      }
+
+      const range = doc.bufferedPageRange();
+      for (let i = 0; i < range.count; i += 1) {
+        doc.switchToPage(range.start + i);
+        drawPdfFooterTextPlain(
+          doc,
+          brand,
+          preset.confidentialLabel,
+          reportMeta,
+          i + 1,
+          range.count
+        );
+      }
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 

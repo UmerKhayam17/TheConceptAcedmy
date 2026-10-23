@@ -21,7 +21,11 @@ const {
 const { validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
 const { resolveEnrollmentDiscipline } = require('./academyDisciplineService');
 const { generateAcademyRollNumber, generateTemporaryRollNumber } = require('../../utils/academyRollNumber');
-const { generateRegistrationNumber } = require('../../utils/academyRegistrationNumber');
+const {
+  generateRegistrationNumber,
+  isModernRegistrationNumber,
+  resolveRegistrationDisplay,
+} = require('../../utils/academyRegistrationNumber');
 
 const STUDENT_PHOTO_DIR = path.join(__dirname, '../../../uploads/students');
 
@@ -253,6 +257,7 @@ async function registerStudent(payload, userId) {
   });
 
   const studentId = await generateStudentId();
+  const registrationNumber = await generateRegistrationNumber();
   const phone = (payload.phone || payload.mobileNo || '').trim();
   const profile = pickStudentProfile(payload);
 
@@ -287,6 +292,7 @@ async function registerStudent(payload, userId) {
 
   const student = await AcademyStudent.create({
     studentId,
+    registrationNumber,
     studentName: payload.studentName.trim(),
     fatherName: payload.fatherName.trim(),
     phone,
@@ -554,11 +560,7 @@ function studentsToCsv(rows, { omitSensitive = false, reportType = 'list' } = {}
     })
   );
   sorted.forEach((s, i) => {
-    const regNo =
-      String(s.registrationNumber || '').trim() ||
-      String(s.studentId || '').trim() ||
-      String(s.rollNumber || '').trim() ||
-      '';
+    const regNo = resolveRegistrationDisplay(s);
     const cells = [
       i + 1,
       `"${regNo.replace(/"/g, '""')}"`,
@@ -891,6 +893,9 @@ async function activateStudent(id, payload, userId) {
 
   const officialStudentId = await generateStudentId();
   const rollNumber = await generateAcademyRollNumber(classId);
+  if (!isModernRegistrationNumber(student.registrationNumber)) {
+    student.registrationNumber = await generateRegistrationNumber();
+  }
   const studentName = (payload.studentName || student.studentName).trim();
   const fatherName = (payload.fatherName || student.fatherName).trim();
 
@@ -1195,6 +1200,9 @@ async function assignSectionAfterPayment(id, payload, userId) {
     student.studentId && student.rollNumber && !String(student.rollNumber).startsWith('TMP')
       ? student.rollNumber
       : await generateAcademyRollNumber(classId);
+  if (!isModernRegistrationNumber(student.registrationNumber)) {
+    student.registrationNumber = await generateRegistrationNumber();
+  }
   const studentName = (payload.studentName || student.studentName).trim();
   const fatherName = (payload.fatherName || student.fatherName).trim();
 
