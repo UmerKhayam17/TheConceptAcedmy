@@ -68,6 +68,20 @@ function sectionNameOf(s: AcademyStudent): string {
   return "";
 }
 
+function phonesOf(s: AcademyStudent): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const raw of [s.phone, (s as { mobileNo?: string }).mobileNo, s.contactPhoneRes]) {
+    const value = String(raw || "").trim();
+    if (!value) continue;
+    const key = value.replace(/\D/g, "") || value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    parts.push(value);
+  }
+  return parts.join(" / ");
+}
+
 function sectionBadgeClass(name: string) {
   const letter = name.trim().charAt(0).toUpperCase();
   if (letter === "A") return "bg-sky-100 text-sky-800 border-sky-200";
@@ -218,11 +232,13 @@ export default function RegistrationTab({
     routesProp ?? (user?.role ? academyStudentRoutes(user.role, "registration") : null);
   const { apiSessionId, writable, hasScope } = useSessionScope(sessionId);
   const isTeacher = user?.role === "teacher";
+  const showPhoneCol = !isTeacher;
   const showMonthlyCol = !isTeacher;
   const hasActions = caps.canView || (writable && (caps.canEdit || caps.canDelete));
   const colSpan =
     1 +
     (hasActions ? 7 : 6) +
+    (showPhoneCol ? 1 : 0) +
     (showMonthlyCol ? 2 : 0);
 
   const showIntake = enrollmentFlow === "intake" || enrollmentFlow === "both";
@@ -662,6 +678,7 @@ export default function RegistrationTab({
                 <th className="text-left p-3 font-medium whitespace-nowrap">Roll / ID</th>
                 <th className="text-left p-3 font-medium">Name</th>
                 <th className="text-left p-3 font-medium whitespace-nowrap">Father Name</th>
+                {showPhoneCol && <th className="text-left p-3 font-medium">Phone</th>}
                 <th className="text-left p-3 font-medium">Class</th>
                 <th className="text-left p-3 font-medium">Section</th>
                 {showMonthlyCol && (
@@ -733,6 +750,11 @@ export default function RegistrationTab({
                       </div>
                     </td>
                     <td className="p-3 text-muted-foreground whitespace-nowrap">{s.fatherName}</td>
+                    {showPhoneCol && (
+                      <td className="p-3 text-muted-foreground whitespace-pre-line text-xs leading-snug">
+                        {phonesOf(s)}
+                      </td>
+                    )}
                     <td className="p-3 whitespace-nowrap">{classLabel(s.classId)}</td>
                     <td className="p-3">
                       {sectionName ? (

@@ -2,19 +2,18 @@ const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocumen
 
 /**
  * Student List — class + section scoped sheet.
- * Columns: SR No, Reg No, Name, Father, Contact, + 3 blank columns.
+ * Columns: SR No, Reg No, Name, Father, + 3 blank columns (no Contact).
  * Portrait A4; names wrap fully (may continue onto page 2).
  */
 const LIST_COLUMNS = [
-  { key: 'serial', header: 'SR No', excelWidth: 6, pdfWidth: 26, align: 'center' },
+  { key: 'serial', header: 'SR No', excelWidth: 6, pdfWidth: 28, align: 'center' },
   // Single-line Reg No (no wrap) — widen slightly so REG-2026-00xx fits.
-  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 74, align: 'center' },
-  { key: 'name', header: 'Student Name', excelWidth: 16, pdfWidth: 88, wrap: true },
-  { key: 'father', header: 'Father Name', excelWidth: 15, pdfWidth: 80, wrap: true },
-  { key: 'phone', header: 'Contact', excelWidth: 13, pdfWidth: 64, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 16, pdfWidth: 78 },
-  { key: 'blank2', header: ' ', excelWidth: 16, pdfWidth: 78 },
-  { key: 'blank3', header: ' ', excelWidth: 16, pdfWidth: 78 },
+  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 78, align: 'center' },
+  { key: 'name', header: 'Student Name', excelWidth: 18, pdfWidth: 100, wrap: true },
+  { key: 'father', header: 'Father Name', excelWidth: 17, pdfWidth: 95, wrap: true },
+  { key: 'blank1', header: ' ', excelWidth: 18, pdfWidth: 90 },
+  { key: 'blank2', header: ' ', excelWidth: 18, pdfWidth: 90 },
+  { key: 'blank3', header: ' ', excelWidth: 18, pdfWidth: 91 },
 ];
 
 /**

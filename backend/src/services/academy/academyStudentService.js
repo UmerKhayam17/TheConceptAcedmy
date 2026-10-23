@@ -541,10 +541,12 @@ async function listStudents({
   };
 }
 
-function studentsToCsv(rows, { omitSensitive = false } = {}) {
-  const header = omitSensitive
-    ? ['SR No', 'Reg No', 'Student Name', 'Father Name', '', '', '']
-    : ['SR No', 'Reg No', 'Student Name', 'Father Name', 'Contact', '', '', ''];
+function studentsToCsv(rows, { omitSensitive = false, reportType = 'list' } = {}) {
+  // Contact column only on Contact List export — not on Student List print/export.
+  const includeContact = String(reportType || 'list').toLowerCase() === 'contact' && !omitSensitive;
+  const header = includeContact
+    ? ['SR No', 'Reg No', 'Student Name', 'Father Name', 'Contact', '', '', '']
+    : ['SR No', 'Reg No', 'Student Name', 'Father Name', '', '', ''];
   const lines = [header.join(',')];
   const sorted = [...(rows || [])].sort((a, b) =>
     String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
@@ -557,24 +559,25 @@ function studentsToCsv(rows, { omitSensitive = false } = {}) {
       String(s.studentId || '').trim() ||
       String(s.rollNumber || '').trim() ||
       '';
-    const phoneSeen = new Set();
-    const phoneParts = [];
-    for (const raw of [s.phone, s.mobileNo, s.contactPhoneRes]) {
-      const value = String(raw || '').trim();
-      if (!value) continue;
-      const key = value.replace(/\D/g, '') || value.toLowerCase();
-      if (phoneSeen.has(key)) continue;
-      phoneSeen.add(key);
-      phoneParts.push(value);
-    }
-    const phones = phoneParts.join(' / ');
     const cells = [
       i + 1,
       `"${regNo.replace(/"/g, '""')}"`,
       `"${(s.studentName || '').replace(/"/g, '""')}"`,
       `"${(s.fatherName || '').replace(/"/g, '""')}"`,
     ];
-    if (!omitSensitive) cells.push(`"${phones.replace(/"/g, '""')}"`);
+    if (includeContact) {
+      const phoneSeen = new Set();
+      const phoneParts = [];
+      for (const raw of [s.phone, s.mobileNo, s.contactPhoneRes]) {
+        const value = String(raw || '').trim();
+        if (!value) continue;
+        const key = value.replace(/\D/g, '') || value.toLowerCase();
+        if (phoneSeen.has(key)) continue;
+        phoneSeen.add(key);
+        phoneParts.push(value);
+      }
+      cells.push(`"${phoneParts.join(' / ').replace(/"/g, '""')}"`);
+    }
     cells.push('', '', '');
     lines.push(cells.join(','));
   });

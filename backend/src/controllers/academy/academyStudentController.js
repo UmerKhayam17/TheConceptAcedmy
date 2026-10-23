@@ -230,7 +230,7 @@ const exportStudents = catchAsync(async (req, res) => {
     return res.send(Buffer.from(buffer));
   }
 
-  const csv = studentService.studentsToCsv(result.items, { omitSensitive });
+  const csv = studentService.studentsToCsv(result.items, { omitSensitive, reportType });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.csv"`);
   res.send(csv);
