@@ -50,6 +50,7 @@ import {
 import { MONTH_NAMES } from "./studentDisplayUtils";
 import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import { DefaulterListDownload } from "./DefaulterListDownload";
+import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import AcademySalaryDetailPage, {
   StudentPoolTable,
 } from "./AcademySalaryDetailPage";
@@ -209,15 +210,6 @@ function MetricCard({
       </div>
     </div>
   );
-}
-
-function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 const selectClass =
@@ -451,8 +443,8 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
 
   const handleExport = async (format: SalaryReportFormat) => {
     setExporting(format);
+    const preview = openReportPreviewTab(format);
     try {
-      const stamp = `${year}-${String(month).padStart(2, "0")}`;
       const blob = await exportAcademySalaryReport(
         {
           month: Number(month),
@@ -464,18 +456,22 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
         },
         format,
       );
-      downloadBlob(
-        `staff-salaries-${stamp}.${format === "pdf" ? "pdf" : "xlsx"}`,
+      const monthLabel = MONTH_NAMES[Number(month) - 1] || month;
+      const mode = deliverReportBlob(
         blob,
+        `Staff-Salary_${monthLabel}-${year}.${format}`,
+        format,
+        preview,
       );
       toast({
-        title: "Export ready",
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
         description:
-          format === "pdf"
-            ? "PDF salary report downloaded."
+          mode === "preview"
+            ? "Use Print or Download from the preview window."
             : "Excel salary report downloaded.",
       });
     } catch (e) {
+      preview?.close();
       toast({
         title: "Export failed",
         description: e instanceof Error ? e.message : "Could not export",
@@ -661,8 +657,9 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             ) : null}
             <DefaulterListDownload
               variant="default"
-              className="h-10 shrink-0"
-              label="Salary report"
+              size="default"
+              className="shrink-0"
+              label="Print / Export"
               exporting={exporting}
               onDownload={(format) => void handleExport(format)}
             />

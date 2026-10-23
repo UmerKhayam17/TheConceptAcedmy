@@ -41,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DefaulterListDownload } from "./DefaulterListDownload";
+import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import { FeeMetricCards } from "./FeeMetricCards";
 import { ClassProgramOptions } from "@/components/modules/ClassProgramSelect";
 import { useToast } from "@/hooks/use-toast";
@@ -138,15 +139,16 @@ function FeeFilterSelect({
   className?: string;
 }) {
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative min-w-0 overflow-hidden", className)}>
       {leadingIcon ? (
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+        <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-muted-foreground">
           {leadingIcon}
         </span>
       ) : null}
       <select
         className={cn(
           feeFilterSelectClass,
+          "max-w-full truncate",
           leadingIcon ? "pl-8 pr-8" : "pl-3 pr-8",
         )}
         value={value}
@@ -154,7 +156,7 @@ function FeeFilterSelect({
       >
         {children}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
     </div>
   );
 }
@@ -1097,16 +1099,37 @@ export default function AcademyFeesManagement({
 
   const downloadPaidReport = async (format: DefaulterReportFormat) => {
     setExportingPaidReport(format);
+    const preview = openReportPreviewTab(format);
     try {
       const blob = await exportPaidFeesReport(paidExportParams, format);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = format === "pdf" ? "paid-fees.pdf" : "paid-fees.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+      const MONTHS = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ];
+      const period =
+        month && year
+          ? `${MONTHS[Number(month) - 1] || month}-${year}`
+          : year
+            ? String(year)
+            : "All";
+      const mode = deliverReportBlob(blob, `Paid-Fees_${period}.${format}`, format, preview);
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description:
+          mode === "preview" ? "Use Print or Download from the preview window." : undefined,
+      });
     } catch (e) {
+      preview?.close();
       toast({
         title: "Export failed",
         description: e instanceof Error ? e.message : undefined,
@@ -1119,6 +1142,7 @@ export default function AcademyFeesManagement({
 
   const downloadMonthWise = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
+    const preview = openReportPreviewTab(format);
     try {
       const blob = await exportFeeDefaultersMonthWise(
         {
@@ -1128,14 +1152,20 @@ export default function AcademyFeesManagement({
         },
         format
       );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = format === "pdf" ? "fee-defaulters.pdf" : "fee-defaulters.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+      const period = year ? String(year) : "All";
+      const mode = deliverReportBlob(
+        blob,
+        `Fee-Defaulters_${period}.${format}`,
+        format,
+        preview,
+      );
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description:
+          mode === "preview" ? "Use Print or Download from the preview window." : undefined,
+      });
     } catch (e) {
+      preview?.close();
       toast({
         title: "Download failed",
         description: e instanceof Error ? e.message : undefined,
@@ -1161,117 +1191,147 @@ export default function AcademyFeesManagement({
 
       {showFilters && !studentId && (
         <div className="rounded-xl border border-border bg-card px-3.5 py-3 shadow-sm">
-          <div
-            className={cn(
-              "grid items-end gap-2.5",
-              isParent
-                ? "grid-cols-1 sm:grid-cols-[220px_minmax(0,1fr)]"
-                : "grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,1.15fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(200px,1.5fr)]",
-            )}
-          >
-            {isParent && (
-              <FeeFilterField label="Child">
-                <FeeFilterSelect
-                  value={selectedParentStudentId}
-                  onChange={setSelectedParentStudentId}
-                >
-                  <option value="">Select child…</option>
-                  {parentStudents.map((s) => (
-                    <option key={s._id} value={s._id}>
-                      {s.studentName} ({s.studentId})
-                    </option>
-                  ))}
-                </FeeFilterSelect>
-              </FeeFilterField>
-            )}
-            {!isParent && (
-              <>
-                <FeeFilterField label="Month">
+          <div className="space-y-3">
+            {isParent ? (
+              <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[220px_minmax(0,1fr)]">
+                <FeeFilterField label="Child">
                   <FeeFilterSelect
-                    value={month}
-                    onChange={setMonth}
-                    leadingIcon={<CalendarDays className="h-3.5 w-3.5" />}
+                    value={selectedParentStudentId}
+                    onChange={setSelectedParentStudentId}
                   >
-                    {paidOnlyView ? <option value="">All months</option> : null}
-                    {MONTH_NAMES.map((name, idx) => (
-                      <option key={name} value={String(idx + 1)}>
-                        {name} {year || now.getFullYear()}
-                      </option>
-                    ))}
-                  </FeeFilterSelect>
-                </FeeFilterField>
-                <FeeFilterField label="Year">
-                  <FeeFilterSelect value={year} onChange={setYear}>
-                    {paidOnlyView ? <option value="">All years</option> : null}
-                    {Array.from({ length: 6 }, (_, i) => {
-                      const y = String(Number(now.getFullYear()) - 2 + i);
-                      return (
-                        <option key={y} value={y}>
-                          {y}
-                        </option>
-                      );
-                    })}
-                  </FeeFilterSelect>
-                </FeeFilterField>
-                <FeeFilterField label="Class" className="min-w-[16.5rem]">
-                  <FeeFilterSelect value={classFilter} onChange={setClassFilter}>
-                    <ClassProgramOptions classes={classes} allowAll />
-                  </FeeFilterSelect>
-                </FeeFilterField>
-                <FeeFilterField label="Section">
-                  <FeeFilterSelect value={sectionFilter} onChange={setSectionFilter}>
-                    <option value="">All sections</option>
-                    {sections.map((s) => (
+                    <option value="">Select child…</option>
+                    {parentStudents.map((s) => (
                       <option key={s._id} value={s._id}>
-                        {s.sectionName}
-                        {"className" in s && s.className && !classFilter ? ` · ${s.className}` : ""}
+                        {s.studentName} ({s.studentId})
                       </option>
                     ))}
                   </FeeFilterSelect>
                 </FeeFilterField>
-                {!lockedStatus && (
-                  <FeeFilterField label="Status">
-                    <FeeFilterSelect value={statusFilter} onChange={setStatusFilter}>
-                      <option value="">All</option>
-                      <option value="pending">Pending</option>
-                      <option value="paid">Paid</option>
-                      <option value="overdue">Overdue</option>
-                      <option value="waived">Waived</option>
+                <div className="relative min-w-0">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="h-9 rounded-md border-border bg-background pl-8 pr-8 text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-primary/15"
+                    placeholder="Search receipt or period…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    aria-label="Search fees"
+                  />
+                  {search ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
+                      onClick={() => setSearch("")}
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div
+                  className={cn(
+                    "grid items-end gap-3",
+                    lockedStatus
+                      ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
+                      : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
+                  )}
+                >
+                  <FeeFilterField label="Month">
+                    <FeeFilterSelect
+                      value={month}
+                      onChange={setMonth}
+                      leadingIcon={<CalendarDays className="h-3.5 w-3.5" />}
+                    >
+                      {paidOnlyView ? <option value="">All months</option> : null}
+                      {MONTH_NAMES.map((name, idx) => (
+                        <option key={name} value={String(idx + 1)}>
+                          {name} {year || now.getFullYear()}
+                        </option>
+                      ))}
                     </FeeFilterSelect>
                   </FeeFilterField>
-                )}
-                <FeeFilterField label="Type">
-                  <FeeFilterSelect value={feeTypeFilter} onChange={setFeeTypeFilter}>
-                    <option value="">All types</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="admission">Admission</option>
-                  </FeeFilterSelect>
-                </FeeFilterField>
+                  <FeeFilterField label="Year">
+                    <FeeFilterSelect value={year} onChange={setYear}>
+                      {paidOnlyView ? <option value="">All years</option> : null}
+                      {Array.from({ length: 6 }, (_, i) => {
+                        const y = String(Number(now.getFullYear()) - 2 + i);
+                        return (
+                          <option key={y} value={y}>
+                            {y}
+                          </option>
+                        );
+                      })}
+                    </FeeFilterSelect>
+                  </FeeFilterField>
+                  <FeeFilterField label="Class">
+                    <FeeFilterSelect value={classFilter} onChange={setClassFilter}>
+                      <ClassProgramOptions
+                        classes={classes}
+                        allowAll
+                        allLabel="All classes"
+                      />
+                    </FeeFilterSelect>
+                  </FeeFilterField>
+                  <FeeFilterField label="Section">
+                    <FeeFilterSelect value={sectionFilter} onChange={setSectionFilter}>
+                      <option value="">All sections</option>
+                      {sections.map((s) => (
+                        <option key={s._id} value={s._id}>
+                          {s.sectionName}
+                          {"className" in s && s.className && !classFilter
+                            ? ` · ${s.className}`
+                            : ""}
+                        </option>
+                      ))}
+                    </FeeFilterSelect>
+                  </FeeFilterField>
+                  {!lockedStatus && (
+                    <FeeFilterField label="Status">
+                      <FeeFilterSelect value={statusFilter} onChange={setStatusFilter}>
+                        <option value="">All</option>
+                        <option value="pending">Pending</option>
+                        <option value="paid">Paid</option>
+                        <option value="overdue">Overdue</option>
+                        <option value="waived">Waived</option>
+                      </FeeFilterSelect>
+                    </FeeFilterField>
+                  )}
+                  <FeeFilterField label="Type">
+                    <FeeFilterSelect value={feeTypeFilter} onChange={setFeeTypeFilter}>
+                      <option value="">All types</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="admission">Admission</option>
+                    </FeeFilterSelect>
+                  </FeeFilterField>
+                </div>
+                <div className="relative min-w-0">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="h-9 w-full rounded-md border-border bg-background pl-8 pr-8 text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-primary/15"
+                    placeholder="Search student, class, receipt"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    aria-label="Search fees"
+                  />
+                  {search ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
+                      onClick={() => setSearch("")}
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : null}
+                </div>
               </>
             )}
-
-            <div className={cn("relative min-w-0", !isParent && "col-span-2 md:col-span-1")}>
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="h-9 rounded-md border-border bg-background pl-8 pr-8 text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-primary/15"
-                placeholder={isParent ? "Search receipt or period…" : "Search student, class, receipt"}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                aria-label="Search fees"
-              />
-              {search ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
-                  onClick={() => setSearch("")}
-                  aria-label="Clear search"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              ) : null}
-            </div>
           </div>
 
           {!isParent &&

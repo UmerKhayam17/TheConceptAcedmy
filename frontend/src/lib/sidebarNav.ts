@@ -289,7 +289,7 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
       },
       {
         id: "staff-attendance",
-        label: "Teacher Attendance",
+        label: "Staff Attendance",
         icon: Clock,
         moduleKey: "staff-attendance",
         href: (role) => moduleHref(role, "staff-attendance"),

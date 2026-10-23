@@ -270,28 +270,57 @@ function defaulterExportQuery(req) {
   };
 }
 
+function feeReportFileBase(prefix, query) {
+  const parts = [prefix];
+  if (query.month && query.year) {
+    const monthNames = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    const m = monthNames[Number(query.month) - 1] || String(query.month);
+    parts.push(`${m}-${query.year}`);
+  } else if (query.year) {
+    parts.push(String(query.year));
+  }
+  return parts.join('_');
+}
+
 const exportDefaulters = catchAsync(async (req, res) => {
-  const csv = await feeService.exportFeeDefaulters(defaulterExportQuery(req));
+  const q = defaulterExportQuery(req);
+  const csv = await feeService.exportFeeDefaulters(q);
+  const base = feeReportFileBase('Fee-Defaulters', q);
   res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="fee-defaulters.csv"');
+  res.setHeader('Content-Disposition', `attachment; filename="${base}.csv"`);
   res.send(csv);
 });
 
 const exportDefaultersMonthWise = catchAsync(async (req, res) => {
   const format = String(req.query.format || 'xlsx').toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
+  const q = defaulterExportQuery(req);
   const buffer = await feeService.exportFeeDefaultersMonthWise({
-    ...defaulterExportQuery(req),
+    ...q,
     format,
   });
+  const base = feeReportFileBase('Fee-Defaulters', q);
   if (format === 'pdf') {
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="fee-defaulters.pdf"');
+    res.setHeader('Content-Disposition', `inline; filename="${base}.pdf"`);
   } else {
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-    res.setHeader('Content-Disposition', 'attachment; filename="fee-defaulters.xlsx"');
+    res.setHeader('Content-Disposition', `attachment; filename="${base}.xlsx"`);
   }
   res.send(Buffer.from(buffer));
 });
@@ -308,27 +337,31 @@ function paidExportQuery(req) {
 }
 
 const exportPaidFees = catchAsync(async (req, res) => {
-  const csv = await feeService.exportPaidFees(paidExportQuery(req));
+  const q = paidExportQuery(req);
+  const csv = await feeService.exportPaidFees(q);
+  const base = feeReportFileBase('Paid-Fees', q);
   res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="paid-fees.csv"');
+  res.setHeader('Content-Disposition', `attachment; filename="${base}.csv"`);
   res.send(csv);
 });
 
 const exportPaidFeesReport = catchAsync(async (req, res) => {
   const format = String(req.query.format || 'xlsx').toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
+  const q = paidExportQuery(req);
   const buffer = await feeService.exportPaidFeesReport({
-    ...paidExportQuery(req),
+    ...q,
     format,
   });
+  const base = feeReportFileBase('Paid-Fees', q);
   if (format === 'pdf') {
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="paid-fees.pdf"');
+    res.setHeader('Content-Disposition', `inline; filename="${base}.pdf"`);
   } else {
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-    res.setHeader('Content-Disposition', 'attachment; filename="paid-fees.xlsx"');
+    res.setHeader('Content-Disposition', `attachment; filename="${base}.xlsx"`);
   }
   res.send(Buffer.from(buffer));
 });

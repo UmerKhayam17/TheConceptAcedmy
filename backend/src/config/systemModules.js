@@ -326,7 +326,7 @@ const SYSTEM_MODULES = [
   {
     key: 'staffAttendance',
     panelSlug: 'staff-attendance',
-    label: 'Teacher Attendance',
+    label: 'Staff Attendance',
     icon: 'Clock',
     description: 'Mark and review teacher / staff attendance',
     order: 41,

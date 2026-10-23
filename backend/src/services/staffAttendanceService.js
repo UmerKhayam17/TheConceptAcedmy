@@ -22,9 +22,13 @@ function monthRange(month, year) {
   return { start, end };
 }
 
-/** Teacher staff accounts for manual attendance marking (active first). */
+/** Staff accounts for attendance marking: teacher, accountant, admin (active first). */
 async function listTeachers() {
-  const roles = await Role.find({ name: { $regex: /^teacher$/i } }).select('_id name').lean();
+  const roles = await Role.find({
+    name: { $regex: /^(teacher|accountant|admin)$/i },
+  })
+    .select('_id name')
+    .lean();
   const byRole =
     roles.length > 0
       ? await User.find({ role: { $in: roles.map((r) => r._id) } })
@@ -52,11 +56,9 @@ async function listTeachers() {
   [...byRole, ...byProfile].forEach((u) => {
     map.set(String(u._id), u);
   });
-  return Array.from(map.values()).sort((a, b) => {
-    const activeDiff = Number(b.isActive !== false) - Number(a.isActive !== false);
-    if (activeDiff) return activeDiff;
-    return String(a.name || '').localeCompare(String(b.name || ''));
-  });
+  return Array.from(map.values()).sort((a, b) =>
+    String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+  );
 }
 
 async function listByDate({ date, userId }) {
@@ -91,7 +93,7 @@ async function listForUser(userId, { month, year } = {}) {
     const { start, end } = monthRange(month, year);
     q.date = { $gte: start, $lte: end };
   }
-  return StaffAttendance.find(q).sort({ date: -1 }).lean();
+  return StaffAttendance.find(q).sort({ date: 1, checkIn: 1 }).lean();
 }
 
 async function listByMonth({ month, year, userId }) {
@@ -99,9 +101,22 @@ async function listByMonth({ month, year, userId }) {
   const q = { date: { $gte: start, $lte: end } };
   if (userId) q.userId = userId;
   const records = await StaffAttendance.find(q)
-    .populate('userId', 'name email role profileImage')
+    .populate({
+      path: 'userId',
+      select: 'name email role profileImage',
+      populate: { path: 'role', select: 'name' },
+    })
     .sort({ date: 1, checkIn: 1 })
     .lean();
+
+  records.sort((a, b) => {
+    const da = new Date(a.date).getTime() || 0;
+    const db = new Date(b.date).getTime() || 0;
+    if (da !== db) return da - db;
+    const na = a.userId && typeof a.userId === 'object' ? a.userId.name || '' : '';
+    const nb = b.userId && typeof b.userId === 'object' ? b.userId.name || '' : '';
+    return String(na).localeCompare(String(nb), undefined, { sensitivity: 'base' });
+  });
 
   const summary = { present: 0, late: 0, absent: 0, half_day: 0, leave: 0 };
   records.forEach((r) => {

@@ -543,24 +543,34 @@ async function listStudents({
 
 function studentsToCsv(rows, { omitSensitive = false } = {}) {
   const header = omitSensitive
-    ? ['Student ID', 'Name', 'Father', 'Class', 'Created', 'Status']
+    ? ['Student ID', 'Name', 'Father', 'Class', 'Section', 'Status', '', '', '']
     : [
       'Student ID',
       'Name',
       'Father',
       'Phone',
       'Class',
-      'Created',
+      'Section',
       'Monthly Fee',
       'Admission Fee',
       'Total Fee',
       'Status',
+      '',
+      '',
+      '',
     ];
   const lines = [header.join(',')];
   rows.forEach((s) => {
     const className = s.classId?.className || '';
+    const sectionName =
+      s.sectionId && typeof s.sectionId === 'object' ? s.sectionId.sectionName || '' : '';
     const idCol = s.studentId || s.rollNumber || s.registrationNumber || '';
-    const created = s.createdAt ? new Date(s.createdAt).toISOString().slice(0, 10) : '';
+    const primary = String(s.phone || '').trim();
+    const residential = String(s.contactPhoneRes || '').trim();
+    const phones =
+      primary && residential && primary !== residential
+        ? `${primary} / ${residential}`
+        : primary || residential || '';
     if (omitSensitive) {
       lines.push(
         [
@@ -568,8 +578,11 @@ function studentsToCsv(rows, { omitSensitive = false } = {}) {
           `"${(s.studentName || '').replace(/"/g, '""')}"`,
           `"${(s.fatherName || '').replace(/"/g, '""')}"`,
           `"${className.replace(/"/g, '""')}"`,
-          created,
-          s.status,
+          `"${sectionName.replace(/"/g, '""')}"`,
+          s.status || '',
+          '',
+          '',
+          '',
         ].join(',')
       );
       return;
@@ -579,13 +592,16 @@ function studentsToCsv(rows, { omitSensitive = false } = {}) {
         idCol,
         `"${(s.studentName || '').replace(/"/g, '""')}"`,
         `"${(s.fatherName || '').replace(/"/g, '""')}"`,
-        s.phone,
+        `"${phones.replace(/"/g, '""')}"`,
         `"${className.replace(/"/g, '""')}"`,
-        created,
-        s.monthlyFee,
-        s.admissionFee,
-        s.totalFee,
-        s.status,
+        `"${sectionName.replace(/"/g, '""')}"`,
+        s.monthlyFee ?? '',
+        s.admissionFee ?? '',
+        s.totalFee ?? '',
+        s.status || '',
+        '',
+        '',
+        '',
       ].join(',')
     );
   });

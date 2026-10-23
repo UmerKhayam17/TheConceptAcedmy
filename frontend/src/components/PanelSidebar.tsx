@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -52,6 +52,15 @@ const roleHeader: Record<Role, { title: string; Icon: React.ComponentType<{ clas
   student: { title: "Student", Icon: School },
 };
 
+function activeCollapsibleGroupId(
+  groups: SidebarNavGroup[],
+  pathname: string,
+  role: Role,
+): string | null {
+  const match = groups.find((group) => group.collapsible && groupIsOpen(group, pathname, role));
+  return match?.id ?? null;
+}
+
 const PanelSidebar = ({ user }: { user: SessionUser }) => {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
@@ -66,6 +75,8 @@ const PanelSidebar = ({ user }: { user: SessionUser }) => {
     user.isSystemAdmin,
   );
   const rootPath = panelPathFor(user.role);
+  /** Accordion: only one top-level sidebar section open at a time. */
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
 
   const canView = (item: SidebarNavItem) => {
     if (item.moduleKey === "dashboard") return true;
@@ -115,6 +126,14 @@ const PanelSidebar = ({ user }: { user: SessionUser }) => {
     return groups;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.role, user.modulePermissions, user.isSystemAdmin, perms, parentStudents]);
+
+  // Only sync the open accordion section when the route changes.
+  // Do not depend on `visibleGroups` — its identity changes often and would
+  // snap the menu back to the route-matched section, blocking other modules.
+  useEffect(() => {
+    setOpenGroupId(activeCollapsibleGroupId(visibleGroups, pathname, user.role));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pathname/role only
+  }, [pathname, user.role]);
 
   const activeLinkClass =
     "!bg-primary !text-primary-foreground font-semibold shadow-sm hover:!bg-primary hover:!text-primary-foreground [&>svg]:!text-primary-foreground data-[active=true]:!bg-primary data-[active=true]:!text-primary-foreground";
@@ -176,10 +195,15 @@ const PanelSidebar = ({ user }: { user: SessionUser }) => {
   };
 
   const renderCollapsibleGroup = (group: SidebarNavGroup) => {
-    const routeOpen = groupIsOpen(group, pathname, user.role);
     const GroupIcon = group.icon;
+    const isOpen = openGroupId === group.id;
     return (
-      <Collapsible key={group.id} defaultOpen={routeOpen} className="group/collapsible">
+      <Collapsible
+        key={group.id}
+        open={isOpen}
+        onOpenChange={(nextOpen) => setOpenGroupId(nextOpen ? group.id : null)}
+        className="group/collapsible"
+      >
         <SidebarMenuItem>
           <CollapsibleTrigger asChild>
             <SidebarMenuButton

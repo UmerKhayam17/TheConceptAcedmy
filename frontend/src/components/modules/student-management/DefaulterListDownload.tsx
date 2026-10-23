@@ -8,42 +8,50 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import type { DefaulterReportFormat } from "@/lib/studentManagementApi";
+import type { ReportFileFormat } from "@/lib/reportDownload";
 
 const itemClass =
   "cursor-pointer gap-3 rounded-md px-2 py-2 focus:bg-muted focus:text-foreground";
 
+/** Shared Print / Export menu (Excel + PDF preview) used across fee, salary, attendance, etc. */
 export function DefaulterListDownload({
   exporting,
   onDownload,
   className,
-  label = "Defaulter list",
+  label = "Print / Export",
   variant = "outline",
+  size = "sm",
+  disabled = false,
 }: {
-  exporting: DefaulterReportFormat | null;
-  onDownload: (format: DefaulterReportFormat) => void;
+  exporting: ReportFileFormat | null;
+  onDownload: (format: ReportFileFormat) => void;
   className?: string;
   label?: string;
   variant?: "outline" | "default";
+  size?: "sm" | "default";
+  disabled?: boolean;
 }) {
   const isPrimary = variant === "default";
+  const busy = Boolean(exporting);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          size="sm"
+          size={size}
           variant={variant}
           className={cn(
-            "inline-flex h-9 items-center gap-2 whitespace-nowrap px-3 text-sm font-medium shadow-sm",
-            !isPrimary && "border-border bg-background text-foreground hover:bg-muted hover:text-foreground",
+            "inline-flex items-center gap-2 whitespace-nowrap px-3 text-sm font-medium shadow-sm",
+            size === "sm" ? "h-9" : "h-10",
+            !isPrimary &&
+              "border-border bg-background text-foreground hover:bg-muted hover:text-foreground",
             isPrimary &&
               "border-0 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
             className,
           )}
-          disabled={Boolean(exporting)}
+          disabled={busy || disabled}
         >
           <Download className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-          <span className="truncate">{exporting ? "Downloading…" : label}</span>
+          <span className="truncate">{busy ? "Preparing…" : label}</span>
           <span
             className={cn(
               "ml-0.5 h-4 w-px shrink-0",
@@ -76,10 +84,15 @@ export function DefaulterListDownload({
           </span>
           <span className="min-w-0">
             <span className="block text-sm font-medium leading-tight">PDF</span>
-            <span className="block text-xs text-muted-foreground">Printable report</span>
+            <span className="block text-xs text-muted-foreground">
+              Preview, then print or download
+            </span>
           </span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
+
+/** Alias for clarity in non-fee panels. */
+export const ReportExportMenu = DefaulterListDownload;

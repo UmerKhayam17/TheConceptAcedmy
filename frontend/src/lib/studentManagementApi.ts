@@ -1874,6 +1874,8 @@ export interface AcademyExpense {
   _id: string;
   title: string;
   category: ExpenseCategory;
+  /** Custom label when category is `other`. */
+  categoryOther?: string;
   amount: number;
   expenseDate: string;
   vendor?: string;
@@ -1881,6 +1883,12 @@ export interface AcademyExpense {
   paymentMethod?: string;
   referenceNumber?: string;
   status: "paid" | "planned";
+}
+
+/** Display label for expense category (uses custom name for Other). */
+export function expenseCategoryLabel(row: Pick<AcademyExpense, "category" | "categoryOther">): string {
+  if (row.category === "other" && row.categoryOther?.trim()) return row.categoryOther.trim();
+  return EXPENSE_CATEGORY_LABELS[row.category] || row.category;
 }
 
 export interface AcademyExpenseSummary {
@@ -1935,6 +1943,7 @@ export const fetchAcademyExpenseSummary = (params?: {
 export const createAcademyExpense = (body: {
   title: string;
   category: ExpenseCategory;
+  categoryOther?: string;
   amount: number;
   expenseDate: string;
   vendor?: string;
@@ -1950,6 +1959,32 @@ export const updateAcademyExpense = (id: string, body: Partial<AcademyExpense>) 
 
 export const deleteAcademyExpense = (id: string) =>
   api<{ deleted: boolean }>(`/expenses/${id}`, { method: "DELETE" });
+
+export type ExpenseReportFormat = "xlsx" | "pdf";
+
+export const exportAcademyExpenseReport = async (
+  params?: {
+    month?: number;
+    year?: number;
+    category?: string;
+    status?: string;
+    search?: string;
+  },
+  format: ExpenseReportFormat = "xlsx",
+) => {
+  const q = new URLSearchParams();
+  q.set("format", format);
+  if (params?.month) q.set("month", String(params.month));
+  if (params?.year) q.set("year", String(params.year));
+  if (params?.category) q.set("category", params.category);
+  if (params?.status) q.set("status", params.status);
+  if (params?.search) q.set("search", params.search);
+  const res = await authedFetch(`/student-management/expenses/export-report?${q}`, {
+    method: "GET",
+  });
+  if (!res.ok) throw new Error("Export failed");
+  return res.blob();
+};
 
 // Academy attendance
 export interface AcademyAttendanceDay {

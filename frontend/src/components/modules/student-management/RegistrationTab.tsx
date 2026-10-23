@@ -5,13 +5,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SquareCheckbox } from "@/components/ui/square-checkbox";
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Download,
   Eye,
-  FileSpreadsheet,
-  FileText,
   GraduationCap,
   Pencil,
   Plus,
@@ -24,12 +20,8 @@ import {
 } from "lucide-react";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DefaulterListDownload } from "./DefaulterListDownload";
+import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { resolveUploadUrl } from "@/lib/api";
@@ -50,7 +42,7 @@ import {
   type StudentExportFormat,
 } from "@/lib/studentManagementApi";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
-import { classLabel, formatDate, formatPkr, sessionLabelFromClass } from "./studentDisplayUtils";
+import { classLabel, formatPkr } from "./studentDisplayUtils";
 import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ProvisionalIntakeDialog from "./ProvisionalIntakeDialog";
 
@@ -58,7 +50,7 @@ function studentRef(s: AcademyStudent) {
   if (s.status === "pending_fee") {
     return s.rollNumber ?? s.registrationNumber ?? "Pending";
   }
-  return s.rollNumber ?? s.studentId ?? "—";
+  return s.rollNumber ?? s.studentId ?? "";
 }
 
 function statusLabel(status: AcademyStudentStatus) {
@@ -70,6 +62,15 @@ function sectionNameOf(s: AcademyStudent): string {
   if (!s.sectionId) return "";
   if (typeof s.sectionId === "object") return s.sectionId.sectionName || "";
   return "";
+}
+
+function phonesOf(s: AcademyStudent): string {
+  const primary = String(s.phone || "").trim();
+  const residential = String(s.contactPhoneRes || "").trim();
+  if (primary && residential && primary !== residential) {
+    return `${primary}\n${residential}`;
+  }
+  return primary || residential || "";
 }
 
 function sectionBadgeClass(name: string) {
@@ -220,16 +221,14 @@ export default function RegistrationTab({
 
   const routes =
     routesProp ?? (user?.role ? academyStudentRoutes(user.role, "registration") : null);
-  const { apiSessionId, writable, isAll, hasScope } = useSessionScope(sessionId);
-  const showSessionCol = isAll || !writable;
+  const { apiSessionId, writable, hasScope } = useSessionScope(sessionId);
   const isTeacher = user?.role === "teacher";
   const showPhoneCol = !isTeacher;
   const showMonthlyCol = !isTeacher;
   const hasActions = caps.canView || (writable && (caps.canEdit || caps.canDelete));
   const colSpan =
     1 +
-    (hasActions ? 8 : 7) +
-    (showSessionCol ? 1 : 0) +
+    (hasActions ? 7 : 6) +
     (showPhoneCol ? 1 : 0) +
     (showMonthlyCol ? 2 : 0);
 
@@ -364,6 +363,7 @@ export default function RegistrationTab({
 
   const handleExport = async (format: StudentExportFormat) => {
     setExporting(format);
+    const preview = openReportPreviewTab(format);
     try {
       const blob = await exportStudents(
         {
@@ -375,14 +375,16 @@ export default function RegistrationTab({
         },
         format,
       );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = format === "pdf" ? "academy-students.pdf" : "academy-students.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+      const parts = ["Student-Register"];
+      if (statusFilter) parts.push(statusFilter);
+      const mode = deliverReportBlob(blob, `${parts.join("_")}.${format}`, format, preview);
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description:
+          mode === "preview" ? "Use Print or Download from the preview window." : undefined,
+      });
     } catch {
+      preview?.close();
       toast({ title: "Export failed", variant: "destructive" });
     } finally {
       setExporting(null);
@@ -606,25 +608,12 @@ export default function RegistrationTab({
                 </Button>
               )
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-1.5 h-10" disabled={!!exporting}>
-                  <Download className="h-4 w-4" />
-                  {exporting ? "Exporting…" : "Export"}
-                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Excel (.xlsx)
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
-                  <FileText className="h-4 w-4" />
-                  PDF report
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <DefaulterListDownload
+              size="default"
+              label="Print / Export"
+              exporting={exporting}
+              onDownload={(format) => void handleExport(format)}
+            />
           </div>
         </div>
       </Card>
@@ -648,8 +637,6 @@ export default function RegistrationTab({
                 {showPhoneCol && <th className="text-left p-3 font-medium">Phone</th>}
                 <th className="text-left p-3 font-medium">Class</th>
                 <th className="text-left p-3 font-medium">Section</th>
-                {showSessionCol && <th className="text-left p-3 font-medium">Session</th>}
-                <th className="text-left p-3 font-medium">Created</th>
                 {showMonthlyCol && (
                   <>
                     <th className="text-left p-3 font-medium whitespace-nowrap">Monthly Fee</th>
@@ -720,7 +707,9 @@ export default function RegistrationTab({
                     </td>
                     <td className="p-3 text-muted-foreground whitespace-nowrap">{s.fatherName}</td>
                     {showPhoneCol && (
-                      <td className="p-3 text-muted-foreground whitespace-nowrap">{s.phone || "—"}</td>
+                      <td className="p-3 text-muted-foreground whitespace-pre-line text-xs leading-snug">
+                        {phonesOf(s)}
+                      </td>
                     )}
                     <td className="p-3 whitespace-nowrap">{classLabel(s.classId)}</td>
                     <td className="p-3">
@@ -733,26 +722,16 @@ export default function RegistrationTab({
                         >
                           {sectionName}
                         </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    {showSessionCol && (
-                      <td className="p-3 text-muted-foreground text-xs whitespace-nowrap">
-                        {sessionLabelFromClass(s.classId) || "—"}
-                      </td>
-                    )}
-                    <td className="p-3 text-muted-foreground whitespace-nowrap">
-                      {formatDate(s.createdAt)}
+                      ) : null}
                     </td>
                     {showMonthlyCol && (
                       <>
                         <td className="p-3 whitespace-nowrap">
-                          {isPending ? "—" : formatPkr(s.monthlyFee)}
+                          {isPending ? "" : formatPkr(s.monthlyFee)}
                         </td>
                         <td className="p-3 whitespace-nowrap font-medium text-[#1a2b4b]">
                           {isPending
-                            ? "—"
+                            ? ""
                             : formatPkr(
                                 Math.max(
                                   0,

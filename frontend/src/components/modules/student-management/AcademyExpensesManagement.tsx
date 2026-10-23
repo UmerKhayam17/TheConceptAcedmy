@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Receipt, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -18,21 +20,45 @@ import {
   createAcademyExpense,
   deleteAcademyExpense,
   EXPENSE_CATEGORY_LABELS,
+  expenseCategoryLabel,
+  exportAcademyExpenseReport,
   fetchAcademyExpenses,
   fetchAcademyExpenseSummary,
   updateAcademyExpense,
   type AcademyExpense,
   type ExpenseCategory,
+  type ExpenseReportFormat,
 } from "@/lib/studentManagementApi";
-import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import { cn } from "@/lib/utils";
+import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import { formatPkr } from "./studentDisplayUtils";
 import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import { DefaulterListDownload } from "./DefaulterListDownload";
 
 const CATEGORIES = Object.keys(EXPENSE_CATEGORY_LABELS) as ExpenseCategory[];
+
+const FULL_MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const selectClass =
+  "h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[7.5rem] shrink-0";
 
 const emptyForm = () => ({
   title: "",
   category: "other" as ExpenseCategory,
+  categoryOther: "",
   amount: "",
   expenseDate: new Date().toISOString().slice(0, 10),
   vendor: "",
@@ -73,6 +99,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
   const [editing, setEditing] = useState<AcademyExpense | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<AcademyExpense | null>(null);
+  const [exporting, setExporting] = useState<ExpenseReportFormat | null>(null);
 
   const filterParams = useMemo(
     () => ({
@@ -113,6 +140,8 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
       const body = {
         title: form.title.trim(),
         category: form.category,
+        categoryOther:
+          form.category === "other" ? form.categoryOther.trim() || undefined : undefined,
         amount,
         expenseDate: form.expenseDate,
         vendor: form.vendor.trim() || undefined,
@@ -162,6 +191,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
     setForm({
       title: row.title,
       category: row.category,
+      categoryOther: row.categoryOther || "",
       amount: String(row.amount),
       expenseDate: row.expenseDate.slice(0, 10),
       vendor: row.vendor || "",
@@ -181,9 +211,79 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
       .slice(0, 3);
   }, [summary]);
 
+  const handleExport = async (format: ExpenseReportFormat) => {
+    setExporting(format);
+    const preview = openReportPreviewTab(format);
+    try {
+      const blob = await exportAcademyExpenseReport(
+        {
+          month: Number(month),
+          year: Number(year),
+          category: categoryFilter || undefined,
+          status: statusFilter || undefined,
+          search: search.trim() || undefined,
+        },
+        format,
+      );
+      const monthLabel = FULL_MONTH_NAMES[Number(month) - 1] || month;
+      const mode = deliverReportBlob(
+        blob,
+        `Academy-Expenses_${monthLabel}-${year}.${format}`,
+        format,
+        preview,
+      );
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description:
+          mode === "preview"
+            ? "Use Print or Download from the preview window."
+            : "Expense report downloaded.",
+      });
+    } catch (e) {
+      preview?.close();
+      toast({
+        title: "Export failed",
+        description: e instanceof Error ? e.message : "Could not export",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+    <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      {/* Compact theme header — matches Staff Salary / Subjects */}
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <Receipt className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Academy Expenses
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+                Track rent, utilities, supplies, and other operating costs for the academy.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              A great school builds great futures.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <Card className="p-3">
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Total</p>
           <p className="text-lg font-semibold text-primary">
@@ -226,71 +326,84 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
         </Card>
       )}
 
-      <Card className="p-3">
-        <div className="flex flex-wrap gap-3 items-end justify-between">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div>
-              <Label className="text-xs">Month</Label>
-              <Input
-                type="number"
-                min={1}
-                max={12}
-                className="w-20 h-9"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Year</Label>
-              <Input
-                type="number"
-                className="w-24 h-9"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Category</Label>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm min-w-[8rem]"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-              >
-                <option value="">All</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {EXPENSE_CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label className="text-xs">Status</Label>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="">All</option>
-                <option value="paid">Paid</option>
-                <option value="planned">Planned</option>
-              </select>
-            </div>
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className={cn(selectClass, "w-[10rem]")}
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            aria-label="Month"
+          >
+            {FULL_MONTH_NAMES.map((name, i) => (
+              <option key={name} value={String(i + 1)}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select
+            className={cn(selectClass, "w-[7rem] min-w-[7rem]")}
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            aria-label="Year"
+          >
+            {Array.from({ length: 6 }, (_, i) => now.getFullYear() - 2 + i).map((y) => (
+              <option key={y} value={String(y)}>
+                {y}
+              </option>
+            ))}
+          </select>
+          <select
+            className={cn(selectClass, "min-w-[10rem]")}
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            aria-label="Category"
+          >
+            <option value="">All categories</option>
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {EXPENSE_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+          <select
+            className={cn(selectClass, "min-w-[8rem]")}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            aria-label="Status"
+          >
+            <option value="">All status</option>
+            <option value="paid">Paid</option>
+            <option value="planned">Planned</option>
+          </select>
+
+          <div className="relative min-w-[12rem] flex-1 max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search title, vendor, invoice / slip…"
+              className="h-10 pl-9"
+              aria-label="Search expenses"
+            />
           </div>
-          {canManage && (
-            <Button size="sm" variant="hero" onClick={openCreate}>
-              Add expense
-            </Button>
-          )}
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+            {canManage && (
+              <Button className="gap-2 h-10" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Add expense
+              </Button>
+            )}
+            {caps.canView && (
+              <DefaulterListDownload
+                size="default"
+                label="Print / Export"
+                exporting={exporting}
+                onDownload={(format) => void handleExport(format)}
+              />
+            )}
+          </div>
         </div>
       </Card>
-
-      <PanelSearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search title, vendor, reference…"
-        className="max-w-md"
-      />
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -333,7 +446,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                     )}
                   </td>
                   <td className="p-2.5 hidden md:table-cell">
-                    {EXPENSE_CATEGORY_LABELS[row.category] || row.category}
+                    {expenseCategoryLabel(row)}
                   </td>
                   <td className="p-2.5">{formatPkr(row.amount)}</td>
                   <td className="p-2.5">
@@ -393,26 +506,41 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editing ? "Edit expense" : "Add academy expense"}</DialogTitle>
+        <DialogContent className="sm:max-w-xl gap-0 p-0 overflow-hidden">
+          <DialogHeader className="border-b border-border/80 bg-slate-50/80 px-5 py-4 space-y-1">
+            <DialogTitle className="text-lg font-semibold text-[#1a2b4b]">
+              {editing ? "Edit expense" : "Add academy expense"}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Record an operating cost with category, amount, and payment details.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
             <div className="sm:col-span-2 space-y-1.5">
-              <Label>Title</Label>
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Title
+              </Label>
               <Input
+                className="h-10"
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 placeholder="e.g. Office rent — May"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Category</Label>
+            <div className={cn("space-y-1.5", form.category === "other" ? "" : "sm:col-span-2")}>
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Category
+              </Label>
               <select
-                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={form.category}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))
+                  setForm((f) => ({
+                    ...f,
+                    category: e.target.value as ExpenseCategory,
+                    categoryOther:
+                      e.target.value === "other" ? f.categoryOther : "",
+                  }))
                 }
               >
                 {CATEGORIES.map((c) => (
@@ -422,27 +550,49 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                 ))}
               </select>
             </div>
+            {form.category === "other" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Specify category
+                </Label>
+                <Input
+                  className="h-10"
+                  value={form.categoryOther}
+                  onChange={(e) => setForm((f) => ({ ...f, categoryOther: e.target.value }))}
+                  placeholder="e.g. Legal fees, Event refreshments"
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
-              <Label>Amount (PKR)</Label>
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Amount (PKR)
+              </Label>
               <Input
+                className="h-10"
                 type="number"
                 min={0}
                 value={form.amount}
                 onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                placeholder="0"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Date</Label>
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Date
+              </Label>
               <Input
+                className="h-10"
                 type="date"
                 value={form.expenseDate}
                 onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Status</Label>
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Status
+              </Label>
               <select
-                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={form.status}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, status: e.target.value as "paid" | "planned" }))
@@ -453,47 +603,62 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>Vendor (optional)</Label>
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Vendor
+              </Label>
               <Input
+                className="h-10"
                 value={form.vendor}
                 onChange={(e) => setForm((f) => ({ ...f, vendor: e.target.value }))}
+                placeholder="Optional"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Payment method</Label>
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Payment method
+              </Label>
               <select
-                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={form.paymentMethod}
                 onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))}
               >
                 <option value="cash">Cash</option>
                 <option value="bank_transfer">Bank transfer</option>
                 <option value="online">Online</option>
+                <option value="cheque">Cheque</option>
                 <option value="other">Other</option>
               </select>
             </div>
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label>Reference (optional)</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Invoice number or slip number
+              </Label>
               <Input
+                className="h-10"
                 value={form.referenceNumber}
                 onChange={(e) => setForm((f) => ({ ...f, referenceNumber: e.target.value }))}
-                placeholder="Invoice / receipt number"
+                placeholder="Optional"
               />
             </div>
             <div className="sm:col-span-2 space-y-1.5">
-              <Label>Notes (optional)</Label>
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Notes
+              </Label>
               <Textarea
-                rows={2}
+                rows={3}
+                className="min-h-[4.5rem] resize-y"
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Optional details about this expense"
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+          <DialogFooter className="border-t border-border/80 bg-slate-50/60 px-5 py-3.5 sm:justify-end">
+            <Button variant="outline" className="h-10" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button variant="hero" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
+            <Button className="h-10 gap-2" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
+              <Plus className="h-4 w-4" />
               {editing ? "Save changes" : "Add expense"}
             </Button>
           </DialogFooter>

@@ -23,6 +23,7 @@ async function buildExpenseQuery({ category, status, month, year, search }) {
       { vendor: { $regex: s, $options: 'i' } },
       { description: { $regex: s, $options: 'i' } },
       { referenceNumber: { $regex: s, $options: 'i' } },
+      { categoryOther: { $regex: s, $options: 'i' } },
     ];
   }
   return q;
@@ -59,9 +60,18 @@ async function listExpenses({
   };
 }
 
+function resolveCategoryOther(category, categoryOther) {
+  if (category !== 'other') return undefined;
+  const label = String(categoryOther || '').trim();
+  return label || undefined;
+}
+
 async function createExpense(body, userId) {
+  const category = body.category || 'other';
   return AcademyExpense.create({
     ...body,
+    category,
+    categoryOther: resolveCategoryOther(category, body.categoryOther),
     expenseDate: body.expenseDate ? new Date(body.expenseDate) : new Date(),
     createdBy: userId,
     recordedBy: userId,
@@ -73,6 +83,12 @@ async function updateExpense(id, body) {
   if (!row) throw new ApiError(404, 'Expense not found');
   if (body.title !== undefined) row.title = body.title;
   if (body.category !== undefined) row.category = body.category;
+  if (body.categoryOther !== undefined || body.category !== undefined) {
+    const nextCategory = body.category !== undefined ? body.category : row.category;
+    const nextOther =
+      body.categoryOther !== undefined ? body.categoryOther : row.categoryOther;
+    row.categoryOther = resolveCategoryOther(nextCategory, nextOther);
+  }
   if (body.amount !== undefined) row.amount = body.amount;
   if (body.expenseDate !== undefined) row.expenseDate = new Date(body.expenseDate);
   if (body.vendor !== undefined) row.vendor = body.vendor;

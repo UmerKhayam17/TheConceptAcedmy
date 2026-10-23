@@ -3,24 +3,14 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
-  ChevronDown,
   ClipboardList,
   Clock,
   Clock3,
-  Download,
-  FileSpreadsheet,
-  FileText,
   Palmtree,
   UserX,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
 import PanelToolbar from "@/components/modules/PanelToolbar";
@@ -43,6 +33,8 @@ import { moduleHref } from "@/lib/panelMenus";
 import type { Role } from "@/lib/auth";
 import ParentAttendancePanel from "@/components/modules/parent/ParentAttendancePanel";
 import PanelStatCard from "@/components/modules/PanelStatCard";
+import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
+import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 
 const today = () => localTodayYmd();
 
@@ -180,6 +172,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
 
   const handleExport = async (format: AttendanceExportFormat) => {
     setExporting(format);
+    const preview = openReportPreviewTab(format);
     try {
       const blob = await exportAcademyAttendance(
         {
@@ -191,14 +184,19 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
         },
         format,
       );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = format === "pdf" ? `attendance-${date}.pdf` : `attendance-${date}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+      const mode = deliverReportBlob(
+        blob,
+        `Student-Attendance_${date}.${format}`,
+        format,
+        preview,
+      );
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description:
+          mode === "preview" ? "Use Print or Download from the preview window." : undefined,
+      });
     } catch {
+      preview?.close();
       toast({ title: "Export failed", variant: "destructive" });
     } finally {
       setExporting(null);
@@ -242,7 +240,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                 <Button asChild variant="default" className="gap-2">
                   <Link to={moduleHref((user.role || "admin") as Role, "staff-attendance")}>
                     <Clock className="h-4 w-4" />
-                    Open Teacher Attendance
+                    Open Staff Attendance
                   </Link>
                 </Button>
               ) : null}
@@ -364,25 +362,13 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                 ))}
               </select>
             </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1 h-10" disabled={!!exporting || !hasScope}>
-                  <Download className="h-4 w-4" />
-                  {exporting ? "Exporting…" : "Export"}
-                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Excel (.xlsx)
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
-                  <FileText className="h-4 w-4" />
-                  PDF report
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <DefaulterListDownload
+              size="default"
+              label="Print / Export"
+              exporting={exporting}
+              disabled={!hasScope}
+              onDownload={(format) => void handleExport(format)}
+            />
           </div>
         </Card>
 

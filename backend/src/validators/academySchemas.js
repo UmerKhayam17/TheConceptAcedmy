@@ -472,6 +472,7 @@ const expenseCategories = [
 const academyExpenseBody = Joi.object({
   title: Joi.string().trim().required(),
   category: Joi.string().valid(...expenseCategories).default('other'),
+  categoryOther: Joi.string().allow('').trim().max(80),
   amount: Joi.number().min(0).required(),
   expenseDate: Joi.date().required(),
   vendor: Joi.string().allow('').trim(),
@@ -484,6 +485,7 @@ const academyExpenseBody = Joi.object({
 const academyExpensePatch = Joi.object({
   title: Joi.string().trim(),
   category: Joi.string().valid(...expenseCategories),
+  categoryOther: Joi.string().allow('').trim().max(80),
   amount: Joi.number().min(0),
   expenseDate: Joi.date(),
   vendor: Joi.string().allow('').trim(),

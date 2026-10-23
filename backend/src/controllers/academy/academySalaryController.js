@@ -80,19 +80,34 @@ const exportReport = catchAsync(async (req, res) => {
     search: req.query.search || undefined,
     ids: ids.length ? ids : undefined,
   });
-  const stamp = [
-    req.query.year || 'all',
-    req.query.month ? String(req.query.month).padStart(2, '0') : 'all',
-  ].join('-');
+  const monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  const monthLabel = req.query.month
+    ? monthNames[Number(req.query.month) - 1] || String(req.query.month)
+    : 'All';
+  const yearLabel = req.query.year || 'All';
+  const salaryFile = `Staff-Salary_${monthLabel}-${yearLabel}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
   if (format === 'pdf') {
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="staff-salaries-${stamp}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="${salaryFile}"`);
   } else {
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-    res.setHeader('Content-Disposition', `attachment; filename="staff-salaries-${stamp}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${salaryFile}"`);
   }
   res.send(Buffer.from(buffer));
 });

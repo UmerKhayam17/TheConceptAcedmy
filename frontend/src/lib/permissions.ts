@@ -165,7 +165,7 @@ export const MODULES: ModuleDef[] = [
   { key: "attendance", label: "Student Attendance", icon: "ClipboardList", desc: "Daily student attendance" },
   {
     key: "staff-attendance",
-    label: "Teacher Attendance",
+    label: "Staff Attendance",
     icon: "Clock",
     desc: "Mark and review teacher / staff attendance",
   },

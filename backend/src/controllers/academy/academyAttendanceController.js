@@ -142,10 +142,11 @@ const exportAttendance = catchAsync(async (req, res) => {
   const meta = await resolveExportMeta(req, data.summary);
   const records = recordMapFromDay(data);
 
+  const attFile = `Student-Attendance_${String(date).replace(/[^0-9-]/g, '')}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
   if (format === 'pdf') {
     const buffer = await renderAttendancePdf(data.students, records, meta);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="attendance-${date}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="${attFile}"`);
     return res.send(buffer);
   }
 
@@ -154,7 +155,7 @@ const exportAttendance = catchAsync(async (req, res) => {
     'Content-Type',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   );
-  res.setHeader('Content-Disposition', `attachment; filename="attendance-${date}.xlsx"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${attFile}"`);
   return res.send(buffer);
 });
 

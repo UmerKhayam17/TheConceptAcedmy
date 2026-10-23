@@ -97,6 +97,11 @@ router.get(
   ctrl.listStaffAttendanceMonth
 );
 router.get(
+  '/staff-attendance/export',
+  requireAnyPermission('view_attendance', 'mark_attendance', 'manage_users'),
+  ctrl.exportStaffAttendance
+);
+router.get(
   '/staff-attendance/history',
   requireAnyPermission('view_attendance', 'mark_attendance', 'manage_users'),
   ctrl.staffAttendanceHistory

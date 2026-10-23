@@ -507,16 +507,18 @@ async function renderBrandedPdf({
   emptyMessage = 'No records match the selected filters.',
   plain = false,
   additionalSections = [],
+  layout = 'landscape',
 }) {
   const brand = ACADEMY_BRAND;
   const logoPath = resolveLogoPath();
   const reportMeta = { ...meta, generatedAt: meta.generatedAt || new Date() };
+  const pageLayout = layout === 'portrait' ? 'portrait' : 'landscape';
 
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
         size: 'A4',
-        layout: 'landscape',
+        layout: pageLayout,
         margin: plain ? 36 : 32,
         bufferPages: true,
         info: {
@@ -639,12 +641,14 @@ function populateExcelSheet(workbook, {
   meta = {},
   plain = false,
   brand,
+  layout = 'landscape',
 }) {
   const headerRows = plain ? 5 : 6;
+  const orientation = layout === 'portrait' ? 'portrait' : 'landscape';
   const sheet = workbook.addWorksheet(sheetName || 'Report', {
     pageSetup: {
       paperSize: 9,
-      orientation: 'landscape',
+      orientation,
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 0,
@@ -857,6 +861,7 @@ async function renderBrandedExcel({
   meta = {},
   plain = false,
   additionalSheets = [],
+  layout = 'landscape',
 }) {
   const brand = ACADEMY_BRAND;
   const workbook = new ExcelJS.Workbook();
@@ -874,6 +879,7 @@ async function renderBrandedExcel({
     meta,
     plain,
     brand,
+    layout,
   });
 
   (Array.isArray(additionalSheets) ? additionalSheets : []).forEach((extra, idx) => {
@@ -887,6 +893,7 @@ async function renderBrandedExcel({
       meta: { ...meta, ...(extra.meta || {}) },
       plain,
       brand,
+      layout: extra.layout || layout,
     });
   });
 

@@ -5,10 +5,7 @@ import {
   ArrowLeft,
   Calendar,
   CheckCircle2,
-  ChevronDown,
   Clock,
-  Download,
-  FileSpreadsheet,
   FileText,
   KeyRound,
   Mail,
@@ -22,12 +19,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PanelStatCard from "@/components/modules/PanelStatCard";
+import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  deliverReportBlob,
+  openReportPreviewTab,
+  safeReportFileToken,
+} from "@/lib/reportDownload";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { resolveUploadUrl } from "@/lib/api";
@@ -304,6 +301,7 @@ export default function StaffDetailPage({
 
   const handleExport = async (format: StaffReportFormat) => {
     setExporting(format);
+    const preview = openReportPreviewTab(format);
     try {
       const blob = await exportStaffReport(staffId, {
         format,
@@ -311,14 +309,21 @@ export default function StaffDetailPage({
         year,
         sessionId: activeSessionId || undefined,
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = format === "pdf" ? `staff-report.pdf` : `staff-report.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+      const staffToken = safeReportFileToken(staff?.name || "staff");
+      const monthToken = safeReportFileToken(MONTH_NAMES[month - 1] || String(month));
+      const mode = deliverReportBlob(
+        blob,
+        `${staffToken}_${monthToken}-${year}.${format}`,
+        format,
+        preview,
+      );
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description:
+          mode === "preview" ? "Use Print or Download from the preview window." : undefined,
+      });
     } catch {
+      preview?.close();
       toast({ title: "Export failed", variant: "destructive" });
     } finally {
       setExporting(null);
@@ -528,23 +533,12 @@ export default function StaffDetailPage({
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="h-10 gap-2" disabled={!!exporting}>
-              <Download className="h-4 w-4" />
-              {exporting ? "Exporting…" : "Complete report"}
-              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem className="gap-2" onClick={() => void handleExport("xlsx")}>
-              <FileSpreadsheet className="h-4 w-4" /> Excel (.xlsx)
-            </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2" onClick={() => void handleExport("pdf")}>
-              <FileText className="h-4 w-4" /> PDF report
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <DefaulterListDownload
+          size="default"
+          label="Print / Export"
+          exporting={exporting}
+          onDownload={(format) => void handleExport(format)}
+        />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

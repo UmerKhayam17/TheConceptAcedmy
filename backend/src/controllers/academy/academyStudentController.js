@@ -1,6 +1,7 @@
 const catchAsync = require('../../utils/catchAsync');
 const ApiError = require('../../utils/ApiError');
 const AcademyClass = require('../../models/academy/AcademyClass');
+const AcademySection = require('../../models/academy/AcademySection');
 const Session = require('../../models/Session');
 const studentService = require('../../services/academy/academyStudentService');
 const recordService = require('../../services/academy/academyStudentRecordService');
@@ -135,6 +136,7 @@ const list = catchAsync(async (req, res) => {
 
 async function resolveExportMeta(req) {
   let className = '';
+  let sectionName = '';
   let sessionName = '';
   if (req.query.classId) {
     const cls = await AcademyClass.findById(req.query.classId)
@@ -142,6 +144,10 @@ async function resolveExportMeta(req) {
       .populate('sessionId', 'name');
     className = cls?.className || '';
     sessionName = cls?.sessionId?.name || '';
+  }
+  if (req.query.sectionId) {
+    const sec = await AcademySection.findById(req.query.sectionId).select('sectionName');
+    sectionName = sec?.sectionName || '';
   }
   if (!sessionName && req.query.sessionId) {
     const session = await Session.findById(req.query.sessionId).select('name');
@@ -151,6 +157,7 @@ async function resolveExportMeta(req) {
     search: req.query.search || '',
     status: req.query.status || '',
     className,
+    sectionName,
     sessionName,
     generatedAt: new Date(),
     generatedBy: req.user?.name || req.user?.email || '',
@@ -184,10 +191,25 @@ const exportStudents = catchAsync(async (req, res) => {
   const meta = await resolveExportMeta(req);
   const omitSensitive = Boolean(teacherScope);
 
+  const safeToken = (value, fallback = 'All') => {
+    const cleaned = String(value || fallback)
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/^-|-$/g, '');
+    return cleaned || fallback;
+  };
+  const fileBase = [
+    'Student-Register',
+    meta.sessionName ? safeToken(meta.sessionName) : null,
+    meta.className ? safeToken(meta.className) : null,
+    meta.status ? safeToken(meta.status) : null,
+  ]
+    .filter(Boolean)
+    .join('_');
+
   if (format === 'pdf') {
     const buffer = await renderStudentsPdf(result.items, meta, { omitSensitive });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="academy-students.pdf"');
+    res.setHeader('Content-Disposition', `inline; filename="${fileBase}.pdf"`);
     return res.send(buffer);
   }
 
@@ -197,13 +219,13 @@ const exportStudents = catchAsync(async (req, res) => {
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-    res.setHeader('Content-Disposition', 'attachment; filename="academy-students.xlsx"');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.xlsx"`);
     return res.send(Buffer.from(buffer));
   }
 
   const csv = studentService.studentsToCsv(result.items, { omitSensitive });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="academy-students.csv"');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.csv"`);
   res.send(csv);
 });
 

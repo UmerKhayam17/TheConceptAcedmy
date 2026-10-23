@@ -51,7 +51,14 @@ export type AiEnrollmentStatus = {
 
 export type StaffAttendanceRecord = {
   _id: string;
-  userId: { _id: string; name?: string; email?: string } | string;
+  userId:
+    | {
+        _id: string;
+        name?: string;
+        email?: string;
+        role?: { _id: string; name?: string } | string;
+      }
+    | string;
   date: string;
   checkIn?: string;
   checkOut?: string;
@@ -239,3 +246,37 @@ export const markStaffAttendanceManual = (payload: MarkStaffAttendancePayload) =
     method: "POST",
     body: JSON.stringify(payload),
   });
+
+export type StaffAttendanceExportFormat = "xlsx" | "pdf";
+
+export const exportStaffAttendanceReport = async (
+  params: {
+    scope: "daily" | "monthly";
+    format?: StaffAttendanceExportFormat;
+    date?: string;
+    month?: number;
+    year?: number;
+    userId?: string;
+    role?: string;
+  },
+) => {
+  const format = params.format || "pdf";
+  const q = new URLSearchParams({ scope: params.scope, format });
+  if (params.date) q.set("date", params.date);
+  if (params.month) q.set("month", String(params.month));
+  if (params.year) q.set("year", String(params.year));
+  if (params.userId) q.set("userId", params.userId);
+  if (params.role) q.set("role", params.role);
+  const res = await authedFetch(`/ai-attendance/staff-attendance/export?${q}`, { method: "GET" });
+  if (!res.ok) {
+    let message = "Export failed";
+    try {
+      const body = await parseJson<{ message?: string }>(res);
+      if (body.message) message = body.message;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  return res.blob();
+};

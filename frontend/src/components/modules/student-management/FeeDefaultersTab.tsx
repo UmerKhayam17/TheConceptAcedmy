@@ -28,6 +28,7 @@ import {
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { DefaulterListDownload } from "./DefaulterListDownload";
+import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import {
   ChallanPrintDialog,
   type ChallanPrintRequest,
@@ -155,16 +156,42 @@ export default function FeeDefaultersTab({
 
   const handleMonthWiseExport = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
+    const preview = openReportPreviewTab(format);
     try {
       const blob = await exportFeeDefaultersMonthWise(filterParams, format);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = format === "pdf" ? "fee-defaulters.pdf" : "fee-defaulters.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ title: format === "pdf" ? "PDF downloaded" : "Excel downloaded" });
+      const MONTHS = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ];
+      const period =
+        month && year
+          ? `${MONTHS[Number(month) - 1] || month}-${year}`
+          : year
+            ? String(year)
+            : "All";
+      const mode = deliverReportBlob(
+        blob,
+        `Fee-Defaulters_${period}.${format}`,
+        format,
+        preview,
+      );
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description:
+          mode === "preview" ? "Use Print or Download from the preview window." : undefined,
+      });
     } catch (e) {
+      preview?.close();
       toast({
         title: "Export failed",
         description: e instanceof Error ? e.message : undefined,

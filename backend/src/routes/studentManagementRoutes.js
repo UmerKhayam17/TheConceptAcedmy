@@ -612,6 +612,11 @@ router.get(
   expenseCtrl.summary
 );
 router.get(
+  '/expenses/export-report',
+  requireAnyPermission('view_academy_expenses', 'manage_academy_expenses'),
+  expenseCtrl.exportReport
+);
+router.get(
   '/expenses',
   requireAnyPermission('view_academy_expenses', 'manage_academy_expenses'),
   expenseCtrl.list
