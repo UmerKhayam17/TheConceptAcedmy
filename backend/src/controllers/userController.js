@@ -98,12 +98,14 @@ async function fetchLinkedStudentsByParentEmails(emails) {
   ];
   if (!normalized.length) return new Map();
 
-  const students = await AcademyStudent.find({ guardianEmail: { $in: normalized } })
-    .select('_id studentId studentName guardianEmail classId sectionId status')
-    .populate('classId', 'className')
-    .populate('sectionId', 'sectionName')
-    .sort({ studentName: 1 })
-    .lean();
+  const { sortStudentsByRollAsc } = require('../utils/academyStudentSort');
+  const students = sortStudentsByRollAsc(
+    await AcademyStudent.find({ guardianEmail: { $in: normalized } })
+      .select('_id studentId rollNumber studentName guardianEmail classId sectionId status')
+      .populate('classId', 'className')
+      .populate('sectionId', 'sectionName')
+      .lean()
+  );
 
   const byEmail = new Map();
   students.forEach((s) => {

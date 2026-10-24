@@ -15,6 +15,7 @@ const Session = require('../../models/Session');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { notifyByAccess } = require('../realtime/realtimeService');
 const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
+const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 async function resolveFeeReportContext({ sessionId, classId }) {
   let sessionLabel = '';
@@ -2174,7 +2175,14 @@ async function listFeeDefaulters({
   const skip = (Math.max(1, page) - 1) * perPage;
 
   const pipeline = buildDefaultersPipeline({ feeMatch, search });
-  pipeline.push({ $sort: { oldestDueDate: 1, totalDue: -1 } });
+  // Roster order: ascending roll number within the defaulter set.
+  pipeline.push({
+    $sort: {
+      'student.rollNumber': 1,
+      'student.studentName': 1,
+      oldestDueDate: 1,
+    },
+  });
   pipeline.push({
     $facet: {
       metadata: [{ $count: 'total' }],
@@ -2364,12 +2372,16 @@ function buildDefaulterReport(records) {
     }
   });
 
-  const students = [...byStudent.values()].sort(
-    (a, b) =>
-      a.className.localeCompare(b.className) ||
-      a.sectionName.localeCompare(b.sectionName) ||
-      a.name.localeCompare(b.name)
-  );
+  const students = [...byStudent.values()].sort((a, b) => {
+    const byClass = String(a.className || '').localeCompare(String(b.className || ''));
+    if (byClass) return byClass;
+    const bySection = String(a.sectionName || '').localeCompare(String(b.sectionName || ''));
+    if (bySection) return bySection;
+    return compareStudentsByRollAsc(
+      { rollNumber: a.rollNo, studentName: a.name },
+      { rollNumber: b.rollNo, studentName: b.name }
+    );
+  });
 
   const rows = students.map((student, index) => {
     const row = {

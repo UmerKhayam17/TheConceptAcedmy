@@ -5,6 +5,7 @@ const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyFeeStructure = require('../../models/academy/AcademyFeeStructure');
 const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const AcademyClassTest = require('../../models/academy/AcademyClassTest');
+const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 async function getClassRecord(classId, { omitSensitive = false, allowedSectionIds = null } = {}) {
@@ -12,8 +13,8 @@ async function getClassRecord(classId, { omitSensitive = false, allowedSectionId
   if (!cls) throw new ApiError(404, 'Class not found');
 
   const studentSelect = omitSensitive
-    ? 'studentId studentName fatherName status isFullPackage gender sectionId'
-    : 'studentId studentName fatherName status isFullPackage gender phone';
+    ? 'studentId rollNumber studentName fatherName status isFullPackage gender sectionId'
+    : 'studentId rollNumber studentName fatherName status isFullPackage gender phone';
 
   const studentQuery = { classId };
   if (Array.isArray(allowedSectionIds) && allowedSectionIds.length > 0) {
@@ -42,10 +43,7 @@ async function getClassRecord(classId, { omitSensitive = false, allowedSectionId
           .populate('createdBy', 'name email')
           .sort({ effectiveDate: -1, createdAt: -1 })
           .lean(),
-    AcademyStudent.find(studentQuery)
-      .select(studentSelect)
-      .sort({ studentName: 1 })
-      .lean(),
+    AcademyStudent.find(studentQuery).select(studentSelect).lean(),
     AcademyClassTest.find({ classId })
       .populate('subjectId', 'subjectName subjectCode')
       .sort({ examDate: -1 })
@@ -68,14 +66,15 @@ async function getClassRecord(classId, { omitSensitive = false, allowedSectionId
   const activeFeeStructure =
     feeStructures.find((f) => f.status === 'active') || feeStructures[0] || null;
 
-  const activeStudents = students.filter((s) => s.status === 'active').length;
+  const studentsSorted = sortStudentsByRollAsc(students);
+  const activeStudents = studentsSorted.filter((s) => s.status === 'active').length;
 
   return {
     class: cls,
     subjects,
     feeStructure: omitSensitive ? null : activeFeeStructure,
     feeStructureHistory: omitSensitive ? [] : feeStructures,
-    students,
+    students: studentsSorted,
     classTests,
     timetable: [],
     stats: {

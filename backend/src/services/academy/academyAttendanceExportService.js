@@ -1,4 +1,5 @@
 const { renderBrandedExcel, renderBrandedPdf, formatDateTime } = require('./academyReportDocument');
+const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 /** Portrait A4 widths; plain mode scales to fit. */
 const COLUMNS = [
@@ -47,18 +48,7 @@ function fmtTime(value) {
 }
 
 function mapAttendanceRows(students, recordByStudent) {
-  const sorted = [...(students || [])].sort((a, b) => {
-    const ra = String(a.rollNumber || a.studentId || a.registrationNumber || '').trim();
-    const rb = String(b.rollNumber || b.studentId || b.registrationNumber || '').trim();
-    if (ra && rb && ra !== rb) {
-      return ra.localeCompare(rb, undefined, { numeric: true, sensitivity: 'base' });
-    }
-    if (ra && !rb) return -1;
-    if (!ra && rb) return 1;
-    return String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
-      sensitivity: 'base',
-    });
-  });
+  const sorted = sortStudentsByRollAsc(students);
   return sorted.map((s, i) => {
     const rec = recordByStudent.get(String(s._id));
     return {

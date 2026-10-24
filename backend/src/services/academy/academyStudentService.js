@@ -26,6 +26,7 @@ const {
   isModernRegistrationNumber,
   resolveRegistrationDisplay,
 } = require('../../utils/academyRegistrationNumber');
+const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 const STUDENT_PHOTO_DIR = path.join(__dirname, '../../../uploads/students');
 
@@ -472,7 +473,7 @@ async function listStudents({
   /** Restrict to these student ObjectIds (e.g. parent-linked children). */
   studentIds = null,
   sessionId,
-  sort = '-createdAt',
+  sort = 'rollNumber studentName',
   forExport = false,
   /** Extra Mongo filter (e.g. teacher class/section scope). */
   scopeFilter = null,
@@ -555,18 +556,7 @@ function studentsToCsv(rows, { omitSensitive = false, reportType = 'list' } = {}
     ? ['SR No', 'Reg No', 'Student Name', 'Father Name', 'Contact', '', '', '']
     : ['SR No', 'Roll #', 'Student Name', '', ''];
   const lines = [header.join(',')];
-  const sorted = [...(rows || [])].sort((a, b) => {
-    const ra = String(a.rollNumber || a.studentId || a.registrationNumber || '').trim();
-    const rb = String(b.rollNumber || b.studentId || b.registrationNumber || '').trim();
-    if (ra && rb && ra !== rb) {
-      return ra.localeCompare(rb, undefined, { numeric: true, sensitivity: 'base' });
-    }
-    if (ra && !rb) return -1;
-    if (!ra && rb) return 1;
-    return String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
-      sensitivity: 'base',
-    });
-  });
+  const sorted = [...(rows || [])].sort(compareStudentsByRollAsc);
   sorted.forEach((s, i) => {
     const idCol = isContact
       ? resolveRegistrationDisplay(s)

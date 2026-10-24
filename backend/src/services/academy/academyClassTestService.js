@@ -10,6 +10,7 @@ const AcademySection = require('../../models/academy/AcademySection');
 const assessmentService = require('./academyAssessmentService');
 const { buildSeriesPlan } = require('./classTestSeries');
 const { isEnrolledInSubject } = require('./studentEnrollment');
+const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 const {
   isTeacherRole,
   getTeacherScopeCombos,
@@ -165,11 +166,10 @@ async function getClassTestMarksEntry(testId, actor, sessionId) {
     )
     .populate('sectionId', 'sectionName')
     .populate('disciplineId', 'name code')
-    .sort({ studentName: 1 })
     .lean();
-  const students = subjectId
-    ? studentsRaw.filter((s) => isEnrolledInSubject(s, subjectId))
-    : studentsRaw;
+  const students = sortStudentsByRollAsc(
+    subjectId ? studentsRaw.filter((s) => isEnrolledInSubject(s, subjectId)) : studentsRaw
+  );
 
   const assessments = await AcademyAssessment.find({ classTestId: testId })
     .populate('createdBy', 'name email')

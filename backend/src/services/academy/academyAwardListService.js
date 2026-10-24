@@ -8,6 +8,7 @@ const AcademySection = require('../../models/academy/AcademySection');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const ApiError = require('../../utils/ApiError');
 const { isEnrolledInSubject } = require('./studentEnrollment');
+const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 const GRAY = '#C8C8C8';
 const LINE = '#000000';
@@ -33,12 +34,7 @@ function nameOf(student) {
 }
 
 function sortStudents(students) {
-  return [...students].sort((a, b) => {
-    const ra = rollOf(a);
-    const rb = rollOf(b);
-    if (ra && rb && ra !== rb) return ra.localeCompare(rb, undefined, { numeric: true });
-    return nameOf(a).localeCompare(nameOf(b));
-  });
+  return sortStudentsByRollAsc(students);
 }
 
 function disciplineNameOf(student) {

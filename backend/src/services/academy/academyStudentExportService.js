@@ -9,6 +9,7 @@ const {
   fitText,
 } = require('./academyReportDocument');
 const { resolveRegistrationDisplay } = require('../../utils/academyRegistrationNumber');
+const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 /**
  * Student List — class + section scoped sheet.
@@ -103,24 +104,6 @@ function rollNoOf(s) {
   );
 }
 
-/** Sort key for ascending numeric order (1, 2, 10… not 1, 10, 2). */
-function rollSortKey(s) {
-  return String(s.rollNumber || s.studentId || s.registrationNumber || '').trim();
-}
-
-function compareByRollAsc(a, b) {
-  const ra = rollSortKey(a);
-  const rb = rollSortKey(b);
-  if (ra && rb && ra !== rb) {
-    return ra.localeCompare(rb, undefined, { numeric: true, sensitivity: 'base' });
-  }
-  if (ra && !rb) return -1;
-  if (!ra && rb) return 1;
-  return String(a.studentName || '').localeCompare(String(b.studentName || ''), undefined, {
-    sensitivity: 'base',
-  });
-}
-
 function classNameOf(s) {
   return s.classId?.className || '';
 }
@@ -148,7 +131,7 @@ function phonesOf(s) {
 
 function mapStudentsToRows(students, { omitSensitive = false, reportType = 'list' } = {}) {
   const kind = normalizeReportType(reportType);
-  const sorted = [...(students || [])].sort(compareByRollAsc);
+  const sorted = [...(students || [])].sort(compareStudentsByRollAsc);
   return sorted.map((s, i) => ({
     serial: i + 1,
     // Student List shows Roll #; Contact List keeps Reg No (same column key for layout).

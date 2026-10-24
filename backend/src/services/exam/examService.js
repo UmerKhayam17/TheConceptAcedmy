@@ -8,6 +8,7 @@ const AcademySubject = require('../../models/academy/AcademySubject');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const { computeResultTotals } = require('./examGrading');
 const { hasAnySubjectEnrollment, selectedSubjectIds } = require('../academy/studentEnrollment');
+const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 const EXAM_PAPER_DIR = path.join(__dirname, '../../../uploads/exam-papers');
 
@@ -106,28 +107,28 @@ async function getExamStudents(examId) {
     resultByStudent[String(r.academyStudent)] = r;
   });
 
-  const rows = students
-    .filter((student) => hasAnySubjectEnrollment(student))
-    .map((student) => {
-      const enrolled = enrolledSubjectIds(student, subjects);
-      const enrolledSubjects = subjects.filter((s) => enrolled.includes(String(s._id)));
-      const existing = resultByStudent[String(student._id)];
-      const section = student.sectionId;
-      return {
-        student: {
-          _id: student._id,
-          studentId: student.studentId,
-          studentName: student.studentName,
-          fatherName: student.fatherName,
-          rollNumber: student.rollNumber,
-          sectionName:
-            section && typeof section === 'object' ? section.sectionName || '' : '',
-          isFullPackage: student.isFullPackage,
-        },
-        subjects: enrolledSubjects,
-        result: existing || null,
-      };
-    });
+  const rows = sortStudentsByRollAsc(
+    students.filter((student) => hasAnySubjectEnrollment(student))
+  ).map((student) => {
+    const enrolled = enrolledSubjectIds(student, subjects);
+    const enrolledSubjects = subjects.filter((s) => enrolled.includes(String(s._id)));
+    const existing = resultByStudent[String(student._id)];
+    const section = student.sectionId;
+    return {
+      student: {
+        _id: student._id,
+        studentId: student.studentId,
+        studentName: student.studentName,
+        fatherName: student.fatherName,
+        rollNumber: student.rollNumber,
+        sectionName:
+          section && typeof section === 'object' ? section.sectionName || '' : '',
+        isFullPackage: student.isFullPackage,
+      },
+      subjects: enrolledSubjects,
+      result: existing || null,
+    };
+  });
 
   return { exam, subjects, students: rows };
 }

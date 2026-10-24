@@ -3,6 +3,7 @@ const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const { dayBounds } = require('../../utils/schoolDay');
+const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 function resolveDay(dateStr) {
   try {
@@ -43,11 +44,12 @@ async function listByDate({
       ? { $and: [studentQ, scopeFilter] }
       : studentQ;
 
-  const students = await AcademyStudent.find(filter)
-    .populate('classId', 'className classCode sessionId')
-    .populate('sectionId', 'sectionName')
-    .sort({ studentName: 1 })
-    .lean();
+  const students = sortStudentsByRollAsc(
+    await AcademyStudent.find(filter)
+      .populate('classId', 'className classCode sessionId')
+      .populate('sectionId', 'sectionName')
+      .lean()
+  );
 
   const studentIdList = students.map((s) => s._id);
   const records = studentIdList.length

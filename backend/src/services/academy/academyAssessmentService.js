@@ -3,6 +3,7 @@ const AcademyAssessment = require('../../models/academy/AcademyAssessment');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const { hasAnySubjectEnrollment, isEnrolledInSubject } = require('./studentEnrollment');
+const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 async function assertStudent(id) {
   const student = await AcademyStudent.findById(id);
@@ -134,11 +135,14 @@ async function getClassTestEntry({ classId, subjectId, title, assessmentType, ex
   if (sectionId) studentQ.sectionId = sectionId;
 
   const students = await AcademyStudent.find(studentQ)
-    .select('studentId studentName fatherName isFullPackage selectedSubjects classId sectionId')
-    .sort({ studentName: 1 })
+    .select(
+      'studentId studentName fatherName rollNumber isFullPackage selectedSubjects classId sectionId'
+    )
     .lean();
 
-  const enrolled = students.filter((s) => isEnrolledInSubject(s, subjectId));
+  const enrolled = sortStudentsByRollAsc(
+    students.filter((s) => isEnrolledInSubject(s, subjectId))
+  );
 
   let existingByStudent = {};
   if (title && assessmentType && examDate) {

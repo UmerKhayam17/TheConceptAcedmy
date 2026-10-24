@@ -224,9 +224,9 @@ async function syncRoster() {
 async function listPeopleForEnrollment() {
   const [students, staffRoles] = await Promise.all([
     AcademyStudent.find({ status: 'active' })
-      .select('studentName fatherName studentId aiEmployeeId photoImage classId')
+      .select('studentName fatherName studentId rollNumber aiEmployeeId photoImage classId')
       .populate('classId', 'className')
-      .sort({ studentName: 1 })
+      .sort({ rollNumber: 1, studentName: 1 })
       .lean(),
     Role.find({ name: { $in: ['teacher', 'accountant'] } }).select('_id name').lean(),
   ]);

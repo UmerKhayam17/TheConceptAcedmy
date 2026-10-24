@@ -15,6 +15,7 @@ const ApiError = require('../../utils/ApiError');
 const { isEnrolledInSubject } = require('./studentEnrollment');
 const { letterGrade } = require('../exam/examGrading');
 const { renderResultCardPdf } = require('../pdfService');
+const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 const LINE = '#000000';
 const GRAY = '#D0D0D0';
@@ -91,12 +92,7 @@ function studentCodeOf(student) {
 }
 
 function sortStudents(students) {
-  return [...students].sort((a, b) => {
-    const ra = rollOf(a);
-    const rb = rollOf(b);
-    if (ra && rb && ra !== rb) return ra.localeCompare(rb, undefined, { numeric: true });
-    return nameOf(a).localeCompare(nameOf(b));
-  });
+  return sortStudentsByRollAsc(students);
 }
 
 function matricPctOf(student) {
