@@ -24,7 +24,6 @@ const { generateAcademyRollNumber, generateTemporaryRollNumber } = require('../.
 const {
   generateRegistrationNumber,
   isModernRegistrationNumber,
-  resolveRegistrationDisplay,
 } = require('../../utils/academyRegistrationNumber');
 const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
@@ -553,14 +552,12 @@ function studentsToCsv(rows, { omitSensitive = false, reportType = 'list' } = {}
   const isContact = String(reportType || 'list').toLowerCase() === 'contact';
   const includeContact = isContact && !omitSensitive;
   const header = includeContact
-    ? ['SR No', 'Reg No', 'Student Name', 'Father Name', 'Contact', '', '', '']
+    ? ['SR No', 'Roll #', 'Student Name', 'Father Name', 'Contact', '', '', '']
     : ['SR No', 'Roll #', 'Student Name', '', ''];
   const lines = [header.join(',')];
   const sorted = [...(rows || [])].sort(compareStudentsByRollAsc);
   sorted.forEach((s, i) => {
-    const idCol = isContact
-      ? resolveRegistrationDisplay(s)
-      : String(s.rollNumber || s.studentId || '').trim();
+    const idCol = String(s.rollNumber || s.studentId || '').trim();
     const cells = [
       i + 1,
       `"${idCol.replace(/"/g, '""')}"`,

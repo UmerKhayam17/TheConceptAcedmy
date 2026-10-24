@@ -2270,7 +2270,6 @@ async function getDefaultersSummary({ classId, month, year, sessionId }) {
 
 function defaultersToCsv(items) {
   const header = [
-    'Ref #',
     'Roll #',
     'Student Name',
     'Father Name',
@@ -2284,7 +2283,6 @@ function defaultersToCsv(items) {
     'Days Overdue',
   ];
   const rows = items.map((d) => [
-    d.student?.registrationNumber || d.student?.studentId || '',
     d.student?.rollNumber || d.student?.studentId || '',
     d.student?.studentName ?? '',
     d.student?.fatherName ?? '',
@@ -2347,7 +2345,7 @@ function buildDefaulterReport(records) {
     const id = String(student._id);
     if (!byStudent.has(id)) {
       byStudent.set(id, {
-        regNo: student.registrationNumber || student.studentId || '',
+        regNo: student.rollNumber || student.studentId || '',
         rollNo: student.rollNumber || student.studentId || '',
         name: student.studentName || '',
         fatherName: student.fatherName || '',
@@ -2430,10 +2428,9 @@ function buildDefaulterReport(records) {
   const usable = 770;
   const fixed = [
     { key: 'serial', header: 'Serial', excelWidth: 8, pdfWidth: 32, align: 'center' },
-    { key: 'regNo', header: 'Ref #', excelWidth: 20, pdfWidth: 100, wrap: true },
     { key: 'rollNo', header: 'Roll #', excelWidth: 16, pdfWidth: 72, wrap: true },
-    { key: 'name', header: 'Name', excelWidth: 20, pdfWidth: 95, wrap: true },
-    { key: 'fatherName', header: 'Father Name', excelWidth: 18, pdfWidth: 90, wrap: true },
+    { key: 'name', header: 'Name', excelWidth: 22, pdfWidth: 110, wrap: true },
+    { key: 'fatherName', header: 'Father Name', excelWidth: 20, pdfWidth: 100, wrap: true },
     { key: 'contact', header: 'Contact', excelWidth: 14, pdfWidth: 70 },
     { key: 'className', header: 'Class', excelWidth: 10, pdfWidth: 40, align: 'center' },
     { key: 'sectionName', header: 'Section', excelWidth: 10, pdfWidth: 42, align: 'center' },
@@ -2463,7 +2460,7 @@ function buildDefaulterReport(records) {
   const sumW = columns.reduce((s, c) => s + c.pdfWidth, 0);
   let leftover = usable - sumW;
   if (leftover !== 0) {
-    const growKeys = new Set(['regNo', 'name', 'fatherName', 'rollNo', 'contact', 'challanNo']);
+    const growKeys = new Set(['name', 'fatherName', 'rollNo', 'contact', 'challanNo']);
     const growCols = columns.filter((c) => growKeys.has(c.key));
     const targets = growCols.length ? growCols : columns;
     const each = Math.floor(leftover / targets.length);
@@ -2558,7 +2555,7 @@ async function loadPaidFees({ classId, month, year, search, sessionId, feeType }
   const records = await AcademyFeeRecord.find(q)
     .populate({
       path: 'studentId',
-      select: 'studentId registrationNumber studentName fatherName phone classId status',
+      select: 'studentId rollNumber registrationNumber studentName fatherName phone classId status',
       populate: { path: 'classId', select: 'className' },
     })
     .sort({ paidAt: -1, year: -1, month: -1 })
@@ -2610,7 +2607,7 @@ function buildPaidCollectionReport(records) {
     return {
       serial: index + 1,
       receiptNumber: record.receiptNumber || '',
-      studentId: student?.studentId || student?.registrationNumber || '',
+      studentId: student?.rollNumber || student?.studentId || student?.registrationNumber || '',
       studentName: student?.studentName || '',
       fatherName: student?.fatherName || '',
       className: student?.classId?.className || '',
@@ -2659,7 +2656,7 @@ function buildPaidCollectionReport(records) {
   const columns = [
     { key: 'serial', header: 'S.No', excelWidth: 7, pdfWidth: 26, align: 'center' },
     { key: 'receiptNumber', header: 'Receipt', excelWidth: 15, pdfWidth: 70 },
-    { key: 'studentId', header: 'Student ID', excelWidth: 14, pdfWidth: 68 },
+    { key: 'studentId', header: 'Roll #', excelWidth: 14, pdfWidth: 68 },
     { key: 'studentName', header: 'Student', excelWidth: 14, pdfWidth: 68, wrap: true },
     { key: 'fatherName', header: 'Father', excelWidth: 13, pdfWidth: 62, wrap: true },
     { key: 'className', header: 'Class', excelWidth: 8, pdfWidth: 32, align: 'center' },

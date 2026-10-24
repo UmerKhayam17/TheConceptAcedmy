@@ -8,7 +8,6 @@ const {
   resolveLogoPath,
   fitText,
 } = require('./academyReportDocument');
-const { resolveRegistrationDisplay } = require('../../utils/academyRegistrationNumber');
 const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 /**
@@ -26,12 +25,12 @@ const LIST_COLUMNS = [
 ];
 
 /**
- * Contact List — same scope; title "Contact"; one trailing blank column.
+ * Contact List — same scope; Roll # (not registration number).
  * Sorted ascending by roll number (same order as Student List).
  */
 const CONTACT_COLUMNS = [
   { key: 'serial', header: 'SR No', excelWidth: 7, pdfWidth: 28, align: 'center' },
-  { key: 'regNo', header: 'Reg No', excelWidth: 14, pdfWidth: 74, align: 'center' },
+  { key: 'regNo', header: 'Roll #', excelWidth: 8, pdfWidth: 42, align: 'center' },
   { key: 'name', header: 'Student Name', excelWidth: 18, pdfWidth: 95, wrap: true },
   { key: 'father', header: 'Father Name', excelWidth: 17, pdfWidth: 90, wrap: true },
   { key: 'phone', header: 'Contact', excelWidth: 18, pdfWidth: 95, wrap: true },
@@ -92,10 +91,6 @@ function statusLabel(status) {
   return String(status).charAt(0).toUpperCase() + String(status).slice(1);
 }
 
-function regNoOf(s) {
-  return resolveRegistrationDisplay(s);
-}
-
 function rollNoOf(s) {
   return (
     String(s.rollNumber || '').trim() ||
@@ -130,12 +125,11 @@ function phonesOf(s) {
 }
 
 function mapStudentsToRows(students, { omitSensitive = false, reportType = 'list' } = {}) {
-  const kind = normalizeReportType(reportType);
   const sorted = [...(students || [])].sort(compareStudentsByRollAsc);
   return sorted.map((s, i) => ({
     serial: i + 1,
-    // Student List shows Roll #; Contact List keeps Reg No (same column key for layout).
-    regNo: kind === 'list' ? rollNoOf(s) : regNoOf(s),
+    // Student List + Contact List both show Roll # (column key kept as regNo for layout).
+    regNo: rollNoOf(s),
     name: s.studentName || '',
     father: s.fatherName || '',
     phone: omitSensitive ? '' : phonesOf(s),
@@ -177,8 +171,8 @@ function buildDualCols(tableW, kind, omitSensitive) {
   if (kind === 'contact' && !omitSensitive) {
     const cols = [
       { key: 'serial', w: 20, label: 'Sr #', align: 'center', wrap: false },
-      { key: 'regNo', w: 54, label: 'Reg No', align: 'center', wrap: true },
-      { key: 'name', w: 72, label: 'Student Name', align: 'left', wrap: true },
+      { key: 'regNo', w: 36, label: 'Roll #', align: 'center', wrap: true },
+      { key: 'name', w: 78, label: 'Student Name', align: 'left', wrap: true },
       { key: 'father', w: 62, label: 'Father Name', align: 'left', wrap: true },
       { key: 'phone', w: 0, label: 'Contact', align: 'left', wrap: true },
     ];

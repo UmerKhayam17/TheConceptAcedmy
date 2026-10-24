@@ -16,6 +16,7 @@ const TeacherAssignment = require('../../models/timetable/TeacherAssignment');
 const ScheduleSlot = require('../../models/timetable/ScheduleSlot');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademySubject = require('../../models/academy/AcademySubject');
+const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 function roundMoney(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
@@ -197,16 +198,18 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
     const sectionId = idOf(a.section);
     if (!sectionId) continue;
 
-    const students = await AcademyStudent.find({
-      sectionId,
-      status: 'active',
-      monthlyFee: { $gt: 0 },
-      selectedSubjects: subj._id,
-    })
-      .select(
-        'studentName registrationNumber monthlyFee monthlyFeeDiscount selectedSubjects isFullPackage'
-      )
-      .lean();
+    const students = sortStudentsByRollAsc(
+      await AcademyStudent.find({
+        sectionId,
+        status: 'active',
+        monthlyFee: { $gt: 0 },
+        selectedSubjects: subj._id,
+      })
+        .select(
+          'studentName rollNumber studentId registrationNumber monthlyFee monthlyFeeDiscount selectedSubjects isFullPackage'
+        )
+        .lean()
+    );
 
     let pool = 0;
     let studentCount = 0;
@@ -223,7 +226,8 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
       studentLines.push({
         studentId: st._id,
         studentName: st.studentName || '—',
-        registrationNumber: st.registrationNumber || '',
+        rollNumber: st.rollNumber || st.studentId || '',
+        registrationNumber: st.rollNumber || st.studentId || st.registrationNumber || '',
         tuition,
         isFullPackage: Boolean(st.isFullPackage),
         subjectCount: (st.selectedSubjects || []).length,

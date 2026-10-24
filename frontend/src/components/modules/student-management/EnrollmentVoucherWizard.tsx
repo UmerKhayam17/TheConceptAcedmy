@@ -51,7 +51,7 @@ type Step = "student" | "subjects" | "voucher" | "pay" | "section";
 function studentLabel(s: AcademyStudent) {
   const className =
     typeof s.classId === "object" && s.classId?.className ? s.classId.className : "";
-  const ref = s.registrationNumber || s.studentId || s.rollNumber || "";
+  const ref = s.rollNumber || s.studentId || s.registrationNumber || "";
   return [s.studentName, className, ref].filter(Boolean).join(" · ");
 }
 

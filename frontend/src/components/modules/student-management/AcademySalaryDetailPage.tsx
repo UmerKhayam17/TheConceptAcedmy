@@ -134,9 +134,9 @@ export function StudentPoolTable({
                   <td className="px-3 py-3 text-slate-400 tabular-nums">{idx + 1}</td>
                   <td className="px-3 py-3">
                     <div className="font-medium text-[#1a2b4b]">{st.studentName || "—"}</div>
-                    {st.registrationNumber ? (
+                    {(st.rollNumber || st.registrationNumber) ? (
                       <div className="text-[11px] text-muted-foreground">
-                        {st.registrationNumber}
+                        {st.rollNumber || st.registrationNumber}
                       </div>
                     ) : null}
                   </td>
