@@ -97,7 +97,7 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <PanelSearchBar
           value={search}
           onChange={setSearch}
@@ -105,7 +105,7 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
           className="max-w-md"
         />
         {caps.canCreate && writable && (
-          <Button onClick={openCreate} className="gap-2 shrink-0" disabled={!hasScope}>
+          <Button onClick={openCreate} className="h-10 w-full gap-2 sm:w-auto sm:shrink-0" disabled={!hasScope}>
             <Plus className="h-4 w-4" /> Add Class
           </Button>
         )}

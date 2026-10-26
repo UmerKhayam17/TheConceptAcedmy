@@ -49,6 +49,7 @@ import {
 import type { Role } from "@/lib/auth";
 import { moduleHref } from "@/lib/panelMenus";
 import { cn } from "@/lib/utils";
+import ListPagination from "@/components/modules/student-management/ListPagination";
 import {
   FINANCE_COLORS,
   type FinanceTransaction,
@@ -670,9 +671,9 @@ const FinanceDashboard = () => {
     <div className="min-h-full" style={{ backgroundColor: FINANCE_COLORS.pageBg }}>
       <div className="px-4 sm:px-6 lg:px-8 py-5 space-y-5">
         <div className={cn(cardClass, "p-3 sm:p-4")}>
-          <div className="flex flex-wrap items-center gap-2">
-            <Filter className="h-4 w-4 text-slate-400" />
-            <div className="relative flex-1 min-w-[160px] sm:max-w-[220px]">
+          <div className="flex w-full min-w-0 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
+            <Filter className="hidden h-4 w-4 text-slate-400 lg:block" />
+            <div className="relative w-full min-w-0 lg:max-w-[220px] lg:flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
               <Input
                 value={txSearch}
@@ -685,7 +686,7 @@ const FinanceDashboard = () => {
               />
             </div>
             <Select value={periodView} onValueChange={(v) => setPeriodView(v as PeriodView)}>
-              <SelectTrigger className="h-8 w-[120px] text-xs">
+              <SelectTrigger className="h-8 w-full text-xs lg:w-[120px]">
                 <SelectValue placeholder="Period" />
               </SelectTrigger>
               <SelectContent>
@@ -701,7 +702,7 @@ const FinanceDashboard = () => {
                 setPeriodView("monthly");
               }}
             >
-              <SelectTrigger className="h-8 w-[110px] text-xs">
+              <SelectTrigger className="h-8 w-full text-xs lg:w-[110px]">
                 <SelectValue placeholder="Month" />
               </SelectTrigger>
               <SelectContent>
@@ -720,7 +721,7 @@ const FinanceDashboard = () => {
                 setDuePage(1);
               }}
             >
-              <SelectTrigger className="h-8 w-[120px] text-xs">
+              <SelectTrigger className="h-8 w-full text-xs lg:w-[120px]">
                 <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
@@ -739,7 +740,7 @@ const FinanceDashboard = () => {
                 setTxPage(1);
               }}
             >
-              <SelectTrigger className="h-8 w-[140px] text-xs">
+              <SelectTrigger className="h-8 w-full text-xs lg:w-[140px]">
                 <SelectValue placeholder="Payment method" />
               </SelectTrigger>
               <SelectContent>
@@ -758,7 +759,7 @@ const FinanceDashboard = () => {
                 setTxPage(1);
               }}
             >
-              <SelectTrigger className="h-8 w-[120px] text-xs">
+              <SelectTrigger className="h-8 w-full text-xs lg:w-[120px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -774,10 +775,10 @@ const FinanceDashboard = () => {
             >
               Live data{isFetching ? "…" : ""}
             </Badge>
-            <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={() => refetch()}>
+            <Button type="button" variant="ghost" size="sm" className="h-8 w-full text-xs lg:w-auto" onClick={() => refetch()}>
               Refresh
             </Button>
-            <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={clearFilters}>
+            <Button type="button" variant="ghost" size="sm" className="h-8 w-full text-xs lg:w-auto" onClick={clearFilters}>
               <X className="h-3.5 w-3.5 mr-1" />
               Clear
             </Button>
@@ -1362,33 +1363,14 @@ const FinanceDashboard = () => {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-2.5 flex items-center justify-between text-xs text-slate-500">
-              <span>
-                Page {txPage} of {txPages}
-              </span>
-              <div className="flex gap-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7"
-                  disabled={txPage <= 1}
-                  onClick={() => setTxPage((p) => p - 1)}
-                >
-                  Prev
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7"
-                  disabled={txPage >= txPages}
-                  onClick={() => setTxPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
+            <ListPagination
+              page={txPage}
+              totalPages={txPages}
+              total={filteredTx.length}
+              pageSize={pageSize}
+              onPageChange={setTxPage}
+              noun="transactions"
+            />
           </div>
 
           <div className={cn(cardClass, "xl:col-span-4 overflow-hidden")}>
@@ -1490,31 +1472,18 @@ const FinanceDashboard = () => {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-2">
+            <div className="border-t border-slate-100 px-4 py-2.5">
               <p className="text-xs font-semibold text-[#EF4444]">Total Pending {formatPkr(pendingTotal)}</p>
-              <div className="flex gap-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                  disabled={duePage <= 1}
-                  onClick={() => setDuePage((p) => p - 1)}
-                >
-                  Prev
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                  disabled={duePage >= duePages}
-                  onClick={() => setDuePage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
             </div>
+            <ListPagination
+              page={duePage}
+              totalPages={duePages}
+              total={filteredDues.length}
+              pageSize={pageSize}
+              onPageChange={setDuePage}
+              noun="dues"
+              className="border-t-0"
+            />
           </div>
 
           <div className={cn(cardClass, "xl:col-span-3 p-4")}>

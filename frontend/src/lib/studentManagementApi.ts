@@ -917,7 +917,7 @@ export const deleteAcademyStudent = (id: string) =>
   api<{ deleted: boolean; studentId?: string }>(`/students/${id}`, { method: "DELETE" });
 
 export type StudentExportFormat = "xlsx" | "pdf" | "csv";
-export type StudentExportReportType = "list" | "contact";
+export type StudentExportReportType = "list" | "contact" | "enrolled";
 
 export const exportStudents = async (
   params?: {

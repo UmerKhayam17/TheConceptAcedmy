@@ -875,7 +875,7 @@ export default function GridTab({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="grid w-full min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end max-sm:[&_button]:w-full">
         {sectionId && caps.canCreate && !draftVersion && !publishedVersion && (
           <Button
             size="sm"
@@ -946,8 +946,8 @@ export default function GridTab({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
         <div className="space-y-4 min-w-0">
-          <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
-            <div className="min-w-[160px]">
+          <div className="grid w-full min-w-0 grid-cols-1 gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex sm:flex-wrap sm:items-end">
+            <div className="w-full min-w-0 sm:w-auto sm:min-w-[160px]">
               <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Class</Label>
               <select
                 className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
@@ -973,7 +973,7 @@ export default function GridTab({
                 ))}
               </select>
             </div>
-            <div className="min-w-[140px]">
+            <div className="w-full min-w-0 sm:w-auto sm:min-w-[140px]">
               <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Section</Label>
               <select
                 className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
@@ -1002,8 +1002,8 @@ export default function GridTab({
               </Badge>
             )}
             {sectionId && (
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 rounded-full border bg-background px-1 py-0.5">
+              <div className="flex w-full min-w-0 flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                <div className="flex w-full min-w-0 items-center gap-1 rounded-full border bg-background px-1 py-0.5 sm:w-auto">
                   <Button
                     type="button"
                     variant="ghost"
@@ -1014,7 +1014,7 @@ export default function GridTab({
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="min-w-[9.5rem] text-center text-xs font-medium tabular-nums">
+                  <span className="min-w-0 flex-1 text-center text-xs font-medium tabular-nums sm:min-w-[9.5rem] sm:flex-none">
                     {formatWeekRange(weekStart, workingDays.length || 6)}
                   </span>
                   <Button
@@ -1028,7 +1028,7 @@ export default function GridTab({
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="flex rounded-full border bg-muted/40 p-1">
+                <div className="flex w-full rounded-full border bg-muted/40 p-1 sm:w-auto [&_button]:flex-1 sm:[&_button]:flex-none">
                   <button
                     type="button"
                     className={cn(

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import {
@@ -290,7 +291,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
         </div>
 
         <Card className="p-3 sm:p-4 shadow-sm border-border/80">
-          <div className="flex flex-wrap items-center gap-2">
+          <FilterToolbar>
             <input
               type="date"
               className="h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0"
@@ -343,7 +344,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
               placeholder="Search student, class, or section…"
               className="min-w-[12rem] flex-1 max-w-md"
             />
-            <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+            <FilterToolbarActions>
               <DefaulterListDownload
                 size="default"
                 label="Print / Export"
@@ -351,8 +352,8 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                 disabled={!hasScope}
                 onDownload={(format) => void handleExport(format)}
               />
-            </div>
-          </div>
+            </FilterToolbarActions>
+          </FilterToolbar>
         </Card>
 
         <Card className="overflow-hidden">

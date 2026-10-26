@@ -13,8 +13,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  ChevronLeft,
-  ChevronRight,
   Info,
   Layers,
   List,
@@ -24,6 +22,7 @@ import {
   Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import ListPagination from "./ListPagination";
 import { cn } from "@/lib/utils";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
@@ -335,9 +334,9 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
             className="w-full sm:max-w-xs"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           {caps.canCreate && writable && (
-            <Button className="gap-2" onClick={openCreate} disabled={!hasScope}>
+            <Button className="h-10 w-full gap-2 sm:w-auto" onClick={openCreate} disabled={!hasScope}>
               <Plus className="h-4 w-4" /> Add Section
             </Button>
           )}
@@ -515,36 +514,15 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
           </table>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 border-t text-sm text-muted-foreground">
-          <p>
-            Showing {showingFrom} to {showingTo} of {filtered.length} section(s)
-          </p>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              disabled={safePage <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              aria-label="Previous page"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground">
-              {safePage}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              disabled={safePage >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              aria-label="Next page"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <ListPagination
+          page={safePage}
+          totalPages={totalPages}
+          total={filtered.length}
+          from={showingFrom}
+          to={showingTo}
+          onPageChange={setPage}
+          noun="sections"
+        />
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>

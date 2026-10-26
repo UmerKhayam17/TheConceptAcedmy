@@ -33,7 +33,8 @@ import {
   ChallanPrintDialog,
   type ChallanPrintRequest,
 } from "./ChallanPrintDialog";
-import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import ListPagination from "./ListPagination";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
 
@@ -241,7 +242,7 @@ export default function FeeDefaultersTab({
       </div>
 
       <Card className="p-3">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+        <div className="grid grid-cols-1 min-[480px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
           <div className="min-w-0">
             <Label className="text-xs">Month (optional)</Label>
             <Input
@@ -265,14 +266,14 @@ export default function FeeDefaultersTab({
             />
           </div>
           <ClassProgramSelect
-            className="min-w-[16.5rem]"
+            className="min-w-0 min-[480px]:col-span-2 sm:col-span-1"
             value={classFilter}
             onChange={setClassFilter}
             classes={classes}
             allowAll
             selectClassName="h-9 rounded-md"
           />
-          <div className="relative min-w-0 col-span-2 sm:col-span-3 lg:col-span-2">
+          <div className="relative min-w-0 col-span-full sm:col-span-3 lg:col-span-2">
             <Label className="text-xs">Search</Label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -455,33 +456,18 @@ export default function FeeDefaultersTab({
           </table>
         </div>
         {pagination && (
-          <div className="flex justify-center items-center gap-3 p-3 border-t flex-wrap">
-            <PageSizeSelect
-              value={pageSize}
-              onChange={(n) => {
-                setPageSize(n);
-                setPage(1);
-              }}
-            />
-            {pagination.pages > 1 && (
-              <>
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                  Prev
-                </Button>
-                <span className="text-sm self-center">
-                  Page {page} / {pagination.pages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= pagination.pages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </>
-            )}
-          </div>
+          <ListPagination
+            page={page}
+            totalPages={pagination.pages}
+            total={pagination.total}
+            pageSize={pageSize}
+            onPageSizeChange={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+            onPageChange={setPage}
+            noun="defaulters"
+          />
         )}
       </Card>
 

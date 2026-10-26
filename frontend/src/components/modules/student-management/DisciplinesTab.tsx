@@ -316,7 +316,7 @@ export default function DisciplinesTab({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <ClassProgramSelect
             id="disc-class"
-            className="w-full max-w-[16.5rem] shrink-0"
+            className="w-full min-w-0 sm:max-w-[16.5rem] sm:shrink-0"
             value={classId}
             onChange={setClassId}
             classes={classes}

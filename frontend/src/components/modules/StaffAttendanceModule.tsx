@@ -3,49 +3,40 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock, Save } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
 import { usePanelSessionOptional } from "@/components/panel-header/PanelSessionContext";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
   exportStaffAttendanceReport,
-  fetchMyStaffAttendance,
-  fetchStaffAttendanceDay,
-  fetchStaffAttendanceMonth,
-  fetchStaffTeachers,
-  markStaffAttendanceManual,
+  fetchStaffPeriodDay,
+  fetchStaffPeriodMonth,
+  saveStaffPeriodMarks,
   type StaffAttendanceExportFormat,
-  type StaffAttendanceRecord,
-  type StaffAttendanceStatus,
-  type StaffTeacherOption,
+  type StaffPeriodStatus,
+  type StaffPeriodTeacher,
 } from "@/lib/aiAttendanceApi";
-import { fetchPeriodTemplates } from "@/lib/timetableApi";
-import {
-  deliverReportBlob,
-  openReportPreviewTab,
-} from "@/lib/reportDownload";
+import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { localTodayYmd } from "@/lib/localDate";
 import { cn } from "@/lib/utils";
 
-const STATUSES: { value: StaffAttendanceStatus; label: string }[] = [
+const PERIOD_STATUSES: { value: StaffPeriodStatus; label: string }[] = [
+  { value: "", label: "Unmarked" },
   { value: "present", label: "Present" },
-  { value: "late", label: "Late" },
   { value: "absent", label: "Absent" },
-  { value: "half_day", label: "Half day" },
+  { value: "late", label: "Late" },
   { value: "leave", label: "Leave" },
 ];
 
-const STATUS_SELECT_CLASS: Record<StaffAttendanceStatus, string> = {
+const STATUS_SELECT_CLASS: Record<string, string> = {
   present:
     "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
   late: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
   absent:
     "border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950/40 dark:text-red-300",
-  half_day:
-    "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
   leave:
     "border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
 };
@@ -54,18 +45,16 @@ const STATUS_PILL_CLASS: Record<string, string> = {
   present: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
   late: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
   absent: "bg-red-500/15 text-red-700 dark:text-red-400",
-  half_day: "bg-sky-500/15 text-sky-800 dark:text-sky-300",
   leave: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
 };
 
 function StatusPill({ status }: { status?: string | null }) {
-  if (!status) return <span className="text-muted-foreground">—</span>;
-  const key = status as StaffAttendanceStatus;
+  if (!status) return <span className="text-muted-foreground">Unmarked</span>;
   return (
     <span
       className={cn(
         "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize",
-        STATUS_PILL_CLASS[key] || "bg-muted text-muted-foreground"
+        STATUS_PILL_CLASS[status] || "bg-muted text-muted-foreground"
       )}
     >
       {status.replace("_", " ")}
@@ -88,68 +77,6 @@ const MONTH_NAMES = [
   "December",
 ];
 
-type RowDraft = {
-  status: StaffAttendanceStatus;
-  timeIn: string;
-  timeOut: string;
-  notes: string;
-  dirty: boolean;
-};
-
-function fmtTime(iso?: string) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "—";
-  }
-}
-
-function fmtDate(iso?: string) {
-  if (!iso) return "—";
-  return String(iso).slice(0, 10);
-}
-
-function toTimeInput(iso?: string) {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  } catch {
-    return "";
-  }
-}
-
-/** Normalize typed/native times like 8:30, 08.30, 830, 16:45:00 → HH:mm */
-function normalizeTimeHm(raw: string) {
-  const t = raw.trim().replace(".", ":");
-  if (!t) return "";
-  const m =
-    t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/) || t.match(/^(\d{1,2})(\d{2})$/);
-  if (!m) return t;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (Number.isNaN(h) || Number.isNaN(min) || h > 23 || min > 59) return t;
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-}
-
-function combineLocalDateTime(dateYmd: string, timeHm: string) {
-  const normalized = normalizeTimeHm(timeHm);
-  if (!dateYmd || !normalized || !/^\d{2}:\d{2}$/.test(normalized)) return undefined;
-  const d = new Date(`${dateYmd}T${normalized}:00`);
-  if (Number.isNaN(d.getTime())) return undefined;
-  return d.toISOString();
-}
-
-function recordUserId(r: StaffAttendanceRecord) {
-  return typeof r.userId === "object" && r.userId ? r.userId._id : String(r.userId || "");
-}
-
-function recordUserName(r: StaffAttendanceRecord) {
-  return typeof r.userId === "object" && r.userId ? r.userId.name || "—" : "—";
-}
-
 const STAFF_ROLES = [
   { value: "", label: "All roles" },
   { value: "teacher", label: "Teacher" },
@@ -157,43 +84,15 @@ const STAFF_ROLES = [
   { value: "admin", label: "Admin" },
 ] as const;
 
-function staffRoleName(
-  role?: { _id: string; name?: string } | string | null
-): string {
-  if (!role) return "";
-  if (typeof role === "object") return String(role.name || "").toLowerCase();
-  return String(role).toLowerCase();
+type PeriodDraft = { status: StaffPeriodStatus; dirty: boolean };
+
+function periodDraftKey(userId: string, periodKey: string) {
+  return `${userId}|${periodKey}`;
 }
 
-type AcademyHours = { timeIn: string; timeOut: string };
-
-const FALLBACK_ACADEMY_HOURS: AcademyHours = { timeIn: "08:00", timeOut: "14:00" };
-
-function emptyDraft(hours: AcademyHours = FALLBACK_ACADEMY_HOURS): RowDraft {
-  return {
-    status: "present",
-    timeIn: hours.timeIn,
-    timeOut: hours.timeOut,
-    notes: "",
-    // Defaults are complete — enable Save all without requiring manual edits.
-    dirty: true,
-  };
-}
-
-function draftFromRecord(
-  r: StaffAttendanceRecord | undefined,
-  hours: AcademyHours = FALLBACK_ACADEMY_HOURS
-): RowDraft {
-  if (!r) return emptyDraft(hours);
-  const status = (r.status as StaffAttendanceStatus) || "present";
-  const needsTimes = status === "present" || status === "late" || status === "half_day";
-  return {
-    status,
-    timeIn: toTimeInput(r.checkIn) || (needsTimes ? hours.timeIn : ""),
-    timeOut: toTimeInput(r.checkOut) || (needsTimes ? hours.timeOut : ""),
-    notes: r.notes || "",
-    dirty: false,
-  };
+function weekdayLabel(value?: string) {
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps; perm?: string }) {
@@ -214,193 +113,102 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   const [roleFilter, setRoleFilter] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
   const [reportStaffId, setReportStaffId] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
+  const [drafts, setDrafts] = useState<Record<string, PeriodDraft>>({});
   const [savingAll, setSavingAll] = useState(false);
   const [exporting, setExporting] = useState<StaffAttendanceExportFormat | null>(null);
 
-  const { data: periodTemplates = [] } = useQuery({
-    queryKey: ["period-templates", sessionId],
-    queryFn: () => fetchPeriodTemplates(sessionId),
-    enabled: Boolean(sessionId) && caps.canView,
+  const { data: dayData, isLoading: dayLoading, isError: dayError, error: dayErr } = useQuery({
+    queryKey: ["staff-period-day", date, sessionId],
+    queryFn: () => fetchStaffPeriodDay(date, sessionId),
+    enabled: caps.canView && Boolean(date) && Boolean(sessionId) && view === "daily",
   });
-
-  const academyHours = useMemo<AcademyHours>(() => {
-    const active = periodTemplates.find((t) => t.isDefault) || periodTemplates[0];
-    const timeIn = normalizeTimeHm(active?.academyStartTime || "");
-    const timeOut = normalizeTimeHm(active?.academyEndTime || "");
-    return {
-      timeIn: /^\d{2}:\d{2}$/.test(timeIn) ? timeIn : FALLBACK_ACADEMY_HOURS.timeIn,
-      timeOut: /^\d{2}:\d{2}$/.test(timeOut) ? timeOut : FALLBACK_ACADEMY_HOURS.timeOut,
-    };
-  }, [periodTemplates]);
 
   const {
-    data: teachers = [],
-    isLoading: teachersLoading,
-    isError: teachersError,
-    error: teachersErr,
+    data: monthData,
+    isLoading: monthLoading,
+    isError: monthError,
+    error: monthErr,
   } = useQuery({
-    queryKey: ["staff-attendance-teachers"],
-    queryFn: fetchStaffTeachers,
-    enabled: caps.canView && (isAdmin || canMark),
+    queryKey: ["staff-period-month", month, year, sessionId],
+    queryFn: () => fetchStaffPeriodMonth(month, year, sessionId),
+    enabled: caps.canView && Boolean(sessionId) && view === "monthly",
   });
 
-  const { data: dayData, isLoading: dayLoading } = useQuery({
-    queryKey: ["staff-attendance-day", date, isAdmin],
-    queryFn: () => fetchStaffAttendanceDay(date, isAdmin ? undefined : user?.id),
-    enabled: caps.canView && Boolean(date) && view === "daily",
-  });
-
-  const { data: monthData, isLoading: monthLoading } = useQuery({
-    queryKey: ["staff-attendance-month", month, year, isAdmin, monthTeacherFilter],
-    queryFn: () =>
-      fetchStaffAttendanceMonth(
-        month,
-        year,
-        isAdmin ? monthTeacherFilter || undefined : user?.id
-      ),
-    enabled: caps.canView && view === "monthly" && (isAdmin || Boolean(user?.id)),
-  });
-
-  const { data: monthRows = [], isLoading: mineLoading } = useQuery({
-    queryKey: ["staff-attendance-mine", month, year],
-    queryFn: () => fetchMyStaffAttendance(month, year),
-    enabled: caps.canView && !isAdmin && view === "monthly",
-  });
-
-  const dayRecords = useMemo(() => dayData?.records || [], [dayData]);
-  const recordsByUser = useMemo(() => {
-    const map = new Map<string, StaffAttendanceRecord>();
-    dayRecords.forEach((r) => map.set(recordUserId(r), r));
-    return map;
-  }, [dayRecords]);
-
-  const sortStaffByName = (list: StaffTeacherOption[]) =>
-    [...list].sort((a, b) =>
-      String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" })
-    );
-
-  const allDailyStaff: StaffTeacherOption[] = useMemo(() => {
-    if (isAdmin || canMark) {
-      return sortStaffByName(teachers.filter((t) => t.isActive !== false));
-    }
-    if (user?.id) {
-      return [{ _id: user.id, name: user.name || "You", email: user.email, isActive: true }];
-    }
-    return [];
-  }, [isAdmin, canMark, teachers, user]);
-
-  const staffByRole = useMemo(() => {
-    const base = !roleFilter
-      ? teachers
-      : teachers.filter((t) => staffRoleName(t.role) === roleFilter);
-    return sortStaffByName(base);
-  }, [teachers, roleFilter]);
-
-  const dailyRows: StaffTeacherOption[] = useMemo(() => {
-    if (!roleFilter) return allDailyStaff;
-    return allDailyStaff.filter((t) => staffRoleName(t.role) === roleFilter);
-  }, [allDailyStaff, roleFilter]);
-
-  const dailyRowsFiltered = useMemo(() => {
+  const filterTeachers = (list: StaffPeriodTeacher[]) => {
+    const role = roleFilter.trim().toLowerCase();
     const q = teacherSearch.trim().toLowerCase();
-    if (!q) return dailyRows;
-    return dailyRows.filter(
-      (t) => t.name?.toLowerCase().includes(q) || t.email?.toLowerCase().includes(q)
-    );
-  }, [dailyRows, teacherSearch]);
-
-  const monthStaffOptions = useMemo(() => staffByRole, [staffByRole]);
-
-  const monthRecords = useMemo(() => {
-    let rows = isAdmin ? monthData?.records || [] : monthRows;
-    if (isAdmin && roleFilter) {
-      const allowed = new Set(staffByRole.map((t) => t._id));
-      rows = rows.filter((r) => {
-        const id = recordUserId(r);
-        if (allowed.has(id)) return true;
-        const populated = typeof r.userId === "object" && r.userId ? r.userId : null;
-        return staffRoleName(populated?.role) === roleFilter;
-      });
-    }
-    return [...rows].sort((a, b) => {
-      const da = new Date(a.date).getTime() || 0;
-      const db = new Date(b.date).getTime() || 0;
-      if (da !== db) return da - db;
-      return recordUserName(a).localeCompare(recordUserName(b), undefined, { sensitivity: "base" });
-    });
-  }, [isAdmin, monthData, monthRows, roleFilter, staffByRole]);
-
-  const monthSummary = monthData?.summary;
-
-  useEffect(() => {
-    setDrafts((prev) => {
-      const next: Record<string, RowDraft> = {};
-      allDailyStaff.forEach((t) => {
-        const existing = prev[t._id];
-        if (existing?.dirty) {
-          next[t._id] = existing;
-          return;
-        }
-        next[t._id] = draftFromRecord(recordsByUser.get(t._id), academyHours);
-      });
-      return next;
-    });
-  }, [allDailyStaff, recordsByUser, date, academyHours]);
-
-  const updateDraft = (id: string, patch: Partial<RowDraft>) => {
-    setDrafts((prev) => {
-      const current = prev[id] || emptyDraft(academyHours);
-      const next = { ...current, ...patch, dirty: true };
-      if (patch.status) {
-        const needsTimes =
-          patch.status === "present" || patch.status === "late" || patch.status === "half_day";
-        if (needsTimes) {
-          if (!next.timeIn) next.timeIn = academyHours.timeIn;
-          if (!next.timeOut) next.timeOut = academyHours.timeOut;
-        } else {
-          next.timeIn = "";
-          next.timeOut = "";
-        }
-      }
-      return { ...prev, [id]: next };
+    return list.filter((t) => {
+      if (role && String(t.role || "").toLowerCase() !== role) return false;
+      if (!q) return true;
+      return (
+        t.name.toLowerCase().includes(q) ||
+        String(t.email || "").toLowerCase().includes(q)
+      );
     });
   };
 
-  const dirtyCount = useMemo(
-    () => allDailyStaff.filter((t) => drafts[t._id]?.dirty).length,
-    [allDailyStaff, drafts]
+  const dailyTeachers = useMemo(
+    () => filterTeachers(dayData?.teachers || []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dayData, roleFilter, teacherSearch]
   );
 
-  const selectedStaffId = isAdmin
-    ? view === "monthly"
-      ? monthTeacherFilter || reportStaffId
-      : reportStaffId
-    : user?.id || "";
+  const monthTeachers = useMemo(
+    () => filterTeachers(monthData?.teachers || []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [monthData, roleFilter, teacherSearch]
+  );
 
-  const selectedStaffName = useMemo(() => {
-    if (!selectedStaffId) return "All-Staff";
-    const fromList = teachers.find((t) => t._id === selectedStaffId)?.name;
-    if (fromList) return fromList;
-    if (!isAdmin && user?.id === selectedStaffId) return user.name || "Staff";
-    return "Staff";
-  }, [selectedStaffId, teachers, isAdmin, user]);
+  const selectedTeacher = useMemo(() => {
+    const id = isAdmin ? reportStaffId : user?.id || reportStaffId;
+    const source = view === "daily" ? dayData?.teachers || [] : monthData?.teachers || [];
+    return source.find((t) => t.userId === id) || null;
+  }, [isAdmin, reportStaffId, user?.id, view, dayData, monthData]);
+
+  useEffect(() => {
+    const teachers = dayData?.teachers || [];
+    if (!teachers.length) return;
+    setDrafts((prev) => {
+      const next = { ...prev };
+      teachers.forEach((teacher) => {
+        teacher.periods.forEach((period) => {
+          const key = periodDraftKey(teacher.userId, period.periodKey);
+          if (next[key]?.dirty) return;
+          next[key] = {
+            status: (period.status || "") as StaffPeriodStatus,
+            dirty: false,
+          };
+        });
+      });
+      return next;
+    });
+  }, [dayData]);
+
+  const dirtyCount = useMemo(
+    () => Object.values(drafts).filter((d) => d.dirty).length,
+    [drafts]
+  );
+
+  const selectedStaffName = selectedTeacher?.name || (isAdmin ? "All-Staff" : user?.name || "Staff");
 
   const reportFileBase = useMemo(() => {
     const safe = (value: string) =>
       String(value || "staff")
         .replace(/[^a-z0-9]+/gi, "-")
         .replace(/^-|-$/g, "") || "staff";
-    if (view === "daily") {
-      return `${safe(selectedStaffName)}_${date}`;
-    }
+    if (view === "daily") return `${safe(selectedStaffName)}_${date}`;
     return `${safe(selectedStaffName)}_${safe(MONTH_NAMES[month - 1])}-${year}`;
   }, [view, selectedStaffName, date, month, year]);
 
   const handleExport = async (format: StaffAttendanceExportFormat) => {
+    if (!sessionId) {
+      toast({ title: "Select a session first", variant: "destructive" });
+      return;
+    }
     setExporting(format);
     const fileName = `${reportFileBase}.${format}`;
     const preview = openReportPreviewTab(format);
+    const staffId = isAdmin ? reportStaffId || monthTeacherFilter : user?.id;
     try {
       const blob = await exportStaffAttendanceReport(
         view === "daily"
@@ -408,25 +216,24 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               scope: "daily",
               format,
               date,
-              userId: selectedStaffId || undefined,
-              role: roleFilter || undefined,
+              sessionId,
+              userId: staffId || undefined,
+              role: !staffId ? roleFilter || undefined : undefined,
             }
           : {
               scope: "monthly",
               format,
               month,
               year,
-              userId: selectedStaffId || undefined,
-              role: !selectedStaffId ? roleFilter || undefined : undefined,
+              sessionId,
+              userId: staffId || undefined,
+              role: !staffId ? roleFilter || undefined : undefined,
             }
       );
       const mode = deliverReportBlob(blob, fileName, format, preview);
       toast({
         title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
-        description:
-          mode === "preview"
-            ? "Use Print or Download from the preview window."
-            : fileName,
+        description: mode === "preview" ? "Use Print or Download from the preview window." : fileName,
       });
     } catch (e) {
       preview?.close();
@@ -440,71 +247,58 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     }
   };
 
+  const updatePeriod = (userId: string, periodKey: string, status: StaffPeriodStatus) => {
+    const key = periodDraftKey(userId, periodKey);
+    setDrafts((prev) => ({ ...prev, [key]: { status, dirty: true } }));
+  };
+
+  const markingTeachers = useMemo(() => {
+    if (isAdmin && reportStaffId) {
+      return dailyTeachers.filter((t) => t.userId === reportStaffId);
+    }
+    return dailyTeachers;
+  }, [dailyTeachers, isAdmin, reportStaffId]);
+
   const saveAll = async () => {
-    const toSave = allDailyStaff.filter((t) => drafts[t._id]?.dirty);
-    if (!toSave.length) {
-      toast({ title: "Nothing to save", description: "Change status or times first." });
+    if (!sessionId) {
+      toast({ title: "Select a session first", variant: "destructive" });
       return;
     }
-
-    const payloads: Parameters<typeof markStaffAttendanceManual>[0][] = [];
-    for (const teacher of toSave) {
-      const draft = drafts[teacher._id] || emptyDraft(academyHours);
-      const needsTimes =
-        draft.status === "present" || draft.status === "late" || draft.status === "half_day";
-      const timeIn = normalizeTimeHm(draft.timeIn || (needsTimes ? academyHours.timeIn : ""));
-      const timeOut = normalizeTimeHm(draft.timeOut || (needsTimes ? academyHours.timeOut : ""));
-
-      if (needsTimes && timeIn && !/^\d{2}:\d{2}$/.test(timeIn)) {
-        toast({
-          title: `Invalid time in — ${teacher.name}`,
-          description: "Use HH:MM (e.g. 08:30)",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (needsTimes && timeOut && !/^\d{2}:\d{2}$/.test(timeOut)) {
-        toast({
-          title: `Invalid time out — ${teacher.name}`,
-          description: "Use HH:MM (e.g. 14:00)",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (needsTimes && !timeIn) {
-        toast({
-          title: `Time in required — ${teacher.name}`,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      payloads.push({
-        date,
-        userId: teacher._id,
-        status: draft.status,
-        checkIn: needsTimes ? combineLocalDateTime(date, timeIn) : undefined,
-        checkOut: needsTimes && timeOut ? combineLocalDateTime(date, timeOut) : undefined,
-        notes: draft.notes.trim() || undefined,
-      });
+    const marks = markingTeachers.flatMap((teacher) =>
+      teacher.periods
+        .map((period) => {
+          const draft = drafts[periodDraftKey(teacher.userId, period.periodKey)];
+          if (!draft?.dirty) return null;
+          return {
+            userId: teacher.userId,
+            periodKey: period.periodKey,
+            status: draft.status,
+          };
+        })
+        .filter((row): row is { userId: string; periodKey: string; status: StaffPeriodStatus } =>
+          Boolean(row)
+        )
+    );
+    if (!marks.length) {
+      toast({ title: "Nothing to save", description: "Choose present, absent, late, or leave." });
+      return;
     }
-
     setSavingAll(true);
     try {
-      await Promise.all(payloads.map((p) => markStaffAttendanceManual(p)));
+      await saveStaffPeriodMarks({ date, sessionId, marks });
       setDrafts((prev) => {
         const next = { ...prev };
-        toSave.forEach((t) => {
-          next[t._id] = { ...(next[t._id] || emptyDraft(academyHours)), dirty: false };
+        marks.forEach((mark) => {
+          const key = periodDraftKey(mark.userId, mark.periodKey);
+          next[key] = { status: mark.status, dirty: false };
         });
         return next;
       });
-      qc.invalidateQueries({ queryKey: ["staff-attendance-day"] });
-      qc.invalidateQueries({ queryKey: ["staff-attendance-month"] });
-      qc.invalidateQueries({ queryKey: ["staff-attendance-mine"] });
+      qc.invalidateQueries({ queryKey: ["staff-period-day"] });
+      qc.invalidateQueries({ queryKey: ["staff-period-month"] });
       toast({
-        title: "Attendance saved",
-        description: `${payloads.length} staff member${payloads.length === 1 ? "" : "s"} updated.`,
+        title: "Period attendance saved",
+        description: `${marks.length} period${marks.length === 1 ? "" : "s"} updated.`,
       });
     } catch (e) {
       toast({
@@ -516,6 +310,8 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
       setSavingAll(false);
     }
   };
+
+  const summary = view === "daily" ? dayData?.summary : monthData?.summary;
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5">
@@ -529,10 +325,9 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
                 Staff Attendance
               </h1>
-              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
-                {isAdmin
-                  ? "Record daily attendance for teaching staff. Set status and times, then save all changes at once."
-                  : "View and update your own check-in / check-out for the selected date."}
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                Period time and class come from the published timetable. Mark each period as
+                present, absent, late, or leave.
               </p>
             </div>
           </div>
@@ -551,15 +346,12 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
       </Card>
 
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
-        <div className="flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           {(isAdmin || canMark) && (
             <select
               className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
               value={roleFilter}
-              onChange={(e) => {
-                setRoleFilter(e.target.value);
-                setMonthTeacherFilter("");
-              }}
+              onChange={(e) => setRoleFilter(e.target.value)}
               aria-label="Role filter"
             >
               {STAFF_ROLES.map((r) => (
@@ -571,39 +363,13 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
           )}
 
           {view === "daily" ? (
-            <>
-              <input
-                type="date"
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                aria-label="Date"
-              />
-              {(isAdmin || canMark) && (
-                <>
-                  <select
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[12rem] shrink-0"
-                    value={reportStaffId}
-                    onChange={(e) => setReportStaffId(e.target.value)}
-                    aria-label="Staff for report"
-                  >
-                    <option value="">All staff (report)</option>
-                    {monthStaffOptions.map((t) => (
-                      <option key={t._id} value={t._id}>
-                        {t.name}
-                        {t.isActive === false ? " (inactive)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <PanelSearchBar
-                    value={teacherSearch}
-                    onChange={setTeacherSearch}
-                    placeholder="Search by name or email…"
-                    className="min-w-[12rem] flex-1 max-w-md"
-                  />
-                </>
-              )}
-            </>
+            <input
+              type="date"
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              aria-label="Date"
+            />
           ) : (
             <>
               <select
@@ -630,30 +396,39 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                   </option>
                 ))}
               </select>
-              {isAdmin && (
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[12rem] shrink-0"
-                  value={monthTeacherFilter}
-                  onChange={(e) => {
-                    setMonthTeacherFilter(e.target.value);
-                    setReportStaffId(e.target.value);
-                  }}
-                  aria-label="Staff filter"
-                >
-                  <option value="">All staff</option>
-                  {monthStaffOptions.map((t) => (
-                    <option key={t._id} value={t._id}>
-                      {t.name}
-                      {t.isActive === false ? " (inactive)" : ""}
-                    </option>
-                  ))}
-                </select>
-              )}
             </>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
-            <div className="flex items-center gap-2">
+          {isAdmin && (
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[12rem] shrink-0"
+              value={view === "monthly" ? monthTeacherFilter : reportStaffId}
+              onChange={(e) => {
+                setReportStaffId(e.target.value);
+                setMonthTeacherFilter(e.target.value);
+              }}
+              aria-label="Teacher"
+            >
+              <option value="">All teachers</option>
+              {(view === "daily" ? dayData?.teachers || [] : monthData?.teachers || []).map((t) => (
+                <option key={t.userId} value={t.userId}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {isAdmin && (
+            <PanelSearchBar
+              value={teacherSearch}
+              onChange={setTeacherSearch}
+              placeholder="Search by name or email…"
+              className="min-w-[12rem] flex-1 max-w-md"
+            />
+          )}
+
+          <FilterToolbarActions>
+            <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
               <button
                 type="button"
                 onClick={() => setView("daily")}
@@ -688,266 +463,383 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
             {view === "daily" && canMark && (
               <Button
                 className="gap-2 h-10"
-                disabled={savingAll || allDailyStaff.length === 0 || dirtyCount === 0}
+                disabled={savingAll || dirtyCount === 0}
                 onClick={() => void saveAll()}
               >
                 <Save className="h-4 w-4" />
-                {savingAll ? "Saving…" : dirtyCount > 0 ? `Save all (${dirtyCount})` : "Save all"}
+                {savingAll ? "Saving…" : dirtyCount > 0 ? `Save (${dirtyCount})` : "Save"}
               </Button>
             )}
-          </div>
-        </div>
+          </FilterToolbarActions>
+        </FilterToolbar>
       </Card>
 
-      {view === "daily" && (
+      {!sessionId && (
+        <Card className="p-6 text-sm text-muted-foreground">
+          Select an academic session. Periods are taken from that session’s published timetable.
+        </Card>
+      )}
+
+      {view === "daily" && sessionId && (
         <Card className="overflow-hidden">
           <div className="px-4 py-3 border-b border-border font-semibold text-primary flex flex-wrap items-center justify-between gap-2">
-            <span>Daily attendance — {date}</span>
+            <span>
+              Daily classes — {date}
+              {dayData?.weekday ? ` · ${weekdayLabel(dayData.weekday)}` : ""}
+            </span>
             <span className="text-xs font-normal text-muted-foreground">
-              {teachersLoading
-                ? "Loading staff…"
-                : `${dailyRowsFiltered.length} of ${dailyRows.length} staff`}
-              {canMark && dirtyCount > 0 ? ` · ${dirtyCount} unsaved` : ""}
+              {dayLoading ? "Loading timetable…" : `${markingTeachers.length} teachers`}
             </span>
           </div>
-          <div className="p-4 space-y-3">
-          {teachersError && (
-            <p className="text-sm text-destructive">
-              Could not load staff:{" "}
-              {teachersErr instanceof Error ? teachersErr.message : "Unknown error"}
-            </p>
-          )}
-
-          {(dayLoading || teachersLoading) && (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          )}
-
-          {!dayLoading && !teachersLoading && (
-            <>
-              <div className="flex flex-wrap gap-2 text-xs">
-                {Object.entries(dayData?.summary || {}).map(([k, v]) => (
-                  <span
-                    key={k}
-                    className={cn(
-                      "rounded-full px-2.5 py-1 font-medium capitalize",
-                      STATUS_PILL_CLASS[k] || "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    {k.replace("_", " ")}: {v}
-                  </span>
-                ))}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[720px]">
-                  <thead className="bg-muted/50 border-b">
-                    <tr>
-                      <th className="text-left p-2.5 font-medium">Staff</th>
-                      <th className="text-left p-2.5 font-medium">Role</th>
-                      <th className="text-left p-2.5 font-medium">Status</th>
-                      <th className="text-left p-2.5 font-medium whitespace-nowrap">Time in</th>
-                      <th className="text-left p-2.5 font-medium whitespace-nowrap">Time out</th>
-                      <th className="text-left p-2.5 font-medium">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dailyRows.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                          No staff found
-                          {roleFilter ? ` for role “${roleFilter}”` : ""}. Add admin, teacher, or
-                          accountant users in Staff Management.
-                        </td>
-                      </tr>
-                    )}
-                    {dailyRows.length > 0 && dailyRowsFiltered.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                          No staff match your search.
-                        </td>
-                      </tr>
-                    )}
-                    {dailyRowsFiltered.map((t) => {
-                      const draft = drafts[t._id] || emptyDraft(academyHours);
-                      const existing = recordsByUser.get(t._id);
-                      const needsTimes =
-                        draft.status === "present" ||
-                        draft.status === "late" ||
-                        draft.status === "half_day";
-                      return (
-                        <tr key={t._id} className="border-b last:border-0 hover:bg-muted/30">
-                          <td className="p-2.5">
-                            <div className="font-medium flex items-center gap-2">
-                              {t.name}
-                              {draft.dirty ? (
-                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" title="Unsaved" />
-                              ) : null}
-                            </div>
-                            {t.email ? (
-                              <p className="text-xs text-muted-foreground">{t.email}</p>
-                            ) : null}
-                            {existing?.source ? (
-                              <p className="text-[10px] uppercase text-muted-foreground mt-0.5">
-                                {existing.source}
-                              </p>
-                            ) : (
-                              <p className="text-[10px] text-muted-foreground mt-0.5">Not marked</p>
-                            )}
-                          </td>
-                          <td className="p-2.5 capitalize text-muted-foreground">
-                            {staffRoleName(t.role) || "—"}
-                          </td>
-                          <td className="p-2.5">
-                            {canMark ? (
-                              <select
-                                className={cn(
-                                  "h-9 w-full min-w-[7.5rem] rounded-md border px-2 text-sm font-semibold",
-                                  STATUS_SELECT_CLASS[draft.status]
-                                )}
-                                value={draft.status}
-                                onChange={(e) =>
-                                  updateDraft(t._id, {
-                                    status: e.target.value as StaffAttendanceStatus,
-                                  })
-                                }
-                              >
-                                {STATUSES.map((s) => (
-                                  <option key={s.value} value={s.value}>
-                                    {s.label}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <StatusPill status={existing?.status} />
-                            )}
-                          </td>
-                          <td className="p-2.5">
-                            {canMark && needsTimes ? (
-                              <Input
-                                type="time"
-                                className="h-9 w-[8.5rem]"
-                                value={draft.timeIn}
-                                onChange={(e) =>
-                                  updateDraft(t._id, {
-                                    timeIn: normalizeTimeHm(e.target.value),
-                                  })
-                                }
-                                aria-label={`Time in — ${t.name}`}
-                              />
-                            ) : (
-                              <span>{fmtTime(existing?.checkIn)}</span>
-                            )}
-                          </td>
-                          <td className="p-2.5">
-                            {canMark && needsTimes ? (
-                              <Input
-                                type="time"
-                                className="h-9 w-[8.5rem]"
-                                value={draft.timeOut}
-                                onChange={(e) =>
-                                  updateDraft(t._id, {
-                                    timeOut: normalizeTimeHm(e.target.value),
-                                  })
-                                }
-                                aria-label={`Time out — ${t.name}`}
-                              />
-                            ) : (
-                              <span>{fmtTime(existing?.checkOut)}</span>
-                            )}
-                          </td>
-                          <td className="p-2.5">
-                            {canMark ? (
-                              <Input
-                                className="h-9 min-w-[8rem]"
-                                placeholder="Optional"
-                                value={draft.notes}
-                                onChange={(e) => updateDraft(t._id, { notes: e.target.value })}
-                              />
-                            ) : (
-                              <span className="text-muted-foreground">{existing?.notes || "—"}</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
+          <div className="p-4">
+            {dayError && (
+              <p className="text-sm text-destructive">
+                {dayErr instanceof Error ? dayErr.message : "Could not load the timetable."}
+              </p>
+            )}
+            <DayClassGrid
+              teachers={markingTeachers}
+              loading={dayLoading}
+              drafts={drafts}
+              canMark={canMark}
+              onChange={updatePeriod}
+            />
           </div>
         </Card>
       )}
 
-      {view === "monthly" && (
+      {view === "monthly" && sessionId && (
         <Card className="overflow-hidden">
           <div className="px-4 py-3 border-b border-border font-semibold text-primary">
-            Monthly report — {MONTH_NAMES[month - 1]} {year}
+            Monthly classes — {MONTH_NAMES[month - 1]} {year}
           </div>
-          <div className="p-4 space-y-3">
-          {monthLoading || mineLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (
-            <>
-              {monthSummary && (
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {Object.entries(monthSummary).map(([k, v]) => (
-                    <span
-                      key={k}
-                      className={cn(
-                        "rounded-full px-2.5 py-1 font-medium capitalize",
-                        STATUS_PILL_CLASS[k] || "bg-muted text-muted-foreground"
-                      )}
-                    >
-                      {k.replace("_", " ")}: {v}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 border-b">
-                    <tr>
-                      <th className="text-left p-2.5 font-medium">Date</th>
-                      {isAdmin && <th className="text-left p-2.5 font-medium">Staff</th>}
-                      <th className="text-left p-2.5 font-medium">Status</th>
-                      <th className="text-left p-2.5 font-medium">Time in</th>
-                      <th className="text-left p-2.5 font-medium">Time out</th>
-                      <th className="text-left p-2.5 font-medium">Source</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {monthRecords.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={isAdmin ? 6 : 5}
-                          className="p-8 text-center text-muted-foreground"
-                        >
-                          No records this month.
-                        </td>
-                      </tr>
-                    )}
-                    {monthRecords.map((r) => (
-                      <tr key={r._id} className="border-b last:border-0 hover:bg-muted/30">
-                        <td className="p-2.5 whitespace-nowrap">{fmtDate(r.date)}</td>
-                        {isAdmin && (
-                          <td className="p-2.5 font-medium">{recordUserName(r)}</td>
-                        )}
-                        <td className="p-2.5">
-                          <StatusPill status={r.status} />
-                        </td>
-                        <td className="p-2.5">{fmtTime(r.checkIn)}</td>
-                        <td className="p-2.5">{fmtTime(r.checkOut)}</td>
-                        <td className="p-2.5 uppercase text-xs">{r.source}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="p-4 space-y-4">
+            {monthError && (
+              <p className="text-sm text-destructive">
+                {monthErr instanceof Error ? monthErr.message : "Could not load the monthly report."}
+              </p>
+            )}
+            {summary && (
+              <div className="flex flex-wrap gap-2 text-xs">
+                <CountPill label="Total classes" value={summary.totalClasses} />
+                <CountPill label="Present" value={summary.present} tone="present" />
+                <CountPill label="Late" value={summary.late} tone="late" />
+                <CountPill label="Absent" value={summary.absent} tone="absent" />
+                <CountPill label="Leave" value={summary.leave} tone="leave" />
+                <CountPill label="Unmarked" value={summary.unmarked} />
+                <CountPill label="Attendance" value={`${summary.attendancePercent}%`} />
               </div>
-            </>
-          )}
+            )}
+            <TeacherSummaryTable
+              teachers={monthTeachers}
+              loading={monthLoading}
+              selectedId={selectedTeacher?.userId}
+              onSelect={(id) => {
+                setReportStaffId(id);
+                setMonthTeacherFilter(id);
+              }}
+              emptyLabel="No classes on the published timetable this month."
+            />
+            {selectedTeacher && (
+              <PeriodMarkTable
+                teacher={selectedTeacher}
+                drafts={drafts}
+                canMark={false}
+                showDate
+                onChange={updatePeriod}
+              />
+            )}
           </div>
         </Card>
       )}
+    </div>
+  );
+}
+
+function CountPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number | string;
+  tone?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "rounded-full px-2.5 py-1 font-medium",
+        tone ? STATUS_PILL_CLASS[tone] : "bg-muted text-muted-foreground"
+      )}
+    >
+      {label}: {value}
+    </span>
+  );
+}
+
+function DayClassGrid({
+  teachers,
+  loading,
+  drafts,
+  canMark,
+  onChange,
+}: {
+  teachers: StaffPeriodTeacher[];
+  loading: boolean;
+  drafts: Record<string, PeriodDraft>;
+  canMark: boolean;
+  onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
+}) {
+  const classCount = teachers.reduce((max, teacher) => Math.max(max, teacher.periods.length), 0);
+  if (loading) return <p className="text-sm text-muted-foreground">Loading timetable…</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[640px]">
+        <thead className="bg-muted/50 border-b">
+          <tr>
+            <th className="text-left p-2.5 font-medium whitespace-nowrap">Teacher</th>
+            {Array.from({ length: classCount }, (_, index) => (
+              <th key={index} className="text-left p-2.5 font-medium whitespace-nowrap min-w-[11rem]">
+                Class {index + 1}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {teachers.length === 0 && (
+            <tr>
+              <td colSpan={Math.max(2, classCount + 1)} className="p-8 text-center text-muted-foreground">
+                No classes on the published timetable for this day.
+              </td>
+            </tr>
+          )}
+          {teachers.map((teacher) => (
+            <tr key={teacher.userId} className="border-b last:border-0 align-top">
+              <td className="p-2.5">
+                <div className="font-medium">{teacher.name}</div>
+                {teacher.email ? (
+                  <p className="text-xs text-muted-foreground">{teacher.email}</p>
+                ) : null}
+              </td>
+              {Array.from({ length: classCount }, (_, index) => {
+                const period = teacher.periods[index];
+                if (!period) {
+                  return (
+                    <td key={index} className="p-2.5 text-muted-foreground">
+                      —
+                    </td>
+                  );
+                }
+                const status = (drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ??
+                  period.status ??
+                  "") as StaffPeriodStatus;
+                return (
+                  <td key={period.periodKey} className="p-2.5">
+                    <p className="font-medium leading-snug">
+                      {[period.classLabel, period.sectionLabel].filter(Boolean).join(" · ") || "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-snug">
+                      {period.subjectLabel || period.label || "Class"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      {period.startTime}–{period.endTime}
+                    </p>
+                    {canMark ? (
+                      <select
+                        className={cn(
+                          "h-9 w-full min-w-[8.5rem] rounded-md border px-2 text-sm font-semibold bg-background",
+                          STATUS_SELECT_CLASS[status] || ""
+                        )}
+                        value={status}
+                        onChange={(e) =>
+                          onChange(
+                            teacher.userId,
+                            period.periodKey,
+                            e.target.value as StaffPeriodStatus
+                          )
+                        }
+                        aria-label={`${teacher.name} class ${index + 1} status`}
+                      >
+                        {PERIOD_STATUSES.map((s) => (
+                          <option key={s.label} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <StatusPill status={status} />
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TeacherSummaryTable({
+  teachers,
+  loading,
+  selectedId,
+  onSelect,
+  emptyLabel,
+}: {
+  teachers: StaffPeriodTeacher[];
+  loading: boolean;
+  selectedId?: string;
+  onSelect: (id: string) => void;
+  emptyLabel: string;
+}) {
+  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[760px]">
+        <thead className="bg-muted/50 border-b">
+          <tr>
+            <th className="text-left p-2.5 font-medium">Teacher</th>
+            <th className="text-left p-2.5 font-medium">Role</th>
+            <th className="text-right p-2.5 font-medium">Total classes</th>
+            <th className="text-right p-2.5 font-medium">Present</th>
+            <th className="text-right p-2.5 font-medium">Late</th>
+            <th className="text-right p-2.5 font-medium">Absent</th>
+            <th className="text-right p-2.5 font-medium">Leave</th>
+            <th className="text-right p-2.5 font-medium">Unmarked</th>
+            <th className="text-right p-2.5 font-medium">Attendance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {teachers.length === 0 && (
+            <tr>
+              <td colSpan={9} className="p-8 text-center text-muted-foreground">
+                {emptyLabel}
+              </td>
+            </tr>
+          )}
+          {teachers.map((t) => (
+            <tr
+              key={t.userId}
+              className={cn(
+                "border-b last:border-0 cursor-pointer hover:bg-muted/30",
+                selectedId === t.userId && "bg-primary/5"
+              )}
+              onClick={() => onSelect(t.userId)}
+            >
+              <td className="p-2.5">
+                <div className="font-medium">{t.name}</div>
+                {t.email ? <p className="text-xs text-muted-foreground">{t.email}</p> : null}
+              </td>
+              <td className="p-2.5 capitalize text-muted-foreground">{t.role || "—"}</td>
+              <td className="p-2.5 text-right font-semibold">{t.totalClasses}</td>
+              <td className="p-2.5 text-right">{t.present}</td>
+              <td className="p-2.5 text-right">{t.late}</td>
+              <td className="p-2.5 text-right">{t.absent}</td>
+              <td className="p-2.5 text-right">{t.leave}</td>
+              <td className="p-2.5 text-right">{t.unmarked}</td>
+              <td className="p-2.5 text-right">{t.attendancePercent}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PeriodMarkTable({
+  teacher,
+  drafts,
+  canMark,
+  showDate,
+  onChange,
+}: {
+  teacher: StaffPeriodTeacher;
+  drafts: Record<string, PeriodDraft>;
+  canMark: boolean;
+  showDate: boolean;
+  onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <h2 className="text-sm font-semibold text-primary">
+        {teacher.name} — {teacher.totalClasses} class{teacher.totalClasses === 1 ? "" : "es"}
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[720px]">
+          <thead className="bg-muted/50 border-b">
+            <tr>
+              {showDate && <th className="text-left p-2.5 font-medium">Date</th>}
+              <th className="text-left p-2.5 font-medium">Period</th>
+              <th className="text-left p-2.5 font-medium">Time</th>
+              <th className="text-left p-2.5 font-medium">Class</th>
+              <th className="text-left p-2.5 font-medium">Section</th>
+              <th className="text-left p-2.5 font-medium">Subject</th>
+              <th className="text-left p-2.5 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {teacher.periods.length === 0 && (
+              <tr>
+                <td colSpan={showDate ? 7 : 6} className="p-6 text-center text-muted-foreground">
+                  No periods on the timetable.
+                </td>
+              </tr>
+            )}
+            {teacher.periods.map((period) => {
+              const status = (
+                canMark
+                  ? drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ?? period.status ?? ""
+                  : period.status || ""
+              ) as StaffPeriodStatus;
+              return (
+                <tr key={`${period.day || "day"}-${period.periodKey}-${period.classLabel}`} className="border-b last:border-0">
+                  {showDate && (
+                    <td className="p-2.5 whitespace-nowrap">
+                      {period.day || "—"}
+                      {period.weekday ? (
+                        <span className="block text-[10px] uppercase text-muted-foreground">
+                          {weekdayLabel(period.weekday)}
+                        </span>
+                      ) : null}
+                    </td>
+                  )}
+                  <td className="p-2.5">{period.label || "—"}</td>
+                  <td className="p-2.5 whitespace-nowrap">
+                    {period.startTime}–{period.endTime}
+                  </td>
+                  <td className="p-2.5">{period.classLabel || "—"}</td>
+                  <td className="p-2.5">{period.sectionLabel || "—"}</td>
+                  <td className="p-2.5">{period.subjectLabel || "—"}</td>
+                  <td className="p-2.5">
+                    {canMark ? (
+                      <select
+                        className={cn(
+                          "h-9 w-full min-w-[8rem] rounded-md border px-2 text-sm font-semibold bg-background",
+                          STATUS_SELECT_CLASS[status] || ""
+                        )}
+                        value={status}
+                        onChange={(e) =>
+                          onChange(teacher.userId, period.periodKey, e.target.value as StaffPeriodStatus)
+                        }
+                        aria-label={`Status for ${period.label}`}
+                      >
+                        {PERIOD_STATUSES.map((s) => (
+                          <option key={s.label} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <StatusPill status={status} />
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

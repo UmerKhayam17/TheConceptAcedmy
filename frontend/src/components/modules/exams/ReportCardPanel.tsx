@@ -18,6 +18,7 @@ import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchSessions } from "@/lib/configApi";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar from "@/components/modules/FilterToolbar";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import {
   reportCardExamHref,
@@ -431,7 +432,7 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2">
+            <FilterToolbar>
               <ClassProgramSelect
                 className="w-[16.5rem] shrink-0"
                 label={false}
@@ -471,7 +472,7 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
                 placeholder="Search test, exam, class…"
                 className="min-w-[12rem] flex-1 max-w-md"
               />
-            </div>
+            </FilterToolbar>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">

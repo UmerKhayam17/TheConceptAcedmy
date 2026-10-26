@@ -17,6 +17,7 @@ import type { Role } from "@/lib/auth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchSessions } from "@/lib/configApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import {
   assessmentTypeLabel,
@@ -491,17 +492,18 @@ export default function ReportCardDetailPage({
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <PanelSearchBar
             value={studentSearch}
             onChange={setStudentSearch}
             placeholder="Search by name, roll no…"
             className="min-w-[12rem] flex-1 max-w-md"
           />
+          <FilterToolbarActions>
           <Button
             size="sm"
             variant="outline"
-            className="h-10 gap-1.5 ml-auto"
+            className="h-10 gap-1.5"
             disabled={printingId === "all" || listCount === 0}
             onClick={() => void printAll()}
           >
@@ -512,7 +514,8 @@ export default function ReportCardDetailPage({
             )}
             Print all
           </Button>
-        </div>
+          </FilterToolbarActions>
+        </FilterToolbar>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">

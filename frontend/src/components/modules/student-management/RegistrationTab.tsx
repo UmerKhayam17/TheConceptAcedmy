@@ -5,8 +5,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SquareCheckbox } from "@/components/ui/square-checkbox";
 import {
-  ChevronLeft,
-  ChevronRight,
   Eye,
   GraduationCap,
   Pencil,
@@ -19,6 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { DefaulterListDownload } from "./DefaulterListDownload";
 import {
@@ -47,7 +46,8 @@ import {
 } from "@/lib/studentManagementApi";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { classLabel, formatPkr } from "./studentDisplayUtils";
-import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import ListPagination from "./ListPagination";
 import ProvisionalIntakeDialog from "./ProvisionalIntakeDialog";
 
 function studentRef(s: AcademyStudent) {
@@ -179,18 +179,6 @@ function StatCard({
       </div>
     </Card>
   );
-}
-
-function pageWindow(current: number, totalPages: number, max = 5): number[] {
-  if (totalPages <= max) return Array.from({ length: totalPages }, (_, i) => i + 1);
-  const half = Math.floor(max / 2);
-  let start = Math.max(1, current - half);
-  let end = start + max - 1;
-  if (end > totalPages) {
-    end = totalPages;
-    start = Math.max(1, end - max + 1);
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }
 
 export default function RegistrationTab({
@@ -395,7 +383,7 @@ export default function RegistrationTab({
       return;
     }
     const reportType: StudentExportReportType =
-      reportKind === "contact" ? "contact" : "list";
+      reportKind === "contact" ? "contact" : reportKind === "enrolled" ? "enrolled" : "list";
     setExporting(format);
     const preview = openReportPreviewTab(format);
     try {
@@ -404,13 +392,19 @@ export default function RegistrationTab({
           search: search || undefined,
           classId: exportClassId,
           sectionId: sectionFilter,
-          status: statusFilter || undefined,
+          status: reportType === "enrolled" ? "active" : statusFilter || undefined,
           sessionId: apiSessionId,
           reportType,
         },
         format,
       );
-      const parts = [reportType === "contact" ? "Contact-List" : "Student-List"];
+      const parts = [
+        reportType === "contact"
+          ? "Contact-List"
+          : reportType === "enrolled"
+            ? "Enrolled-Students-List"
+            : "Student-List",
+      ];
       if (statusFilter) parts.push(statusFilter);
       const mode = deliverReportBlob(blob, `${parts.join("_")}.${format}`, format, preview);
       toast({
@@ -474,8 +468,6 @@ export default function RegistrationTab({
   const showingTo = pagination
     ? Math.min(page * pagination.limit, pagination.total)
     : 0;
-  const pages = pageWindow(page, pagination?.pages ?? 1);
-
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5">
       {showHeading && (
@@ -554,7 +546,7 @@ export default function RegistrationTab({
       )}
 
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
-        <div className="flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <ClassProgramSelect
             className="w-[16.5rem] shrink-0"
             label={false}
@@ -613,7 +605,7 @@ export default function RegistrationTab({
             }
             className="min-w-[12rem] flex-1 max-w-md"
           />
-          <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+          <FilterToolbarActions>
             {showIntake && (
               canIntake ? (
                 <Button
@@ -654,12 +646,13 @@ export default function RegistrationTab({
               disabled={!canExportStudentList}
               reportKinds={[
                 { id: "list", label: "Student List" },
+                { id: "enrolled", label: "Enrolled Students List" },
                 { id: "contact", label: "Contact List" },
               ]}
               onDownload={(format, reportKind) => void handleExport(format, reportKind)}
             />
-          </div>
-        </div>
+          </FilterToolbarActions>
+        </FilterToolbar>
       </Card>
 
       <Card className="overflow-hidden shadow-sm border-border/80">
@@ -860,64 +853,20 @@ export default function RegistrationTab({
         </div>
 
         {pagination && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-t bg-muted/10">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm text-muted-foreground">
-                Showing{" "}
-                <span className="font-medium text-foreground">{showingFrom}</span>
-                {" to "}
-                <span className="font-medium text-foreground">{showingTo}</span>
-                {" of "}
-                <span className="font-medium text-foreground">{pagination.total}</span>
-                {" students"}
-              </p>
-              <PageSizeSelect
-                value={pageSize}
-                onChange={(n) => {
-                  setPageSize(n);
-                  setPage(1);
-                }}
-              />
-            </div>
-
-            {pagination.pages > 1 && (
-              <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                {pages.map((n) => (
-                  <Button
-                    key={n}
-                    variant={n === page ? "default" : "outline"}
-                    size="icon"
-                    className="h-8 w-8 text-sm"
-                    onClick={() => setPage(n)}
-                    aria-label={`Page ${n}`}
-                    aria-current={n === page ? "page" : undefined}
-                  >
-                    {n}
-                  </Button>
-                ))}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={page >= pagination.pages}
-                  onClick={() => setPage((p) => p + 1)}
-                  aria-label="Next page"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
+          <ListPagination
+            page={page}
+            totalPages={pagination.pages}
+            total={pagination.total}
+            from={showingFrom}
+            to={showingTo}
+            pageSize={pageSize}
+            onPageSizeChange={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+            onPageChange={setPage}
+            noun="students"
+          />
         )}
       </Card>
 

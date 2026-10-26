@@ -19,6 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import type { Role } from "@/lib/auth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import type { AcademySubject } from "@/lib/studentManagementApi";
@@ -550,8 +551,8 @@ export default function ExamMarksPage({
           </div>
 
           <Card className="p-3 sm:p-4 shadow-sm border-border/80">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[14rem] flex-1 max-w-xl">
+            <FilterToolbar>
+              <div className="relative w-full min-w-0 sm:max-w-xl sm:flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={studentSearch}
@@ -560,7 +561,7 @@ export default function ExamMarksPage({
                   className="h-10 pl-9"
                 />
               </div>
-              <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+              <FilterToolbarActions>
                 <AwardListButton
                   examId={examId}
                   subjectId={activeColumn?.id}
@@ -599,8 +600,8 @@ export default function ExamMarksPage({
                     {publishAllMut.isPending ? "Publishing…" : "Publish all"}
                   </Button>
                 )}
-              </div>
-            </div>
+              </FilterToolbarActions>
+            </FilterToolbar>
           </Card>
 
           <Card className="overflow-hidden shadow-sm border-border/80">

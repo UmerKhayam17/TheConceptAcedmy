@@ -85,7 +85,8 @@ import { academyStudentRoutes, type AcademyStudentRoutes } from "@/lib/studentMa
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
 import { FreeStudentBadge, isFreeFeeStudent } from "./FeeModeSelector";
-import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import ListPagination from "./ListPagination";
 import { cn } from "@/lib/utils";
 import {
   AssignSectionDialog,
@@ -1253,8 +1254,8 @@ export default function AcademyFeesManagement({
                   className={cn(
                     "grid items-end gap-3",
                     lockedStatus
-                      ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
-                      : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
+                      ? "grid-cols-1 min-[480px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
+                      : "grid-cols-1 min-[480px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
                   )}
                 >
                   <FeeFilterField label="Month">
@@ -1768,33 +1769,18 @@ export default function AcademyFeesManagement({
           </table>
         </div>
         {pagination && (
-          <div className="flex justify-center items-center gap-3 p-3 border-t flex-wrap">
-            <PageSizeSelect
-              value={pageSize}
-              onChange={(n) => {
-                setPageSize(n);
-                setPage(1);
-              }}
-            />
-            {pagination.pages > 1 && (
-              <>
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                  Prev
-                </Button>
-                <span className="text-sm self-center">
-                  Page {page} / {pagination.pages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= pagination.pages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </>
-            )}
-          </div>
+          <ListPagination
+            page={page}
+            totalPages={pagination.pages}
+            total={pagination.total}
+            pageSize={pageSize}
+            onPageSizeChange={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+            onPageChange={setPage}
+            noun="fees"
+          />
         )}
       </Card>
 

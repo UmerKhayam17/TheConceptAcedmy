@@ -103,11 +103,11 @@ export default function RoomsTab({ sessionId, caps }: { sessionId: string; caps:
       <p className="text-sm text-muted-foreground">
         Assign each room to at most one class. A class can only use its own room on the timetable.
       </p>
-      <div className="flex flex-wrap items-center gap-2 justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <PanelSearchBar value={search} onChange={setSearch} placeholder="Search code, name, class…" className="max-w-md" />
         {caps.canCreate && (
           <Button
-            className="gap-2 shrink-0"
+            className="h-10 w-full gap-2 sm:w-auto sm:shrink-0"
             onClick={() => {
               setEdit(null);
               setForm({ name: "", code: "", capacity: 35, type: "classroom", assignedClass: "" });

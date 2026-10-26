@@ -97,6 +97,21 @@ router.get(
   ctrl.listStaffAttendanceMonth
 );
 router.get(
+  '/staff-attendance/periods',
+  requireAnyPermission('view_attendance', 'mark_attendance', 'manage_users'),
+  ctrl.listStaffPeriodAttendance
+);
+router.get(
+  '/staff-attendance/periods/month',
+  requireAnyPermission('view_attendance', 'mark_attendance', 'manage_users'),
+  ctrl.listStaffPeriodMonth
+);
+router.post(
+  '/staff-attendance/periods',
+  requireAnyPermission('mark_attendance', 'manage_users'),
+  ctrl.saveStaffPeriodAttendance
+);
+router.get(
   '/staff-attendance/export',
   requireAnyPermission('view_attendance', 'mark_attendance', 'manage_users'),
   ctrl.exportStaffAttendance

@@ -46,7 +46,13 @@ export default function ClassProgramSelect({
   const classGroups = useMemo(() => groupClassesByProgram(classes), [classes]);
 
   return (
-    <div className={cn("min-w-[16.5rem]", className)}>
+    <div
+      className={cn(
+        "w-full min-w-0 max-w-full sm:min-w-[16.5rem]",
+        className,
+        "max-sm:!w-full max-sm:!min-w-0 max-sm:!max-w-full",
+      )}
+    >
       {label !== false ? (
         <Label
           htmlFor={id}

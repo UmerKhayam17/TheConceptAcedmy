@@ -180,21 +180,23 @@ const exportStudents = catchAsync(async (req, res) => {
     ensureClassInTeacherScope(teacherScope, req.query.classId);
   }
 
+  const reportType = normalizeReportType(req.query.reportType || req.query.report);
+  const enrolledOnly = reportType === 'enrolled';
   const result = await studentService.listStudents({
     page: 1,
     limit: 10000,
     search: req.query.search,
     classId: req.query.classId,
     sectionId: req.query.sectionId,
-    status: req.query.status,
+    status: enrolledOnly ? 'active' : req.query.status,
     sessionId: req.query.sessionId,
     forExport: true,
     scopeFilter: teacherScope?.scopeFilter || null,
     hidePhoneSearch: Boolean(teacherScope),
   });
   const meta = await resolveExportMeta(req);
+  if (enrolledOnly) meta.status = 'active';
   const omitSensitive = Boolean(teacherScope);
-  const reportType = normalizeReportType(req.query.reportType || req.query.report);
   const renderOpts = { omitSensitive, reportType };
 
   const safeToken = (value, fallback = 'All') => {
@@ -204,7 +206,11 @@ const exportStudents = catchAsync(async (req, res) => {
     return cleaned || fallback;
   };
   const fileBase = [
-    reportType === 'contact' ? 'Contact-List' : 'Student-List',
+    reportType === 'contact'
+      ? 'Contact-List'
+      : reportType === 'enrolled'
+        ? 'Enrolled-Students-List'
+        : 'Student-List',
     meta.sessionName ? safeToken(meta.sessionName) : null,
     meta.className ? safeToken(meta.className) : null,
     meta.sectionName ? safeToken(meta.sectionName) : null,

@@ -19,6 +19,7 @@ import {
 } from "@/lib/configApi";
 import type { Role } from "@/lib/auth";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { useToast } from "@/hooks/use-toast";
@@ -206,17 +207,18 @@ export default function DateSheetDetailPage({
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <PanelSearchBar
             value={search}
             onChange={setSearch}
             placeholder="Search subject, syllabus…"
             className="min-w-[12rem] flex-1 max-w-md"
           />
+          <FilterToolbarActions>
           <Button
             size="sm"
             variant="outline"
-            className="h-10 gap-1.5 ml-auto"
+            className="h-10 gap-1.5"
             disabled={!batch || printing}
             onClick={() => void printBatch()}
           >
@@ -227,7 +229,8 @@ export default function DateSheetDetailPage({
             )}
             Print
           </Button>
-        </div>
+          </FilterToolbarActions>
+        </FilterToolbar>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">

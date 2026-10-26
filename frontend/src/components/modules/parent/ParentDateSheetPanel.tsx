@@ -703,7 +703,7 @@ export default function ParentDateSheetPanel() {
 
           {/* Filters row */}
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap gap-2">
+            <div className="grid w-full min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-3 sm:flex sm:w-auto sm:flex-wrap">
               {(
                 [
                   { key: "upcoming" as const, label: "Upcoming Exams" },
@@ -726,9 +726,9 @@ export default function ParentDateSheetPanel() {
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
               <select
-                className="h-10 rounded-xl border border-primary/25 bg-white px-3 text-sm min-w-[11rem] text-primary font-medium"
+                className="h-10 w-full rounded-xl border border-primary/25 bg-white px-3 text-sm text-primary font-medium sm:w-auto sm:min-w-[11rem]"
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
                 aria-label="Filter by assessment type"
@@ -741,14 +741,14 @@ export default function ParentDateSheetPanel() {
                   </option>
                 ))}
               </select>
-              <div className="h-10 rounded-xl border border-primary/25 bg-white px-3 text-sm flex items-center text-primary font-medium min-w-[10.5rem]">
+              <div className="flex h-10 w-full items-center rounded-xl border border-primary/25 bg-white px-3 text-sm font-medium text-primary sm:w-auto sm:min-w-[10.5rem]">
                 Class {className}
                 {sectionName ? ` - Section ${sectionName}` : ""}
               </div>
               <Button
                 type="button"
                 variant="outline"
-                className="h-10 gap-1.5 rounded-xl border-primary text-primary hover:bg-primary/5 hover:text-primary"
+                className="h-10 w-full gap-1.5 rounded-xl border-primary text-primary hover:bg-primary/5 hover:text-primary sm:w-auto"
                 disabled={printing || !sessionId}
                 onClick={() => void downloadDateSheet()}
               >

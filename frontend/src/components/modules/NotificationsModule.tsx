@@ -114,7 +114,7 @@ export default function NotificationsModule() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-[220px] flex-1">
+        <div className="w-full min-w-0 flex-1">
           <PanelSearchBar
             value={search}
             onChange={setSearch}

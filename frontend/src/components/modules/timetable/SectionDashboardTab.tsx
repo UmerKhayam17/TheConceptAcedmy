@@ -160,8 +160,8 @@ export default function SectionDashboardTab({ sessionId }: { sessionId: string }
         </div>
       )}
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
-        <div className="min-w-[160px]">
+      <div className="grid w-full min-w-0 grid-cols-1 gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex sm:flex-wrap sm:items-end">
+        <div className="w-full min-w-0 sm:w-auto sm:min-w-[160px]">
           <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Program</Label>
           <select
             className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
@@ -178,7 +178,7 @@ export default function SectionDashboardTab({ sessionId }: { sessionId: string }
             <option value="other">Other</option>
           </select>
         </div>
-        <div className="min-w-[180px]">
+        <div className="w-full min-w-0 sm:w-auto sm:min-w-[180px]">
           <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Class</Label>
           <select
             className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"

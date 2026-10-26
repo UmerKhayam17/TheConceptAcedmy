@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import {
   fetchAcademyClasses,
   fetchDiscountReport,
@@ -11,7 +10,8 @@ import {
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
-import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import ListPagination from "./ListPagination";
 
 const DISCOUNT_TYPE_LABELS: Record<DiscountReportRow["discountType"], string> = {
   monthly_only: "Monthly fee only",
@@ -67,7 +67,7 @@ export default function AcademyDiscountReport() {
           placeholder="Search student name, ID, phone…"
           className="max-w-md flex-1"
         />
-        <div className="space-y-1 min-w-[16.5rem]">
+        <div className="w-full min-w-0 space-y-1 sm:w-auto sm:min-w-[16.5rem]">
           <ClassProgramSelect
             id="discount-class-filter"
             className="w-full"
@@ -211,38 +211,19 @@ export default function AcademyDiscountReport() {
               </table>
             </div>
             {pagination ? (
-              <div className="flex items-center justify-end gap-3 pt-2 flex-wrap">
-                <PageSizeSelect
-                  value={pageSize}
-                  onChange={(n) => {
-                    setPageSize(n);
-                    setPage(1);
-                  }}
-                />
-                {pagination.pages > 1 ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page <= 1}
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    >
-                      Previous
-                    </Button>
-                    <span className="text-sm text-muted-foreground">
-                      Page {pagination.page} of {pagination.pages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page >= pagination.pages}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      Next
-                    </Button>
-                  </>
-                ) : null}
-              </div>
+              <ListPagination
+                attached={false}
+                page={page}
+                totalPages={pagination.pages}
+                total={pagination.total}
+                pageSize={pageSize}
+                onPageSizeChange={(n) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+                onPageChange={setPage}
+                noun="students"
+              />
             ) : null}
           </>
         )}

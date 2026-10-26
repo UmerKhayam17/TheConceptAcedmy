@@ -38,6 +38,7 @@ import {
   type AssessmentPlanItem,
 } from "@/lib/configApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 
@@ -231,7 +232,7 @@ export default function AssessmentsConfigTab({
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <PanelSearchBar
             value={search}
             onChange={setSearch}
@@ -252,12 +253,14 @@ export default function AssessmentsConfigTab({
             ))}
           </select>
           {canManage && (
-            <Button size="sm" className="h-10 gap-2 ml-auto whitespace-nowrap" onClick={openCreate}>
+            <FilterToolbarActions>
+            <Button size="sm" className="h-10 gap-2" onClick={openCreate}>
               <Plus className="h-4 w-4" />
               Add {noun}
             </Button>
+            </FilterToolbarActions>
           )}
-        </div>
+        </FilterToolbar>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">

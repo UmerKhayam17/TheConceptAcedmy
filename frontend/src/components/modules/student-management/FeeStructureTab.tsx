@@ -162,10 +162,10 @@ export default function FeeStructureTab({ caps, sessionId }: { caps: ModuleActio
           <h3 className="font-medium text-sm">
             {isAll ? "Fee structures (all sessions)" : "Fee structures"}
           </h3>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
             <PanelSearchBar value={search} onChange={setSearch} placeholder="Search class or fees…" className="max-w-xs" />
             {caps.canCreate && writable && (
-              <Button className="gap-2 shrink-0" onClick={openCreate}>
+              <Button className="h-10 w-full gap-2 sm:w-auto sm:shrink-0" onClick={openCreate}>
                 <Plus className="h-4 w-4" /> Create fee structure
               </Button>
             )}

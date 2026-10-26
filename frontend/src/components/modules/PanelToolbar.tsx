@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
-import { cn } from "@/lib/utils";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 
 /** Standard toolbar row: search on the left, actions on the right. */
 export default function PanelToolbar({
@@ -17,14 +17,9 @@ export default function PanelToolbar({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between",
-        className
-      )}
-    >
+    <FilterToolbar className={className}>
       <PanelSearchBar value={search} onChange={onSearchChange} placeholder={searchPlaceholder} />
-      {children ? <div className="flex flex-wrap items-center gap-2 shrink-0">{children}</div> : null}
-    </div>
+      {children ? <FilterToolbarActions>{children}</FilterToolbarActions> : null}
+    </FilterToolbar>
   );
 }

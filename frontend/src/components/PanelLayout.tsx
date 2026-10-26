@@ -50,7 +50,7 @@ function PanelChrome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["u
         allowAllSessions={meta.allowAllSessions}
       />
       {meta.showSession && <SessionScopeBanner />}
-      <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+      <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain">
         <Outlet />
       </main>
       <PanelMobileNav user={user} />

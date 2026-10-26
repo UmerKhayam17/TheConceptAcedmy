@@ -12,8 +12,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Percent,
   Plus,
   Pencil,
@@ -35,6 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { tableColumns, type UserFieldKey } from "@/lib/userSchemaFields";
 import {
   fetchUsersByScope,
@@ -61,7 +60,7 @@ import {
 import { resolveUploadUrl } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SquareCheckbox } from "@/components/ui/square-checkbox";
-import PageSizeSelect from "@/components/modules/student-management/PageSizeSelect";
+import ListPagination from "@/components/modules/student-management/ListPagination";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import {
   userCreateHref,
@@ -70,18 +69,6 @@ import {
   type UserFormScope,
 } from "@/lib/userFormRoutes";
 import { cn } from "@/lib/utils";
-
-function pageWindow(current: number, totalPages: number, max = 5): number[] {
-  if (totalPages <= max) return Array.from({ length: totalPages }, (_, i) => i + 1);
-  const half = Math.floor(max / 2);
-  let start = Math.max(1, current - half);
-  let end = start + max - 1;
-  if (end > totalPages) {
-    end = totalPages;
-    start = Math.max(1, end - max + 1);
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-}
 
 const filterSelectClass =
   "h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0";
@@ -681,7 +668,6 @@ const UsersModule = ({
   const someSelected = pageIds.some((id) => selectedIds.has(id));
   const showingFrom = totalFiltered > 0 ? (safePage - 1) * pageSize + 1 : 0;
   const showingTo = Math.min(safePage * pageSize, totalFiltered);
-  const pages = pageWindow(safePage, totalPages);
   const entityPlural =
     isStaffScope ? "staff" : isAdminsScope ? "admins" : "parents";
 
@@ -904,7 +890,7 @@ const UsersModule = ({
       </div>
 
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
-        <div className="flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           {isParentsScope ? (
             <>
               <ClassProgramSelect
@@ -996,7 +982,7 @@ const UsersModule = ({
             placeholder="Search name, email, phone…"
             className="min-w-[12rem] flex-1 max-w-md"
           />
-          <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+          <FilterToolbarActions>
             {filtersActive ? (
               <Button
                 type="button"
@@ -1037,8 +1023,8 @@ const UsersModule = ({
                 <Plus className="h-4 w-4" /> {addButtonLabel}
               </Button>
             )}
-          </div>
-        </div>
+          </FilterToolbarActions>
+        </FilterToolbar>
       </Card>
 
       {selectedCount > 0 && (
@@ -1358,65 +1344,20 @@ const UsersModule = ({
         </div>
 
         {totalFiltered > 0 && (
-          <div className="flex flex-col gap-3 border-t bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm text-muted-foreground">
-                Showing{" "}
-                <span className="font-medium text-foreground">{showingFrom}</span>
-                {" to "}
-                <span className="font-medium text-foreground">{showingTo}</span>
-                {" of "}
-                <span className="font-medium text-foreground">{totalFiltered}</span>
-                {" "}
-                {entityPlural}
-              </p>
-              <PageSizeSelect
-                value={pageSize}
-                onChange={(n) => {
-                  setPageSize(n);
-                  setPage(1);
-                }}
-              />
-            </div>
-
-            {totalPages > 1 && (
-              <div className="flex flex-wrap items-center justify-end gap-1.5">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={safePage <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                {pages.map((n) => (
-                  <Button
-                    key={n}
-                    variant={n === safePage ? "default" : "outline"}
-                    size="icon"
-                    className="h-8 w-8 text-sm"
-                    onClick={() => setPage(n)}
-                    aria-label={`Page ${n}`}
-                    aria-current={n === safePage ? "page" : undefined}
-                  >
-                    {n}
-                  </Button>
-                ))}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={safePage >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  aria-label="Next page"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
+          <ListPagination
+            page={safePage}
+            totalPages={totalPages}
+            total={totalFiltered}
+            from={showingFrom}
+            to={showingTo}
+            pageSize={pageSize}
+            onPageSizeChange={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+            onPageChange={setPage}
+            noun={entityPlural}
+          />
         )}
       </Card>
 

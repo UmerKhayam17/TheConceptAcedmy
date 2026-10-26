@@ -5,8 +5,6 @@ import {
   Calendar,
   Check,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   ClipboardList,
   FileText,
   Minus,
@@ -31,10 +29,10 @@ import { classTestSeriesHref, testExamsHref } from "@/lib/testExamsMenus";
 import { createdByLabel } from "@/lib/createdBy";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import AwardListButton from "@/components/modules/exams/AwardListButton";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import TestPaperCapture from "@/components/modules/exams/TestPaperCapture";
-import PageSizeSelect, {
-  DEFAULT_PAGE_SIZE,
-} from "@/components/modules/student-management/PageSizeSelect";
+import { DEFAULT_PAGE_SIZE } from "@/components/modules/student-management/PageSizeSelect";
+import ListPagination from "@/components/modules/student-management/ListPagination";
 import { formatDate } from "@/components/modules/student-management/studentDisplayUtils";
 import {
   ASSESSMENT_TYPE_LABELS,
@@ -101,18 +99,6 @@ function sectionBadgeClass(name: string) {
 function initialOf(name?: string) {
   const ch = (name || "?").trim().charAt(0).toUpperCase();
   return ch || "?";
-}
-
-function pageWindow(current: number, totalPages: number, max = 5): number[] {
-  if (totalPages <= max) return Array.from({ length: totalPages }, (_, i) => i + 1);
-  const half = Math.floor(max / 2);
-  let start = Math.max(1, current - half);
-  let end = start + max - 1;
-  if (end > totalPages) {
-    end = totalPages;
-    start = Math.max(1, end - max + 1);
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }
 
 function SquareCheckbox({
@@ -463,8 +449,6 @@ export default function ClassTestMarksPage({
 
   const showingFrom = totalFiltered > 0 ? (safePage - 1) * pageSize + 1 : 0;
   const showingTo = Math.min(safePage * pageSize, totalFiltered);
-  const pages = pageWindow(safePage, totalPages);
-
   const metaBits = [
     classNameOf(test),
     sectionLabel || null,
@@ -555,8 +539,8 @@ export default function ClassTestMarksPage({
       </div>
 
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[14rem] flex-1 max-w-xl">
+        <FilterToolbar>
+          <div className="relative w-full min-w-0 sm:max-w-xl sm:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
@@ -578,7 +562,7 @@ export default function ClassTestMarksPage({
               </option>
             ))}
           </select>
-          <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+          <FilterToolbarActions>
             <AwardListButton
               testId={testId}
               size="default"
@@ -595,8 +579,8 @@ export default function ClassTestMarksPage({
                 {saveMut.isPending ? "Saving…" : "Save marks"}
               </Button>
             )}
-          </div>
-        </div>
+          </FilterToolbarActions>
+        </FilterToolbar>
       </Card>
 
       <Card className="overflow-hidden shadow-sm border-border/80">
@@ -866,64 +850,20 @@ export default function ClassTestMarksPage({
               </table>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-t bg-muted/10">
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-sm text-muted-foreground">
-                  Showing{" "}
-                  <span className="font-medium text-foreground">{showingFrom}</span>
-                  {" to "}
-                  <span className="font-medium text-foreground">{showingTo}</span>
-                  {" of "}
-                  <span className="font-medium text-foreground">{totalFiltered}</span>
-                  {" students"}
-                </p>
-                <PageSizeSelect
-                  value={pageSize}
-                  onChange={(n) => {
-                    setPageSize(n);
-                    setPage(1);
-                  }}
-                />
-              </div>
-
-              {totalPages > 1 && (
-                <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    disabled={safePage <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    aria-label="Previous page"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  {pages.map((n) => (
-                    <Button
-                      key={n}
-                      variant={n === safePage ? "default" : "outline"}
-                      size="icon"
-                      className="h-8 w-8 text-sm"
-                      onClick={() => setPage(n)}
-                      aria-label={`Page ${n}`}
-                      aria-current={n === safePage ? "page" : undefined}
-                    >
-                      {n}
-                    </Button>
-                  ))}
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    disabled={safePage >= totalPages}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    aria-label="Next page"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
+            <ListPagination
+              page={safePage}
+              totalPages={totalPages}
+              total={totalFiltered}
+              from={showingFrom}
+              to={showingTo}
+              pageSize={pageSize}
+              onPageSizeChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+              onPageChange={setPage}
+              noun="students"
+            />
           </>
         )}
       </Card>

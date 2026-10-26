@@ -4,8 +4,6 @@ import {
   CalendarPlus,
   Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Clock3,
   Coins,
   Minus,
@@ -48,8 +46,10 @@ import {
   type SalaryReportFormat,
 } from "@/lib/studentManagementApi";
 import { MONTH_NAMES } from "./studentDisplayUtils";
-import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import ListPagination from "./ListPagination";
 import { DefaulterListDownload } from "./DefaulterListDownload";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import AcademySalaryDetailPage, {
   StudentPoolTable,
@@ -94,18 +94,6 @@ function periodLabel(r: AcademySalaryRecord) {
 function initialOf(name?: string) {
   const ch = (name || "?").trim().charAt(0).toUpperCase();
   return ch || "?";
-}
-
-function pageWindow(current: number, totalPages: number, max = 5): number[] {
-  if (totalPages <= max) return Array.from({ length: totalPages }, (_, i) => i + 1);
-  const half = Math.floor(max / 2);
-  let start = Math.max(1, current - half);
-  let end = start + max - 1;
-  if (end > totalPages) {
-    end = totalPages;
-    start = Math.max(1, end - max + 1);
-  }
-  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }
 
 function SquareCheckbox({
@@ -395,8 +383,6 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const showingFrom =
     pagination && pagination.total > 0 ? (page - 1) * pagination.limit + 1 : 0;
   const showingTo = pagination ? Math.min(page * pagination.limit, pagination.total) : 0;
-  const pages = pageWindow(page, pagination?.pages ?? 1);
-
   const pageIds = records.map((r) => r._id);
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
   const somePageSelected = pageIds.some((id) => selectedIds.includes(id));
@@ -560,7 +546,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <select
             className={selectClass}
             value={month}
@@ -606,7 +592,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             <option value="paid">Paid</option>
           </select>
 
-          <div className="relative min-w-[12rem] flex-1 max-w-md">
+          <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
@@ -616,7 +602,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+          <FilterToolbarActions>
             {canGenerate ? (
               <Button
                 className="gap-2 h-10 shrink-0 rounded-md bg-slate-900 text-white hover:bg-slate-800"
@@ -663,8 +649,8 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
               exporting={exporting}
               onDownload={(format) => void handleExport(format)}
             />
-          </div>
-        </div>
+          </FilterToolbarActions>
+        </FilterToolbar>
       </div>
 
       <Card className="overflow-hidden shadow-sm border-border/80">
@@ -961,64 +947,20 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
         </div>
 
         {pagination && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-t bg-muted/10">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm text-muted-foreground">
-                Showing{" "}
-                <span className="font-medium text-foreground">{showingFrom}</span>
-                {" to "}
-                <span className="font-medium text-foreground">{showingTo}</span>
-                {" of "}
-                <span className="font-medium text-foreground">{pagination.total}</span>
-                {" staff"}
-              </p>
-              <PageSizeSelect
-                value={pageSize}
-                onChange={(n) => {
-                  setPageSize(n);
-                  setPage(1);
-                }}
-              />
-            </div>
-
-            {pagination.pages > 1 && (
-              <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                {pages.map((n) => (
-                  <Button
-                    key={n}
-                    variant={n === page ? "default" : "outline"}
-                    size="icon"
-                    className="h-8 w-8 text-sm"
-                    onClick={() => setPage(n)}
-                    aria-label={`Page ${n}`}
-                    aria-current={n === page ? "page" : undefined}
-                  >
-                    {n}
-                  </Button>
-                ))}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={page >= pagination.pages}
-                  onClick={() => setPage((p) => p + 1)}
-                  aria-label="Next page"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
+          <ListPagination
+            page={page}
+            totalPages={pagination.pages}
+            total={pagination.total}
+            from={showingFrom}
+            to={showingTo}
+            pageSize={pageSize}
+            onPageSizeChange={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+            onPageChange={setPage}
+            noun="staff"
+          />
         )}
       </Card>
 

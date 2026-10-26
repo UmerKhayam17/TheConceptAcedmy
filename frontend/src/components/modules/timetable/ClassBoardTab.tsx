@@ -878,7 +878,7 @@ export default function ClassBoardTab({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="grid w-full min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end sm:[&_button]:w-auto max-sm:[&_button]:w-full">
         {canManage && (
           <Button size="sm" variant="default" onClick={() => setAutoGenOpen(true)}>
             <Sparkles className="h-3.5 w-3.5 mr-1.5" />
@@ -918,8 +918,8 @@ export default function ClassBoardTab({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
         <div className="space-y-4 min-w-0">
-          <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
-            <div className="min-w-[140px]">
+          <div className="grid w-full min-w-0 grid-cols-1 gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex sm:flex-wrap sm:items-end">
+            <div className="w-full min-w-0 sm:w-auto sm:min-w-[140px]">
               <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Class</Label>
               <select
                 className="mt-1 w-full h-10 rounded-lg border bg-background px-3 text-sm"
@@ -938,7 +938,7 @@ export default function ClassBoardTab({
                 ))}
               </select>
             </div>
-            <div className="min-w-[160px]">
+            <div className="w-full min-w-0 sm:w-auto sm:min-w-[160px]">
               <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Day</Label>
               <div className="mt-1 flex gap-2">
                 <select
@@ -968,11 +968,11 @@ export default function ClassBoardTab({
             </div>
             <div>
               <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Sheet</Label>
-              <div className="mt-1 flex rounded-lg border bg-muted/40 p-1">
+              <div className="mt-1 flex w-full rounded-lg border bg-muted/40 p-1 sm:w-fit">
                 <button
                   type="button"
                   className={cn(
-                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none",
                     versionMode === "draft"
                       ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
@@ -985,7 +985,7 @@ export default function ClassBoardTab({
                 <button
                   type="button"
                   className={cn(
-                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none",
                     versionMode === "published"
                       ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
@@ -997,7 +997,7 @@ export default function ClassBoardTab({
                 </button>
               </div>
             </div>
-            <div className="ml-auto flex rounded-full border bg-muted/40 p-1">
+            <div className="flex w-full rounded-full border bg-muted/40 p-1 sm:ml-auto sm:w-auto [&_button]:flex-1 sm:[&_button]:flex-none">
               <button
                 type="button"
                 className={cn(

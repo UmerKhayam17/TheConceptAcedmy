@@ -58,6 +58,16 @@ const REPORT_PRESETS = {
     columns: CONTACT_COLUMNS,
     kind: 'contact',
   },
+  enrolled: {
+    title: 'Enrolled Students List',
+    sheetName: 'Enrolled Students',
+    subject: 'Official enrolled student list',
+    confidentialLabel: 'Confidential enrolled student list',
+    emptyMessage: 'No enrolled active students match the selected class and section.',
+    filterFallback: 'Enrolled students list',
+    columns: LIST_COLUMNS,
+    kind: 'list',
+  },
 };
 
 const REPORT_OPTS = {
@@ -72,7 +82,9 @@ const LINE = '#000000';
 
 function normalizeReportType(reportType) {
   const key = String(reportType || 'list').toLowerCase();
-  return key === 'contact' ? 'contact' : 'list';
+  if (key === 'contact') return 'contact';
+  if (key === 'enrolled') return 'enrolled';
+  return 'list';
 }
 
 function resolvePreset(options = {}) {
@@ -370,27 +382,58 @@ async function renderStudentsPdf(students, meta = {}, options = {}) {
       const probeY = startBodyY();
       let remaining = rows.slice();
       let firstPage = true;
+      // Always half-width. A full-width fallback made later pages single-column
+      // once the leftover count looked like it fit in one column — wrapped roll
+      // numbers are taller than that estimate, so those pages never matched page 1.
+      const tableW = (contentW - gap) / 2;
+      const cols = buildDualCols(tableW, kind, omitSensitive);
 
-      const fillColumn = (cols, availableH) => {
+      const fillColumn = (source, availableH) => {
         const packed = [];
         let used = 0;
-        while (remaining.length) {
-          const next = remaining[0];
+        const rest = source.slice();
+        while (rest.length) {
+          const next = rest[0];
           const h = dualRowHeight(doc, next, cols, { minRowH: rowH });
           if (packed.length > 0 && used + h > availableH) break;
           // Always place at least one row even if it is taller than the column.
           if (packed.length === 0 && h > availableH) {
-            packed.push({ row: remaining.shift(), h });
+            packed.push({ row: rest.shift(), h });
             used += h;
             break;
           }
-          packed.push({ row: remaining.shift(), h });
+          packed.push({ row: rest.shift(), h });
           used += h;
         }
-        return packed;
+        return { packed, rest };
       };
 
-      const drawColumn = (blockX, top, tableW, cols, packed) => {
+      /** Last page: share leftover rows across both columns when both fit. */
+      const splitBalanced = (packed, availableH) => {
+        if (packed.length <= 1) return null;
+        const heights = packed.map((p) => p.h);
+        const total = heights.reduce((sum, h) => sum + h, 0);
+        let bestIndex = -1;
+        let bestDiff = Infinity;
+        let acc = 0;
+        for (let i = 0; i < heights.length - 1; i += 1) {
+          acc += heights[i];
+          const rightH = total - acc;
+          if (acc > availableH || rightH > availableH) continue;
+          const diff = Math.abs(acc - rightH);
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            bestIndex = i + 1;
+          }
+        }
+        if (bestIndex < 0) return null;
+        return {
+          left: packed.slice(0, bestIndex),
+          right: packed.slice(bestIndex),
+        };
+      };
+
+      const drawColumn = (blockX, top, packed) => {
         drawDualTableHeader(doc, blockX, top, tableW, cols, headerH);
         let y = top + headerH;
         packed.forEach(({ row, h }) => {
@@ -399,7 +442,7 @@ async function renderStudentsPdf(students, meta = {}, options = {}) {
         });
       };
 
-      while (remaining.length > 0 || firstPage) {
+      while (remaining.length > 0) {
         let top;
         if (firstPage) {
           top = probeY;
@@ -410,22 +453,22 @@ async function renderStudentsPdf(students, meta = {}, options = {}) {
         }
 
         const availableH = Math.max(rowH, pageH - top - footerReserve - margin - headerH);
-        // Prefer dual columns whenever more than ~one column of min-height rows remain.
-        const preferDual = remaining.length > Math.max(1, Math.floor(availableH / rowH));
-        const tableW = preferDual ? (contentW - gap) / 2 : contentW;
-        const cols = buildDualCols(tableW, kind, omitSensitive);
+        let left = fillColumn(remaining, availableH);
+        let right = fillColumn(left.rest, availableH);
+        remaining = right.rest;
 
-        const leftPacked = fillColumn(cols, availableH);
-        drawColumn(margin, top, tableW, cols, leftPacked);
-
-        if (preferDual && remaining.length > 0) {
-          const rightPacked = fillColumn(cols, availableH);
-          if (rightPacked.length) {
-            drawColumn(margin + tableW + gap, top, tableW, cols, rightPacked);
+        if (!remaining.length) {
+          const balanced = splitBalanced([...left.packed, ...right.packed], availableH);
+          if (balanced && balanced.right.length) {
+            left = { packed: balanced.left };
+            right = { packed: balanced.right };
           }
         }
 
-        if (!remaining.length) break;
+        drawColumn(margin, top, left.packed);
+        if (right.packed.length) {
+          drawColumn(margin + tableW + gap, top, right.packed);
+        }
       }
 
       const range = doc.bufferedPageRange();

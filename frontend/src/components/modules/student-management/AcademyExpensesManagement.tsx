@@ -32,8 +32,10 @@ import {
 import { cn } from "@/lib/utils";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import { formatPkr } from "./studentDisplayUtils";
-import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import ListPagination from "./ListPagination";
 import { DefaulterListDownload } from "./DefaulterListDownload";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 
 const CATEGORIES = Object.keys(EXPENSE_CATEGORY_LABELS) as ExpenseCategory[];
 
@@ -327,7 +329,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
       )}
 
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
-        <div className="flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <select
             className={cn(selectClass, "w-[10rem]")}
             value={month}
@@ -376,7 +378,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
             <option value="planned">Planned</option>
           </select>
 
-          <div className="relative min-w-[12rem] flex-1 max-w-md">
+          <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
@@ -387,7 +389,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+          <FilterToolbarActions>
             {canManage && (
               <Button className="gap-2 h-10" onClick={openCreate}>
                 <Plus className="h-4 w-4" /> Add expense
@@ -401,8 +403,8 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                 onDownload={(format) => void handleExport(format)}
               />
             )}
-          </div>
-        </div>
+          </FilterToolbarActions>
+        </FilterToolbar>
       </Card>
 
       <Card className="overflow-hidden">
@@ -475,33 +477,18 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
           </table>
         </div>
         {pagination && (
-          <div className="flex justify-center items-center gap-3 p-3 border-t flex-wrap">
-            <PageSizeSelect
-              value={pageSize}
-              onChange={(n) => {
-                setPageSize(n);
-                setPage(1);
-              }}
-            />
-            {pagination.pages > 1 && (
-              <>
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                  Prev
-                </Button>
-                <span className="text-sm self-center">
-                  Page {page} / {pagination.pages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= pagination.pages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </>
-            )}
-          </div>
+          <ListPagination
+            page={page}
+            totalPages={pagination.pages}
+            total={pagination.total}
+            pageSize={pageSize}
+            onPageSizeChange={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+            onPageChange={setPage}
+            noun="expenses"
+          />
         )}
       </Card>
 

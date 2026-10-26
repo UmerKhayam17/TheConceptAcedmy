@@ -4,8 +4,6 @@ import {
   Award,
   BarChart3,
   CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   ClipboardList,
   Download,
   Eye,
@@ -31,6 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import ListPagination from "@/components/modules/student-management/ListPagination";
 import {
   Dialog,
   DialogContent,
@@ -1468,45 +1467,15 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                       </table>
                     </div>
 
-                    <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-4 sm:px-5 py-3.5">
-                      <p className="text-sm text-slate-500">
-                        Showing {resultsPage * RESULTS_PAGE_SIZE + 1} to{" "}
-                        {Math.min(
-                          (resultsPage + 1) * RESULTS_PAGE_SIZE,
-                          filteredResults.length,
-                        )}{" "}
-                        of {filteredResults.length} results
-                      </p>
-                      {filteredResults.length > RESULTS_PAGE_SIZE && (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            disabled={resultsPage === 0}
-                            onClick={() => setResultsPage((p) => Math.max(0, p - 1))}
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                          </Button>
-                          <span className="min-w-[2rem] text-center text-xs font-semibold tabular-nums">
-                            {resultsPage + 1}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            disabled={resultsPage >= resultsPageCount - 1}
-                            onClick={() =>
-                              setResultsPage((p) => Math.min(resultsPageCount - 1, p + 1))
-                            }
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+                    <ListPagination
+                      page={resultsPage + 1}
+                      totalPages={resultsPageCount}
+                      total={filteredResults.length}
+                      pageSize={RESULTS_PAGE_SIZE}
+                      onPageChange={(next) => setResultsPage(next - 1)}
+                      noun="results"
+                      className="border-slate-100 bg-slate-50 px-4 sm:px-5"
+                    />
                   </>
                 )}
               </Card>

@@ -14,8 +14,6 @@ import {
 import {
   BookOpen,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Layers,
   Link2,
   Pencil,
@@ -43,6 +41,7 @@ import {
   type AcademySubject,
 } from "@/lib/studentManagementApi";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import {
   generateSubjectCode,
@@ -70,7 +69,8 @@ import {
 } from "@/components/modules/student-management/SubjectEnrollmentFields";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { sessionLabelFromAcademyClass } from "./studentDisplayUtils";
-import PageSizeSelect, { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
+import ListPagination from "./ListPagination";
 
 function ShareBar({ percent, color }: { percent: number; color: string }) {
   const w = Math.min(100, Math.max(0, percent));
@@ -604,7 +604,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
 
       {/* Filter / action bar — matches registration filter row */}
       <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <ClassProgramSelect
             id="subject-class-select"
             className="w-[16.5rem] shrink-0 min-w-0"
@@ -634,7 +634,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-          <div className="relative min-w-[14rem] flex-1 max-w-md">
+          <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input
               id="subjects-search"
@@ -646,7 +646,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
           </div>
 
           {writable && (caps.canCreate || caps.canEdit) ? (
-            <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+            <FilterToolbarActions>
               {caps.canCreate ? (
                 <Button
                   type="button"
@@ -691,9 +691,9 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                   <Plus className="h-4 w-4" /> Add Subject
                 </Button>
               ) : null}
-            </div>
+            </FilterToolbarActions>
           ) : null}
-        </div>
+        </FilterToolbar>
       </div>
 
       {/* Table */}
@@ -865,45 +865,21 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                 </table>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3.5 border-t border-slate-100 bg-slate-50">
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-sm text-slate-500">
-                    {subjectsFiltered.length === 0
-                      ? "Showing 0 subjects"
-                      : `Showing ${showingFrom} to ${showingTo} of ${subjectsFiltered.length} subjects`}
-                  </p>
-                  <PageSizeSelect
-                    value={pageSize}
-                    onChange={(n) => {
-                      setPageSize(n);
-                      setPage(1);
-                    }}
-                  />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    disabled={safePage <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 disabled:opacity-40 hover:bg-slate-50"
-                    aria-label="Previous page"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-[#2B6CB0] px-2.5 text-sm font-semibold text-white">
-                    {safePage}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={safePage >= totalPages}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 disabled:opacity-40 hover:bg-slate-50"
-                    aria-label="Next page"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
+              <ListPagination
+                page={safePage}
+                totalPages={totalPages}
+                total={subjectsFiltered.length}
+                from={showingFrom}
+                to={showingTo}
+                pageSize={pageSize}
+                onPageSizeChange={(n) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+                onPageChange={setPage}
+                noun="subjects"
+                className="border-slate-100 bg-slate-50"
+              />
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>

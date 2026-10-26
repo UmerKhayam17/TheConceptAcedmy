@@ -58,10 +58,10 @@ export function TimetableFilters({
   return (
     <section className="rounded-xl border border-[#E8EEF6] bg-white px-4 py-3.5 shadow-[0_2px_8px_rgba(15,42,86,0.04)]">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="grid w-full min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-2 xl:flex xl:flex-wrap xl:items-end">
           <FilterField>
             <Select value={monthValue} onValueChange={onMonthChange}>
-              <SelectTrigger className={`${triggerClass} min-w-[12.5rem]`}>
+              <SelectTrigger className={`${triggerClass} xl:min-w-[12.5rem]`}>
                 <CalendarDays className="size-3.5 text-[#64748B] shrink-0" aria-hidden />
                 <SelectValue placeholder="Month" />
               </SelectTrigger>
@@ -77,7 +77,7 @@ export function TimetableFilters({
 
           <FilterField>
             <Select value={viewMode} onValueChange={(v) => onViewModeChange(v as ViewMode)}>
-              <SelectTrigger className={`${triggerClass} min-w-[11.5rem]`}>
+              <SelectTrigger className={`${triggerClass} xl:min-w-[11.5rem]`}>
                 <CalendarRange className="size-3.5 text-[#64748B] shrink-0" aria-hidden />
                 <SelectValue />
               </SelectTrigger>
@@ -91,7 +91,7 @@ export function TimetableFilters({
           {viewMode === "day" ? (
             <FilterField label="Day">
               <Select value={dayFocus} onValueChange={(v) => onDayFocusChange(v as Weekday)}>
-                <SelectTrigger className={`${triggerClass} min-w-[9rem]`}>
+                <SelectTrigger className={`${triggerClass} xl:min-w-[9rem]`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -107,7 +107,7 @@ export function TimetableFilters({
 
           <FilterField label="Class">
             <Select value={classFilter} onValueChange={onClassFilterChange}>
-              <SelectTrigger className={`${triggerClass} min-w-[12.5rem]`}>
+              <SelectTrigger className={`${triggerClass} xl:min-w-[12.5rem]`}>
                 <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
@@ -123,7 +123,7 @@ export function TimetableFilters({
 
           <FilterField label="Subject">
             <Select value={subjectFilter} onValueChange={onSubjectFilterChange}>
-              <SelectTrigger className={`${triggerClass} min-w-[13rem]`}>
+              <SelectTrigger className={`${triggerClass} xl:min-w-[13rem]`}>
                 <SelectValue placeholder="Subject" />
               </SelectTrigger>
               <SelectContent>
@@ -138,7 +138,7 @@ export function TimetableFilters({
           </FilterField>
         </div>
 
-        <div className="flex items-center justify-end gap-2 shrink-0">
+        <div className="flex w-full min-w-0 items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
           <Button
             type="button"
             variant="outline"
@@ -149,7 +149,7 @@ export function TimetableFilters({
           >
             <ChevronLeft className="size-4" />
           </Button>
-          <div className="flex h-9 min-w-[9.5rem] items-center justify-center rounded-md border border-[#E2E8F0] bg-white px-4 text-xs font-medium text-[#475569] shadow-[0_1px_2px_rgba(15,42,86,0.04)] tabular-nums whitespace-nowrap">
+          <div className="flex h-9 min-w-0 flex-1 items-center justify-center rounded-md border border-[#E2E8F0] bg-white px-3 text-xs font-medium text-[#475569] shadow-[0_1px_2px_rgba(15,42,86,0.04)] tabular-nums sm:min-w-[9.5rem] sm:flex-none sm:px-4">
             {weekLabel}
           </div>
           <Button

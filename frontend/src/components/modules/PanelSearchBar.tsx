@@ -17,7 +17,13 @@ export default function PanelSearchBar({
   inputClassName?: string;
 }) {
   return (
-    <div className={cn("relative min-w-[200px] max-w-md flex-1", className)}>
+    <div
+      className={cn(
+        "relative w-full min-w-0 max-w-full sm:w-auto sm:max-w-md sm:flex-1",
+        className,
+        "max-sm:!w-full max-sm:!min-w-0 max-sm:!max-w-full",
+      )}
+    >
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
       <Input
         className={cn("pl-9 pr-9 h-10", inputClassName)}

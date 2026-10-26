@@ -247,6 +247,82 @@ export const markStaffAttendanceManual = (payload: MarkStaffAttendancePayload) =
     body: JSON.stringify(payload),
   });
 
+export type StaffPeriodStatus = "present" | "late" | "absent" | "leave" | "";
+
+export type StaffPeriodRow = {
+  periodKey: string;
+  label: string;
+  startTime: string;
+  endTime: string;
+  classLabel: string;
+  sectionLabel: string;
+  subjectLabel: string;
+  status: StaffPeriodStatus | string;
+  day?: string;
+  weekday?: string;
+};
+
+export type StaffPeriodTeacher = {
+  userId: string;
+  name: string;
+  email?: string;
+  role?: string;
+  isActive?: boolean;
+  totalClasses: number;
+  present: number;
+  late: number;
+  absent: number;
+  leave: number;
+  unmarked: number;
+  attendancePercent: number;
+  periods: StaffPeriodRow[];
+};
+
+export type StaffPeriodReport = {
+  date?: string;
+  weekday?: string;
+  month?: number;
+  year?: number;
+  sessionName?: string;
+  teachers: StaffPeriodTeacher[];
+  summary: {
+    totalClasses: number;
+    present: number;
+    late: number;
+    absent: number;
+    leave: number;
+    unmarked: number;
+    attendancePercent: number;
+  };
+};
+
+export const fetchStaffPeriodDay = (date: string, sessionId: string, userId?: string) => {
+  const q = new URLSearchParams({ date, sessionId });
+  if (userId) q.set("userId", userId);
+  return api<StaffPeriodReport>(`/staff-attendance/periods?${q}`);
+};
+
+export const fetchStaffPeriodMonth = (
+  month: number,
+  year: number,
+  sessionId: string,
+  userId?: string,
+) => {
+  const q = new URLSearchParams({ month: String(month), year: String(year), sessionId });
+  if (userId) q.set("userId", userId);
+  return api<StaffPeriodReport>(`/staff-attendance/periods/month?${q}`);
+};
+
+export const saveStaffPeriodMarks = (payload: {
+  date: string;
+  sessionId: string;
+  marks: { userId: string; periodKey: string; status: StaffPeriodStatus }[];
+}) =>
+  api<StaffPeriodReport>("/staff-attendance/periods", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
 export type StaffAttendanceExportFormat = "xlsx" | "pdf";
 
 export const exportStaffAttendanceReport = async (
@@ -258,6 +334,7 @@ export const exportStaffAttendanceReport = async (
     year?: number;
     userId?: string;
     role?: string;
+    sessionId?: string;
   },
 ) => {
   const format = params.format || "pdf";
@@ -267,6 +344,7 @@ export const exportStaffAttendanceReport = async (
   if (params.year) q.set("year", String(params.year));
   if (params.userId) q.set("userId", params.userId);
   if (params.role) q.set("role", params.role);
+  if (params.sessionId) q.set("sessionId", params.sessionId);
   const res = await authedFetch(`/ai-attendance/staff-attendance/export?${q}`, { method: "GET" });
   if (!res.ok) {
     let message = "Export failed";
