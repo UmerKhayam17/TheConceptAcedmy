@@ -80,6 +80,27 @@ async function fileToJpegBase64(file: File, maxSide = 1280): Promise<string> {
   }
 }
 
+function speakMarked(name: string, status?: string) {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  const spoken = status === "late" ? "late" : "present";
+  const utter = new SpeechSynthesisUtterance(`${name} is ${spoken}`);
+  utter.lang = "en-US";
+  utter.rate = 0.92;
+  const voices = window.speechSynthesis.getVoices();
+  const english = voices.find((v) => v.lang.toLowerCase().startsWith("en"));
+  if (english) utter.voice = english;
+  window.speechSynthesis.resume();
+  window.speechSynthesis.speak(utter);
+}
+
+function primeAttendanceVoice() {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  window.speechSynthesis.getVoices();
+  const utter = new SpeechSynthesisUtterance(" ");
+  utter.volume = 0;
+  window.speechSynthesis.speak(utter);
+}
+
 function grabFromVideo(video: HTMLVideoElement | null): string | null {
   if (!video || !video.videoWidth || !video.videoHeight) return null;
   const canvas = document.createElement("canvas");
@@ -716,8 +737,10 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
         const marked = await identifyAiFace(image, true);
         if (cancelled) return;
         if (personKey) lastWebcamMarkAt.current.set(personKey, Date.now());
-        const action = String((marked as { attendance_action?: string }).attendance_action || "marked");
-        setMonitorWatch(`${name} · ${action.replace(/_/g, " ")} · ${pct}`);
+        const status = String((marked as { status?: string }).status || "present");
+        const spokenName = String((marked as { employee_name?: string }).employee_name || name);
+        setMonitorWatch(`${spokenName} · ${status.replace(/_/g, " ")} · ${pct}`);
+        speakMarked(spokenName, status);
         invalidateAttendanceQueries();
       } catch (e) {
         if (!cancelled) {
@@ -1308,7 +1331,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       {tab === "monitor" && (
         <Card className="p-3 sm:p-4 space-y-3 w-full">
           <p className="text-sm text-muted-foreground">
-            Start the webcam. A recognized face is marked automatically when confidence is at least 75%.
+            Start the webcam. A recognized face is marked automatically when confidence is at least 75%. The phone says the student’s name and “is present.” Keep the volume up.
           </p>
           <video
             ref={monitorVideoRef}
@@ -1326,14 +1349,15 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                 size="sm"
                 className="w-full sm:w-auto"
                 disabled={!canWrite || !webcamSupported}
-                onClick={() =>
+                onClick={() => {
+                  primeAttendanceVoice();
                   void startWebcam(
                     monitorVideoRef.current,
                     monitorStreamRef,
                     setMonitorCamOn,
                     setMonitorCamReady,
-                  )
-                }
+                  );
+                }}
               >
                 Start webcam
               </Button>

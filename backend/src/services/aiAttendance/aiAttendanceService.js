@@ -181,6 +181,7 @@ async function identifyAndMark(imageBase64, { markAttendance = true, source = 'w
     const marked = await markFromPersonKey(personKey, { confidence, source: source === 'cctv' ? 'ai' : 'ai' });
     result.attendance_action = marked.action;
     result.kind = marked.kind;
+    result.status = marked.doc?.status || null;
   }
   return result;
 }
