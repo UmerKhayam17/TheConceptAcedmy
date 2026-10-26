@@ -747,6 +747,29 @@ function TeacherSummaryTable({
   );
 }
 
+const CLASS_DETAIL_GRID =
+  "grid grid-cols-[minmax(5.5rem,0.9fr)_minmax(7.25rem,1fr)_minmax(3.25rem,0.55fr)_minmax(3.25rem,0.45fr)_minmax(5.5rem,1fr)_6.5rem] items-center gap-x-3";
+
+function groupPeriodsByDate(periods: StaffPeriodTeacher["periods"]) {
+  const groups: {
+    day: string;
+    weekday?: string;
+    periods: StaffPeriodTeacher["periods"];
+  }[] = [];
+  const byDay = new Map<string, (typeof groups)[number]>();
+  periods.forEach((period) => {
+    const day = period.day || "—";
+    let group = byDay.get(day);
+    if (!group) {
+      group = { day, weekday: period.weekday, periods: [] };
+      byDay.set(day, group);
+      groups.push(group);
+    }
+    group.periods.push(period);
+  });
+  return groups;
+}
+
 function PeriodMarkTable({
   teacher,
   drafts,
@@ -760,6 +783,34 @@ function PeriodMarkTable({
   showDate: boolean;
   onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
 }) {
+  const periodStatus = (periodKey: string, fallback: string) =>
+    (canMark
+      ? drafts[periodDraftKey(teacher.userId, periodKey)]?.status ?? fallback ?? ""
+      : fallback || "") as StaffPeriodStatus;
+
+  const renderStatus = (periodKey: string, label: string, status: StaffPeriodStatus) =>
+    canMark ? (
+      <select
+        className={cn(
+          "h-9 w-full min-w-[6.5rem] rounded-md border px-2 text-sm font-semibold bg-background",
+          STATUS_SELECT_CLASS[status] || ""
+        )}
+        value={status}
+        onChange={(e) => onChange(teacher.userId, periodKey, e.target.value as StaffPeriodStatus)}
+        aria-label={`Status for ${label}`}
+      >
+        {PERIOD_STATUSES.map((s) => (
+          <option key={s.label} value={s.value}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+    ) : (
+      <StatusPill status={status} />
+    );
+
+  const dateGroups = showDate ? groupPeriodsByDate(teacher.periods) : [];
+
   return (
     <div className="space-y-2">
       <h2 className="text-sm font-semibold text-primary">
@@ -768,75 +819,102 @@ function PeriodMarkTable({
       <div className="overflow-x-auto">
         <table className="w-full text-sm min-w-[720px]">
           <thead className="bg-muted/50 border-b">
-            <tr>
-              {showDate && <th className="text-left p-2.5 font-medium">Date</th>}
-              <th className="text-left p-2.5 font-medium">Period</th>
-              <th className="text-left p-2.5 font-medium">Time</th>
-              <th className="text-left p-2.5 font-medium">Class</th>
-              <th className="text-left p-2.5 font-medium">Section</th>
-              <th className="text-left p-2.5 font-medium">Subject</th>
-              <th className="text-left p-2.5 font-medium">Status</th>
-            </tr>
+            {showDate ? (
+              <tr>
+                <th className="text-left p-2.5 font-medium align-bottom w-[9.5rem]">Date</th>
+                <th className="p-0 text-left font-medium">
+                  <div className="px-2.5 pt-2.5">Classes</div>
+                  <div
+                    className={cn(
+                      CLASS_DETAIL_GRID,
+                      "px-2.5 pb-2 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                    )}
+                  >
+                    <span>Period</span>
+                    <span>Time</span>
+                    <span>Class</span>
+                    <span>Section</span>
+                    <span>Subject</span>
+                    <span>Status</span>
+                  </div>
+                </th>
+              </tr>
+            ) : (
+              <tr>
+                <th className="text-left p-2.5 font-medium">Period</th>
+                <th className="text-left p-2.5 font-medium">Time</th>
+                <th className="text-left p-2.5 font-medium">Class</th>
+                <th className="text-left p-2.5 font-medium">Section</th>
+                <th className="text-left p-2.5 font-medium">Subject</th>
+                <th className="text-left p-2.5 font-medium">Status</th>
+              </tr>
+            )}
           </thead>
           <tbody>
             {teacher.periods.length === 0 && (
               <tr>
-                <td colSpan={showDate ? 7 : 6} className="p-6 text-center text-muted-foreground">
+                <td colSpan={showDate ? 2 : 6} className="p-6 text-center text-muted-foreground">
                   No periods on the timetable.
                 </td>
               </tr>
             )}
-            {teacher.periods.map((period) => {
-              const status = (
-                canMark
-                  ? drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ?? period.status ?? ""
-                  : period.status || ""
-              ) as StaffPeriodStatus;
-              return (
-                <tr key={`${period.day || "day"}-${period.periodKey}-${period.classLabel}`} className="border-b last:border-0">
-                  {showDate && (
-                    <td className="p-2.5 whitespace-nowrap">
-                      {period.day || "—"}
-                      {period.weekday ? (
+            {showDate
+              ? dateGroups.map((group) => (
+                  <tr key={group.day} className="border-b last:border-0 align-top">
+                    <td className="p-2.5 whitespace-nowrap border-r border-border align-middle">
+                      <div className="font-medium">{group.day}</div>
+                      {group.weekday ? (
                         <span className="block text-[10px] uppercase text-muted-foreground">
-                          {weekdayLabel(period.weekday)}
+                          {weekdayLabel(group.weekday)}
                         </span>
                       ) : null}
                     </td>
-                  )}
-                  <td className="p-2.5">{period.label || "—"}</td>
-                  <td className="p-2.5 whitespace-nowrap">
-                    {period.startTime}–{period.endTime}
-                  </td>
-                  <td className="p-2.5">{period.classLabel || "—"}</td>
-                  <td className="p-2.5">{period.sectionLabel || "—"}</td>
-                  <td className="p-2.5">{period.subjectLabel || "—"}</td>
-                  <td className="p-2.5">
-                    {canMark ? (
-                      <select
-                        className={cn(
-                          "h-9 w-full min-w-[8rem] rounded-md border px-2 text-sm font-semibold bg-background",
-                          STATUS_SELECT_CLASS[status] || ""
-                        )}
-                        value={status}
-                        onChange={(e) =>
-                          onChange(teacher.userId, period.periodKey, e.target.value as StaffPeriodStatus)
-                        }
-                        aria-label={`Status for ${period.label}`}
-                      >
-                        {PERIOD_STATUSES.map((s) => (
-                          <option key={s.label} value={s.value}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <StatusPill status={status} />
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+                    <td className="p-0">
+                      {group.periods.map((period, index) => {
+                        const status = periodStatus(period.periodKey, period.status || "");
+                        return (
+                          <div
+                            key={`${period.periodKey}-${period.classLabel}-${period.sectionLabel}-${index}`}
+                            className={cn(
+                              CLASS_DETAIL_GRID,
+                              "px-2.5 py-2",
+                              index < group.periods.length - 1 && "border-b border-border/70"
+                            )}
+                          >
+                            <span>{period.label || "—"}</span>
+                            <span className="whitespace-nowrap">
+                              {period.startTime}–{period.endTime}
+                            </span>
+                            <span>{period.classLabel || "—"}</span>
+                            <span>{period.sectionLabel || "—"}</span>
+                            <span>{period.subjectLabel || "—"}</span>
+                            <span>{renderStatus(period.periodKey, period.label || "class", status)}</span>
+                          </div>
+                        );
+                      })}
+                    </td>
+                  </tr>
+                ))
+              : teacher.periods.map((period) => {
+                  const status = periodStatus(period.periodKey, period.status || "");
+                  return (
+                    <tr
+                      key={`${period.day || "day"}-${period.periodKey}-${period.classLabel}`}
+                      className="border-b last:border-0"
+                    >
+                      <td className="p-2.5">{period.label || "—"}</td>
+                      <td className="p-2.5 whitespace-nowrap">
+                        {period.startTime}–{period.endTime}
+                      </td>
+                      <td className="p-2.5">{period.classLabel || "—"}</td>
+                      <td className="p-2.5">{period.sectionLabel || "—"}</td>
+                      <td className="p-2.5">{period.subjectLabel || "—"}</td>
+                      <td className="p-2.5">
+                        {renderStatus(period.periodKey, period.label || "class", status)}
+                      </td>
+                    </tr>
+                  );
+                })}
           </tbody>
         </table>
       </div>

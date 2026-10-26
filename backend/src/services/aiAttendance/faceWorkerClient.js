@@ -69,7 +69,7 @@ async function embed(imageBase64) {
 }
 
 /** Cosine similarity match in Node against Mongo gallery. */
-function matchEmbedding(probe, gallery, threshold = 0.45) {
+function matchEmbedding(probe, gallery, threshold = 0.75) {
   if (!probe?.length || !gallery || !Object.keys(gallery).length) {
     return { personKey: null, confidence: 0 };
   }

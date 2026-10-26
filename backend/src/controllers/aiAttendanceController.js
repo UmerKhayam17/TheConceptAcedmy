@@ -346,11 +346,17 @@ const exportStaffAttendance = catchAsync(async (req, res) => {
       : monthData.summary,
   };
 
+  const registerArgs = {
+    days: monthData.days,
+    workingDays: monthData.workingDays,
+    meta,
+  };
+
   if (!one) {
     const allFileBase = `All-Staff_${safeReportToken(MONTHS[month - 1])}-${year}`;
     const buffer = format === 'pdf'
-      ? await renderAllStaffMonthlyAttendancePdf({ teachers, meta })
-      : await renderAllStaffMonthlyAttendanceExcel({ teachers, meta });
+      ? await renderAllStaffMonthlyAttendancePdf({ teachers, ...registerArgs })
+      : await renderAllStaffMonthlyAttendanceExcel({ teachers, ...registerArgs });
     if (format === 'pdf') {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${allFileBase}.pdf"`);
@@ -366,8 +372,8 @@ const exportStaffAttendance = catchAsync(async (req, res) => {
 
   const staffFileBase = `${safeReportToken(one.name)}_${safeReportToken(MONTHS[month - 1])}-${year}`;
   const buffer = format === 'pdf'
-    ? await renderMonthlyStaffAttendancePdf({ staffUser: one, periods: one.periods, meta })
-    : await renderMonthlyStaffAttendanceExcel({ staffUser: one, periods: one.periods, meta });
+    ? await renderMonthlyStaffAttendancePdf({ staffUser: one, periods: one.periods, ...registerArgs })
+    : await renderMonthlyStaffAttendanceExcel({ staffUser: one, periods: one.periods, ...registerArgs });
   if (format === 'pdf') {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${staffFileBase}.pdf"`);

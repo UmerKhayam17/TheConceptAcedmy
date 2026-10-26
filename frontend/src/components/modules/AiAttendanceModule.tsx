@@ -375,7 +375,9 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
 
   const mobileFileRef = useRef<HTMLInputElement>(null);
   const galleryFileRef = useRef<HTMLInputElement>(null);
-  const identifyFileRef = useRef<HTMLInputElement>(null);
+  const monitorScanBusy = useRef(false);
+  const lastWebcamMarkAt = useRef<Map<string, number>>(new Map());
+  const [monitorWatch, setMonitorWatch] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [liveFrame, setLiveFrame] = useState<string | null>(null);
@@ -683,21 +685,58 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     qc.invalidateQueries({ queryKey: ["academy-attendance-today-dashboard"] });
   };
 
-  const identifyMut = useMutation({
-    mutationFn: async () => {
+  useEffect(() => {
+    if (tab !== "monitor" || !monitorCamOn || !monitorCamReady || !canWrite) {
+      setMonitorWatch("");
+      return;
+    }
+    let cancelled = false;
+    const scan = async () => {
+      if (cancelled || monitorScanBusy.current) return;
       const image = grabFromVideo(monitorVideoRef.current);
-      if (!image) throw new Error("Wait for the webcam preview to appear, then try again");
-      return identifyAiFace(image, true);
-    },
-    onSuccess: (data) => {
-      invalidateAttendanceQueries();
-      toast({
-        title: "Identified",
-        description: String((data as { message?: string }).message || JSON.stringify(data)),
-      });
-    },
-    onError: (e: Error) => toast({ title: "Identify failed", description: e.message, variant: "destructive" }),
-  });
+      if (!image) return;
+      monitorScanBusy.current = true;
+      try {
+        const preview = await identifyAiFace(image, false);
+        if (cancelled) return;
+        const matched = Boolean((preview as { matched?: boolean }).matched);
+        if (!matched) {
+          setMonitorWatch("Watching… waiting for a clear face");
+          return;
+        }
+        const personKey = String((preview as { employee_id?: string }).employee_id || "");
+        const name = String((preview as { employee_name?: string }).employee_name || "Matched");
+        const confidence = Number((preview as { confidence?: number }).confidence || 0);
+        const pct = `${Math.round(confidence * 100)}%`;
+        const prev = lastWebcamMarkAt.current.get(personKey) || 0;
+        if (personKey && Date.now() - prev < 45_000) {
+          setMonitorWatch(`${name} · already marked · ${pct}`);
+          return;
+        }
+        const marked = await identifyAiFace(image, true);
+        if (cancelled) return;
+        if (personKey) lastWebcamMarkAt.current.set(personKey, Date.now());
+        const action = String((marked as { attendance_action?: string }).attendance_action || "marked");
+        setMonitorWatch(`${name} · ${action.replace(/_/g, " ")} · ${pct}`);
+        invalidateAttendanceQueries();
+      } catch (e) {
+        if (!cancelled) {
+          setMonitorWatch(e instanceof Error ? e.message : "Scan failed");
+        }
+      } finally {
+        monitorScanBusy.current = false;
+      }
+    };
+    setMonitorWatch("Watching… attendance marks automatically");
+    void scan();
+    const timer = window.setInterval(() => void scan(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+    // invalidateAttendanceQueries is recreated each render; the scan only needs the latest closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, monitorCamOn, monitorCamReady, canWrite]);
 
   const onEnrollFiles = async (files: FileList | null) => {
     if (!canWrite) return;
@@ -731,29 +770,6 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       });
     }
     if (failMsg) toast({ title: "Some photos failed", description: failMsg, variant: "destructive" });
-  };
-
-  const onIdentifyFile = async (files: FileList | null) => {
-    if (!canWrite) return;
-    if (!files?.length) return;
-    setUploadBusy(true);
-    try {
-      const image = await fileToJpegBase64(files[0]);
-      const data = await identifyAiFace(image, true);
-      invalidateAttendanceQueries();
-      toast({
-        title: "Identified",
-        description: String((data as { message?: string }).message || JSON.stringify(data)),
-      });
-    } catch (e) {
-      toast({
-        title: "Identify failed",
-        description: e instanceof Error ? e.message : String(e),
-        variant: "destructive",
-      });
-    } finally {
-      setUploadBusy(false);
-    }
   };
 
   const imageCount = Number(enrollStatus?.total_images ?? enrollStatus?.image_count ?? 0);
@@ -1292,7 +1308,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       {tab === "monitor" && (
         <Card className="p-3 sm:p-4 space-y-3 w-full">
           <p className="text-sm text-muted-foreground">
-            Quick identify with webcam or a photo (marks attendance when matched).
+            Start the webcam. A recognized face is marked automatically when confidence is at least 75%.
           </p>
           <video
             ref={monitorVideoRef}
@@ -1326,39 +1342,10 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                 Stop webcam
               </Button>
             )}
-            {canWrite && (
-              <>
-                <Button
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  disabled={!monitorCamReady || identifyMut.isPending}
-                  onClick={() => identifyMut.mutate()}
-                >
-                  {identifyMut.isPending ? "Recognizing…" : "Identify & mark"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full sm:w-auto"
-                  disabled={uploadBusy}
-                  onClick={() => identifyFileRef.current?.click()}
-                >
-                  Upload photo
-                </Button>
-              </>
-            )}
           </div>
-          <input
-            ref={identifyFileRef}
-            type="file"
-            accept="image/*"
-            capture="user"
-            className="hidden"
-            onChange={(e) => {
-              void onIdentifyFile(e.target.files);
-              e.target.value = "";
-            }}
-          />
+          {monitorCamOn && monitorWatch ? (
+            <p className="text-sm font-medium text-primary">{monitorWatch}</p>
+          ) : null}
         </Card>
       )}
 

@@ -67,7 +67,7 @@ function periodKeyOf(startTime, endTime) {
 
 async function resolveSession(sessionId) {
   if (!sessionId) throw new ApiError(400, 'Select an academic session');
-  const session = await Session.findById(sessionId).select('name timezone').lean();
+  const session = await Session.findById(sessionId).select('name timezone workingDays').lean();
   if (!session) throw new ApiError(404, 'Session not found');
   return session;
 }
@@ -352,6 +352,8 @@ async function listMonth({ sessionId, month, year, userId }) {
     year: Number(year),
     sessionId: String(session._id),
     sessionName: session.name || '',
+    days,
+    workingDays: Array.isArray(session.workingDays) ? session.workingDays : [],
     teachers,
     summary: { ...summary, attendancePercent: attendancePercent(summary) },
   };

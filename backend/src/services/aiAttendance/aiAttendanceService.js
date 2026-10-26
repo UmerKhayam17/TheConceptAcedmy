@@ -160,7 +160,7 @@ async function identifyAndMark(imageBase64, { markAttendance = true, source = 'w
     };
   }
   const { gallery, meta } = await faceEnrollment.buildGallery();
-  const { personKey, confidence } = faceWorker.matchEmbedding(embRes.embedding, gallery, 0.45);
+  const { personKey, confidence } = faceWorker.matchEmbedding(embRes.embedding, gallery, 0.75);
   if (!personKey) {
     return {
       matched: false,
