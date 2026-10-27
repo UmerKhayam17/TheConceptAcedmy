@@ -67,12 +67,12 @@ function DetailAvatar({ name, profileImage }: { name: string; profileImage?: str
       <img
         src={src}
         alt=""
-        className="h-14 w-14 rounded-full object-cover shrink-0 ring-2 ring-white shadow-sm"
+        className="h-10 w-10 rounded-lg object-cover shrink-0"
       />
     );
   }
   return (
-    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-100 to-blue-200 text-lg font-bold text-[#1d4ed8] ring-2 ring-white shadow-sm">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-base font-bold text-primary-foreground">
       {initialOf(name)}
     </span>
   );
@@ -236,7 +236,7 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
       : activeLines.map((l) => l.subjectName).filter(Boolean).join(" · ");
 
   return (
-    <div className="min-h-full bg-[#f4f7fb] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
       <div className="w-full space-y-5">
         {isLoading ? (
           <Card className="rounded-2xl border-0 p-10 text-center text-sm text-muted-foreground shadow-sm">
@@ -248,59 +248,59 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
           </Card>
         ) : (
           <>
-            {/* Header */}
-            <div className="flex flex-col gap-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/60 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-              <div className="flex min-w-0 items-center gap-4">
-                <DetailAvatar name={name} profileImage={staff?.profileImage} />
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-xl font-bold tracking-tight text-[#0f1f3d] sm:text-2xl">
-                      {name}
-                    </h1>
-                    <span className="inline-flex items-center rounded-full bg-[#dbeafe] px-2.5 py-0.5 text-xs font-semibold capitalize text-[#1d4ed8]">
-                      {role}
-                    </span>
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize",
-                        data.status === "paid" && "bg-emerald-50 text-emerald-700",
-                        data.status === "pending" && "bg-orange-50 text-orange-600",
-                        data.status === "cancelled" && "bg-slate-100 text-slate-500",
+            {/* Compact theme header — matches Staff Salary / Subjects */}
+            <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <DetailAvatar name={name} profileImage={staff?.profileImage} />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="truncate text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                        {name}
+                      </h2>
+                      <span className="inline-flex items-center rounded-full bg-[#dbeafe] px-2.5 py-0.5 text-xs font-semibold capitalize text-[#1d4ed8]">
+                        {role}
+                      </span>
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize",
+                          data.status === "paid" && "bg-emerald-50 text-emerald-700",
+                          data.status === "pending" && "bg-orange-50 text-orange-600",
+                          data.status === "cancelled" && "bg-slate-100 text-slate-500",
+                        )}
+                      >
+                        {data.status}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500">
+                      <span className="font-medium text-slate-600">{data.voucherNumber || "—"}</span>
+                      <span className="mx-1.5 text-slate-300">·</span>
+                      {period}
+                      {data.payType === "percentage" || data.calculationSource === "tuition_pool" ? (
+                        <>
+                          <span className="mx-1.5 text-slate-300">·</span>
+                          Teacher percentage {pct}%
+                        </>
+                      ) : (
+                        <>
+                          <span className="mx-1.5 text-slate-300">·</span>
+                          Fixed pay
+                        </>
                       )}
-                    >
-                      {data.status}
-                    </span>
+                    </p>
                   </div>
-                  <p className="mt-1.5 text-sm text-slate-500">
-                    <span className="font-medium text-slate-600">{data.voucherNumber || "—"}</span>
-                    <span className="mx-1.5 text-slate-300">·</span>
-                    {period}
-                    {data.payType === "percentage" || data.calculationSource === "tuition_pool" ? (
-                      <>
-                        <span className="mx-1.5 text-slate-300">·</span>
-                        Teacher percentage {pct}%
-                      </>
-                    ) : (
-                      <>
-                        <span className="mx-1.5 text-slate-300">·</span>
-                        Fixed pay
-                      </>
-                    )}
-                  </p>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 px-5 py-4 ring-1 ring-emerald-100 sm:min-w-[13rem]">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600">
-                  <Wallet className="h-5 w-5" />
-                </span>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700/70">
-                    Voucher amount
-                  </p>
-                  <p className="text-2xl font-bold tabular-nums text-emerald-600">
-                    {formatRs(data.amount)}
-                  </p>
+                <div className="flex shrink-0 items-center gap-2.5 rounded-lg bg-primary/10 px-3 py-2">
+                  <Wallet className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1a2b4b]/70">
+                      Voucher amount
+                    </p>
+                    <p className="text-lg font-bold tabular-nums leading-tight text-emerald-600">
+                      {formatRs(data.amount)}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
