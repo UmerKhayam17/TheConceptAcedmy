@@ -15,6 +15,10 @@ import {
   Plus,
   Volume2,
   VolumeX,
+  CheckCircle2,
+  Clock3,
+  LogOut,
+  AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -108,6 +112,49 @@ function monitorActionLabel(action?: string, status?: string | null) {
       return status ? status.replace(/_/g, " ") : "seen";
   }
 }
+
+type MonitorTone = "present" | "late" | "out" | "already" | "error";
+
+/** One recently marked person shown as a big card on the live monitor. */
+type MonitorHit = { key: string; name: string; label: string; pct: string; tone: MonitorTone; at: number };
+
+/** How long a marked name stays on screen after the last sighting. */
+const MONITOR_HIT_MS = 8000;
+
+function monitorTone(action?: string, status?: string | null, error?: string): MonitorTone {
+  if (error) return "error";
+  if (action === "check_out" || action === "check_out_update") return "out";
+  if (action === "already_marked" || action === "cooldown") return "already";
+  return status === "late" ? "late" : "present";
+}
+
+const MONITOR_TONE: Record<MonitorTone, { card: string; badge: string; Icon: LucideIcon }> = {
+  present: {
+    card: "bg-emerald-600 border-emerald-700 text-white",
+    badge: "bg-white/20 text-white",
+    Icon: CheckCircle2,
+  },
+  late: {
+    card: "bg-amber-500 border-amber-600 text-white",
+    badge: "bg-white/25 text-white",
+    Icon: Clock3,
+  },
+  out: {
+    card: "bg-sky-600 border-sky-700 text-white",
+    badge: "bg-white/20 text-white",
+    Icon: LogOut,
+  },
+  already: {
+    card: "bg-emerald-50 border-emerald-400 text-emerald-900",
+    badge: "bg-emerald-600 text-white",
+    Icon: BadgeCheck,
+  },
+  error: {
+    card: "bg-red-600 border-red-700 text-white",
+    badge: "bg-white/20 text-white",
+    Icon: AlertTriangle,
+  },
+};
 
 function grabFromVideo(video: HTMLVideoElement | null): string | null {
   if (!video || !video.videoWidth || !video.videoHeight) return null;
@@ -438,6 +485,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   const galleryFileRef = useRef<HTMLInputElement>(null);
   const monitorScanBusy = useRef(false);
   const [monitorWatch, setMonitorWatch] = useState("");
+  const [monitorHits, setMonitorHits] = useState<MonitorHit[]>([]);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [liveFrame, setLiveFrame] = useState<string | null>(null);
@@ -748,9 +796,19 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   useEffect(() => {
     if (tab !== "monitor" || !monitorCamOn || !monitorCamReady || !canWrite) {
       setMonitorWatch("");
+      setMonitorHits([]);
       return;
     }
     let cancelled = false;
+    // Drop names not seen for a while; new sightings refresh or add a card.
+    const pruneHits = (fresh: MonitorHit[] = []) => {
+      const now = Date.now();
+      setMonitorHits((prev) => {
+        const byKey = new Map(prev.filter((h) => now - h.at < MONITOR_HIT_MS).map((h) => [h.key, h]));
+        for (const h of fresh) byKey.set(h.key, h);
+        return [...byKey.values()].sort((a, b) => b.at - a.at);
+      });
+    };
     const scan = async () => {
       if (cancelled || monitorScanBusy.current) return;
       const image = grabFromVideo(monitorVideoRef.current);
@@ -762,7 +820,24 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
         const result = await identifyAiFace(image, true);
         if (cancelled) return;
         const people = result.people || [];
+        // Faces seen but not recognised: show a red "not marked" card.
+        const unknownHit: MonitorHit[] = result.unknownFaces
+          ? [
+              {
+                key: "__unknown__",
+                name:
+                  result.unknownFaces === 1
+                    ? "Face not recognised"
+                    : `${result.unknownFaces} faces not recognised`,
+                label: "Attendance not marked",
+                pct: "",
+                tone: "error",
+                at: Date.now(),
+              },
+            ]
+          : [];
         if (!result.matched || people.length === 0) {
+          pruneHits(unknownHit);
           setMonitorWatch(
             result.unknownFaces
               ? `Watching… ${result.unknownFaces} unrecognised face${result.unknownFaces === 1 ? "" : "s"}`
@@ -770,16 +845,21 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
           );
           return;
         }
-        setMonitorWatch(
-          people
-            .map((p) => {
-              const pct = `${Math.round((p.confidence || 0) * 100)}%`;
-              const name = p.employee_name || "Matched";
-              if (p.error) return `${name} · not saved (${p.error})`;
-              return `${name} · ${monitorActionLabel(p.attendance_action, p.status)} · ${pct}`;
-            })
-            .join("   |   ")
+        const now = Date.now();
+        pruneHits(
+          people.map((p) => {
+            const name = p.employee_name || "Matched";
+            return {
+              key: p.employee_id || name,
+              name,
+              label: p.error ? `Not saved: ${p.error}` : monitorActionLabel(p.attendance_action, p.status),
+              pct: `${Math.round((p.confidence || 0) * 100)}%`,
+              tone: monitorTone(p.attendance_action, p.status, p.error),
+              at: now,
+            };
+          }).concat(unknownHit)
         );
+        setMonitorWatch(`Watching… ${people.length} recognised`);
         let changed = false;
         people.forEach((p) => {
           if (!p.announce) return;
@@ -1462,8 +1542,42 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
               </Button>
             )}
           </div>
+          {monitorCamOn && monitorHits.length > 0 ? (
+            <div className="grid gap-2 sm:grid-cols-2" aria-live="polite">
+              {monitorHits.map((hit) => {
+                const tone = MONITOR_TONE[hit.tone];
+                return (
+                  <div
+                    key={hit.key}
+                    className={cn(
+                      "flex items-center gap-3 rounded-xl border-2 px-4 py-3 shadow-md animate-in fade-in zoom-in-95",
+                      tone.card
+                    )}
+                  >
+                    <tone.Icon className="h-10 w-10 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xl sm:text-2xl font-bold leading-tight">{hit.name}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            "rounded-full px-2.5 py-0.5 text-sm font-semibold capitalize",
+                            tone.badge
+                          )}
+                        >
+                          {hit.tone === "error" ? hit.label : `Attendance ${hit.label}`}
+                        </span>
+                        {hit.pct ? (
+                          <span className="text-xs font-medium opacity-80">{hit.pct} match</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
           {monitorCamOn && monitorWatch ? (
-            <p className="text-sm font-medium text-primary">{monitorWatch}</p>
+            <p className="text-sm font-medium text-muted-foreground">{monitorWatch}</p>
           ) : null}
         </Card>
       )}
