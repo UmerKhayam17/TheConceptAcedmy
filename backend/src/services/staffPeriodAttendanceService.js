@@ -7,11 +7,14 @@ require('../models/timetable/PeriodTemplate');
 require('../models/academy/AcademyClass');
 require('../models/academy/AcademySection');
 require('../models/academy/AcademySubject');
-require('../models/Role');
+const Role = require('../models/Role');
 const StaffPeriodAttendance = require('../models/StaffPeriodAttendance');
 const { weekdayName, dayBounds } = require('../utils/schoolDay');
 
 const PERIOD_STATUSES = new Set(['present', 'late', 'absent', 'leave']);
+/** Non-teaching staff are marked once per day instead of per class. */
+const DAY_PERIOD_KEY = 'day';
+const NON_DAILY_ROLES = ['teacher', 'parent', 'student'];
 const CLASS_PERIOD_TYPES = new Set(['lecture']);
 
 function pad2(n) {
@@ -199,6 +202,54 @@ async function teacherUsers(ids) {
   return new Map(users.map((u) => [String(u._id), u]));
 }
 
+/**
+ * Non-teaching staff (accountant, admin, custom staff roles) get one full-day
+ * mark per working day instead of per-class marks. Anyone on the timetable is
+ * treated as a teacher and left out here.
+ */
+async function dailyStaffUsers(timetableTeacherIds) {
+  const roles = await Role.find({ name: { $nin: NON_DAILY_ROLES } })
+    .select('_id')
+    .lean();
+  if (!roles.length) return [];
+  const users = await User.find({
+    role: { $in: roles.map((r) => r._id) },
+    isActive: { $ne: false },
+    _id: { $nin: [...timetableTeacherIds] },
+  })
+    .select('name email role isActive profileImage')
+    .populate('role', 'name')
+    .lean();
+  return users;
+}
+
+function isWorkingDay(session, weekday) {
+  const days = Array.isArray(session.workingDays) ? session.workingDays : [];
+  return days.length === 0 || days.includes(weekday);
+}
+
+function dayPeriod(status) {
+  return {
+    periodKey: DAY_PERIOD_KEY,
+    label: 'Full day',
+    startTime: '',
+    endTime: '',
+    classes: [],
+    classLabel: '',
+    sectionLabel: '',
+    subjectLabel: '',
+    status: status || '',
+  };
+}
+
+function allTimetableTeacherIds(byWeekday) {
+  const ids = new Set();
+  byWeekday.forEach((byTeacher) => {
+    byTeacher.forEach((_periods, teacherId) => ids.add(teacherId));
+  });
+  return ids;
+}
+
 function sortPeriods(rows) {
   return [...rows].sort((a, b) => {
     const t = String(a.startTime).localeCompare(String(b.startTime));
@@ -225,10 +276,11 @@ function publicPeriod(row, status) {
   };
 }
 
-function teacherShape(user, periods) {
+function teacherShape(user, periods, attendanceType = 'class') {
   const counts = emptyCounts();
   periods.forEach((p) => addStatus(counts, p.status));
   return {
+    attendanceType,
     userId: String(user._id),
     name: user.name || '',
     email: user.email || '',
@@ -272,13 +324,29 @@ async function listDay({ sessionId, date, userId }) {
   const users = await teacherUsers(teacherIds);
   const markMap = await marksForDays(sessionId, [ymd], userId || undefined);
 
-  const teachers = teacherIds
+  const classTeachers = teacherIds
     .map((id) => users.get(id))
     .filter(Boolean)
     .map((user) =>
       teacherShape(user, periodsForTeacher(byWeekday, weekday, String(user._id), ymd, markMap))
-    )
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    );
+
+  let dailyStaff = [];
+  if (isWorkingDay(session, weekday)) {
+    dailyStaff = (await dailyStaffUsers(allTimetableTeacherIds(byWeekday)))
+      .filter((user) => !userId || String(user._id) === String(userId))
+      .map((user) =>
+        teacherShape(
+          user,
+          [dayPeriod(markMap.get(`${user._id}|${ymd}|${DAY_PERIOD_KEY}`))],
+          'daily'
+        )
+      );
+  }
+
+  const teachers = [...classTeachers, ...dailyStaff].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  );
 
   const summary = emptyCounts();
   teachers.forEach((t) => {
@@ -319,7 +387,7 @@ async function listMonth({ sessionId, month, year, userId }) {
     userId || undefined
   );
 
-  const teachers = ids
+  const classTeachers = ids
     .map((id) => users.get(id))
     .filter(Boolean)
     .map((user) => {
@@ -335,8 +403,26 @@ async function listMonth({ sessionId, month, year, userId }) {
       });
       const shaped = teacherShape(user, detail);
       return shaped;
-    })
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    });
+
+  const workingDays = days.filter(({ weekday }) => isWorkingDay(session, weekday));
+  const dailyStaff = (await dailyStaffUsers(teacherIds))
+    .filter((user) => !userId || String(user._id) === String(userId))
+    .map((user) =>
+      teacherShape(
+        user,
+        workingDays.map(({ day, weekday }) => ({
+          day,
+          weekday,
+          ...dayPeriod(markMap.get(`${user._id}|${day}|${DAY_PERIOD_KEY}`)),
+        })),
+        'daily'
+      )
+    );
+
+  const teachers = [...classTeachers, ...dailyStaff].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  );
 
   const summary = emptyCounts();
   teachers.forEach((t) => {

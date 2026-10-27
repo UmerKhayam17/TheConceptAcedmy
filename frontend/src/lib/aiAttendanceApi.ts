@@ -264,6 +264,8 @@ export type StaffPeriodRow = {
 
 export type StaffPeriodTeacher = {
   userId: string;
+  /** "daily" = non-teaching staff marked once per day (present/absent). */
+  attendanceType?: "class" | "daily";
   name: string;
   email?: string;
   profileImage?: string;

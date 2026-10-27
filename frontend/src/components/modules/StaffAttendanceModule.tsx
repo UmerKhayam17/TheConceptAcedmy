@@ -345,6 +345,19 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     }
   };
 
+  const classTeachers = useMemo(
+    () => markingTeachers.filter((t) => t.attendanceType !== "daily"),
+    [markingTeachers]
+  );
+  const dailyStaff = useMemo(
+    () => markingTeachers.filter((t) => t.attendanceType === "daily"),
+    [markingTeachers]
+  );
+  const viewStaffDetails =
+    isAdmin && user?.role
+      ? (id: string) => navigate(userDetailHref(user.role, id, "staff"))
+      : undefined;
+
   const stats = useMemo(() => {
     const counts = { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0, unmarked: 0 };
     if (view === "daily") {
@@ -604,12 +617,12 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
           <div className="px-4 py-3.5 flex flex-wrap items-center justify-between gap-2">
             <span className="flex items-center gap-2.5 text-base font-semibold text-[#1a2b4b]">
               <CalendarDays className="h-5 w-5 text-primary" />
-              Daily classes — {date}
+              Teacher attendance — {date}
               {dayData?.weekday ? ` · ${weekdayLabel(dayData.weekday)}` : ""}
             </span>
             <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
               <Users className="h-4 w-4" />
-              {dayLoading ? "Loading timetable…" : `${markingTeachers.length} teachers`}
+              {dayLoading ? "Loading timetable…" : `${classTeachers.length} teachers`}
             </span>
           </div>
           <div className="px-2 pb-2 sm:px-3 sm:pb-3">
@@ -619,16 +632,37 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               </p>
             )}
             <DayClassGrid
-              teachers={markingTeachers}
+              teachers={classTeachers}
               loading={dayLoading}
               drafts={drafts}
               canMark={canMark}
               onChange={updatePeriod}
-              onViewDetails={
-                isAdmin && user?.role
-                  ? (id) => navigate(userDetailHref(user.role, id, "staff"))
-                  : undefined
-              }
+              onViewDetails={viewStaffDetails}
+            />
+          </div>
+        </Card>
+      )}
+
+      {view === "daily" && sessionId && !dayLoading && dailyStaff.length > 0 && (
+        <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm">
+          <div className="px-4 py-3.5 flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-2.5 text-base font-semibold text-[#1a2b4b]">
+              <UserCheck className="h-5 w-5 text-primary" />
+              Staff attendance — {date}
+              {dayData?.weekday ? ` · ${weekdayLabel(dayData.weekday)}` : ""}
+            </span>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <Users className="h-4 w-4" />
+              {`${dailyStaff.length} staff`}
+            </span>
+          </div>
+          <div className="px-2 pb-2 sm:px-3 sm:pb-3">
+            <StaffDayTable
+              staff={dailyStaff}
+              drafts={drafts}
+              canMark={canMark}
+              onChange={updatePeriod}
+              onViewDetails={viewStaffDetails}
             />
           </div>
         </Card>
@@ -715,11 +749,13 @@ function DayStatusControl({
   canMark,
   label,
   onChange,
+  options = PERIOD_STATUSES,
 }: {
   status: StaffPeriodStatus;
   canMark: boolean;
   label: string;
   onChange: (status: StaffPeriodStatus) => void;
+  options?: typeof PERIOD_STATUSES;
 }) {
   const style = DAY_STATUS_STYLE[status] || DAY_STATUS_STYLE[""];
   const Icon = style.icon;
@@ -740,7 +776,7 @@ function DayStatusControl({
             onChange={(e) => onChange(e.target.value as StaffPeriodStatus)}
             aria-label={label}
           >
-            {PERIOD_STATUSES.map((s) => (
+            {options.map((s) => (
               <option key={s.label} value={s.value}>
                 {s.label}
               </option>
@@ -811,7 +847,6 @@ function DayClassGrid({
             const present = statuses.filter((s) => s === "present").length;
             const percent = total ? Math.round((present / total) * 100) : 0;
             const hasLate = statuses.includes("late");
-            const imgSrc = teacher.profileImage ? resolveUploadUrl(teacher.profileImage) : undefined;
             const markAll = (status: StaffPeriodStatus) =>
               teacher.periods.forEach((period) => onChange(teacher.userId, period.periodKey, status));
             return (
@@ -820,24 +855,7 @@ function DayClassGrid({
                 className="border-b border-slate-100 last:border-0 align-top hover:bg-slate-50/60 dark:border-slate-800 dark:hover:bg-slate-800/30"
               >
                 <td className={cn(cellClass, "align-middle")}>
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10 shrink-0">
-                      {imgSrc ? (
-                        <AvatarImage src={imgSrc} alt={teacher.name} className="object-cover" />
-                      ) : null}
-                      <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                        {initials(teacher.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-semibold text-[#1a2b4b] dark:text-slate-100">
-                        {teacher.name}
-                      </p>
-                      {teacher.email ? (
-                        <p className="truncate text-xs text-slate-500">{teacher.email}</p>
-                      ) : null}
-                    </div>
-                  </div>
+                  <StaffIdentity person={teacher} />
                 </td>
                 {Array.from({ length: classCount }, (_, index) => {
                   const period = teacher.periods[index];
@@ -862,7 +880,7 @@ function DayClassGrid({
                         {period.subjectLabel || period.label || "Class"}
                       </p>
                       <p className="text-xs text-slate-500 leading-snug mb-2.5">
-                        {period.startTime}–{period.endTime}
+                        {period.startTime ? `${period.startTime}–${period.endTime}` : "—"}
                       </p>
                       <DayStatusControl
                         status={statuses[index]}
@@ -916,6 +934,11 @@ function DayClassGrid({
                               <DropdownMenuItem onClick={() => markAll("leave")}>
                                 <PlaneTakeoff className="mr-2 h-4 w-4" /> Mark all leave
                               </DropdownMenuItem>
+                              {statuses.some(Boolean) && (
+                                <DropdownMenuItem onClick={() => markAll("")}>
+                                  <CircleDashed className="mr-2 h-4 w-4" /> Clear marks
+                                </DropdownMenuItem>
+                              )}
                             </>
                           )}
                           {canMark && onViewDetails && <DropdownMenuSeparator />}
@@ -928,6 +951,177 @@ function DayClassGrid({
                       </DropdownMenu>
                     )}
                   </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function StaffIdentity({ person }: { person: StaffPeriodTeacher }) {
+  const imgSrc = person.profileImage ? resolveUploadUrl(person.profileImage) : undefined;
+  return (
+    <div className="flex items-center gap-3">
+      <Avatar className="h-10 w-10 shrink-0">
+        {imgSrc ? <AvatarImage src={imgSrc} alt={person.name} className="object-cover" /> : null}
+        <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+          {initials(person.name)}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold text-[#1a2b4b] dark:text-slate-100">
+          {person.name}
+        </p>
+        {person.email ? <p className="truncate text-xs text-slate-500">{person.email}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  admin:
+    "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300",
+  accountant:
+    "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-300",
+};
+
+const DAY_STATUS_SUMMARY: Record<string, { text: string; dot: string }> = {
+  present: { text: "Present for the day", dot: "bg-emerald-500" },
+  late: { text: "Arrived late", dot: "bg-blue-500" },
+  absent: { text: "Absent today", dot: "bg-red-500" },
+  leave: { text: "On leave", dot: "bg-violet-500" },
+  "": { text: "Not marked yet", dot: "bg-slate-300 dark:bg-slate-600" },
+};
+
+const STAFF_MARK_ACTIONS: { status: StaffPeriodStatus; label: string; icon: LucideIcon }[] = [
+  { status: "present", label: "Mark present", icon: UserCheck },
+  { status: "late", label: "Mark late", icon: Timer },
+  { status: "absent", label: "Mark absent", icon: CircleX },
+  { status: "leave", label: "Mark leave", icon: PlaneTakeoff },
+];
+
+/** Non-teaching staff (admin, accountant, …): one full-day mark each. */
+function StaffDayTable({
+  staff,
+  drafts,
+  canMark,
+  onChange,
+  onViewDetails,
+}: {
+  staff: StaffPeriodTeacher[];
+  drafts: Record<string, PeriodDraft>;
+  canMark: boolean;
+  onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
+  onViewDetails?: (userId: string) => void;
+}) {
+  const cellClass =
+    "px-3 py-3 align-middle break-words border-r border-slate-100 last:border-r-0 dark:border-slate-800";
+  const headClass =
+    "px-3 py-3 text-left text-xs font-semibold text-slate-700 border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
+
+  return (
+    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700">
+      <table className="w-full table-fixed text-sm">
+        <thead className="bg-[#eef4fc] border-b border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700">
+          <tr>
+            <th className={cn(headClass, "w-[30%]")}>Staff</th>
+            <th className={cn(headClass, "w-[9rem]")}>Role</th>
+            <th className={headClass}>Attendance</th>
+            <th className={headClass}>Status</th>
+            <th className={cn(headClass, "w-[4.5rem]")}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {staff.map((person) => {
+            const period = person.periods[0];
+            const draft = period ? drafts[periodDraftKey(person.userId, period.periodKey)] : undefined;
+            const status = (draft?.status ?? period?.status ?? "") as StaffPeriodStatus;
+            const summary = DAY_STATUS_SUMMARY[status] || DAY_STATUS_SUMMARY[""];
+            const role = String(person.role || "staff").toLowerCase();
+            const mark = (next: StaffPeriodStatus) => {
+              if (period) onChange(person.userId, period.periodKey, next);
+            };
+            return (
+              <tr
+                key={person.userId}
+                className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60 dark:border-slate-800 dark:hover:bg-slate-800/30"
+              >
+                <td className={cellClass}>
+                  <StaffIdentity person={person} />
+                </td>
+                <td className={cellClass}>
+                  <span
+                    className={cn(
+                      "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize",
+                      ROLE_BADGE_CLASS[role] ||
+                        "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
+                    )}
+                  >
+                    {role}
+                  </span>
+                </td>
+                <td className={cellClass}>
+                  <div className="max-w-[14rem]">
+                    <DayStatusControl
+                      status={status}
+                      canMark={canMark && Boolean(period)}
+                      label={`${person.name} attendance`}
+                      onChange={mark}
+                    />
+                  </div>
+                </td>
+                <td className={cellClass}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200">
+                      <span className={cn("h-2 w-2 shrink-0 rounded-full", summary.dot)} />
+                      {summary.text}
+                    </span>
+                    {draft?.dirty ? (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                        Unsaved
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-0.5 pl-4 text-[11px] text-slate-500">Full-day attendance</p>
+                </td>
+                <td className={cellClass}>
+                  {(onViewDetails || canMark) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 border-slate-200 text-[#1a2b4b]"
+                          aria-label={`More actions for ${person.name}`}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {canMark &&
+                          period &&
+                          STAFF_MARK_ACTIONS.map(({ status: next, label, icon: Icon }) => (
+                            <DropdownMenuItem key={next} onClick={() => mark(next)}>
+                              <Icon className="mr-2 h-4 w-4" /> {label}
+                            </DropdownMenuItem>
+                          ))}
+                        {canMark && period && status && (
+                          <DropdownMenuItem onClick={() => mark("")}>
+                            <CircleDashed className="mr-2 h-4 w-4" /> Clear mark
+                          </DropdownMenuItem>
+                        )}
+                        {canMark && onViewDetails && <DropdownMenuSeparator />}
+                        {onViewDetails && (
+                          <DropdownMenuItem onClick={() => onViewDetails(person.userId)}>
+                            <Eye className="mr-2 h-4 w-4" /> View profile
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </td>
               </tr>
             );
@@ -959,7 +1153,7 @@ function TeacherSummaryTable({
           <tr>
             <th className="text-left p-2.5 font-medium">Teacher</th>
             <th className="text-left p-2.5 font-medium">Role</th>
-            <th className="text-right p-2.5 font-medium">Total classes</th>
+            <th className="text-right p-2.5 font-medium">Classes / days</th>
             <th className="text-right p-2.5 font-medium">Present</th>
             <th className="text-right p-2.5 font-medium">Late</th>
             <th className="text-right p-2.5 font-medium">Absent</th>
@@ -1141,7 +1335,7 @@ function PeriodMarkTable({
                           >
                             <span>{period.label || "—"}</span>
                             <span className="whitespace-nowrap">
-                              {period.startTime}–{period.endTime}
+                              {period.startTime ? `${period.startTime}–${period.endTime}` : "—"}
                             </span>
                             <span>{period.classLabel || "—"}</span>
                             <span>{period.sectionLabel || "—"}</span>
@@ -1162,7 +1356,7 @@ function PeriodMarkTable({
                     >
                       <td className="p-2.5">{period.label || "—"}</td>
                       <td className="p-2.5 whitespace-nowrap">
-                        {period.startTime}–{period.endTime}
+                        {period.startTime ? `${period.startTime}–${period.endTime}` : "—"}
                       </td>
                       <td className="p-2.5">{period.classLabel || "—"}</td>
                       <td className="p-2.5">{period.sectionLabel || "—"}</td>
