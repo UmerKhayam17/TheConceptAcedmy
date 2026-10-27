@@ -10,6 +10,7 @@ const {
   drawPdfRow,
 } = require('./academyReportDocument');
 const { ACADEMY_BRAND, resolveLogoPath } = require('../../config/academyBrand');
+const { formatTimeInTz } = require('../../utils/schoolDay');
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_LABELS = {
@@ -35,9 +36,8 @@ function roleNameOf(user) {
 
 function fmtTime(value) {
   if (!value) return '—';
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return '—';
-  return dt.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
+  const label = formatTimeInTz(value);
+  return label || '—';
 }
 
 function cap(s) {

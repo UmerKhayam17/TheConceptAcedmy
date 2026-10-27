@@ -1,21 +1,19 @@
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const { ACADEMY_BRAND, resolveLogoPath } = require('../../config/academyBrand');
+const { formatDisplayDate, formatTimeInTz } = require('../../utils/schoolDay');
 
 function formatDate(value) {
   if (!value) return '';
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return '';
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, '0');
-  const d = String(dt.getDate()).padStart(2, '0');
-  return `${d}/${m}/${y}`;
+  return formatDisplayDate(dt);
 }
 
 function formatDateTime(value) {
   const dt = value instanceof Date ? value : new Date(value || Date.now());
   if (Number.isNaN(dt.getTime())) return '';
-  return `${formatDate(dt)} ${dt.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' })}`;
+  return `${formatDate(dt)} ${formatTimeInTz(dt)}`;
 }
 
 function fitText(doc, text, width) {

@@ -28,6 +28,29 @@ function todayYmd(timeZone = DEFAULT_TZ) {
   return formatDateInTz(new Date(), timeZone);
 }
 
+/** Calendar date as DD/MM/YYYY in the academy timezone. */
+function formatDisplayDate(date, timeZone = DEFAULT_TZ) {
+  const ymd = formatDateInTz(date, timeZone);
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+/** Clock time as HH:mm in the academy timezone (not the host timezone). */
+function formatTimeInTz(date, timeZone = DEFAULT_TZ) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: resolveTimezone(timeZone),
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(d);
+  const h = parts.find((p) => p.type === 'hour')?.value || '00';
+  const min = parts.find((p) => p.type === 'minute')?.value || '00';
+  return `${h}:${min}`;
+}
+
 /**
  * Local midnight..end-of-day for a YYYY-MM-DD school day in timezone.
  * Returns Date objects suitable for Mongo range queries (absolute instants).
@@ -94,6 +117,8 @@ module.exports = {
   DEFAULT_TZ,
   resolveTimezone,
   formatDateInTz,
+  formatDisplayDate,
+  formatTimeInTz,
   todayYmd,
   dayBounds,
   weekdayName,

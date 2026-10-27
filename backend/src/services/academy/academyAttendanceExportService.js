@@ -1,5 +1,6 @@
 const { renderBrandedExcel, renderBrandedPdf, formatDateTime } = require('./academyReportDocument');
 const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
+const { formatTimeInTz } = require('../../utils/schoolDay');
 
 /** Portrait A4 widths; plain mode scales to fit. */
 const COLUMNS = [
@@ -42,9 +43,8 @@ function statusLabel(status) {
 
 function fmtTime(value) {
   if (!value) return '—';
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return '—';
-  return dt.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
+  const label = formatTimeInTz(value);
+  return label || '—';
 }
 
 function mapAttendanceRows(students, recordByStudent) {
