@@ -667,7 +667,7 @@ function DayStatusControl({
   return (
     <div
       className={cn(
-        "relative flex h-8 w-full min-w-[10rem] items-center rounded-md border text-xs font-medium",
+        "relative flex h-8 w-full items-center rounded-md border text-xs font-medium",
         style.className
       )}
     >
@@ -718,23 +718,23 @@ function DayClassGrid({
       period.status ??
       "") as StaffPeriodStatus;
 
-  const cellClass = "px-4 py-3 border-r border-slate-100 last:border-r-0 dark:border-slate-800";
+  const cellClass = "px-3 py-3 break-words border-r border-slate-100 last:border-r-0 dark:border-slate-800";
   const headClass =
-    "px-4 py-3 text-left text-xs font-semibold text-slate-700 whitespace-nowrap border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
+    "px-3 py-3 text-left text-xs font-semibold text-slate-700 border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200/80 dark:border-slate-700">
-      <table className="w-full text-sm min-w-[900px]">
+    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700">
+      <table className="w-full table-fixed text-sm">
         <thead className="bg-[#eef4fc] border-b border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700">
           <tr>
-            <th className={cn(headClass, "min-w-[14rem]")}>Teacher</th>
+            <th className={cn(headClass, "w-[22%]")}>Teacher</th>
             {Array.from({ length: classCount }, (_, index) => (
-              <th key={index} className={cn(headClass, "min-w-[12rem]")}>
+              <th key={index} className={headClass}>
                 Class {index + 1}
               </th>
             ))}
-            <th className={cn(headClass, "min-w-[11rem]")}>Class Ratio</th>
-            <th className={headClass}>Actions</th>
+            <th className={cn(headClass, "w-[7rem]")}>Class Ratio</th>
+            <th className={cn(headClass, "w-[4.5rem]")}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -786,7 +786,7 @@ function DayClassGrid({
                       <td key={index} className={cellClass}>
                         <p className="text-[13px] font-semibold text-slate-700 leading-snug">—</p>
                         <p className="text-xs text-slate-500 leading-snug mb-2.5">No class</p>
-                        <div className="flex h-8 w-full min-w-[10rem] items-center gap-2 rounded-md border border-slate-200 bg-slate-100/80 px-2.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60">
+                        <div className="flex h-8 w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-100/80 px-2.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60">
                           <Clock className="h-3.5 w-3.5" />
                           No class
                         </div>
