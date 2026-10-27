@@ -3,8 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   BadgeCheck,
+  BookOpen,
   CalendarDays,
+  CheckCircle2,
   ChevronDown,
+  ClipboardList,
+  Clock3,
+  Palmtree,
+  UserX,
   CircleDashed,
   CircleX,
   Clock,
@@ -30,6 +36,7 @@ import {
 import { resolveUploadUrl } from "@/lib/api";
 import { userDetailHref } from "@/lib/userFormRoutes";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import PanelStatCard from "@/components/modules/PanelStatCard";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
 import { usePanelSessionOptional } from "@/components/panel-header/PanelSessionContext";
@@ -338,7 +345,39 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     }
   };
 
-  const summary = view === "daily" ? dayData?.summary : monthData?.summary;
+  const stats = useMemo(() => {
+    const counts = { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0, unmarked: 0 };
+    if (view === "daily") {
+      markingTeachers.forEach((teacher) =>
+        teacher.periods.forEach((period) => {
+          const status =
+            drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ?? period.status ?? "";
+          counts.totalClasses += 1;
+          if (status === "present" || status === "late" || status === "absent" || status === "leave") {
+            counts[status] += 1;
+          } else {
+            counts.unmarked += 1;
+          }
+        })
+      );
+    } else {
+      monthTeachers.forEach((t) => {
+        counts.totalClasses += t.totalClasses;
+        counts.present += t.present;
+        counts.late += t.late;
+        counts.absent += t.absent;
+        counts.leave += t.leave;
+        counts.unmarked += t.unmarked;
+      });
+    }
+    const marked = counts.present + counts.late;
+    const attendancePercent = counts.totalClasses
+      ? Math.round((marked / counts.totalClasses) * 100)
+      : 0;
+    return { ...counts, attendancePercent };
+  }, [view, markingTeachers, monthTeachers, drafts]);
+
+  const statsHint = view === "daily" ? date : `${MONTH_NAMES[month - 1]} ${year}`;
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5">
@@ -371,6 +410,59 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
           </div>
         </div>
       </Card>
+
+      {sessionId && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+          <PanelStatCard
+            label="Total classes"
+            value={stats.totalClasses}
+            hint={`${stats.attendancePercent}% attendance`}
+            icon={BookOpen}
+            iconWrapClass="bg-[#e0f2fe]"
+            iconClass="text-[#0284c7]"
+          />
+          <PanelStatCard
+            label="Present"
+            value={stats.present}
+            hint={statsHint}
+            icon={CheckCircle2}
+            iconWrapClass="bg-[#d1fae5]"
+            iconClass="text-[#059669]"
+          />
+          <PanelStatCard
+            label="Late"
+            value={stats.late}
+            hint={statsHint}
+            icon={Clock3}
+            iconWrapClass="bg-[#fef3c7]"
+            iconClass="text-[#d97706]"
+          />
+          <PanelStatCard
+            label="Absent"
+            value={stats.absent}
+            hint={statsHint}
+            icon={UserX}
+            iconWrapClass="bg-[#ffe4e6]"
+            iconClass="text-[#e11d48]"
+          />
+          <PanelStatCard
+            label="Leave"
+            value={stats.leave}
+            hint={statsHint}
+            icon={Palmtree}
+            iconWrapClass="bg-[#dbeafe]"
+            iconClass="text-[#2563eb]"
+          />
+          <PanelStatCard
+            label="Unmarked"
+            value={stats.unmarked}
+            hint="Need marking"
+            icon={ClipboardList}
+            iconWrapClass="bg-[#ede9fe]"
+            iconClass="text-[#7c3aed]"
+          />
+        </div>
+      )}
 
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
         <FilterToolbar>
@@ -553,17 +645,6 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                 {monthErr instanceof Error ? monthErr.message : "Could not load the monthly report."}
               </p>
             )}
-            {summary && (
-              <div className="flex flex-wrap gap-2 text-xs">
-                <CountPill label="Total classes" value={summary.totalClasses} />
-                <CountPill label="Present" value={summary.present} tone="present" />
-                <CountPill label="Late" value={summary.late} tone="late" />
-                <CountPill label="Absent" value={summary.absent} tone="absent" />
-                <CountPill label="Leave" value={summary.leave} tone="leave" />
-                <CountPill label="Unmarked" value={summary.unmarked} />
-                <CountPill label="Attendance" value={`${summary.attendancePercent}%`} />
-              </div>
-            )}
             <TeacherSummaryTable
               teachers={monthTeachers}
               loading={monthLoading}
@@ -587,27 +668,6 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
         </Card>
       )}
     </div>
-  );
-}
-
-function CountPill({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number | string;
-  tone?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2.5 py-1 font-medium",
-        tone ? STATUS_PILL_CLASS[tone] : "bg-muted text-muted-foreground"
-      )}
-    >
-      {label}: {value}
-    </span>
   );
 }
 
