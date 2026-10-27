@@ -193,7 +193,7 @@ async function loadWeekdayPeriods(sessionId) {
 async function teacherUsers(ids) {
   if (!ids.length) return new Map();
   const users = await User.find({ _id: { $in: ids } })
-    .select('name email role isActive')
+    .select('name email role isActive profileImage')
     .populate('role', 'name')
     .lean();
   return new Map(users.map((u) => [String(u._id), u]));
@@ -232,6 +232,7 @@ function teacherShape(user, periods) {
     userId: String(user._id),
     name: user.name || '',
     email: user.email || '',
+    profileImage: user.profileImage || '',
     isActive: user.isActive !== false,
     role: user.role && typeof user.role === 'object' ? user.role.name || '' : '',
     ...counts,

@@ -1,8 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Save } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
+  BadgeCheck,
+  CalendarDays,
+  ChevronDown,
+  CircleDashed,
+  CircleX,
+  Clock,
+  Eye,
+  MoreVertical,
+  PlaneTakeoff,
+  Save,
+  Timer,
+  UserCheck,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { resolveUploadUrl } from "@/lib/api";
+import { userDetailHref } from "@/lib/userFormRoutes";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
@@ -99,6 +125,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   const { toast } = useToast();
   const qc = useQueryClient();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const panelSession = usePanelSessionOptional();
   const sessionId = panelSession?.apiSessionId || panelSession?.sessionId || "";
   const isAdmin = user?.role === "admin";
@@ -481,19 +508,21 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
       )}
 
       {view === "daily" && sessionId && (
-        <Card className="overflow-hidden">
-          <div className="px-4 py-3 border-b border-border font-semibold text-primary flex flex-wrap items-center justify-between gap-2">
-            <span>
+        <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm">
+          <div className="px-4 py-3.5 flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-2.5 text-base font-semibold text-[#1a2b4b]">
+              <CalendarDays className="h-5 w-5 text-primary" />
               Daily classes — {date}
               {dayData?.weekday ? ` · ${weekdayLabel(dayData.weekday)}` : ""}
             </span>
-            <span className="text-xs font-normal text-muted-foreground">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <Users className="h-4 w-4" />
               {dayLoading ? "Loading timetable…" : `${markingTeachers.length} teachers`}
             </span>
           </div>
-          <div className="p-4">
+          <div className="px-2 pb-2 sm:px-3 sm:pb-3">
             {dayError && (
-              <p className="text-sm text-destructive">
+              <p className="px-2 pb-2 text-sm text-destructive">
                 {dayErr instanceof Error ? dayErr.message : "Could not load the timetable."}
               </p>
             )}
@@ -503,6 +532,11 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               drafts={drafts}
               canMark={canMark}
               onChange={updatePeriod}
+              onViewDetails={
+                isAdmin && user?.role
+                  ? (id) => navigate(userDetailHref(user.role, id, "staff"))
+                  : undefined
+              }
             />
           </div>
         </Card>
@@ -577,103 +611,267 @@ function CountPill({
   );
 }
 
+const DAY_STATUS_STYLE: Record<string, { className: string; icon: LucideIcon }> = {
+  present: {
+    className:
+      "border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
+    icon: BadgeCheck,
+  },
+  late: {
+    className:
+      "border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300",
+    icon: Timer,
+  },
+  absent: {
+    className:
+      "border-red-100 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
+    icon: CircleX,
+  },
+  leave: {
+    className:
+      "border-violet-100 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300",
+    icon: PlaneTakeoff,
+  },
+  "": {
+    className:
+      "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300",
+    icon: CircleDashed,
+  },
+};
+
+function initials(name: string) {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?"
+  );
+}
+
+function DayStatusControl({
+  status,
+  canMark,
+  label,
+  onChange,
+}: {
+  status: StaffPeriodStatus;
+  canMark: boolean;
+  label: string;
+  onChange: (status: StaffPeriodStatus) => void;
+}) {
+  const style = DAY_STATUS_STYLE[status] || DAY_STATUS_STYLE[""];
+  const Icon = style.icon;
+  const text = PERIOD_STATUSES.find((s) => s.value === status)?.label || "Unmarked";
+  return (
+    <div
+      className={cn(
+        "relative flex h-8 w-full min-w-[10rem] items-center rounded-md border text-xs font-medium",
+        style.className
+      )}
+    >
+      <Icon className="pointer-events-none absolute left-2.5 h-3.5 w-3.5" />
+      {canMark ? (
+        <>
+          <select
+            className="h-full w-full cursor-pointer appearance-none rounded-md bg-transparent pl-8 pr-8 outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            value={status}
+            onChange={(e) => onChange(e.target.value as StaffPeriodStatus)}
+            aria-label={label}
+          >
+            {PERIOD_STATUSES.map((s) => (
+              <option key={s.label} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 h-3.5 w-3.5" />
+        </>
+      ) : (
+        <span className="pl-8 pr-3">{text}</span>
+      )}
+    </div>
+  );
+}
+
 function DayClassGrid({
   teachers,
   loading,
   drafts,
   canMark,
   onChange,
+  onViewDetails,
 }: {
   teachers: StaffPeriodTeacher[];
   loading: boolean;
   drafts: Record<string, PeriodDraft>;
   canMark: boolean;
   onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
+  onViewDetails?: (userId: string) => void;
 }) {
   const classCount = teachers.reduce((max, teacher) => Math.max(max, teacher.periods.length), 0);
-  if (loading) return <p className="text-sm text-muted-foreground">Loading timetable…</p>;
+  if (loading) return <p className="p-2 text-sm text-muted-foreground">Loading timetable…</p>;
+
+  const statusFor = (teacher: StaffPeriodTeacher, period: StaffPeriodTeacher["periods"][number]) =>
+    (drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ??
+      period.status ??
+      "") as StaffPeriodStatus;
+
+  const cellClass = "px-4 py-3 border-r border-slate-100 last:border-r-0 dark:border-slate-800";
+  const headClass =
+    "px-4 py-3 text-left text-xs font-semibold text-slate-700 whitespace-nowrap border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm min-w-[640px]">
-        <thead className="bg-muted/50 border-b">
+    <div className="overflow-x-auto rounded-lg border border-slate-200/80 dark:border-slate-700">
+      <table className="w-full text-sm min-w-[900px]">
+        <thead className="bg-[#eef4fc] border-b border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700">
           <tr>
-            <th className="text-left p-2.5 font-medium whitespace-nowrap">Teacher</th>
+            <th className={cn(headClass, "min-w-[14rem]")}>Teacher</th>
             {Array.from({ length: classCount }, (_, index) => (
-              <th key={index} className="text-left p-2.5 font-medium whitespace-nowrap min-w-[11rem]">
+              <th key={index} className={cn(headClass, "min-w-[12rem]")}>
                 Class {index + 1}
               </th>
             ))}
+            <th className={cn(headClass, "min-w-[11rem]")}>Class Ratio</th>
+            <th className={headClass}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {teachers.length === 0 && (
             <tr>
-              <td colSpan={Math.max(2, classCount + 1)} className="p-8 text-center text-muted-foreground">
+              <td colSpan={classCount + 3} className="p-8 text-center text-muted-foreground">
                 No classes on the published timetable for this day.
               </td>
             </tr>
           )}
-          {teachers.map((teacher) => (
-            <tr key={teacher.userId} className="border-b last:border-0 align-top">
-              <td className="p-2.5">
-                <div className="font-medium">{teacher.name}</div>
-                {teacher.email ? (
-                  <p className="text-xs text-muted-foreground">{teacher.email}</p>
-                ) : null}
-              </td>
-              {Array.from({ length: classCount }, (_, index) => {
-                const period = teacher.periods[index];
-                if (!period) {
+          {teachers.map((teacher) => {
+            const statuses = teacher.periods.map((period) => statusFor(teacher, period));
+            const total = teacher.periods.length;
+            const present = statuses.filter((s) => s === "present").length;
+            const percent = total ? Math.round((present / total) * 100) : 0;
+            const hasLate = statuses.includes("late");
+            const imgSrc = teacher.profileImage ? resolveUploadUrl(teacher.profileImage) : undefined;
+            const markAll = (status: StaffPeriodStatus) =>
+              teacher.periods.forEach((period) => onChange(teacher.userId, period.periodKey, status));
+            return (
+              <tr
+                key={teacher.userId}
+                className="border-b border-slate-100 last:border-0 align-top hover:bg-slate-50/60 dark:border-slate-800 dark:hover:bg-slate-800/30"
+              >
+                <td className={cn(cellClass, "align-middle")}>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10 shrink-0">
+                      {imgSrc ? (
+                        <AvatarImage src={imgSrc} alt={teacher.name} className="object-cover" />
+                      ) : null}
+                      <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                        {initials(teacher.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-semibold text-[#1a2b4b] dark:text-slate-100">
+                        {teacher.name}
+                      </p>
+                      {teacher.email ? (
+                        <p className="truncate text-xs text-slate-500">{teacher.email}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </td>
+                {Array.from({ length: classCount }, (_, index) => {
+                  const period = teacher.periods[index];
+                  if (!period) {
+                    return (
+                      <td key={index} className={cellClass}>
+                        <p className="text-[13px] font-semibold text-slate-700 leading-snug">—</p>
+                        <p className="text-xs text-slate-500 leading-snug mb-2.5">No class</p>
+                        <div className="flex h-8 w-full min-w-[10rem] items-center gap-2 rounded-md border border-slate-200 bg-slate-100/80 px-2.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60">
+                          <Clock className="h-3.5 w-3.5" />
+                          No class
+                        </div>
+                      </td>
+                    );
+                  }
                   return (
-                    <td key={index} className="p-2.5 text-muted-foreground">
-                      —
+                    <td key={period.periodKey} className={cellClass}>
+                      <p className="text-[13px] font-semibold text-[#1a2b4b] leading-snug dark:text-slate-100">
+                        {[period.classLabel, period.sectionLabel].filter(Boolean).join(" · ") || "—"}
+                      </p>
+                      <p className="text-xs text-slate-500 leading-snug">
+                        {period.subjectLabel || period.label || "Class"}
+                      </p>
+                      <p className="text-xs text-slate-500 leading-snug mb-2.5">
+                        {period.startTime}–{period.endTime}
+                      </p>
+                      <DayStatusControl
+                        status={statuses[index]}
+                        canMark={canMark}
+                        label={`${teacher.name} class ${index + 1} status`}
+                        onChange={(status) => onChange(teacher.userId, period.periodKey, status)}
+                      />
                     </td>
                   );
-                }
-                const status = (drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ??
-                  period.status ??
-                  "") as StaffPeriodStatus;
-                return (
-                  <td key={period.periodKey} className="p-2.5">
-                    <p className="font-medium leading-snug">
-                      {[period.classLabel, period.sectionLabel].filter(Boolean).join(" · ") || "—"}
-                    </p>
-                    <p className="text-xs text-muted-foreground leading-snug">
-                      {period.subjectLabel || period.label || "Class"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      {period.startTime}–{period.endTime}
-                    </p>
-                    {canMark ? (
-                      <select
-                        className={cn(
-                          "h-9 w-full min-w-[8.5rem] rounded-md border px-2 text-sm font-semibold bg-background",
-                          STATUS_SELECT_CLASS[status] || ""
-                        )}
-                        value={status}
-                        onChange={(e) =>
-                          onChange(
-                            teacher.userId,
-                            period.periodKey,
-                            e.target.value as StaffPeriodStatus
-                          )
-                        }
-                        aria-label={`${teacher.name} class ${index + 1} status`}
-                      >
-                        {PERIOD_STATUSES.map((s) => (
-                          <option key={s.label} value={s.value}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <StatusPill status={status} />
+                })}
+                <td className={cn(cellClass, "align-middle")}>
+                  <p className="text-[13px] font-semibold text-[#1a2b4b] dark:text-slate-100">
+                    {present} / {total} classes
+                  </p>
+                  <p className="text-xs font-semibold text-[#1a2b4b] mb-1.5 dark:text-slate-200">
+                    {percent}%
+                  </p>
+                  <div className="h-2 w-full max-w-[10rem] overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all",
+                        hasLate ? "bg-blue-500" : "bg-emerald-500"
+                      )}
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </td>
+                <td className={cn(cellClass, "align-middle")}>
+                  <div className="flex items-center gap-3">
+                    {(onViewDetails || canMark) && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 border-slate-200 text-[#1a2b4b]"
+                            aria-label={`More actions for ${teacher.name}`}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {canMark && (
+                            <>
+                              <DropdownMenuItem onClick={() => markAll("present")}>
+                                <UserCheck className="mr-2 h-4 w-4" /> Mark all present
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => markAll("absent")}>
+                                <CircleX className="mr-2 h-4 w-4" /> Mark all absent
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => markAll("leave")}>
+                                <PlaneTakeoff className="mr-2 h-4 w-4" /> Mark all leave
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {canMark && onViewDetails && <DropdownMenuSeparator />}
+                          {onViewDetails && (
+                            <DropdownMenuItem onClick={() => onViewDetails(teacher.userId)}>
+                              <Eye className="mr-2 h-4 w-4" /> View profile
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

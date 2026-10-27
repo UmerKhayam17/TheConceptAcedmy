@@ -266,6 +266,7 @@ export type StaffPeriodTeacher = {
   userId: string;
   name: string;
   email?: string;
+  profileImage?: string;
   role?: string;
   isActive?: boolean;
   totalClasses: number;
