@@ -68,6 +68,11 @@ async function embed(imageBase64) {
   return request('POST', '/embed', { image: imageBase64 });
 }
 
+/** Every usable face in the frame: { faces: [{ embedding, det_score, bbox }], message }. */
+async function embedAll(imageBase64) {
+  return request('POST', '/embed-all', { image: imageBase64 });
+}
+
 /** Cosine similarity match in Node against Mongo gallery. */
 function matchEmbedding(probe, gallery, threshold = 0.75) {
   if (!probe?.length || !gallery || !Object.keys(gallery).length) {
@@ -100,6 +105,7 @@ module.exports = {
   health,
   analyze,
   embed,
+  embedAll,
   matchEmbedding,
   faceWorkerUrl,
   request,

@@ -7,10 +7,9 @@ const { cameraAutostartEnabled } = require('./cameraEnvService');
 const AiCamera = require('../../models/AiCamera');
 const { emitModuleSync } = require('../realtime/realtimeService');
 
-const SCAN_MS = Number(process.env.AI_CAMERA_SCAN_MS) || 2000;
-const MATCH_COOLDOWN_MS = Number(process.env.AI_CAMERA_MATCH_COOLDOWN_MS) || 45000;
+/** Gap between the end of one scan and the start of the next. Repeat-mark cooldown lives in aiAttendanceService. */
+const SCAN_MS = Number(process.env.AI_CAMERA_SCAN_MS) || 1000;
 const runtimes = new Map(); // cameraId -> { timer, stopping }
-const lastMatchAt = new Map(); // `${cameraId}:${personKey}` -> timestamp
 
 function log(msg) {
   // eslint-disable-next-line no-console
@@ -43,12 +42,35 @@ async function grabFrame(camera) {
   );
 }
 
+function scheduleTick(runtime, delayMs) {
+  if (runtime.stopping || runtimes.get(runtime.cameraId) !== runtime) return;
+  runtime.timer = setTimeout(() => tick(runtime.cameraId), Math.max(0, delayMs));
+}
+
+/** Stream / frame problems only — the camera itself is unreachable. */
+function markCameraDown(runtime, err) {
+  runtime.workerReady = false;
+  runtime.status = {
+    ...(runtime.status || {}),
+    connected: false,
+    lastError: err?.message || String(err),
+  };
+}
+
 async function tick(cameraId) {
   const runtime = runtimes.get(String(cameraId));
   if (!runtime || runtime.stopping || runtime.busy) return;
   runtime.busy = true;
+  const startedAt = Date.now();
   try {
-    const camera = await AiCamera.findById(cameraId).lean();
+    let camera;
+    try {
+      camera = await AiCamera.findById(cameraId).lean();
+    } catch (err) {
+      // Database hiccup — not a camera fault; try again next tick.
+      runtime.status = { ...(runtime.status || {}), lastError: err.message || String(err) };
+      return;
+    }
     if (!camera?.isActive || !camera.rtspUrl) {
       stopCamera(cameraId);
       return;
@@ -60,16 +82,18 @@ async function tick(cameraId) {
         await ensureWorkerStream(camera);
         runtime.workerReady = true;
       } catch (err) {
-        runtime.status = {
-          ...(runtime.status || {}),
-          connected: false,
-          lastError: err.message || String(err),
-        };
+        markCameraDown(runtime, err);
         return;
       }
     }
 
-    const frame = await grabFrame(camera);
+    let frame;
+    try {
+      frame = await grabFrame(camera);
+    } catch (err) {
+      markCameraDown(runtime, err);
+      return;
+    }
     runtime.status = {
       connected: Boolean(frame?.ok),
       lastError: frame?.error || '',
@@ -82,57 +106,49 @@ async function tick(cameraId) {
     }
     if (!frame?.ok || !frame?.image) return;
 
-    // Lazy require to avoid circular load with aiAttendanceService
-    const ai = require('./aiAttendanceService');
+    // Recognition / marking errors are logged but never flag the camera as down.
+    try {
+      // Lazy require to avoid circular load with aiAttendanceService
+      const ai = require('./aiAttendanceService');
+      const result = await ai.identifyAndMark(frame.image, { markAttendance: true });
+      if (!result?.matched) return;
 
-    // Identify first without marking — apply cooldown before writing attendance
-    const preview = await ai.identifyAndMark(frame.image, {
-      markAttendance: false,
-      source: 'cctv',
-    });
-    if (!preview?.matched) return;
-
-    const personKey = preview.employee_id;
-    const coolKey = `${cameraId}:${personKey}`;
-    const prev = lastMatchAt.get(coolKey) || 0;
-    if (Date.now() - prev < MATCH_COOLDOWN_MS) {
-      return;
+      result.people.forEach((person) => {
+        if (person.error) {
+          log(`${camera.name}: could not mark ${person.employee_name || person.employee_id}: ${person.error}`);
+          return;
+        }
+        if (person.attendance_action === 'cooldown') return;
+        log(
+          `${camera.name}: matched ${person.employee_name || person.employee_id} ` +
+            `(${Math.round((person.confidence || 0) * 100)}%) · ${person.attendance_action}`
+        );
+        runtime.status.lastMatch = {
+          at: new Date().toISOString(),
+          personKey: person.employee_id,
+          name: person.employee_name,
+          confidence: person.confidence,
+          attendance: person.attendance_action || person.status,
+        };
+        if (!person.announce) return;
+        // Lets open AI Attendance pages announce CCTV marks by voice.
+        emitModuleSync('aiAttendance', 'attendance', 'ai-marked', {
+          source: 'cctv',
+          cameraName: camera.name || '',
+          name: person.employee_name || '',
+          kind: person.kind || '',
+          status: person.status || '',
+          attendanceAction: person.attendance_action || '',
+        });
+      });
+    } catch (err) {
+      runtime.status = { ...(runtime.status || {}), lastError: err.message || String(err) };
+      log(`${camera.name}: recognition failed: ${err.message || err}`);
     }
-    lastMatchAt.set(coolKey, Date.now());
-
-    const result = await ai.markFromPersonKey(personKey, {
-      confidence: preview.confidence,
-      source: 'cctv',
-    });
-    log(
-      `${camera.name}: matched ${preview.employee_name || personKey || 'person'} ` +
-        `(${Math.round((preview.confidence || 0) * 100)}%)`
-    );
-    runtime.status.lastMatch = {
-      at: new Date().toISOString(),
-      personKey,
-      name: preview.employee_name,
-      confidence: preview.confidence,
-      attendance: result?.action || result?.doc?.status,
-    };
-    // Lets open AI Attendance pages announce CCTV marks by voice.
-    emitModuleSync('aiAttendance', 'attendance', 'ai-marked', {
-      source: 'cctv',
-      cameraName: camera.name || '',
-      name: preview.employee_name || '',
-      kind: result?.kind || '',
-      status: result?.doc?.status || '',
-      attendanceAction: result?.action || '',
-    });
-  } catch (err) {
-    runtime.workerReady = false;
-    runtime.status = {
-      ...(runtime.status || {}),
-      connected: false,
-      lastError: err.message || String(err),
-    };
   } finally {
     runtime.busy = false;
+    // Chain the next scan after this one finishes, so slow scans never pile up or get skipped.
+    scheduleTick(runtime, SCAN_MS - (Date.now() - startedAt));
   }
 }
 
@@ -147,7 +163,7 @@ async function startCamera(camera) {
     busy: false,
     workerReady: false,
     status: { connected: false, lastError: '' },
-    timer: setInterval(() => tick(id), SCAN_MS),
+    timer: null,
   };
   runtimes.set(id, runtime);
 
@@ -160,7 +176,7 @@ async function startCamera(camera) {
     runtime.status.lastError = err.message || String(err);
   }
 
-  setTimeout(() => tick(id), 400);
+  scheduleTick(runtime, 400);
   log(`Started ${camera.name}`);
   return getStatus(id);
 }
@@ -170,7 +186,7 @@ async function stopCamera(cameraId) {
   const runtime = runtimes.get(id);
   if (runtime) {
     runtime.stopping = true;
-    clearInterval(runtime.timer);
+    clearTimeout(runtime.timer);
     runtimes.delete(id);
   }
   try {

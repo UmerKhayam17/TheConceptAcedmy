@@ -119,8 +119,32 @@ export const trainAiFace = (employeeId: string) =>
     body: "{}",
   });
 
+/** One recognised face. `announce` = the mark changed (first check-in / check-out). */
+export type AiIdentifyPerson = {
+  employee_id: string;
+  employee_name?: string;
+  confidence: number;
+  kind?: "student" | "staff";
+  status?: string | null;
+  attendance_action?: "check_in" | "check_out" | "check_out_update" | "already_marked" | "cooldown";
+  announce?: boolean;
+  error?: string;
+};
+
+export type AiIdentifyResult = {
+  matched: boolean;
+  message?: string;
+  confidence?: number;
+  employee_id?: string;
+  employee_name?: string;
+  status?: string | null;
+  attendance_action?: string;
+  people?: AiIdentifyPerson[];
+  unknownFaces?: number;
+};
+
 export const identifyAiFace = (image: string, markAttendance = true) =>
-  api<Record<string, unknown>>("/identify", {
+  api<AiIdentifyResult>("/identify", {
     method: "POST",
     body: JSON.stringify({ image, markAttendance, source: "webcam" }),
   });

@@ -18,6 +18,54 @@ const {
 } = require('./attendanceStatusFromTimetable');
 const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
 
+const MATCH_THRESHOLD = 0.75;
+/** A second sighting only counts as check-out after this long (default 2 hours). */
+const CHECKOUT_MIN_MS = (Number(process.env.AI_CHECKOUT_MIN_MINUTES) || 120) * 60 * 1000;
+/** Same person is not re-processed within this window, across webcam and all cameras. */
+const MARK_COOLDOWN_MS =
+  Number(process.env.AI_MARK_COOLDOWN_MS) ||
+  Number(process.env.AI_CAMERA_MATCH_COOLDOWN_MS) ||
+  45000;
+const recentMarks = new Map(); // personKey -> timestamp of last successful mark
+
+function inCooldown(personKey) {
+  const at = recentMarks.get(personKey);
+  return Boolean(at && Date.now() - at < MARK_COOLDOWN_MS);
+}
+
+function rememberMark(personKey) {
+  recentMarks.set(personKey, Date.now());
+  if (recentMarks.size > 2000) {
+    const cutoff = Date.now() - MARK_COOLDOWN_MS;
+    recentMarks.forEach((at, key) => {
+      if (at < cutoff) recentMarks.delete(key);
+    });
+  }
+}
+
+/**
+ * Applies one AI sighting to an attendance row and records what changed in
+ * doc.$locals.aiChange: check_in | check_out | check_out_update | none.
+ */
+async function applySighting(doc, { now, status, confidence, notes, source }) {
+  let change = 'none';
+  if (!doc.checkIn) {
+    doc.checkIn = now;
+    doc.status = status;
+    doc.source = source;
+    doc.confidence = confidence;
+    change = 'check_in';
+  } else if (now - doc.checkIn >= CHECKOUT_MIN_MS) {
+    change = doc.checkOut ? 'check_out_update' : 'check_out';
+    doc.checkOut = now;
+    doc.confidence = confidence ?? doc.confidence;
+  }
+  if (notes) doc.notes = notes;
+  if (change !== 'none' || notes) await doc.save();
+  doc.$locals.aiChange = change;
+  return doc;
+}
+
 function dayWindow(forDate = new Date()) {
   const ymd = formatDateInTz(forDate);
   return dayBounds(ymd);
@@ -35,7 +83,7 @@ async function applyStudentAttendance(studentId, { status, checkIn, checkOut, co
   const existing = await AcademyAttendance.findOne(filter);
   if (!existing) {
     try {
-      return await AcademyAttendance.create({
+      const created = await AcademyAttendance.create({
         studentId,
         date: start,
         status,
@@ -45,6 +93,8 @@ async function applyStudentAttendance(studentId, { status, checkIn, checkOut, co
         confidence,
         notes,
       });
+      created.$locals.aiChange = 'check_in';
+      return created;
     } catch (err) {
       if (err?.code !== 11000) throw err;
       // Race: another writer inserted — fall through to update
@@ -53,19 +103,7 @@ async function applyStudentAttendance(studentId, { status, checkIn, checkOut, co
 
   const doc = existing || (await AcademyAttendance.findOne(filter));
   if (!doc) throw new ApiError(500, 'Attendance write race failed');
-
-  if (!doc.checkIn) {
-    doc.checkIn = now;
-    doc.status = status;
-    doc.source = source;
-    doc.confidence = confidence;
-  } else if (now - doc.checkIn > 60 * 1000) {
-    doc.checkOut = now;
-    doc.confidence = confidence ?? doc.confidence;
-  }
-  if (notes) doc.notes = notes;
-  await doc.save();
-  return doc;
+  return applySighting(doc, { now, status, confidence, notes, source });
 }
 
 async function applyStaffAttendance(userId, { status, checkIn, checkOut, confidence, notes, source = 'ai' }) {
@@ -76,7 +114,7 @@ async function applyStaffAttendance(userId, { status, checkIn, checkOut, confide
   let existing = await StaffAttendance.findOne(filter);
   if (!existing) {
     try {
-      return await StaffAttendance.create({
+      const created = await StaffAttendance.create({
         userId,
         date: start,
         status,
@@ -86,6 +124,8 @@ async function applyStaffAttendance(userId, { status, checkIn, checkOut, confide
         confidence,
         notes,
       });
+      created.$locals.aiChange = 'check_in';
+      return created;
     } catch (err) {
       if (err?.code !== 11000) throw err;
       existing = await StaffAttendance.findOne(filter);
@@ -93,19 +133,13 @@ async function applyStaffAttendance(userId, { status, checkIn, checkOut, confide
   }
 
   if (!existing) throw new ApiError(500, 'Staff attendance write race failed');
+  return applySighting(existing, { now, status, confidence, notes, source });
+}
 
-  if (!existing.checkIn) {
-    existing.checkIn = now;
-    existing.status = status;
-    existing.confidence = confidence;
-    existing.source = source;
-  } else if (now - existing.checkIn > 60 * 1000) {
-    existing.checkOut = now;
-    existing.confidence = confidence ?? existing.confidence;
-  }
-  if (notes) existing.notes = notes;
-  await existing.save();
-  return existing;
+/** check_in | check_out | check_out_update | already_marked */
+function sightingAction(doc) {
+  const change = doc?.$locals?.aiChange || 'none';
+  return change === 'none' ? 'already_marked' : change;
 }
 
 async function markFromPersonKey(personKey, { confidence, notes, source = 'ai' } = {}) {
@@ -127,7 +161,7 @@ async function markFromPersonKey(personKey, { confidence, notes, source = 'ai' }
       notes,
       source,
     });
-    return { kind: 'student', doc, action: 'marked' };
+    return { kind: 'student', doc, action: sightingAction(doc) };
   }
 
   if (parsed.kind === 'staff') {
@@ -144,46 +178,106 @@ async function markFromPersonKey(personKey, { confidence, notes, source = 'ai' }
       notes,
       source,
     });
-    return { kind: 'staff', doc, action: doc.checkOut ? 'check_out' : 'check_in' };
+    return { kind: 'staff', doc, action: sightingAction(doc) };
   }
 
   throw new ApiError(400, 'Unknown person key');
 }
 
-async function identifyAndMark(imageBase64, { markAttendance = true, source = 'webcam' } = {}) {
-  const embRes = await faceWorker.embed(imageBase64);
-  if (!embRes?.embedding?.length) {
+/**
+ * Recognise every face in the frame and (optionally) mark each person found.
+ * Top-level employee_* / status fields describe the best match, for older callers;
+ * `people` lists everyone recognised. `announce` is true when a person's mark
+ * actually changed (first check-in or first check-out) and is worth speaking.
+ */
+async function identifyAndMark(imageBase64, { markAttendance = true } = {}) {
+  const embRes = await faceWorker.embedAll(imageBase64);
+  const faces = Array.isArray(embRes?.faces) ? embRes.faces : [];
+  if (!faces.length) {
     return {
       matched: false,
       message: embRes?.message || 'No face',
       confidence: 0,
+      people: [],
+      unknownFaces: 0,
     };
   }
+
   const { gallery, meta } = await faceEnrollment.buildGallery();
-  const { personKey, confidence } = faceWorker.matchEmbedding(embRes.embedding, gallery, 0.75);
-  if (!personKey) {
+  const best = new Map(); // personKey -> confidence
+  let unknownFaces = 0;
+  let bestUnknown = 0;
+  faces.forEach((face) => {
+    const { personKey, confidence } = faceWorker.matchEmbedding(
+      face.embedding,
+      gallery,
+      MATCH_THRESHOLD
+    );
+    if (!personKey) {
+      unknownFaces += 1;
+      bestUnknown = Math.max(bestUnknown, confidence || 0);
+      return;
+    }
+    if (!best.has(personKey) || confidence > best.get(personKey)) best.set(personKey, confidence);
+  });
+
+  if (!best.size) {
     return {
       matched: false,
       message: 'Unknown face',
-      confidence: Math.round((confidence || 0) * 10000) / 10000,
+      confidence: Math.round(bestUnknown * 10000) / 10000,
+      people: [],
+      unknownFaces,
     };
   }
 
-  const result = {
-    matched: true,
-    employee_id: personKey,
-    employee_name: meta[personKey]?.displayName,
-    confidence: Math.round(confidence * 10000) / 10000,
-    message: 'Face recognized',
-  };
+  const people = [...best.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([personKey, confidence]) => ({
+      employee_id: personKey,
+      employee_name: meta[personKey]?.displayName,
+      confidence: Math.round(confidence * 10000) / 10000,
+    }));
 
   if (markAttendance) {
-    const marked = await markFromPersonKey(personKey, { confidence, source: source === 'cctv' ? 'ai' : 'ai' });
-    result.attendance_action = marked.action;
-    result.kind = marked.kind;
-    result.status = marked.doc?.status || null;
+    // A failure for one person must not block the others in the same frame.
+    for (const person of people) {
+      if (inCooldown(person.employee_id)) {
+        person.attendance_action = 'cooldown';
+        person.announce = false;
+        continue;
+      }
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const marked = await markFromPersonKey(person.employee_id, {
+          confidence: person.confidence,
+          source: 'ai',
+        });
+        rememberMark(person.employee_id);
+        person.kind = marked.kind;
+        person.status = marked.doc?.status || null;
+        person.attendance_action = marked.action;
+        person.announce = marked.action === 'check_in' || marked.action === 'check_out';
+      } catch (err) {
+        person.error = err?.message || String(err);
+        person.announce = false;
+      }
+    }
   }
-  return result;
+
+  const first = people[0];
+  return {
+    matched: true,
+    message: people.length > 1 ? `${people.length} faces recognized` : 'Face recognized',
+    employee_id: first.employee_id,
+    employee_name: first.employee_name,
+    confidence: first.confidence,
+    kind: first.kind,
+    status: first.status ?? null,
+    attendance_action: first.attendance_action,
+    people,
+    unknownFaces,
+  };
 }
 
 /** Ensure aiEmployeeId on active students + staff (Mongo only — no external DB). */

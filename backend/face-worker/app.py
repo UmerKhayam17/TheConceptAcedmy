@@ -46,6 +46,9 @@ _lock = threading.Lock()
 MIN_DET_SCORE = 0.5
 MIN_FACE_AREA_RATIO = 0.02
 MIN_BLUR_VARIANCE = 40.0
+# Identification accepts smaller faces than enrollment (CCTV sees people from further away).
+MIN_IDENTIFY_AREA_RATIO = 0.004
+MAX_IDENTIFY_FACES = 10
 
 
 class ImageBody(BaseModel):
@@ -218,6 +221,51 @@ def analyze(body: ImageBody):
     if norm > 0:
         emb = emb / norm
     return {**q, "embedding": emb.astype(float).tolist()}
+
+
+@app.post("/embed-all")
+def embed_all(body: ImageBody):
+    """Identify: one embedding per usable face, largest first (groups in one frame)."""
+    try:
+        image = resize_max(decode_base64_image(body.image), 640)
+    except Exception as exc:
+        raise HTTPException(400, f"Invalid image: {exc}") from exc
+
+    engine = get_engine()
+    with _lock:
+        faces = engine.get(image)
+    if not faces:
+        return {"faces": [], "message": "No face detected", "detected": 0}
+
+    h, w = image.shape[:2]
+
+    def area_ratio(f):
+        x1, y1, x2, y2 = f.bbox
+        return (max(float(x2 - x1), 1.0) * max(float(y2 - y1), 1.0)) / float(w * h)
+
+    usable = [
+        f
+        for f in faces
+        if float(getattr(f, "det_score", 0.0)) >= MIN_DET_SCORE
+        and area_ratio(f) >= MIN_IDENTIFY_AREA_RATIO
+    ]
+    usable.sort(key=area_ratio, reverse=True)
+
+    out = []
+    for f in usable[:MAX_IDENTIFY_FACES]:
+        emb = f.embedding
+        norm = float(np.linalg.norm(emb))
+        if norm > 0:
+            emb = emb / norm
+        out.append(
+            {
+                "embedding": emb.astype(float).tolist(),
+                "det_score": float(getattr(f, "det_score", 0.0)),
+                "bbox": [int(v) for v in f.bbox],
+            }
+        )
+    message = "Faces embedded" if out else "Faces too small or unclear"
+    return {"faces": out, "message": message, "detected": len(faces)}
 
 
 @app.post("/embed")

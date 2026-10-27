@@ -59,6 +59,7 @@ import {
   type AttendanceVoiceSettings,
 } from "@/lib/attendanceVoice";
 import socketService from "@/services/socket/socket.service";
+import { holdScreenAwake, startBackgroundTicker } from "@/lib/backgroundTicker";
 import { cn } from "@/lib/utils";
 
 type Tab = "enrolled" | "enrollment" | "monitor" | "cameras";
@@ -88,6 +89,23 @@ async function fileToJpegBase64(file: File, maxSide = 1280): Promise<string> {
     return canvas.toDataURL("image/jpeg", 0.92);
   } finally {
     URL.revokeObjectURL(url);
+  }
+}
+
+/** Short label for the monitor status line. */
+function monitorActionLabel(action?: string, status?: string | null) {
+  switch (action) {
+    case "check_in":
+      return status ? status.replace(/_/g, " ") : "present";
+    case "check_out":
+      return "checked out";
+    case "check_out_update":
+      return "check-out time updated";
+    case "already_marked":
+    case "cooldown":
+      return "already marked";
+    default:
+      return status ? status.replace(/_/g, " ") : "seen";
   }
 }
 
@@ -419,7 +437,6 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   const mobileFileRef = useRef<HTMLInputElement>(null);
   const galleryFileRef = useRef<HTMLInputElement>(null);
   const monitorScanBusy = useRef(false);
-  const lastWebcamMarkAt = useRef<Map<string, number>>(new Map());
   const [monitorWatch, setMonitorWatch] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
@@ -740,37 +757,39 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       if (!image) return;
       monitorScanBusy.current = true;
       try {
-        const preview = await identifyAiFace(image, false);
+        // One call recognises every face and marks each person; repeat marks are
+        // filtered on the server (shared with CCTV), so nobody is double-counted.
+        const result = await identifyAiFace(image, true);
         if (cancelled) return;
-        const matched = Boolean((preview as { matched?: boolean }).matched);
-        if (!matched) {
-          setMonitorWatch("Watching… waiting for a clear face");
+        const people = result.people || [];
+        if (!result.matched || people.length === 0) {
+          setMonitorWatch(
+            result.unknownFaces
+              ? `Watching… ${result.unknownFaces} unrecognised face${result.unknownFaces === 1 ? "" : "s"}`
+              : "Watching… waiting for a clear face"
+          );
           return;
         }
-        const personKey = String((preview as { employee_id?: string }).employee_id || "");
-        const name = String((preview as { employee_name?: string }).employee_name || "Matched");
-        const confidence = Number((preview as { confidence?: number }).confidence || 0);
-        const pct = `${Math.round(confidence * 100)}%`;
-        const prev = lastWebcamMarkAt.current.get(personKey) || 0;
-        if (personKey && Date.now() - prev < 45_000) {
-          setMonitorWatch(`${name} · already marked · ${pct}`);
-          return;
-        }
-        const marked = await identifyAiFace(image, true);
-        if (cancelled) return;
-        if (personKey) lastWebcamMarkAt.current.set(personKey, Date.now());
-        const status = String((marked as { status?: string }).status || "present");
-        const spokenName = String((marked as { employee_name?: string }).employee_name || name);
-        setMonitorWatch(`${spokenName} · ${status.replace(/_/g, " ")} · ${pct}`);
-        void announceAttendance(
-          {
-            name: spokenName,
-            status,
-            action: String((marked as { attendance_action?: string }).attendance_action || ""),
-          },
-          voiceRef.current
+        setMonitorWatch(
+          people
+            .map((p) => {
+              const pct = `${Math.round((p.confidence || 0) * 100)}%`;
+              const name = p.employee_name || "Matched";
+              if (p.error) return `${name} · not saved (${p.error})`;
+              return `${name} · ${monitorActionLabel(p.attendance_action, p.status)} · ${pct}`;
+            })
+            .join("   |   ")
         );
-        invalidateAttendanceQueries();
+        let changed = false;
+        people.forEach((p) => {
+          if (!p.announce) return;
+          changed = true;
+          void announceAttendance(
+            { name: p.employee_name || "", status: p.status || "", action: p.attendance_action },
+            voiceRef.current
+          );
+        });
+        if (changed) invalidateAttendanceQueries();
       } catch (e) {
         if (!cancelled) {
           setMonitorWatch(e instanceof Error ? e.message : "Scan failed");
@@ -781,10 +800,14 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     };
     setMonitorWatch("Watching… attendance marks automatically");
     void scan();
-    const timer = window.setInterval(() => void scan(), 2000);
+    // Scans about once a second; the busy flag skips a tick while a scan is still running.
+    // Worker-driven so it keeps going if the tab is in the background.
+    const stopTicker = startBackgroundTicker(1000, () => void scan());
+    const releaseWake = holdScreenAwake();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      stopTicker();
+      releaseWake();
     };
     // invalidateAttendanceQueries is recreated each render; the scan only needs the latest closure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
