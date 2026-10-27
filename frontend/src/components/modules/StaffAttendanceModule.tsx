@@ -353,6 +353,18 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     () => markingTeachers.filter((t) => t.attendanceType === "daily"),
     [markingTeachers]
   );
+  const monthClassTeachers = useMemo(
+    () => monthTeachers.filter((t) => t.attendanceType !== "daily"),
+    [monthTeachers]
+  );
+  const monthDailyStaff = useMemo(
+    () => monthTeachers.filter((t) => t.attendanceType === "daily"),
+    [monthTeachers]
+  );
+  const selectMonthStaff = (id: string) => {
+    setReportStaffId(id);
+    setMonthTeacherFilter(id);
+  };
   const viewStaffDetails =
     isAdmin && user?.role
       ? (id: string) => navigate(userDetailHref(user.role, id, "staff"))
@@ -669,27 +681,66 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
       )}
 
       {view === "monthly" && sessionId && (
-        <Card className="overflow-hidden">
-          <div className="px-4 py-3 border-b border-border font-semibold text-primary">
-            Monthly classes — {MONTH_NAMES[month - 1]} {year}
+        <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm">
+          <div className="px-4 py-3.5 flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-2.5 text-base font-semibold text-[#1a2b4b]">
+              <CalendarDays className="h-5 w-5 text-primary" />
+              Teacher attendance — {MONTH_NAMES[month - 1]} {year}
+            </span>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <Users className="h-4 w-4" />
+              {monthLoading ? "Loading…" : `${monthClassTeachers.length} teachers`}
+            </span>
           </div>
-          <div className="p-4 space-y-4">
+          <div className="px-4 pb-4 space-y-4">
             {monthError && (
               <p className="text-sm text-destructive">
                 {monthErr instanceof Error ? monthErr.message : "Could not load the monthly report."}
               </p>
             )}
             <TeacherSummaryTable
-              teachers={monthTeachers}
+              variant="class"
+              teachers={monthClassTeachers}
               loading={monthLoading}
               selectedId={selectedTeacher?.userId}
-              onSelect={(id) => {
-                setReportStaffId(id);
-                setMonthTeacherFilter(id);
-              }}
+              onSelect={selectMonthStaff}
               emptyLabel="No classes on the published timetable this month."
             />
-            {selectedTeacher && (
+            {selectedTeacher && selectedTeacher.attendanceType !== "daily" && (
+              <PeriodMarkTable
+                teacher={selectedTeacher}
+                drafts={drafts}
+                canMark={false}
+                showDate
+                onChange={updatePeriod}
+              />
+            )}
+          </div>
+        </Card>
+      )}
+
+      {view === "monthly" && sessionId && !monthLoading && monthDailyStaff.length > 0 && (
+        <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm">
+          <div className="px-4 py-3.5 flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-2.5 text-base font-semibold text-[#1a2b4b]">
+              <UserCheck className="h-5 w-5 text-primary" />
+              Staff attendance — {MONTH_NAMES[month - 1]} {year}
+            </span>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <Users className="h-4 w-4" />
+              {`${monthDailyStaff.length} staff`}
+            </span>
+          </div>
+          <div className="px-4 pb-4 space-y-4">
+            <TeacherSummaryTable
+              variant="daily"
+              teachers={monthDailyStaff}
+              loading={false}
+              selectedId={selectedTeacher?.userId}
+              onSelect={selectMonthStaff}
+              emptyLabel="No staff to show this month."
+            />
+            {selectedTeacher && selectedTeacher.attendanceType === "daily" && (
               <PeriodMarkTable
                 teacher={selectedTeacher}
                 drafts={drafts}
@@ -1132,13 +1183,20 @@ function StaffDayTable({
   );
 }
 
+/** Distinct school days in the month this person is scheduled (classes) or expected (staff). */
+function workingDayCount(person: StaffPeriodTeacher) {
+  return new Set(person.periods.map((p) => p.day).filter(Boolean)).size;
+}
+
 function TeacherSummaryTable({
+  variant,
   teachers,
   loading,
   selectedId,
   onSelect,
   emptyLabel,
 }: {
+  variant: "class" | "daily";
   teachers: StaffPeriodTeacher[];
   loading: boolean;
   selectedId?: string;
@@ -1146,20 +1204,32 @@ function TeacherSummaryTable({
   emptyLabel: string;
 }) {
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  const isDailyTable = variant === "daily";
+  const cellClass =
+    "px-3 py-3 align-middle border-r border-slate-100 last:border-r-0 dark:border-slate-800";
+  const numClass = cn(cellClass, "text-right tabular-nums");
+  const headClass =
+    "px-3 py-3 text-xs font-semibold text-slate-700 border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
+  const numHead = cn(headClass, "text-right");
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm min-w-[760px]">
-        <thead className="bg-muted/50 border-b">
+    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700">
+      <table className="w-full table-fixed text-sm">
+        <thead className="bg-[#eef4fc] border-b border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700">
           <tr>
-            <th className="text-left p-2.5 font-medium">Teacher</th>
-            <th className="text-left p-2.5 font-medium">Role</th>
-            <th className="text-right p-2.5 font-medium">Classes / days</th>
-            <th className="text-right p-2.5 font-medium">Present</th>
-            <th className="text-right p-2.5 font-medium">Late</th>
-            <th className="text-right p-2.5 font-medium">Absent</th>
-            <th className="text-right p-2.5 font-medium">Leave</th>
-            <th className="text-right p-2.5 font-medium">Unmarked</th>
-            <th className="text-right p-2.5 font-medium">Attendance</th>
+            <th className={cn(headClass, "text-left w-[26%]")}>{isDailyTable ? "Staff" : "Teacher"}</th>
+            {isDailyTable ? (
+              <th className={cn(headClass, "text-left w-[8rem]")}>Role</th>
+            ) : (
+              <th className={numHead}>Classes</th>
+            )}
+            <th className={numHead}>Days</th>
+            <th className={numHead}>Present</th>
+            <th className={numHead}>Late</th>
+            <th className={numHead}>Absent</th>
+            <th className={numHead}>Leave</th>
+            <th className={numHead}>Unmarked</th>
+            <th className={cn(headClass, "text-left w-[9rem]")}>Attendance</th>
           </tr>
         </thead>
         <tbody>
@@ -1170,29 +1240,63 @@ function TeacherSummaryTable({
               </td>
             </tr>
           )}
-          {teachers.map((t) => (
-            <tr
-              key={t.userId}
-              className={cn(
-                "border-b last:border-0 cursor-pointer hover:bg-muted/30",
-                selectedId === t.userId && "bg-primary/5"
-              )}
-              onClick={() => onSelect(t.userId)}
-            >
-              <td className="p-2.5">
-                <div className="font-medium">{t.name}</div>
-                {t.email ? <p className="text-xs text-muted-foreground">{t.email}</p> : null}
-              </td>
-              <td className="p-2.5 capitalize text-muted-foreground">{t.role || "—"}</td>
-              <td className="p-2.5 text-right font-semibold">{t.totalClasses}</td>
-              <td className="p-2.5 text-right">{t.present}</td>
-              <td className="p-2.5 text-right">{t.late}</td>
-              <td className="p-2.5 text-right">{t.absent}</td>
-              <td className="p-2.5 text-right">{t.leave}</td>
-              <td className="p-2.5 text-right">{t.unmarked}</td>
-              <td className="p-2.5 text-right">{t.attendancePercent}%</td>
-            </tr>
-          ))}
+          {teachers.map((t) => {
+            const role = String(t.role || "staff").toLowerCase();
+            const percent = Math.round(t.attendancePercent || 0);
+            return (
+              <tr
+                key={t.userId}
+                className={cn(
+                  "border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50/60 dark:border-slate-800 dark:hover:bg-slate-800/30",
+                  selectedId === t.userId && "bg-primary/5 hover:bg-primary/5"
+                )}
+                onClick={() => onSelect(t.userId)}
+              >
+                <td className={cellClass}>
+                  <StaffIdentity person={t} />
+                </td>
+                {isDailyTable ? (
+                  <td className={cellClass}>
+                    <span
+                      className={cn(
+                        "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize",
+                        ROLE_BADGE_CLASS[role] ||
+                          "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
+                      )}
+                    >
+                      {role}
+                    </span>
+                  </td>
+                ) : (
+                  <td className={cn(numClass, "font-semibold text-[#1a2b4b] dark:text-slate-100")}>
+                    {t.totalClasses}
+                  </td>
+                )}
+                <td className={cn(numClass, "font-semibold text-[#1a2b4b] dark:text-slate-100")}>
+                  {workingDayCount(t)}
+                </td>
+                <td className={cn(numClass, "text-emerald-700 dark:text-emerald-400")}>{t.present}</td>
+                <td className={cn(numClass, "text-blue-700 dark:text-blue-400")}>{t.late}</td>
+                <td className={cn(numClass, "text-red-700 dark:text-red-400")}>{t.absent}</td>
+                <td className={cn(numClass, "text-violet-700 dark:text-violet-400")}>{t.leave}</td>
+                <td className={cn(numClass, "text-slate-500")}>{t.unmarked}</td>
+                <td className={cellClass}>
+                  <p className="text-xs font-semibold text-[#1a2b4b] mb-1.5 dark:text-slate-200">
+                    {t.attendancePercent}%
+                  </p>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div
+                      className={cn(
+                        "h-full rounded-full",
+                        percent >= 75 ? "bg-emerald-500" : percent >= 50 ? "bg-blue-500" : "bg-red-500"
+                      )}
+                      style={{ width: `${Math.min(percent, 100)}%` }}
+                    />
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
