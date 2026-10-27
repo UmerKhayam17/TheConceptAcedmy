@@ -35,6 +35,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { resolveUploadUrl } from "@/lib/api";
 import { userDetailHref } from "@/lib/userFormRoutes";
+import { fetchClasses, fetchSubjects } from "@/lib/configApi";
+import { subjectIcon } from "@/lib/subjectTheme";
+import {
+  assignUniqueSubjectColors,
+  colorForSubjectName,
+} from "@/components/modules/timetable/constants";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
@@ -370,6 +376,29 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
       ? (id: string) => navigate(userDetailHref(user.role, id, "staff"))
       : undefined;
 
+  // Same classes + subject catalog (and query keys) as Class Board, so subject colours match it.
+  const { data: boardClasses = [] } = useQuery({
+    queryKey: ["config-classes", sessionId],
+    queryFn: () => fetchClasses(sessionId),
+    enabled: caps.canView && Boolean(sessionId),
+  });
+  const { data: boardSubjects = [] } = useQuery({
+    queryKey: ["config-subjects", "all"],
+    queryFn: () => fetchSubjects(),
+    enabled: caps.canView && Boolean(sessionId),
+    staleTime: 60_000,
+  });
+  const subjectColorByKey = useMemo(() => {
+    const classIds = new Set(boardClasses.map((c) => c._id));
+    const names: string[] = [];
+    for (const subject of boardSubjects) {
+      const cid = typeof subject.class === "object" ? subject.class?._id : subject.class;
+      if (classIds.size && cid && !classIds.has(String(cid))) continue;
+      if (subject.name?.trim()) names.push(subject.name);
+    }
+    return assignUniqueSubjectColors(names);
+  }, [boardClasses, boardSubjects]);
+
   const stats = useMemo(() => {
     const counts = { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0, unmarked: 0 };
     if (view === "daily") {
@@ -644,6 +673,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               </p>
             )}
             <DayClassGrid
+              subjectColorByKey={subjectColorByKey}
               teachers={classTeachers}
               loading={dayLoading}
               drafts={drafts}
@@ -842,7 +872,36 @@ function DayStatusControl({
   );
 }
 
+/** Subject chip with the same colour and icon as the Class Board card. */
+function SubjectChip({
+  subjectLabel,
+  fallback,
+  colorByKey,
+}: {
+  subjectLabel?: string;
+  fallback: string;
+  colorByKey: Map<string, number>;
+}) {
+  // Parallel periods list several subjects ("Maths, Physics"); colour by the first, like Class Board.
+  const primary = String(subjectLabel || "").split(",")[0].trim();
+  if (!primary) return <p className="text-xs text-slate-500 leading-snug">{fallback}</p>;
+  const Icon = subjectIcon(primary);
+  return (
+    <span
+      className={cn(
+        "mt-1 inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold",
+        colorForSubjectName(primary, colorByKey)
+      )}
+      title={subjectLabel}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate">{subjectLabel}</span>
+    </span>
+  );
+}
+
 function DayClassGrid({
+  subjectColorByKey,
   teachers,
   loading,
   drafts,
@@ -850,6 +909,7 @@ function DayClassGrid({
   onChange,
   onViewDetails,
 }: {
+  subjectColorByKey: Map<string, number>;
   teachers: StaffPeriodTeacher[];
   loading: boolean;
   drafts: Record<string, PeriodDraft>;
@@ -927,10 +987,12 @@ function DayClassGrid({
                       <p className="text-[13px] font-semibold text-[#1a2b4b] leading-snug dark:text-slate-100">
                         {[period.classLabel, period.sectionLabel].filter(Boolean).join(" · ") || "—"}
                       </p>
-                      <p className="text-xs text-slate-500 leading-snug">
-                        {period.subjectLabel || period.label || "Class"}
-                      </p>
-                      <p className="text-xs text-slate-500 leading-snug mb-2.5">
+                      <SubjectChip
+                        subjectLabel={period.subjectLabel}
+                        fallback={period.label || "Class"}
+                        colorByKey={subjectColorByKey}
+                      />
+                      <p className="mt-1 text-xs text-slate-500 leading-snug mb-2.5">
                         {period.startTime ? `${period.startTime}–${period.endTime}` : "—"}
                       </p>
                       <DayStatusControl
