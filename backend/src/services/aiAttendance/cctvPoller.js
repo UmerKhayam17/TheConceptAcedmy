@@ -5,6 +5,7 @@
 const faceWorker = require('./faceWorkerClient');
 const { cameraAutostartEnabled } = require('./cameraEnvService');
 const AiCamera = require('../../models/AiCamera');
+const { emitModuleSync } = require('../realtime/realtimeService');
 
 const SCAN_MS = Number(process.env.AI_CAMERA_SCAN_MS) || 2000;
 const MATCH_COOLDOWN_MS = Number(process.env.AI_CAMERA_MATCH_COOLDOWN_MS) || 45000;
@@ -114,6 +115,15 @@ async function tick(cameraId) {
       confidence: preview.confidence,
       attendance: result?.action || result?.doc?.status,
     };
+    // Lets open AI Attendance pages announce CCTV marks by voice.
+    emitModuleSync('aiAttendance', 'attendance', 'ai-marked', {
+      source: 'cctv',
+      cameraName: camera.name || '',
+      name: preview.employee_name || '',
+      kind: result?.kind || '',
+      status: result?.doc?.status || '',
+      attendanceAction: result?.action || '',
+    });
   } catch (err) {
     runtime.workerReady = false;
     runtime.status = {

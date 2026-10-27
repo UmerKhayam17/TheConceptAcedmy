@@ -13,6 +13,8 @@ import {
   Images,
   Trash2,
   Plus,
+  Volume2,
+  VolumeX,
   type LucideIcon,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -48,6 +50,15 @@ import {
   type AiCamera,
 } from "@/lib/aiAttendanceApi";
 import { resolveUploadUrl } from "@/lib/api";
+import {
+  announceAttendance,
+  loadVoiceSettings,
+  primeAttendanceVoice,
+  saveVoiceSettings,
+  speakText,
+  type AttendanceVoiceSettings,
+} from "@/lib/attendanceVoice";
+import socketService from "@/services/socket/socket.service";
 import { cn } from "@/lib/utils";
 
 type Tab = "enrolled" | "enrollment" | "monitor" | "cameras";
@@ -78,27 +89,6 @@ async function fileToJpegBase64(file: File, maxSide = 1280): Promise<string> {
   } finally {
     URL.revokeObjectURL(url);
   }
-}
-
-function speakMarked(name: string, status?: string) {
-  if (typeof window === "undefined" || !window.speechSynthesis) return;
-  const spoken = status === "late" ? "late" : "present";
-  const utter = new SpeechSynthesisUtterance(`${name} is ${spoken}`);
-  utter.lang = "en-US";
-  utter.rate = 0.92;
-  const voices = window.speechSynthesis.getVoices();
-  const english = voices.find((v) => v.lang.toLowerCase().startsWith("en"));
-  if (english) utter.voice = english;
-  window.speechSynthesis.resume();
-  window.speechSynthesis.speak(utter);
-}
-
-function primeAttendanceVoice() {
-  if (typeof window === "undefined" || !window.speechSynthesis) return;
-  window.speechSynthesis.getVoices();
-  const utter = new SpeechSynthesisUtterance(" ");
-  utter.volume = 0;
-  window.speechSynthesis.speak(utter);
 }
 
 function grabFromVideo(video: HTMLVideoElement | null): string | null {
@@ -375,6 +365,38 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   const qc = useQueryClient();
   const canWrite = caps.canEdit || caps.canCreate;
   const [tab, setTab] = useState<Tab>("enrolled");
+  const [voice, setVoice] = useState<AttendanceVoiceSettings>(() => loadVoiceSettings());
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+  const updateVoice = (next: Partial<AttendanceVoiceSettings>) => {
+    primeAttendanceVoice();
+    setVoice((prev) => {
+      const merged = { ...prev, ...next };
+      saveVoiceSettings(merged);
+      return merged;
+    });
+  };
+
+  // CCTV marks happen on the server; announce them while this page is open.
+  useEffect(() => {
+    void socketService.connectPanel();
+    const onSync = (raw: unknown) => {
+      const event = raw as {
+        action?: string;
+        source?: string;
+        name?: string;
+        status?: string;
+        attendanceAction?: string;
+      };
+      if (event?.action !== "ai-marked" || event.source !== "cctv") return;
+      void announceAttendance(
+        { name: event.name || "", status: event.status, action: event.attendanceAction },
+        voiceRef.current
+      );
+    };
+    socketService.onModuleSync(onSync);
+    return () => socketService.offModuleSync(onSync);
+  }, []);
   const [selected, setSelected] = useState<AiPerson | null>(null);
   const [search, setSearch] = useState("");
   const [enrollStatusFilter, setEnrollStatusFilter] = useState<EnrollStatusFilter>("all");
@@ -740,7 +762,14 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
         const status = String((marked as { status?: string }).status || "present");
         const spokenName = String((marked as { employee_name?: string }).employee_name || name);
         setMonitorWatch(`${spokenName} · ${status.replace(/_/g, " ")} · ${pct}`);
-        speakMarked(spokenName, status);
+        void announceAttendance(
+          {
+            name: spokenName,
+            status,
+            action: String((marked as { attendance_action?: string }).attendance_action || ""),
+          },
+          voiceRef.current
+        );
         invalidateAttendanceQueries();
       } catch (e) {
         if (!cancelled) {
@@ -842,7 +871,50 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
               </p>
             </div>
           </div>
-          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
+          <div
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5"
+            aria-label="Attendance voice"
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn("h-8 w-8", voice.enabled ? "text-primary" : "text-slate-400")}
+              onClick={() => updateVoice({ enabled: !voice.enabled })}
+              aria-pressed={voice.enabled}
+              title={voice.enabled ? "Mute announcements" : "Turn announcements on"}
+            >
+              {voice.enabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </Button>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(voice.volume * 100)}
+              disabled={!voice.enabled}
+              onChange={(e) => updateVoice({ volume: Number(e.target.value) / 100 })}
+              className="h-1.5 w-24 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Announcement volume"
+            />
+            <span className="w-9 text-right text-xs tabular-nums text-slate-500">
+              {voice.enabled ? `${Math.round(voice.volume * 100)}%` : "Off"}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 px-2.5 text-xs"
+              disabled={!voice.enabled}
+              onClick={() => {
+                primeAttendanceVoice();
+                void speakText("Voice announcements are on", voiceRef.current);
+              }}
+            >
+              Test
+            </Button>
+          </div>
+          <div className="hidden shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem] xl:block">
             <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
               <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
                 &ldquo;
