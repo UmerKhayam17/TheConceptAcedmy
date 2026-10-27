@@ -18,10 +18,10 @@ const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
  */
 const LIST_COLUMNS = [
   { key: 'serial', header: 'SR No', excelWidth: 6, pdfWidth: 28, align: 'center' },
-  { key: 'regNo', header: 'Roll #', excelWidth: 8, pdfWidth: 42, align: 'center' },
+  { key: 'regNo', header: 'Roll #', excelWidth: 11, pdfWidth: 54, align: 'center' },
   { key: 'name', header: 'Student Name', excelWidth: 22, pdfWidth: 120, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 22, pdfWidth: 130 },
-  { key: 'blank2', header: ' ', excelWidth: 22, pdfWidth: 130 },
+  { key: 'blank1', header: ' ', excelWidth: 22, pdfWidth: 124 },
+  { key: 'blank2', header: ' ', excelWidth: 22, pdfWidth: 124 },
 ];
 
 /**
@@ -30,11 +30,11 @@ const LIST_COLUMNS = [
  */
 const CONTACT_COLUMNS = [
   { key: 'serial', header: 'SR No', excelWidth: 7, pdfWidth: 28, align: 'center' },
-  { key: 'regNo', header: 'Roll #', excelWidth: 8, pdfWidth: 42, align: 'center' },
+  { key: 'regNo', header: 'Roll #', excelWidth: 11, pdfWidth: 54, align: 'center' },
   { key: 'name', header: 'Student Name', excelWidth: 18, pdfWidth: 95, wrap: true },
   { key: 'father', header: 'Father Name', excelWidth: 17, pdfWidth: 90, wrap: true },
   { key: 'phone', header: 'Contact', excelWidth: 18, pdfWidth: 95, wrap: true },
-  { key: 'blank1', header: ' ', excelWidth: 20, pdfWidth: 100 },
+  { key: 'blank1', header: ' ', excelWidth: 20, pdfWidth: 88 },
 ];
 
 const REPORT_PRESETS = {
@@ -183,7 +183,7 @@ function buildDualCols(tableW, kind, omitSensitive) {
   if (kind === 'contact' && !omitSensitive) {
     const cols = [
       { key: 'serial', w: 20, label: 'Sr #', align: 'center', wrap: false },
-      { key: 'regNo', w: 36, label: 'Roll #', align: 'center', wrap: true },
+      { key: 'regNo', w: 52, label: 'Roll #', align: 'center', wrap: true },
       { key: 'name', w: 78, label: 'Student Name', align: 'left', wrap: true },
       { key: 'father', w: 62, label: 'Father Name', align: 'left', wrap: true },
       { key: 'phone', w: 0, label: 'Contact', align: 'left', wrap: true },
@@ -194,7 +194,7 @@ function buildDualCols(tableW, kind, omitSensitive) {
   // Student list: narrow Roll #, no father, two wide empty columns.
   const cols = [
     { key: 'serial', w: 20, label: 'Sr #', align: 'center', wrap: false },
-    { key: 'regNo', w: 36, label: 'Roll #', align: 'center', wrap: true },
+    { key: 'regNo', w: 52, label: 'Roll #', align: 'center', wrap: true },
     { key: 'name', w: 88, label: 'Student Name', align: 'left', wrap: true },
     { key: 'blank1', w: 0, label: ' ', align: 'center', wrap: false },
     { key: 'blank2', w: 0, label: ' ', align: 'center', wrap: false },
@@ -211,6 +211,27 @@ function dualCellFontSize(key) {
   return 6.5;
 }
 
+/**
+ * Roll # cell: "2026-27-9TH-10TH-001" -> line 1 "2026-27-9TH-10TH" (session + class),
+ * line 2 "001". Line 1 font shrinks (to a floor) so it stays on one line.
+ */
+const ROLL_MIN_FONT = 4.5;
+
+function rollCellLayout(doc, value, innerW) {
+  const m = String(value).match(/^(.*\S)-(\d+)$/);
+  const lines = m ? [m[1], m[2]] : [String(value)];
+  let fontSize = dualCellFontSize('regNo');
+  doc.font('Helvetica');
+  while (fontSize > ROLL_MIN_FONT && doc.fontSize(fontSize).widthOfString(lines[0]) > innerW) {
+    fontSize -= 0.25;
+  }
+  doc.fontSize(fontSize);
+  const lineH = doc.currentLineHeight(true) + 0.5;
+  // Still too wide at the floor: let line 1 wrap rather than overflow the cell.
+  const headH = doc.heightOfString(lines[0], { width: innerW, lineGap: 0.5 });
+  return { lines, fontSize, lineH, height: headH + (lines.length - 1) * lineH };
+}
+
 /** Full text height for a row — wraps name/father/contact/reg so nothing is cut off. */
 function dualRowHeight(doc, row, cols, { minRowH = 15, pad = 3 } = {}) {
   let maxH = minRowH;
@@ -218,6 +239,11 @@ function dualRowHeight(doc, row, cols, { minRowH = 15, pad = 3 } = {}) {
     const raw = row[c.key];
     const value = raw == null || raw === '' ? '' : String(raw);
     if (!value || !c.wrap) return;
+    if (c.key === 'regNo') {
+      const { height } = rollCellLayout(doc, value, Math.max(8, c.w - 4));
+      maxH = Math.max(maxH, Math.ceil(height + pad * 2));
+      return;
+    }
     const fontSize = dualCellFontSize(c.key);
     doc.font('Helvetica').fontSize(fontSize);
     const textH = doc.heightOfString(value, { width: Math.max(8, c.w - 4), lineGap: 0.5 });
@@ -263,7 +289,16 @@ function drawDualStudentRow(doc, blockX, y, row, tableW, cols, rowH) {
       const fontSize = dualCellFontSize(c.key);
       doc.font('Helvetica').fontSize(fontSize).fillColor('#000');
       const innerW = Math.max(8, c.w - 4);
-      if (c.wrap) {
+      if (c.key === 'regNo') {
+        const { lines, fontSize: rollFont, height } = rollCellLayout(doc, value, innerW);
+        doc.fontSize(rollFont).fillColor('#000');
+        const textY = y + Math.max(2, (rowH - height) / 2);
+        doc.text(lines.join('\n'), x + 2, textY, {
+          width: innerW,
+          align: c.align || 'center',
+          lineGap: 0.5,
+        });
+      } else if (c.wrap) {
         const textH = doc.heightOfString(value, { width: innerW, lineGap: 0.5 });
         const textY = y + Math.max(2, (rowH - textH) / 2);
         doc.text(value, x + 2, textY, {
