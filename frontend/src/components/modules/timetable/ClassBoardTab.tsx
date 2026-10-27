@@ -40,7 +40,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatWallClockRange } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { subjectIcon } from "@/lib/subjectTheme";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -1150,7 +1150,7 @@ export default function ClassBoardTab({
                           >
                             <div className="text-sm truncate">{p.label || `P${p.order}`}</div>
                             <div className="text-[11px] font-normal text-muted-foreground truncate">
-                              {p.startTime} – {p.endTime}
+                              {formatWallClockRange(p.startTime, p.endTime)}
                             </div>
                           </th>
                         ))}
@@ -1472,7 +1472,7 @@ export default function ClassBoardTab({
           {dialog && (
             <div className="space-y-3 text-sm">
               <p className="text-muted-foreground">
-                {DAY_FULL_LABELS[day]} · {dialog.period.startTime}–{dialog.period.endTime}
+                {DAY_FULL_LABELS[day]} · {formatWallClockRange(dialog.period.startTime, dialog.period.endTime, "–")}
               </p>
 
               {lecturePeriods.length > 1 && (
@@ -1488,7 +1488,7 @@ export default function ClassBoardTab({
                   >
                     {lecturePeriods.map((p) => (
                       <option key={p._id} value={p._id}>
-                        {p.label || `P${p.order}`} ({p.startTime}–{p.endTime})
+                        {p.label || `P${p.order}`} ({formatWallClockRange(p.startTime, p.endTime, "–")})
                       </option>
                     ))}
                   </select>

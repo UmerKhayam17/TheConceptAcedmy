@@ -39,7 +39,7 @@ import {
   type AcademyStudent,
 } from "@/lib/studentManagementApi";
 import { ParentStudentBanner } from "@/components/modules/timetable/parent-schedule/ParentStudentBanner";
-import { cn } from "@/lib/utils";
+import { cn, formatClockTime } from "@/lib/utils";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -105,12 +105,7 @@ function formatWeekday(ymd: string) {
 }
 
 function formatTime(iso?: string) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "—";
-  }
+  return formatClockTime(iso);
 }
 
 function statusBadgeClass(status: string) {

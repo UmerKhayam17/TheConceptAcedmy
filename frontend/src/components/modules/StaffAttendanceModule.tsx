@@ -60,7 +60,7 @@ import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { localTodayYmd } from "@/lib/localDate";
-import { cn } from "@/lib/utils";
+import { cn, formatWallClockRange } from "@/lib/utils";
 
 const PERIOD_STATUSES: { value: StaffPeriodStatus; label: string }[] = [
   { value: "", label: "Unmarked" },
@@ -433,40 +433,62 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
 
   const statsHint = view === "daily" ? date : `${MONTH_NAMES[month - 1]} ${year}`;
 
+  const statTiles = [
+    { label: "Classes", value: stats.totalClasses, valueClass: "text-sky-700" },
+    { label: "Present", value: stats.present, valueClass: "text-emerald-700" },
+    { label: "Late", value: stats.late, valueClass: "text-amber-700" },
+    { label: "Absent", value: stats.absent, valueClass: "text-rose-700" },
+    { label: "Leave", value: stats.leave, valueClass: "text-blue-700" },
+    { label: "Unmarked", value: stats.unmarked, valueClass: "text-violet-700" },
+  ];
+
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-5">
-      <Card className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
+    <div className="flex h-full max-h-full min-h-0 min-w-0 flex-col overflow-hidden">
+    <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain px-3 py-4 sm:space-y-5 sm:px-5 sm:py-6 lg:px-8">
+      <Card className="rounded-xl border-0 bg-white px-3 py-3 shadow-sm ring-1 ring-black/[0.04] sm:px-5 sm:py-3.5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3 sm:items-center">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
               <Clock className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
             </span>
             <div className="min-w-0">
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+              <h1 className="text-lg font-bold leading-tight tracking-tight text-[#1a2b4b] sm:text-xl">
                 Staff Attendance
               </h1>
-              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+              <p className="mt-0.5 max-w-xl text-xs leading-snug text-slate-500 sm:text-sm">
                 Period time and class come from the published timetable. Mark each period as
                 present, absent, late, or leave.
               </p>
             </div>
           </div>
-          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[14rem]">
-            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
-              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
-                &ldquo;
-              </span>
-              Consistency builds excellence.
-              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
-                &rdquo;
-              </span>
-            </p>
-          </div>
+          <p className="rounded-lg bg-primary/10 px-3 py-2 text-xs italic leading-snug text-[#1a2b4b]/80 sm:text-sm lg:max-w-[16rem] lg:shrink-0">
+            <span className="mr-1 font-serif text-base not-italic leading-none text-primary">
+              &ldquo;
+            </span>
+            Consistency builds excellence.
+            <span className="ml-0.5 font-serif text-base not-italic leading-none text-primary">
+              &rdquo;
+            </span>
+          </p>
         </div>
       </Card>
 
       {sessionId && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+        <>
+        <div className="grid grid-cols-3 gap-2 sm:hidden">
+          {statTiles.map((tile) => (
+            <div
+              key={tile.label}
+              className="rounded-xl bg-white px-2 py-2.5 text-center shadow-sm ring-1 ring-black/[0.04]"
+            >
+              <p className="text-[11px] font-medium text-slate-500">{tile.label}</p>
+              <p className={cn("mt-0.5 text-lg font-bold tabular-nums leading-none", tile.valueClass)}>
+                {tile.value}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="hidden gap-3 sm:grid sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
           <PanelStatCard
             label="Total classes"
             value={stats.totalClasses}
@@ -516,6 +538,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
             iconClass="text-[#7c3aed]"
           />
         </div>
+        </>
       )}
 
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
@@ -635,7 +658,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
             />
             {view === "daily" && canMark && (
               <Button
-                className="gap-2 h-10"
+                className="hidden h-10 gap-2 lg:inline-flex"
                 disabled={savingAll || dirtyCount === 0}
                 onClick={() => void saveAll()}
               >
@@ -655,18 +678,18 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
 
       {view === "daily" && sessionId && (
         <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm">
-          <div className="px-4 py-3.5 flex flex-wrap items-center justify-between gap-2">
-            <span className="flex items-center gap-2.5 text-base font-semibold text-[#1a2b4b]">
+          <div className="flex flex-col gap-1 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-3.5">
+            <span className="flex min-w-0 items-start gap-2.5 text-[15px] font-semibold leading-snug text-[#1a2b4b] sm:items-center sm:text-base">
               <CalendarDays className="h-5 w-5 text-primary" />
               Teacher attendance — {date}
               {dayData?.weekday ? ` · ${weekdayLabel(dayData.weekday)}` : ""}
             </span>
-            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <span className="flex shrink-0 items-center gap-1.5 pl-7 text-xs font-medium text-slate-500 sm:pl-0">
               <Users className="h-4 w-4" />
               {dayLoading ? "Loading timetable…" : `${classTeachers.length} teachers`}
             </span>
           </div>
-          <div className="px-2 pb-2 sm:px-3 sm:pb-3">
+          <div className="min-w-0 px-3 pb-3 sm:px-4 sm:pb-4">
             {dayError && (
               <p className="px-2 pb-2 text-sm text-destructive">
                 {dayErr instanceof Error ? dayErr.message : "Could not load the timetable."}
@@ -687,18 +710,18 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
 
       {view === "daily" && sessionId && !dayLoading && dailyStaff.length > 0 && (
         <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm">
-          <div className="px-4 py-3.5 flex flex-wrap items-center justify-between gap-2">
-            <span className="flex items-center gap-2.5 text-base font-semibold text-[#1a2b4b]">
+          <div className="flex flex-col gap-1 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-3.5">
+            <span className="flex min-w-0 items-start gap-2.5 text-[15px] font-semibold leading-snug text-[#1a2b4b] sm:items-center sm:text-base">
               <UserCheck className="h-5 w-5 text-primary" />
               Staff attendance — {date}
               {dayData?.weekday ? ` · ${weekdayLabel(dayData.weekday)}` : ""}
             </span>
-            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <span className="flex shrink-0 items-center gap-1.5 pl-7 text-xs font-medium text-slate-500 sm:pl-0">
               <Users className="h-4 w-4" />
               {`${dailyStaff.length} staff`}
             </span>
           </div>
-          <div className="px-2 pb-2 sm:px-3 sm:pb-3">
+          <div className="min-w-0 px-3 pb-3 sm:px-4 sm:pb-4">
             <StaffDayTable
               staff={dailyStaff}
               drafts={drafts}
@@ -712,17 +735,17 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
 
       {view === "monthly" && sessionId && (
         <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm">
-          <div className="px-4 py-3.5 flex flex-wrap items-center justify-between gap-2">
-            <span className="flex items-center gap-2.5 text-base font-semibold text-[#1a2b4b]">
+          <div className="flex flex-col gap-1 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-3.5">
+            <span className="flex min-w-0 items-start gap-2.5 text-[15px] font-semibold leading-snug text-[#1a2b4b] sm:items-center sm:text-base">
               <CalendarDays className="h-5 w-5 text-primary" />
               Teacher attendance — {MONTH_NAMES[month - 1]} {year}
             </span>
-            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <span className="flex shrink-0 items-center gap-1.5 pl-7 text-xs font-medium text-slate-500 sm:pl-0">
               <Users className="h-4 w-4" />
               {monthLoading ? "Loading…" : `${monthClassTeachers.length} teachers`}
             </span>
           </div>
-          <div className="px-4 pb-4 space-y-4">
+          <div className="min-w-0 space-y-3 px-3 pb-3 sm:space-y-4 sm:px-4 sm:pb-4">
             {monthError && (
               <p className="text-sm text-destructive">
                 {monthErr instanceof Error ? monthErr.message : "Could not load the monthly report."}
@@ -751,17 +774,17 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
 
       {view === "monthly" && sessionId && !monthLoading && monthDailyStaff.length > 0 && (
         <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm">
-          <div className="px-4 py-3.5 flex flex-wrap items-center justify-between gap-2">
-            <span className="flex items-center gap-2.5 text-base font-semibold text-[#1a2b4b]">
+          <div className="flex flex-col gap-1 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-3.5">
+            <span className="flex min-w-0 items-start gap-2.5 text-[15px] font-semibold leading-snug text-[#1a2b4b] sm:items-center sm:text-base">
               <UserCheck className="h-5 w-5 text-primary" />
               Staff attendance — {MONTH_NAMES[month - 1]} {year}
             </span>
-            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <span className="flex shrink-0 items-center gap-1.5 pl-7 text-xs font-medium text-slate-500 sm:pl-0">
               <Users className="h-4 w-4" />
               {`${monthDailyStaff.length} staff`}
             </span>
           </div>
-          <div className="px-4 pb-4 space-y-4">
+          <div className="min-w-0 space-y-3 px-3 pb-3 sm:space-y-4 sm:px-4 sm:pb-4">
             <TeacherSummaryTable
               variant="daily"
               teachers={monthDailyStaff}
@@ -782,6 +805,15 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
           </div>
         </Card>
       )}
+    </div>
+    {view === "daily" && canMark && dirtyCount > 0 && (
+      <div className="shrink-0 border-t border-slate-200 bg-white/95 px-3 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:hidden">
+        <Button className="h-11 w-full gap-2" disabled={savingAll} onClick={() => void saveAll()}>
+          <Save className="h-4 w-4" />
+          {savingAll ? "Saving…" : `Save ${dirtyCount} change${dirtyCount === 1 ? "" : "s"}`}
+        </Button>
+      </div>
+    )}
     </div>
   );
 }
@@ -831,12 +863,14 @@ function DayStatusControl({
   label,
   onChange,
   options = PERIOD_STATUSES,
+  size = "sm",
 }: {
   status: StaffPeriodStatus;
   canMark: boolean;
   label: string;
   onChange: (status: StaffPeriodStatus) => void;
   options?: typeof PERIOD_STATUSES;
+  size?: "sm" | "md";
 }) {
   const style = DAY_STATUS_STYLE[status] || DAY_STATUS_STYLE[""];
   const Icon = style.icon;
@@ -844,7 +878,8 @@ function DayStatusControl({
   return (
     <div
       className={cn(
-        "relative flex h-8 w-full items-center rounded-md border text-xs font-medium",
+        "relative flex w-full items-center rounded-md border font-medium",
+        size === "md" ? "h-10 text-sm" : "h-8 text-xs",
         style.className
       )}
     >
@@ -900,6 +935,77 @@ function SubjectChip({
   );
 }
 
+function AttendanceActionsMenu({
+  label,
+  canMark,
+  onViewDetails,
+  items,
+}: {
+  label: string;
+  canMark: boolean;
+  onViewDetails?: () => void;
+  items: { key: string; label: string; icon: LucideIcon; onClick: () => void }[];
+}) {
+  if (!canMark && !onViewDetails) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-10 w-10 shrink-0 border-slate-200 text-[#1a2b4b] lg:h-9 lg:w-9"
+          aria-label={label}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        {canMark &&
+          items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <DropdownMenuItem key={item.key} onClick={item.onClick}>
+                <Icon className="mr-2 h-4 w-4" /> {item.label}
+              </DropdownMenuItem>
+            );
+          })}
+        {canMark && onViewDetails && items.length > 0 ? <DropdownMenuSeparator /> : null}
+        {onViewDetails ? (
+          <DropdownMenuItem onClick={onViewDetails}>
+            <Eye className="mr-2 h-4 w-4" /> View profile
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ClassRatio({
+  present,
+  total,
+  hasLate,
+}: {
+  present: number;
+  total: number;
+  hasLate: boolean;
+}) {
+  const percent = total ? Math.round((present / total) * 100) : 0;
+  return (
+    <div className="min-w-[7.25rem]">
+      <p className="text-[13px] font-semibold text-[#1a2b4b] dark:text-slate-100">
+        {present} / {total} classes
+      </p>
+      <p className="mb-1.5 text-xs font-semibold text-[#1a2b4b] dark:text-slate-200">{percent}%</p>
+      <div className="h-2 w-full max-w-[10rem] overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+        <div
+          className={cn("h-full rounded-full transition-all", hasLate ? "bg-blue-500" : "bg-emerald-500")}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function DayClassGrid({
   subjectColorByKey,
   teachers,
@@ -925,56 +1031,90 @@ function DayClassGrid({
       period.status ??
       "") as StaffPeriodStatus;
 
-  const cellClass = "px-3 py-3 break-words border-r border-slate-100 last:border-r-0 dark:border-slate-800";
+  const teacherWidth = "15rem";
+  const classWidth = "13.5rem";
+  const ratioWidth = "10.5rem";
+  const actionWidth = "5.5rem";
   const headClass =
-    "px-3 py-3 text-left text-xs font-semibold text-slate-700 border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
+    "whitespace-nowrap border-b border-r border-slate-200/80 bg-[#eef4fc] px-3 py-3 text-left text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200";
+  const cellClass =
+    "border-b border-r border-slate-100 bg-white px-3 py-3 align-top group-hover:bg-slate-50/80 dark:border-slate-800 dark:bg-slate-950 dark:group-hover:bg-slate-900/60";
+
+  const rows = teachers.map((teacher) => {
+    const statuses = teacher.periods.map((period) => statusFor(teacher, period));
+    const total = teacher.periods.length;
+    const present = statuses.filter((s) => s === "present").length;
+    const hasLate = statuses.includes("late");
+    const markAll = (status: StaffPeriodStatus) =>
+      teacher.periods.forEach((period) => onChange(teacher.userId, period.periodKey, status));
+    const items = [
+      { key: "present", label: "Mark all present", icon: UserCheck, onClick: () => markAll("present") },
+      { key: "absent", label: "Mark all absent", icon: CircleX, onClick: () => markAll("absent") },
+      { key: "leave", label: "Mark all leave", icon: PlaneTakeoff, onClick: () => markAll("leave") },
+      ...(statuses.some(Boolean)
+        ? [{ key: "clear", label: "Clear marks", icon: CircleDashed, onClick: () => markAll("") }]
+        : []),
+    ];
+    return { teacher, statuses, total, present, hasLate, items };
+  });
+
+  if (teachers.length === 0) {
+    return (
+      <p className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-muted-foreground">
+        No classes on the published timetable for this day.
+      </p>
+    );
+  }
 
   return (
-    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700">
-      <table className="w-full table-fixed text-sm">
-        <thead className="bg-[#eef4fc] border-b border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700">
-          <tr>
-            <th className={cn(headClass, "w-[22%]")}>Teacher</th>
+    <div className="w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-lg border border-slate-200/80 dark:border-slate-700">
+        <table
+          className="border-separate border-spacing-0 text-sm"
+          style={{
+            width: "max-content",
+            minWidth: "100%",
+            borderCollapse: "separate",
+          }}
+        >
+          <colgroup>
+            <col style={{ width: teacherWidth }} />
             {Array.from({ length: classCount }, (_, index) => (
-              <th key={index} className={headClass}>
-                Class {index + 1}
-              </th>
+              <col key={index} style={{ width: classWidth }} />
             ))}
-            <th className={cn(headClass, "w-[7rem]")}>Class Ratio</th>
-            <th className={cn(headClass, "w-[4.5rem]")}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {teachers.length === 0 && (
+            <col style={{ width: ratioWidth }} />
+            <col style={{ width: actionWidth }} />
+          </colgroup>
+          <thead>
             <tr>
-              <td colSpan={classCount + 3} className="p-8 text-center text-muted-foreground">
-                No classes on the published timetable for this day.
-              </td>
+              <th className={headClass} style={{ width: teacherWidth, minWidth: teacherWidth }}>
+                Teacher
+              </th>
+              {Array.from({ length: classCount }, (_, index) => (
+                <th key={index} className={headClass} style={{ width: classWidth, minWidth: classWidth }}>
+                  Class {index + 1}
+                </th>
+              ))}
+              <th className={headClass} style={{ width: ratioWidth, minWidth: ratioWidth }}>
+                Class Ratio
+              </th>
+              <th className={headClass} style={{ width: actionWidth, minWidth: actionWidth }}>
+                Actions
+              </th>
             </tr>
-          )}
-          {teachers.map((teacher) => {
-            const statuses = teacher.periods.map((period) => statusFor(teacher, period));
-            const total = teacher.periods.length;
-            const present = statuses.filter((s) => s === "present").length;
-            const percent = total ? Math.round((present / total) * 100) : 0;
-            const hasLate = statuses.includes("late");
-            const markAll = (status: StaffPeriodStatus) =>
-              teacher.periods.forEach((period) => onChange(teacher.userId, period.periodKey, status));
-            return (
-              <tr
-                key={teacher.userId}
-                className="border-b border-slate-100 last:border-0 align-top hover:bg-slate-50/60 dark:border-slate-800 dark:hover:bg-slate-800/30"
-              >
-                <td className={cn(cellClass, "align-middle")}>
+          </thead>
+          <tbody>
+            {rows.map(({ teacher, statuses, total, present, hasLate, items }) => (
+              <tr key={teacher.userId} className="group">
+                <td className={cn(cellClass, "align-middle")} style={{ width: teacherWidth, minWidth: teacherWidth }}>
                   <StaffIdentity person={teacher} />
                 </td>
                 {Array.from({ length: classCount }, (_, index) => {
                   const period = teacher.periods[index];
                   if (!period) {
                     return (
-                      <td key={index} className={cellClass}>
-                        <p className="text-[13px] font-semibold text-slate-700 leading-snug">—</p>
-                        <p className="text-xs text-slate-500 leading-snug mb-2.5">No class</p>
+                      <td key={index} className={cellClass} style={{ width: classWidth, minWidth: classWidth }}>
+                        <p className="text-[13px] font-semibold leading-snug text-slate-700">—</p>
+                        <p className="mb-2.5 whitespace-nowrap text-xs leading-snug text-slate-500">No class</p>
                         <div className="flex h-8 w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-100/80 px-2.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60">
                           <Clock className="h-3.5 w-3.5" />
                           No class
@@ -983,8 +1123,8 @@ function DayClassGrid({
                     );
                   }
                   return (
-                    <td key={period.periodKey} className={cellClass}>
-                      <p className="text-[13px] font-semibold text-[#1a2b4b] leading-snug dark:text-slate-100">
+                    <td key={period.periodKey} className={cellClass} style={{ width: classWidth, minWidth: classWidth }}>
+                      <p className="text-[13px] font-semibold leading-snug text-[#1a2b4b] dark:text-slate-100">
                         {[period.classLabel, period.sectionLabel].filter(Boolean).join(" · ") || "—"}
                       </p>
                       <SubjectChip
@@ -992,8 +1132,8 @@ function DayClassGrid({
                         fallback={period.label || "Class"}
                         colorByKey={subjectColorByKey}
                       />
-                      <p className="mt-1 text-xs text-slate-500 leading-snug mb-2.5">
-                        {period.startTime ? `${period.startTime}–${period.endTime}` : "—"}
+                      <p className="mb-2.5 mt-1 whitespace-nowrap text-xs leading-snug text-slate-500">
+                        {period.startTime ? formatWallClockRange(period.startTime, period.endTime, "–") : "—"}
                       </p>
                       <DayStatusControl
                         status={statuses[index]}
@@ -1004,72 +1144,21 @@ function DayClassGrid({
                     </td>
                   );
                 })}
-                <td className={cn(cellClass, "align-middle")}>
-                  <p className="text-[13px] font-semibold text-[#1a2b4b] dark:text-slate-100">
-                    {present} / {total} classes
-                  </p>
-                  <p className="text-xs font-semibold text-[#1a2b4b] mb-1.5 dark:text-slate-200">
-                    {percent}%
-                  </p>
-                  <div className="h-2 w-full max-w-[10rem] overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all",
-                        hasLate ? "bg-blue-500" : "bg-emerald-500"
-                      )}
-                      style={{ width: `${percent}%` }}
-                    />
-                  </div>
+                <td className={cn(cellClass, "align-middle")} style={{ width: ratioWidth, minWidth: ratioWidth }}>
+                  <ClassRatio present={present} total={total} hasLate={hasLate} />
                 </td>
-                <td className={cn(cellClass, "align-middle")}>
-                  <div className="flex items-center gap-3">
-                    {(onViewDetails || canMark) && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-9 w-9 border-slate-200 text-[#1a2b4b]"
-                            aria-label={`More actions for ${teacher.name}`}
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {canMark && (
-                            <>
-                              <DropdownMenuItem onClick={() => markAll("present")}>
-                                <UserCheck className="mr-2 h-4 w-4" /> Mark all present
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => markAll("absent")}>
-                                <CircleX className="mr-2 h-4 w-4" /> Mark all absent
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => markAll("leave")}>
-                                <PlaneTakeoff className="mr-2 h-4 w-4" /> Mark all leave
-                              </DropdownMenuItem>
-                              {statuses.some(Boolean) && (
-                                <DropdownMenuItem onClick={() => markAll("")}>
-                                  <CircleDashed className="mr-2 h-4 w-4" /> Clear marks
-                                </DropdownMenuItem>
-                              )}
-                            </>
-                          )}
-                          {canMark && onViewDetails && <DropdownMenuSeparator />}
-                          {onViewDetails && (
-                            <DropdownMenuItem onClick={() => onViewDetails(teacher.userId)}>
-                              <Eye className="mr-2 h-4 w-4" /> View profile
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
+                <td className={cn(cellClass, "align-middle")} style={{ width: actionWidth, minWidth: actionWidth }}>
+                  <AttendanceActionsMenu
+                    label={`More actions for ${teacher.name}`}
+                    canMark={canMark}
+                    onViewDetails={onViewDetails ? () => onViewDetails(teacher.userId) : undefined}
+                    items={items}
+                  />
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            ))}
+          </tbody>
+        </table>
     </div>
   );
 }
@@ -1131,20 +1220,20 @@ function StaffDayTable({
   onViewDetails?: (userId: string) => void;
 }) {
   const cellClass =
-    "px-3 py-3 align-middle break-words border-r border-slate-100 last:border-r-0 dark:border-slate-800";
+    "px-3 py-3 align-middle border-r border-slate-100 last:border-r-0 dark:border-slate-800";
   const headClass =
-    "px-3 py-3 text-left text-xs font-semibold text-slate-700 border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
+    "whitespace-nowrap px-3 py-3 text-left text-xs font-semibold text-slate-700 border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
 
   return (
-    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700">
-      <table className="w-full table-fixed text-sm">
+    <div className="w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-lg border border-slate-200/80 dark:border-slate-700">
+      <table className="w-full min-w-[52.75rem] border-collapse text-sm">
         <thead className="bg-[#eef4fc] border-b border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700">
           <tr>
-            <th className={cn(headClass, "w-[30%]")}>Staff</th>
-            <th className={cn(headClass, "w-[9rem]")}>Role</th>
-            <th className={headClass}>Attendance</th>
-            <th className={headClass}>Status</th>
-            <th className={cn(headClass, "w-[4.5rem]")}>Actions</th>
+            <th className={cn(headClass, "min-w-[14rem]")}>Staff</th>
+            <th className={cn(headClass, "min-w-[8rem]")}>Role</th>
+            <th className={cn(headClass, "min-w-[13rem]")}>Attendance</th>
+            <th className={cn(headClass, "min-w-[13rem]")}>Status</th>
+            <th className={cn(headClass, "min-w-[4.75rem]")}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -1188,7 +1277,7 @@ function StaffDayTable({
                 </td>
                 <td className={cellClass}>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200">
+                    <span className="flex items-center gap-2 whitespace-nowrap text-xs font-medium text-slate-700 dark:text-slate-200">
                       <span className={cn("h-2 w-2 shrink-0 rounded-full", summary.dot)} />
                       {summary.text}
                     </span>
@@ -1198,7 +1287,7 @@ function StaffDayTable({
                       </span>
                     ) : null}
                   </div>
-                  <p className="mt-0.5 pl-4 text-[11px] text-slate-500">Full-day attendance</p>
+                  <p className="mt-0.5 whitespace-nowrap pl-4 text-[11px] text-slate-500">Full-day attendance</p>
                 </td>
                 <td className={cellClass}>
                   {(onViewDetails || canMark) && (
@@ -1271,17 +1360,17 @@ function TeacherSummaryTable({
     "px-3 py-3 align-middle border-r border-slate-100 last:border-r-0 dark:border-slate-800";
   const numClass = cn(cellClass, "text-right tabular-nums");
   const headClass =
-    "px-3 py-3 text-xs font-semibold text-slate-700 border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
-  const numHead = cn(headClass, "text-right");
+    "whitespace-nowrap px-3 py-3 text-xs font-semibold text-slate-700 border-r border-slate-200/70 last:border-r-0 dark:text-slate-200 dark:border-slate-700";
+  const numHead = cn(headClass, "min-w-[5.5rem] text-right");
 
   return (
-    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700">
-      <table className="w-full table-fixed text-sm">
+    <div className="w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-lg border border-slate-200/80 dark:border-slate-700">
+      <table className="w-full min-w-[64rem] border-collapse text-sm">
         <thead className="bg-[#eef4fc] border-b border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700">
           <tr>
-            <th className={cn(headClass, "text-left w-[26%]")}>{isDailyTable ? "Staff" : "Teacher"}</th>
+            <th className={cn(headClass, "min-w-[14rem] text-left")}>{isDailyTable ? "Staff" : "Teacher"}</th>
             {isDailyTable ? (
-              <th className={cn(headClass, "text-left w-[8rem]")}>Role</th>
+              <th className={cn(headClass, "min-w-[8rem] text-left")}>Role</th>
             ) : (
               <th className={numHead}>Classes</th>
             )}
@@ -1291,7 +1380,7 @@ function TeacherSummaryTable({
             <th className={numHead}>Absent</th>
             <th className={numHead}>Leave</th>
             <th className={numHead}>Unmarked</th>
-            <th className={cn(headClass, "text-left w-[9rem]")}>Attendance</th>
+            <th className={cn(headClass, "min-w-[9rem] text-left")}>Attendance</th>
           </tr>
         </thead>
         <tbody>
@@ -1366,7 +1455,7 @@ function TeacherSummaryTable({
 }
 
 const CLASS_DETAIL_GRID =
-  "grid grid-cols-[minmax(5.5rem,0.9fr)_minmax(7.25rem,1fr)_minmax(3.25rem,0.55fr)_minmax(3.25rem,0.45fr)_minmax(5.5rem,1fr)_6.5rem] items-center gap-x-3";
+  "grid min-w-[40rem] grid-cols-[minmax(5.5rem,0.9fr)_minmax(9.5rem,1.1fr)_minmax(4.5rem,0.6fr)_minmax(4.5rem,0.55fr)_minmax(6.5rem,1fr)_7.5rem] items-center gap-x-3";
 
 function groupPeriodsByDate(periods: StaffPeriodTeacher["periods"]) {
   const groups: {
@@ -1434,8 +1523,8 @@ function PeriodMarkTable({
       <h2 className="text-sm font-semibold text-primary">
         {teacher.name} — {teacher.totalClasses} class{teacher.totalClasses === 1 ? "" : "es"}
       </h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[720px]">
+      <div className="w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain">
+        <table className="w-full min-w-[50rem] border-collapse text-sm">
           <thead className="bg-muted/50 border-b">
             {showDate ? (
               <tr>
@@ -1459,12 +1548,12 @@ function PeriodMarkTable({
               </tr>
             ) : (
               <tr>
-                <th className="text-left p-2.5 font-medium">Period</th>
-                <th className="text-left p-2.5 font-medium">Time</th>
-                <th className="text-left p-2.5 font-medium">Class</th>
-                <th className="text-left p-2.5 font-medium">Section</th>
-                <th className="text-left p-2.5 font-medium">Subject</th>
-                <th className="text-left p-2.5 font-medium">Status</th>
+                <th className="min-w-[6rem] whitespace-nowrap p-2.5 text-left font-medium">Period</th>
+                <th className="min-w-[9.5rem] whitespace-nowrap p-2.5 text-left font-medium">Time</th>
+                <th className="min-w-[5rem] whitespace-nowrap p-2.5 text-left font-medium">Class</th>
+                <th className="min-w-[5rem] whitespace-nowrap p-2.5 text-left font-medium">Section</th>
+                <th className="min-w-[7rem] whitespace-nowrap p-2.5 text-left font-medium">Subject</th>
+                <th className="min-w-[7.5rem] whitespace-nowrap p-2.5 text-left font-medium">Status</th>
               </tr>
             )}
           </thead>
@@ -1501,7 +1590,7 @@ function PeriodMarkTable({
                           >
                             <span>{period.label || "—"}</span>
                             <span className="whitespace-nowrap">
-                              {period.startTime ? `${period.startTime}–${period.endTime}` : "—"}
+                              {period.startTime ? formatWallClockRange(period.startTime, period.endTime, "–") : "—"}
                             </span>
                             <span>{period.classLabel || "—"}</span>
                             <span>{period.sectionLabel || "—"}</span>
@@ -1520,13 +1609,13 @@ function PeriodMarkTable({
                       key={`${period.day || "day"}-${period.periodKey}-${period.classLabel}`}
                       className="border-b last:border-0"
                     >
-                      <td className="p-2.5">{period.label || "—"}</td>
-                      <td className="p-2.5 whitespace-nowrap">
-                        {period.startTime ? `${period.startTime}–${period.endTime}` : "—"}
+                      <td className="whitespace-nowrap p-2.5">{period.label || "—"}</td>
+                      <td className="whitespace-nowrap p-2.5">
+                        {period.startTime ? formatWallClockRange(period.startTime, period.endTime, "–") : "—"}
                       </td>
-                      <td className="p-2.5">{period.classLabel || "—"}</td>
-                      <td className="p-2.5">{period.sectionLabel || "—"}</td>
-                      <td className="p-2.5">{period.subjectLabel || "—"}</td>
+                      <td className="whitespace-nowrap p-2.5">{period.classLabel || "—"}</td>
+                      <td className="whitespace-nowrap p-2.5">{period.sectionLabel || "—"}</td>
+                      <td className="whitespace-nowrap p-2.5">{period.subjectLabel || "—"}</td>
                       <td className="p-2.5">
                         {renderStatus(period.periodKey, period.label || "class", status)}
                       </td>

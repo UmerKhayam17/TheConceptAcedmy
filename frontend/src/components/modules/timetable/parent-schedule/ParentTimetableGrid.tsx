@@ -2,23 +2,9 @@ import { Clock3 } from "lucide-react";
 import type { Weekday } from "@/lib/configApi";
 import type { PeriodSlot, ScheduleSlot } from "@/lib/timetableApi";
 import { DAY_FULL_LABELS } from "../constants";
-import { cn } from "@/lib/utils";
+import { cn, formatWallClock } from "@/lib/utils";
 import { formatColumnDate, isSameCalendarDay } from "../my-schedule/dateUtils";
 import { ParentEmptyCell, ParentLessonCard } from "./ParentLessonCard";
-
-function formatPeriodClock(raw?: string) {
-  if (!raw) return "";
-  const trimmed = String(raw).trim();
-  // Prefer compact 12h like mockup (08:00 / 01:00) when already HH:mm
-  const m = trimmed.match(/^(\d{1,2}):(\d{2})/);
-  if (m) {
-    const h = Number(m[1]);
-    const min = m[2];
-    const h12 = h % 12 || 12;
-    return `${String(h12).padStart(2, "0")}:${min}`;
-  }
-  return trimmed;
-}
 
 export function ParentTimetableGrid({
   periods,
@@ -80,8 +66,8 @@ export function ParentTimetableGrid({
         </div>
 
         {periods.map((period) => {
-          const start = formatPeriodClock(period.startTime);
-          const end = formatPeriodClock(period.endTime);
+          const start = formatWallClock(period.startTime);
+          const end = formatWallClock(period.endTime);
           const timeLabel = start && end ? `${start} – ${end}` : period.label || "—";
 
           return (

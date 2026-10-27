@@ -10,6 +10,7 @@ const {
   ACADEMY_BRAND,
   resolveLogoPath,
 } = require('./academyReportDocument');
+const { formatWallClockRange } = require('../../utils/schoolDay');
 
 const MONTHS = [
   'January',
@@ -44,7 +45,7 @@ const PERIOD_COLUMNS = [
   { key: 'serial', header: 'S.No', excelWidth: 6, pdfWidth: 26, align: 'center' },
   { key: 'date', header: 'Date', excelWidth: 12, pdfWidth: 58 },
   { key: 'period', header: 'Period', excelWidth: 12, pdfWidth: 52, wrap: true },
-  { key: 'time', header: 'Time', excelWidth: 14, pdfWidth: 64, align: 'center' },
+  { key: 'time', header: 'Time', excelWidth: 24, pdfWidth: 96, align: 'center' },
   { key: 'className', header: 'Class', excelWidth: 16, pdfWidth: 70, wrap: true },
   { key: 'section', header: 'Section', excelWidth: 10, pdfWidth: 44, align: 'center' },
   { key: 'subject', header: 'Subject', excelWidth: 16, pdfWidth: 80, wrap: true },
@@ -105,7 +106,7 @@ function mapPeriodRows(periods, { includeDate = false } = {}) {
     serial: i + 1,
     date: includeDate ? p.day || '—' : '—',
     period: p.label || '—',
-    time: p.startTime && p.endTime ? `${p.startTime}–${p.endTime}` : '—',
+    time: p.startTime && p.endTime ? formatWallClockRange(p.startTime, p.endTime, '–') : '—',
     className: p.classLabel || '—',
     section: p.sectionLabel || '—',
     subject: p.subjectLabel || '—',

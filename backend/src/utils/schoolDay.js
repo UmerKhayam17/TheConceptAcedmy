@@ -36,19 +36,53 @@ function formatDisplayDate(date, timeZone = DEFAULT_TZ) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-/** Clock time as HH:mm in the academy timezone (not the host timezone). */
+/** Clock time as 12-hour AM/PM in the academy timezone (not the host timezone). */
 function formatTimeInTz(date, timeZone = DEFAULT_TZ) {
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return '';
-  const parts = new Intl.DateTimeFormat('en-GB', {
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: resolveTimezone(timeZone),
     hour: '2-digit',
     minute: '2-digit',
-    hourCycle: 'h23',
+    hour12: true,
   }).formatToParts(d);
-  const h = parts.find((p) => p.type === 'hour')?.value || '00';
-  const min = parts.find((p) => p.type === 'minute')?.value || '00';
-  return `${h}:${min}`;
+  const h = parts.find((p) => p.type === 'hour')?.value || '';
+  const min = parts.find((p) => p.type === 'minute')?.value || '';
+  const period = (parts.find((p) => p.type === 'dayPeriod')?.value || '').toUpperCase();
+  if (!h || !min) return '';
+  return period ? `${h}:${min} ${period}` : `${h}:${min}`;
+}
+
+/** "08:40" or "8:40 PM" → "08:40 AM" / "08:40 PM". Non-clock text is left as-is. */
+function formatWallClock(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  const ampm = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  let hour;
+  let minute;
+  if (ampm) {
+    hour = Number(ampm[1]);
+    minute = Number(ampm[2]);
+    const mer = ampm[3].toUpperCase();
+    if (mer === 'PM' && hour < 12) hour += 12;
+    if (mer === 'AM' && hour === 12) hour = 0;
+  } else {
+    const hhmm = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (!hhmm) return trimmed;
+    hour = Number(hhmm[1]);
+    minute = Number(hhmm[2]);
+  }
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || hour > 23 || minute > 59) return trimmed;
+  const mer = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour % 12 || 12;
+  return `${String(h12).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${mer}`;
+}
+
+function formatWallClockRange(start, end, sep = ' – ') {
+  const a = formatWallClock(start);
+  const b = formatWallClock(end);
+  if (a && b) return `${a}${sep}${b}`;
+  return a || b || '';
 }
 
 /**
@@ -119,6 +153,8 @@ module.exports = {
   formatDateInTz,
   formatDisplayDate,
   formatTimeInTz,
+  formatWallClock,
+  formatWallClockRange,
   todayYmd,
   dayBounds,
   weekdayName,

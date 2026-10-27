@@ -57,7 +57,7 @@ import {
 import { fetchDashboardOverview, type DashboardOverview } from "@/lib/studentManagementApi";
 import { moduleHref } from "@/lib/panelMenus";
 import type { Role } from "@/lib/auth";
-import { cn } from "@/lib/utils";
+import { cn, formatClockTime } from "@/lib/utils";
 
 const MONEY = (n: number) => `₨ ${Math.round(n || 0).toLocaleString()}`;
 const fmtDate = (iso?: string | Date) => {
@@ -492,7 +492,7 @@ export default function AdminDashboard({ role, name }: { role: Role; name: strin
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                       </span>
-                      Live {new Date(data.generatedAt).toLocaleTimeString()}
+                      Live {formatClockTime(data.generatedAt)}
                     </span>
                   </>
                 ) : null}

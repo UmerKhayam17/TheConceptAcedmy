@@ -295,7 +295,14 @@ export default function SessionDetailPage({
               <li key={log._id} className="flex justify-between gap-2 text-muted-foreground">
                 <span>{log.action.replace(/_/g, " ")}</span>
                 <span className="text-xs shrink-0">
-                  {new Date(log.createdAt).toLocaleString()}
+                  {new Date(log.createdAt).toLocaleString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  })}
                 </span>
               </li>
             ))}

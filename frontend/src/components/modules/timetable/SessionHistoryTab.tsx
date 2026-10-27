@@ -267,7 +267,14 @@ export default function SessionHistoryTab({ caps }: { caps: ModuleActionCaps }) 
                       <span className="text-muted-foreground"> · {log.user?.name || "System"}</span>
                       <br />
                       <span className="text-muted-foreground">
-                        {new Date(log.createdAt).toLocaleString()}
+                        {new Date(log.createdAt).toLocaleString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
                       </span>
                     </li>
                   ))}

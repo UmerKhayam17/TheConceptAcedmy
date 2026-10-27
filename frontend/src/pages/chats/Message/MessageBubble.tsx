@@ -332,7 +332,7 @@ export default function MessageBubble({
     onJumpToMessage?.(String(targetId));
   };
 
-  const time = format(new Date(msg.createdAt), "HH:mm");
+  const time = format(new Date(msg.createdAt), "hh:mm a");
   const reactions = msg.reactions || [];
   const hasFile = ["file", "image", "video", "audio"].includes(msg.type);
 

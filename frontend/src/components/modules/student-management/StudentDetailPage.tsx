@@ -51,7 +51,7 @@ import { getAccessToken } from "@/lib/auth";
 import { createdByLabel } from "@/lib/createdBy";
 import CreatedByLine from "@/components/modules/CreatedByLine";
 import { getApiRoot } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, formatWallClockRange } from "@/lib/utils";
 import { recordIsAbsent } from "@/lib/marksValidation";
 import { AbsentBadge } from "@/components/modules/exams/MarksAbsentToggle";
 import {
@@ -447,7 +447,7 @@ function TimetableTab({ slots }: { slots: AcademyTimetableSlot[] }) {
           <DataTable
             headers={["Time", "Subject", "Code", "Room"]}
             rows={daySlots.map((s) => [
-              `${s.startTime} – ${s.endTime}`,
+              formatWallClockRange(s.startTime, s.endTime),
               subjectName(s.subjectId as AcademySubject),
               subjectCode(s.subjectId as AcademySubject) || "—",
               s.room || "—",

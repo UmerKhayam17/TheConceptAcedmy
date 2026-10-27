@@ -57,7 +57,7 @@ function AllPinnedPanel({ pinnedMessages, onClose, onJump }) {
                       Pinned message #{pinnedMessages.length - i}
                     </span>
                     <span className="text-[10.5px]" style={{ color: "#8696a0" }}>
-                      {pin.pinnedAt ? format(new Date(pin.pinnedAt), "MMM d, HH:mm") : ""}
+                      {pin.pinnedAt ? format(new Date(pin.pinnedAt), "MMM d, hh:mm a") : ""}
                     </span>
                   </div>
                   {msg?.type === "image" && msg?.file?.url && (

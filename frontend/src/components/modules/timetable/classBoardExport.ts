@@ -1,6 +1,7 @@
 import { classSectionBoardLabel } from "@/lib/configApi";
 import { scheduleSlotEntries, scheduleSlotTitle, type PeriodSlot, type ScheduleSlot } from "@/lib/timetableApi";
 import { slotMatchesPeriod } from "./constants";
+import { formatWallClockRange } from "@/lib/utils";
 
 export type ClassBoardExportRow = {
   section: {
@@ -123,7 +124,7 @@ function buildClassBoardPrintHtml(opts: ClassBoardPrintOpts): { html: string; do
         : `Period ${num}`;
       return `<th>
         <div class="period-name">${escapeHtml(name)}</div>
-        <div class="period-time">(${escapeHtml(`${p.startTime} - ${p.endTime}`)})</div>
+        <div class="period-time">(${escapeHtml(formatWallClockRange(p.startTime, p.endTime, " - "))})</div>
       </th>`;
     })
     .join("");
@@ -373,7 +374,7 @@ export function exportClassBoardExcel(opts: {
     "Class",
     ...periods.map((p, i) => {
       const name = /^period/i.test(p.label || "") ? p.label! : `Period ${p.order || i + 1}`;
-      return `${name} (${p.startTime} - ${p.endTime})`;
+      return `${name} (${formatWallClockRange(p.startTime, p.endTime, " - ")})`;
     }),
   ];
   const modeNote =

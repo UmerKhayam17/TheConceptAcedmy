@@ -15,6 +15,7 @@ import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { matchesPanelSearch } from "@/lib/panelSearch";
+import { formatClockTime } from "@/lib/utils";
 import {
   exportAcademyAttendance,
   fetchAcademyAttendanceDay,
@@ -53,12 +54,7 @@ function studentRef(s: AcademyStudent) {
 }
 
 function fmtTime(iso?: string) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "—";
-  }
+  return formatClockTime(iso);
 }
 
 function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {

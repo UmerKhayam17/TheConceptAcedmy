@@ -144,7 +144,14 @@ const AnnouncementsModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Mod
                 <div className="font-semibold text-primary">{a.title}</div>
                 <div className="text-sm text-muted-foreground mt-1">{a.body}</div>
                 <div className="text-[11px] text-muted-foreground mt-2">
-                  {new Date(a.createdAt).toLocaleString()}
+                  {new Date(a.createdAt).toLocaleString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  })}
                 </div>
               </div>
               {caps.canDelete && (

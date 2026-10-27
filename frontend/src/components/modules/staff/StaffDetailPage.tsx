@@ -53,7 +53,7 @@ import { DAY_LABELS, DAY_ORDER, subjectColor } from "@/components/modules/timeta
 import type { Weekday } from "@/lib/configApi";
 import { moduleHref } from "@/lib/panelMenus";
 import type { ModuleActionCaps } from "@/lib/permissions";
-import { cn } from "@/lib/utils";
+import { cn, formatClockTime } from "@/lib/utils";
 
 function roleNameOf(user?: StaffUser | null) {
   const r = user?.role;
@@ -62,12 +62,7 @@ function roleNameOf(user?: StaffUser | null) {
 }
 
 function fmtTime(iso?: string) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "—";
-  }
+  return formatClockTime(iso);
 }
 
 function fmtDate(iso?: string) {
@@ -81,12 +76,13 @@ function fmtDateTime(iso?: string) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString([], {
+  return d.toLocaleString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: true,
   });
 }
 

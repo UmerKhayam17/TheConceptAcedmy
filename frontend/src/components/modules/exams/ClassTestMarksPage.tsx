@@ -52,7 +52,7 @@ import {
   recordIsAbsent,
   validateObtainedVsTotal,
 } from "@/lib/marksValidation";
-import { cn } from "@/lib/utils";
+import { cn, formatWallClock } from "@/lib/utils";
 import MarksAbsentToggle, {
   AbsentBadge,
 } from "@/components/modules/exams/MarksAbsentToggle";
@@ -79,7 +79,7 @@ function disciplineNameOf(test: AcademyClassTest) {
 
 function scheduleParts(test: AcademyClassTest) {
   const date = formatDate(test.examDate);
-  const time = test.testTime?.trim() || "";
+  const time = formatWallClock(test.testTime);
   return { date, time, label: time ? `${date} at ${time}` : date };
 }
 

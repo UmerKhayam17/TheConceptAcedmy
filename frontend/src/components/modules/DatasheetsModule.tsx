@@ -233,7 +233,14 @@ const DatasheetsModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Module
                     </div>
                     {s.updatedAt && (
                       <div className="text-[11px] text-muted-foreground mt-0.5">
-                        Updated {new Date(s.updatedAt).toLocaleString()}
+                        Updated {new Date(s.updatedAt).toLocaleString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
                       </div>
                     )}
                   </div>

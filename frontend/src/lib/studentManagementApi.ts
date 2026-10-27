@@ -2,6 +2,7 @@ import { parseJson, resolveUploadUrl } from "@/lib/api";
 
 export { resolveUploadUrl };
 import { authedFetch } from "@/lib/auth";
+import { formatWallClock } from "@/lib/utils";
 import type { CreatedByUser } from "@/lib/createdBy";
 import type { AssessmentType } from "./assessmentTaxonomy";
 
@@ -2255,11 +2256,11 @@ export function createClassTest(body: {
   });
 }
 
-/** Format date + optional HH:mm for list/detail. */
+/** Format date + optional clock time for list/detail. */
 export function formatClassTestSchedule(test: Pick<AcademyClassTest, "examDate" | "testTime">) {
   const d = new Date(test.examDate);
   const date = d.toLocaleDateString();
-  const time = test.testTime?.trim();
+  const time = formatWallClock(test.testTime);
   return time ? `${date} at ${time}` : date;
 }
 

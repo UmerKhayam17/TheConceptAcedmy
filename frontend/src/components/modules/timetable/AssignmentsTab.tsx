@@ -94,24 +94,34 @@ function MetricCard({
   progressColor?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", iconBg, iconColor)}>
+    <div className="flex h-full flex-col rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm sm:p-4">
+      <div className="flex items-start gap-2.5 sm:gap-3">
+        <div
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg sm:h-11 sm:w-11 sm:rounded-xl",
+            iconBg,
+            iconColor,
+          )}
+        >
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-slate-900">{value}</p>
-          <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
-          {progress != null ? (
-            <div className="mt-2.5 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-              <div
-                className={cn("h-full rounded-full transition-all", progressColor)}
-                style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-              />
-            </div>
-          ) : null}
+          <p className="text-xs font-medium leading-snug text-slate-500 sm:text-sm">{title}</p>
+          <p className="mt-0.5 text-xl font-bold tabular-nums tracking-tight text-slate-900 sm:text-2xl">{value}</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-slate-500 sm:text-xs">{subtitle}</p>
         </div>
+      </div>
+      <div className="mt-auto h-4 pt-2.5">
+        {progress != null ? (
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className={cn("h-full rounded-full transition-all", progressColor)}
+              style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+            />
+          </div>
+        ) : (
+          <div className="h-1.5" aria-hidden />
+        )}
       </div>
     </div>
   );
@@ -426,7 +436,7 @@ Add someone under Teachers if they are missing from the list.`}
       {/* Left half: KPI cards + filters + table | Right: workload & panels aligned to top */}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,26%)] xl:items-start">
         <div className="min-w-0 space-y-4">
-          <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 items-stretch gap-2.5 sm:gap-3">
             <MetricCard
               title="Total Subjects"
               value={totalSubjects}
@@ -553,13 +563,13 @@ Add someone under Teachers if they are missing from the list.`}
             </div>
           </div>
 
-          <Card className="overflow-hidden rounded-xl border-slate-200/80 shadow-sm bg-white min-w-0">
-            <div className="border-b border-slate-100 px-5 py-3.5">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between xl:gap-4">
-                {/* Left: title + badge + progress */}
-                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-                  <div className="min-w-0">
-                    <h3 className="text-base font-semibold text-slate-900 truncate leading-tight">
+          <Card className="min-w-0 overflow-hidden rounded-xl border-slate-200/80 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-3 py-3 sm:px-5 sm:py-3.5">
+              <div className="flex flex-col gap-3">
+                {/* Title + badge + progress stay on their own row so they never collapse into the filters */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="min-w-[10rem]">
+                    <h3 className="text-base font-semibold leading-tight text-slate-900">
                       {selectedClass ? classDisplayName(selectedClass) : "—"}
                       {selectedSection ? (
                         <span className="font-normal text-slate-500">
@@ -568,7 +578,7 @@ Add someone under Teachers if they are missing from the list.`}
                         </span>
                       ) : null}
                     </h3>
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">
                       {assignedCount} of {totalSubjects || 0} subjects assigned
                     </p>
                   </div>
@@ -594,9 +604,8 @@ Add someone under Teachers if they are missing from the list.`}
                   </div>
                 </div>
 
-                {/* Right: search + filters — same line */}
-                <div className="flex flex-wrap items-center gap-2 shrink-0 xl:justify-end">
-                  <div className="relative w-full sm:w-[14rem] xl:w-[15rem]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative w-full min-w-[12rem] sm:w-[15rem] sm:flex-none">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
@@ -606,7 +615,7 @@ Add someone under Teachers if they are missing from the list.`}
                     />
                   </div>
                   <select
-                    className={cn(selectClass, "rounded-full")}
+                    className={cn(selectClass, "shrink-0 rounded-full")}
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                   >
@@ -615,7 +624,7 @@ Add someone under Teachers if they are missing from the list.`}
                     <option value="unassigned">Unassigned</option>
                   </select>
                   <select
-                    className={cn(selectClass, "rounded-full max-w-[9.5rem]")}
+                    className={cn(selectClass, "shrink-0 rounded-full")}
                     value={teacherFilter}
                     onChange={(e) => setTeacherFilter(e.target.value)}
                   >
@@ -627,7 +636,7 @@ Add someone under Teachers if they are missing from the list.`}
                     ))}
                   </select>
                   <select
-                    className={cn(selectClass, "rounded-full")}
+                    className={cn(selectClass, "shrink-0 rounded-full")}
                     value={sortMode}
                     onChange={(e) => setSortMode(e.target.value as SortMode)}
                   >
@@ -648,16 +657,16 @@ Add someone under Teachers if they are missing from the list.`}
                 {subjects.length === 0 ? "No subjects for this class yet." : "No subjects match your filters."}
               </p>
             ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed text-xs">
+            <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain">
+              <table className="w-full min-w-[48rem] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/80 text-slate-500">
-                    <th className="w-8 px-2 py-2 text-left font-medium">#</th>
-                    <th className="w-[22%] px-2 py-2 text-left font-medium">Subject</th>
-                    <th className="w-[14%] px-2 py-2 text-left font-medium">Code</th>
-                    <th className="w-[34%] px-2 py-2 text-left font-medium">Teacher</th>
-                    <th className="w-[18%] px-2 py-2 text-left font-medium">Status</th>
-                    <th className="w-10 px-2 py-2 text-right font-medium">Actions</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium min-w-[2.75rem]">#</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium min-w-[10rem]">Subject</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium min-w-[6rem]">Code</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium min-w-[16rem]">Teacher</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium min-w-[8.5rem]">Status</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-medium min-w-[4.75rem]">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -679,30 +688,30 @@ Add someone under Teachers if they are missing from the list.`}
                           unassigned ? "bg-amber-50/70" : "bg-white hover:bg-slate-50/60",
                         )}
                       >
-                        <td className="px-2 py-2 tabular-nums text-slate-400">{idx + 1}</td>
-                        <td className="px-2 py-2 font-medium text-slate-800 truncate">
+                        <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-400">{idx + 1}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-800">
                           {subjectDisplayName(sub)}
                         </td>
-                        <td className="px-2 py-2">
-                          <span className="inline-block max-w-full truncate rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+                        <td className="whitespace-nowrap px-3 py-2.5">
+                          <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-500">
                             {subjectDisplayCode(sub) || "—"}
                           </span>
                         </td>
-                        <td className="px-2 py-2">
-                          <div className="flex min-w-0 items-center gap-1.5">
+                        <td className="px-3 py-2.5">
+                          <div className="flex min-w-[14rem] items-center gap-2">
                             {teacher ? (
-                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[9px] font-semibold text-white">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-semibold text-white">
                                 {initials(teacher.name)}
                               </span>
                             ) : (
-                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-400">
-                                <Users className="h-3 w-3" />
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-400">
+                                <Users className="h-3.5 w-3.5" />
                               </span>
                             )}
                             <select
                               id={`teacher-select-${sub._id}`}
                               className={cn(
-                                "h-8 min-w-0 flex-1 rounded-md border bg-white px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500/30",
+                                "h-8 min-w-[11rem] flex-1 rounded-md border bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/30",
                                 unassigned
                                   ? "border-amber-200 text-slate-400"
                                   : "border-slate-200 text-slate-800",
@@ -720,23 +729,23 @@ Add someone under Teachers if they are missing from the list.`}
                             </select>
                           </div>
                         </td>
-                        <td className="px-2 py-2">
+                        <td className="whitespace-nowrap px-3 py-2.5">
                           {unassigned ? (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                              <AlertTriangle className="h-2.5 w-2.5" />
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                              <AlertTriangle className="h-3 w-3 shrink-0" />
                               Unassigned
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                              <CheckCircle2 className="h-2.5 w-2.5" />
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                              <CheckCircle2 className="h-3 w-3 shrink-0" />
                               Assigned
                             </span>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-right">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
                           <button
                             type="button"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50 disabled:opacity-40"
                             disabled={!canEdit}
                             title="Change teacher"
                             onClick={() =>

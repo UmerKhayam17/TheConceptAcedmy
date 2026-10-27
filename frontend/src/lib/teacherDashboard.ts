@@ -136,7 +136,10 @@ export function periodTimeLabel(slot: ScheduleSlot) {
     if (start != null && end != null) return `${formatMinutes(start)} - ${formatMinutes(end)}`;
     return `${slot.startTime} - ${slot.endTime}`;
   }
-  if (slot.startTime) return slot.startTime;
+  if (slot.startTime) {
+    const start = parseTimeToMinutes(slot.startTime);
+    return start != null ? formatMinutes(start) : slot.startTime;
+  }
   if (slot.periodLabel) return slot.periodLabel;
   return "—";
 }

@@ -66,7 +66,7 @@ import {
 import { classLabel as academyClassLabel } from "@/components/modules/student-management/studentDisplayUtils";
 import { formatDateSheetDate } from "@/components/modules/exams/dateSheetBatch";
 import { ParentStudentBanner } from "@/components/modules/timetable/parent-schedule/ParentStudentBanner";
-import { cn } from "@/lib/utils";
+import { cn, formatWallClock } from "@/lib/utils";
 import { recordIsAbsent } from "@/lib/marksValidation";
 import { AbsentBadge } from "@/components/modules/exams/MarksAbsentToggle";
 import { useToast } from "@/hooks/use-toast";
@@ -191,17 +191,14 @@ function typePill(type?: string) {
 function formatExamTime(time?: string) {
   if (!time?.trim()) return "";
   const raw = time.trim();
-  // Already a range like "09:00 AM - 11:00 AM"
-  if (raw.includes("-")) return raw;
-  try {
-    const d = new Date(`1970-01-01T${raw}`);
-    if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    }
-  } catch {
-    /* keep raw */
+  if (raw.includes("-")) {
+    return raw
+      .split("-")
+      .map((part) => formatWallClock(part) || part.trim())
+      .filter(Boolean)
+      .join(" – ");
   }
-  return raw;
+  return formatWallClock(raw) || raw;
 }
 
 /** Local YYYY-MM-DD for reliable upcoming comparisons (avoids UTC day-shift). */

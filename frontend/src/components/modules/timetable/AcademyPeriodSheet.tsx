@@ -1,5 +1,5 @@
 import { DoorOpen, Link2, User, Users } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatWallClockRange } from "@/lib/utils";
 import {
   isDeletedSubject,
   scheduleSlotEntries,
@@ -121,7 +121,7 @@ export default function AcademyPeriodSheet({
               <th key={p._id} className="border-b px-1.5 py-3 text-center font-semibold overflow-hidden">
                 <div className="text-sm truncate">{p.label || `P${p.order}`}</div>
                 <div className="text-[11px] font-normal text-muted-foreground truncate">
-                  {p.startTime} – {p.endTime}
+                  {formatWallClockRange(p.startTime, p.endTime)}
                 </div>
               </th>
             ))}

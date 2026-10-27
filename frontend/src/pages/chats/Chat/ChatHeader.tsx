@@ -187,9 +187,10 @@ export default function ChatHeader({ conversation: conv, onJumpToMessage, onSmar
       ? onlineStatus === "online"
         ? "online"
         : lastSeen
-        ? `last seen today at ${new Date(lastSeen).toLocaleTimeString([], {
+        ? `last seen today at ${new Date(lastSeen).toLocaleTimeString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
+            hour12: true,
           })}`
         : "offline"
       : `${conv.participants?.length || 0} members`;

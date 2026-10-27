@@ -16,6 +16,7 @@ import {
   type PeriodSlot,
 } from "@/lib/timetableApi";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
+import { formatWallClock, formatWallClockRange } from "@/lib/utils";
 
 const QK = (sid: string) => ["timetable-periods", sid] as const;
 
@@ -540,7 +541,7 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
                             onChange={(e) => updateSlot(index, { startTime: e.target.value })}
                           />
                         ) : (
-                          <span className="font-mono text-xs">{p.startTime}</span>
+                          <span className="font-mono text-xs">{formatWallClock(p.startTime)}</span>
                         )}
                       </td>
                       <td className="px-3 py-2 align-top">
@@ -555,7 +556,7 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
                             {err && <p className="text-[11px] text-destructive mt-1">{err}</p>}
                           </div>
                         ) : (
-                          <span className="font-mono text-xs">{p.endTime}</span>
+                          <span className="font-mono text-xs">{formatWallClock(p.endTime)}</span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-sm text-muted-foreground capitalize align-top pt-3">
@@ -614,7 +615,7 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
                         <tr key={s._id} className="border-t">
                           <td className="py-1.5 pr-3 font-medium">{s.label}</td>
                           <td className="py-1.5 font-mono text-muted-foreground">
-                            {s.startTime} – {s.endTime}
+                            {formatWallClockRange(s.startTime, s.endTime)}
                           </td>
                           <td className="py-1.5 pl-3 capitalize text-muted-foreground">{s.type}</td>
                         </tr>

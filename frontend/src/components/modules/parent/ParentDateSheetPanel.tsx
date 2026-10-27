@@ -54,7 +54,7 @@ import {
   subjectColorKey,
 } from "@/components/modules/timetable/constants";
 import { subjectIcon } from "@/lib/subjectTheme";
-import { cn } from "@/lib/utils";
+import { cn, formatWallClock } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import timetableBooks from "@/assets/timetable/timetable-books.png";
 
@@ -190,16 +190,15 @@ function formatDayName(raw: string) {
 function formatExamTime(time?: string) {
   if (!time?.trim()) return "—";
   const raw = time.trim();
-  if (raw.includes("-")) return raw;
-  try {
-    const d = new Date(`1970-01-01T${raw}`);
-    if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    }
-  } catch {
-    /* keep */
+  if (raw.includes("-")) {
+    const label = raw
+      .split("-")
+      .map((part) => formatWallClock(part) || part.trim())
+      .filter(Boolean)
+      .join(" – ");
+    return label || "—";
   }
-  return raw;
+  return formatWallClock(raw) || raw;
 }
 
 function estimateDuration(time?: string) {

@@ -33,7 +33,7 @@ import {
   Send,
   Users,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatWallClockRange } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import type { Weekday } from "@/lib/configApi";
@@ -1176,7 +1176,7 @@ export default function GridTab({
                       >
                         <div className="text-sm truncate">{p.label || `P${p.order}`}</div>
                         <div className="text-[11px] font-normal text-muted-foreground truncate">
-                          {p.startTime} – {p.endTime}
+                          {formatWallClockRange(p.startTime, p.endTime)}
                         </div>
                       </th>
                     ))}

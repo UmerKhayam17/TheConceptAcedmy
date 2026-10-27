@@ -1,6 +1,7 @@
 import { scheduleSlotEntries, scheduleSlotTitle, type PeriodSlot, type ScheduleSlot } from "@/lib/timetableApi";
 import type { Weekday } from "@/lib/configApi";
 import { DAY_FULL_LABELS, slotMatchesPeriod } from "./constants";
+import { formatWallClockRange } from "@/lib/utils";
 
 type CellPlain = { title: string; teachers: string; room: string };
 
@@ -73,7 +74,7 @@ function buildBuilderPrintHtml(opts: BuilderExportOpts): { html: string; documen
     .map((p, i) => {
       const name = p.label || `Period ${p.order || i + 1}`;
       return `<th><div class="period-name">${escapeHtml(name)}</div><div class="period-time">${escapeHtml(
-        `${p.startTime} – ${p.endTime}`
+        formatWallClockRange(p.startTime, p.endTime)
       )}</div></th>`;
     })
     .join("");
@@ -193,7 +194,7 @@ export function exportBuilderGridExcel(opts: BuilderExportOpts): void {
     "Day",
     ...periods.map((p, i) => {
       const name = /^period/i.test(p.label || "") ? p.label! : `Period ${p.order || i + 1}`;
-      return `${name} (${p.startTime}-${p.endTime})`;
+      return `${name} (${formatWallClockRange(p.startTime, p.endTime, "–")})`;
     }),
   ];
 
