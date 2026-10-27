@@ -481,7 +481,7 @@ const Panel = () => {
       case "exams":         return <ExamsModule perm={perm} caps={caps} section={section} action={action} subAction={subAction} />;
       case "finance-dashboard": return <FinanceDashboard />;
       case "fees":          return <FeesModule perm={perm} caps={caps} />;
-      case "salary":        return <SalaryModule perm={perm} caps={caps} />;
+      case "salary":        return <SalaryModule perm={perm} caps={caps} section={section} />;
       case "expenses":      return <ExpensesModule perm={perm} caps={caps} />;
       case "chat":          return <ChatModule user={session} perm={perm} caps={caps} />;
       case "announcements": return <AnnouncementsModule perm={perm} caps={caps} />;

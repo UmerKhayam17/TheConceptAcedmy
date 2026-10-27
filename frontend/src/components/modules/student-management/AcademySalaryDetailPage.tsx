@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   BookOpen,
   Calculator,
   Coins,
@@ -9,7 +8,6 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { resolveUploadUrl } from "@/lib/api";
@@ -175,13 +173,7 @@ export function StudentPoolTable({
   );
 }
 
-export default function AcademySalaryDetailPage({
-  salaryId,
-  onBack,
-}: {
-  salaryId: string;
-  onBack: () => void;
-}) {
+export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string }) {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["academy-salary-detail", salaryId],
     queryFn: () => fetchAcademySalary(salaryId),
@@ -246,17 +238,6 @@ export default function AcademySalaryDetailPage({
   return (
     <div className="min-h-full bg-[#f4f7fb] px-4 py-6 sm:px-6 lg:px-8">
       <div className="w-full space-y-5">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="gap-1.5 border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900"
-          onClick={onBack}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to salaries
-        </Button>
-
         {isLoading ? (
           <Card className="rounded-2xl border-0 p-10 text-center text-sm text-muted-foreground shadow-sm">
             Loading salary detail…

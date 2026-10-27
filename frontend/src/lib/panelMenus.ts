@@ -164,3 +164,7 @@ export const moduleHref = (
   if (key === "staff-attendance") return `/panel/${role}/teacher-attendance`;
   return `/panel/${role}/${key}`;
 };
+
+/** Staff salary voucher detail page. */
+export const salaryDetailHref = (role: Role, salaryId: string) =>
+  `${moduleHref(role, "salary")}/${salaryId}`;

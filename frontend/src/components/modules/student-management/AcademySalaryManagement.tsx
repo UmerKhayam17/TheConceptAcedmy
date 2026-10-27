@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type ComponentType } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   CalendarPlus,
   Check,
@@ -32,6 +33,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
+import type { Role } from "@/lib/auth";
+import { salaryDetailHref } from "@/lib/panelMenus";
 import { resolveUploadUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -51,9 +54,7 @@ import ListPagination from "./ListPagination";
 import { DefaulterListDownload } from "./DefaulterListDownload";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
-import AcademySalaryDetailPage, {
-  StudentPoolTable,
-} from "./AcademySalaryDetailPage";
+import { StudentPoolTable } from "./AcademySalaryDetailPage";
 
 function formatRs(n?: number) {
   if (n == null || Number.isNaN(n)) return "Rs —";
@@ -223,7 +224,9 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const [exporting, setExporting] = useState<SalaryReportFormat | null>(null);
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [expandedPoolKeys, setExpandedPoolKeys] = useState<string[]>([]);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { role } = useParams<{ role: Role }>();
+  const openDetail = (id: string) => navigate(salaryDetailHref(role as Role, id));
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -467,12 +470,6 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
       setExporting(null);
     }
   };
-
-  if (detailId) {
-    return (
-      <AcademySalaryDetailPage salaryId={detailId} onBack={() => setDetailId(null)} />
-    );
-  }
 
   return (
     <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
@@ -729,7 +726,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                         <button
                           type="button"
                           className="flex w-full items-center gap-2.5 min-w-0 text-left"
-                          onClick={() => setDetailId(r._id)}
+                          onClick={() => openDetail(r._id)}
                           title="Open salary detail"
                         >
                           <StaffAvatar name={name} profileImage={staff?.profileImage} />
@@ -821,7 +818,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                                 Mark paid
                               </DropdownMenuItem>
                             ) : null}
-                            <DropdownMenuItem onClick={() => setDetailId(r._id)}>
+                            <DropdownMenuItem onClick={() => openDetail(r._id)}>
                               View full details
                             </DropdownMenuItem>
                             {canExpand ? (
@@ -860,7 +857,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                                 variant="outline"
                                 size="sm"
                                 className="h-8 border-slate-300 bg-white text-slate-800 hover:bg-slate-50 hover:text-slate-900"
-                                onClick={() => setDetailId(r._id)}
+                                onClick={() => openDetail(r._id)}
                               >
                                 Open full detail page
                               </Button>
@@ -921,7 +918,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                                             <button
                                               type="button"
                                               className="font-semibold text-primary underline-offset-2 hover:underline"
-                                              onClick={() => setDetailId(r._id)}
+                                              onClick={() => openDetail(r._id)}
                                             >
                                               Open full detail
                                             </button>{" "}
