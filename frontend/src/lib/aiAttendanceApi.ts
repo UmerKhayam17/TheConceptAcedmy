@@ -194,6 +194,7 @@ export type AiCameraSnapshot = {
   connected?: boolean;
   lastFrameAt?: string | null;
   lastMatch?: AiCameraRuntime["lastMatch"];
+  lastUnknown?: { at?: string; count?: number } | null;
   lastError?: string;
   error?: string;
 };

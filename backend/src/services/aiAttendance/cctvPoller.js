@@ -100,6 +100,7 @@ async function tick(cameraId) {
       lastFrameAt: frame?.ok ? new Date().toISOString() : runtime.status?.lastFrameAt,
       message: frame?.message || '',
       lastMatch: runtime.status?.lastMatch,
+      lastUnknown: runtime.status?.lastUnknown || null,
     };
     if (frame?.ok && frame?.image) {
       runtime.lastImage = frame.image;
@@ -111,6 +112,18 @@ async function tick(cameraId) {
       // Lazy require to avoid circular load with aiAttendanceService
       const ai = require('./aiAttendanceService');
       const result = await ai.identifyAndMark(frame.image, { markAttendance: true });
+      const unknownCount = Number(result?.unknownFaces) || 0;
+      if (unknownCount > 0) {
+        // Keep the first sighting time so the popup can expire instead of staying up
+        // for as long as the unrecognised face remains in frame.
+        if (!runtime.status.lastUnknown) {
+          runtime.status.lastUnknown = { at: new Date().toISOString(), count: unknownCount };
+        } else {
+          runtime.status.lastUnknown.count = unknownCount;
+        }
+      } else {
+        runtime.status.lastUnknown = null;
+      }
       if (!result?.matched) return;
 
       result.people.forEach((person) => {
@@ -226,6 +239,7 @@ async function getSnapshot(cameraId) {
       connected: Boolean(runtime.status?.connected),
       lastFrameAt: runtime.status?.lastFrameAt || null,
       lastMatch: runtime.status?.lastMatch || null,
+      lastUnknown: runtime.status?.lastUnknown || null,
       lastError: runtime.status?.lastError || '',
     };
   }
@@ -248,6 +262,7 @@ async function getSnapshot(cameraId) {
           connected: Boolean(again.status?.connected),
           lastFrameAt: again.status?.lastFrameAt || null,
           lastMatch: again.status?.lastMatch || null,
+          lastUnknown: again.status?.lastUnknown || null,
           lastError: again.status?.lastError || '',
         };
       }
@@ -272,6 +287,7 @@ async function getSnapshot(cameraId) {
         connected: true,
         lastFrameAt: new Date().toISOString(),
         lastMatch: runtime?.status?.lastMatch || null,
+        lastUnknown: runtime?.status?.lastUnknown || null,
         lastError: '',
       };
     }
