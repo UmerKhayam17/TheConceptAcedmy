@@ -640,9 +640,8 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
       <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
         <DialogContent
           className={cn(
-            "flex max-h-[92dvh] w-full max-w-none flex-col gap-0 overflow-hidden rounded-t-2xl border-slate-200 p-0 shadow-xl",
-            "bottom-0 left-0 top-auto translate-x-0 translate-y-0",
-            "sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-[40rem] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:p-0",
+            "flex max-h-[90dvh] w-[calc(100%-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden rounded-2xl border-slate-200 bg-white p-0 shadow-xl",
+            "sm:w-full sm:max-w-[40rem] sm:rounded-2xl sm:p-0",
           )}
         >
           <DialogHeader className="shrink-0 space-y-0 border-b border-slate-200 bg-white px-4 py-4 pr-12 text-left sm:px-6">
