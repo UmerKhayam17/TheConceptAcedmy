@@ -56,6 +56,10 @@ class ImageBody(BaseModel):
 
 
 def _select_providers() -> list[str]:
+    # CPU by default (the VPS has no GPU); listing CUDA at all makes onnxruntime try to load it.
+    # Set FACE_WORKER_USE_GPU=1 on a machine with CUDA/DirectML to prefer the GPU.
+    if (os.environ.get("FACE_WORKER_USE_GPU") or "").strip().lower() not in ("1", "true", "yes"):
+        return ["CPUExecutionProvider"]
     try:
         import onnxruntime as ort
 
