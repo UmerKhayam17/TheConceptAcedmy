@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Plus, Receipt, Search, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, Clock3, Plus, Receipt, Search, Wallet, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import PanelStatCard from "@/components/modules/PanelStatCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,8 +56,6 @@ const FULL_MONTH_NAMES = [
   "December",
 ];
 
-const filterLabelClass =
-  "mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400";
 const filterControlClass =
   "h-10 w-full cursor-pointer appearance-none truncate rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-800 shadow-none outline-none transition-[border-color,box-shadow] hover:border-slate-300 focus:border-[#1a2b4b]/40 focus:ring-2 focus:ring-[#1a2b4b]/10";
 
@@ -73,7 +72,6 @@ function ExpenseFilterSelect({
 }) {
   return (
     <label className="block min-w-0">
-      <span className={filterLabelClass}>{label}</span>
       <span className="relative block">
         <select
           className={filterControlClass}
@@ -86,6 +84,64 @@ function ExpenseFilterSelect({
         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
       </span>
     </label>
+  );
+}
+
+const formLabelClass =
+  "text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500";
+const formControlClass =
+  "h-10 min-w-0 rounded-lg border-slate-200 bg-white text-base text-slate-800 shadow-none placeholder:text-slate-400 focus-visible:border-[#1a2b4b]/35 focus-visible:ring-2 focus-visible:ring-[#1a2b4b]/10 focus-visible:ring-offset-0 md:text-sm";
+const formSelectClass =
+  "h-10 w-full min-w-0 cursor-pointer appearance-none truncate rounded-lg border border-slate-200 bg-white pl-3 pr-9 text-base text-slate-800 shadow-none outline-none transition-[border-color,box-shadow] hover:border-slate-300 focus:border-[#1a2b4b]/35 focus:ring-2 focus:ring-[#1a2b4b]/10 md:text-sm";
+
+const PAYMENT_METHODS = [
+  { value: "cash", label: "Cash" },
+  { value: "bank_transfer", label: "Bank transfer" },
+  { value: "online", label: "Online" },
+  { value: "cheque", label: "Cheque" },
+  { value: "other", label: "Other" },
+] as const;
+
+function FormField({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn("min-w-0 space-y-1.5", className)}>
+      <Label className={formLabelClass}>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function FormSelect({
+  value,
+  onChange,
+  ariaLabel,
+  children,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className="relative block min-w-0">
+      <select
+        className={formSelectClass}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={ariaLabel}
+      >
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+    </span>
   );
 }
 
@@ -355,31 +411,47 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Total</p>
-          <p className="text-lg font-semibold text-primary">
-            {summaryLoading ? "…" : formatPkr(summary?.totalAmount)}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Paid</p>
-          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
-            {summaryLoading ? "…" : formatPkr(summary?.paidAmount)}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Planned</p>
-          <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">
-            {summaryLoading ? "…" : formatPkr(summary?.plannedAmount)}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Entries</p>
-          <p className="text-lg font-semibold text-primary">
-            {summaryLoading ? "…" : summary?.recordsCount ?? 0}
-          </p>
-        </Card>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <PanelStatCard
+          label="Total"
+          value={summaryLoading ? "…" : formatPkr(summary?.totalAmount)}
+          hint={`${FULL_MONTH_NAMES[Number(month) - 1]} ${year}`}
+          icon={Wallet}
+          iconWrapClass="bg-[#dbeafe]"
+          iconClass="text-[#2563eb]"
+          valueClass="text-lg sm:text-2xl"
+        />
+        <PanelStatCard
+          label="Paid"
+          value={summaryLoading ? "…" : formatPkr(summary?.paidAmount)}
+          hint={
+            summaryLoading || !summary?.totalAmount
+              ? "Settled this period"
+              : `${Math.round(((summary.paidAmount ?? 0) / summary.totalAmount) * 100)}% of total`
+          }
+          icon={CheckCircle2}
+          iconWrapClass="bg-[#d1fae5]"
+          iconClass="text-[#059669]"
+          valueClass="text-lg sm:text-2xl"
+        />
+        <PanelStatCard
+          label="Planned"
+          value={summaryLoading ? "…" : formatPkr(summary?.plannedAmount)}
+          hint="Not yet paid"
+          icon={Clock3}
+          iconWrapClass="bg-[#ede9fe]"
+          iconClass="text-[#7c3aed]"
+          valueClass="text-lg sm:text-2xl"
+        />
+        <PanelStatCard
+          label="Entries"
+          value={summaryLoading ? "…" : summary?.recordsCount ?? 0}
+          hint="Recorded this period"
+          icon={Receipt}
+          iconWrapClass="bg-[#ffedd5]"
+          iconClass="text-[#ea580c]"
+          valueClass="text-lg sm:text-2xl"
+        />
       </div>
 
       {topCategories.length > 0 && (
@@ -436,7 +508,6 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
           </div>
 
           <label className="block min-w-0 xl:w-72 xl:shrink-0">
-            <span className={filterLabelClass}>Search</span>
             <span className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
@@ -567,173 +638,207 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
-        <DialogContent className="sm:max-w-xl gap-0 p-0 overflow-hidden">
-          <DialogHeader className="border-b border-border/80 bg-slate-50/80 px-5 py-4 space-y-1">
-            <DialogTitle className="text-lg font-semibold text-[#1a2b4b]">
-              {editing ? "Edit expense" : "Add academy expense"}
-            </DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
-              Record an operating cost with category, amount, and payment details.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Title
-              </Label>
-              <Input
-                className="h-10"
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="e.g. Office rent — May"
-              />
-            </div>
-            <div className={cn("space-y-1.5", form.category === "other" ? "" : "sm:col-span-2")}>
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Category
-              </Label>
-              <select
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={form.category}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    category: e.target.value,
-                    categoryOther: e.target.value === "other" ? f.categoryOther : "",
-                  }))
-                }
-              >
-                {formCategories.length === 0 && <option value="">No categories</option>}
-                {formCategories.map((c) => (
-                  <option key={c._id} value={c.key}>
-                    {c.name}
-                    {c.isActive ? "" : " (inactive)"}
-                  </option>
-                ))}
-              </select>
-              {activeCategories.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Add categories in{" "}
-                  <Link
-                    to={systemConfigHref(user?.role ?? "admin", "expense-categories")}
-                    className="text-primary underline-offset-2 hover:underline"
-                  >
-                    Academic Setup → Expense Categories
-                  </Link>
-                  .
-                </p>
-              )}
-            </div>
-            {form.category === "other" && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Specify category
-                </Label>
-                <Input
-                  className="h-10"
-                  value={form.categoryOther}
-                  onChange={(e) => setForm((f) => ({ ...f, categoryOther: e.target.value }))}
-                  placeholder="e.g. Legal fees, Event refreshments"
-                />
+        <DialogContent
+          className={cn(
+            "flex max-h-[92dvh] w-full max-w-none flex-col gap-0 overflow-hidden rounded-t-2xl border-slate-200 p-0 shadow-xl",
+            "bottom-0 left-0 top-auto translate-x-0 translate-y-0",
+            "sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-[40rem] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:p-0",
+          )}
+        >
+          <DialogHeader className="shrink-0 space-y-0 border-b border-slate-200 bg-white px-4 py-4 pr-12 text-left sm:px-6">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1a2b4b] text-white">
+                <Receipt className="h-5 w-5" strokeWidth={2.25} />
+              </span>
+              <div className="min-w-0">
+                <DialogTitle className="text-base font-semibold tracking-tight text-[#1a2b4b] sm:text-lg">
+                  {editing ? "Edit expense" : "Add academy expense"}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-sm leading-snug text-slate-500">
+                  Record the cost, then add payment details if you have them.
+                </DialogDescription>
               </div>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Amount (PKR)
-              </Label>
-              <Input
-                className="h-10"
-                type="number"
-                min={0}
-                value={form.amount}
-                onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-                placeholder="0"
-              />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Date
-              </Label>
-              <Input
-                className="h-10"
-                type="date"
-                value={form.expenseDate}
-                onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Status
-              </Label>
-              <select
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={form.status}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, status: e.target.value as "paid" | "planned" }))
-                }
-              >
-                <option value="paid">Paid</option>
-                <option value="planned">Planned</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Vendor
-              </Label>
-              <Input
-                className="h-10"
-                value={form.vendor}
-                onChange={(e) => setForm((f) => ({ ...f, vendor: e.target.value }))}
-                placeholder="Optional"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Payment method
-              </Label>
-              <select
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={form.paymentMethod}
-                onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))}
-              >
-                <option value="cash">Cash</option>
-                <option value="bank_transfer">Bank transfer</option>
-                <option value="online">Online</option>
-                <option value="cheque">Cheque</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Invoice number or slip number
-              </Label>
-              <Input
-                className="h-10"
-                value={form.referenceNumber}
-                onChange={(e) => setForm((f) => ({ ...f, referenceNumber: e.target.value }))}
-                placeholder="Optional"
-              />
-            </div>
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Notes
-              </Label>
-              <Textarea
-                rows={3}
-                className="min-h-[4.5rem] resize-y"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="Optional details about this expense"
-              />
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+            <div className="space-y-5">
+              <section className="space-y-3.5">
+                <p className="text-xs font-semibold text-[#1a2b4b]">Expense</p>
+                <div className="grid grid-cols-1 gap-3.5 min-[480px]:grid-cols-2">
+                  <FormField label="Title" className="min-[480px]:col-span-2">
+                    <Input
+                      className={formControlClass}
+                      value={form.title}
+                      onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                      placeholder="e.g. Office rent — May"
+                    />
+                  </FormField>
+                  <FormField
+                    label="Category"
+                    className={form.category === "other" ? "" : "min-[480px]:col-span-2"}
+                  >
+                    <FormSelect
+                      ariaLabel="Category"
+                      value={form.category}
+                      onChange={(category) =>
+                        setForm((f) => ({
+                          ...f,
+                          category,
+                          categoryOther: category === "other" ? f.categoryOther : "",
+                        }))
+                      }
+                    >
+                      {formCategories.length === 0 && <option value="">No categories</option>}
+                      {formCategories.map((c) => (
+                        <option key={c._id} value={c.key}>
+                          {c.name}
+                          {c.isActive ? "" : " (inactive)"}
+                        </option>
+                      ))}
+                    </FormSelect>
+                    {activeCategories.length === 0 && (
+                      <p className="text-xs leading-relaxed text-slate-500">
+                        Add categories in{" "}
+                        <Link
+                          to={systemConfigHref(user?.role ?? "admin", "expense-categories")}
+                          className="font-medium text-[#1a2b4b] underline-offset-2 hover:underline"
+                        >
+                          Academic Setup → Expense Categories
+                        </Link>
+                        .
+                      </p>
+                    )}
+                  </FormField>
+                  {form.category === "other" && (
+                    <FormField label="Specify category">
+                      <Input
+                        className={formControlClass}
+                        value={form.categoryOther}
+                        onChange={(e) => setForm((f) => ({ ...f, categoryOther: e.target.value }))}
+                        placeholder="e.g. Legal fees"
+                      />
+                    </FormField>
+                  )}
+                  <FormField label="Amount">
+                    <div className="relative min-w-0">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold tracking-wide text-slate-400">
+                        PKR
+                      </span>
+                      <Input
+                        className={cn(formControlClass, "pl-12")}
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        step="0.01"
+                        value={form.amount}
+                        onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </FormField>
+                  <FormField label="Date">
+                    <Input
+                      className={cn(formControlClass, "min-w-0")}
+                      type="date"
+                      value={form.expenseDate}
+                      onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
+                    />
+                  </FormField>
+                  <FormField label="Status">
+                    <div className="grid h-10 grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                      {(
+                        [
+                          ["paid", "Paid"],
+                          ["planned", "Planned"],
+                        ] as const
+                      ).map(([value, label]) => {
+                        const active = form.status === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            className={cn(
+                              "rounded-md text-sm font-medium transition-colors",
+                              active
+                                ? value === "paid"
+                                  ? "bg-white text-emerald-700 shadow-sm"
+                                  : "bg-white text-amber-700 shadow-sm"
+                                : "text-slate-500 hover:text-slate-800",
+                            )}
+                            aria-pressed={active}
+                            onClick={() => setForm((f) => ({ ...f, status: value }))}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </FormField>
+                  <FormField label="Vendor">
+                    <Input
+                      className={formControlClass}
+                      value={form.vendor}
+                      onChange={(e) => setForm((f) => ({ ...f, vendor: e.target.value }))}
+                      placeholder="Optional"
+                    />
+                  </FormField>
+                </div>
+              </section>
+
+              <section className="space-y-3.5 border-t border-slate-100 pt-4">
+                <p className="text-xs font-semibold text-[#1a2b4b]">Payment</p>
+                <div className="grid grid-cols-1 gap-3.5 min-[480px]:grid-cols-2">
+                  <FormField label="Method">
+                    <FormSelect
+                      ariaLabel="Payment method"
+                      value={form.paymentMethod}
+                      onChange={(paymentMethod) => setForm((f) => ({ ...f, paymentMethod }))}
+                    >
+                      {PAYMENT_METHODS.map((method) => (
+                        <option key={method.value} value={method.value}>
+                          {method.label}
+                        </option>
+                      ))}
+                    </FormSelect>
+                  </FormField>
+                  <FormField label="Invoice / slip">
+                    <Input
+                      className={formControlClass}
+                      value={form.referenceNumber}
+                      onChange={(e) => setForm((f) => ({ ...f, referenceNumber: e.target.value }))}
+                      placeholder="Optional"
+                    />
+                  </FormField>
+                  <FormField label="Notes" className="min-[480px]:col-span-2">
+                    <Textarea
+                      rows={3}
+                      className="min-h-[5.5rem] resize-y rounded-lg border-slate-200 bg-white text-base text-slate-800 shadow-none placeholder:text-slate-400 focus-visible:border-[#1a2b4b]/35 focus-visible:ring-2 focus-visible:ring-[#1a2b4b]/10 focus-visible:ring-offset-0 md:text-sm"
+                      value={form.description}
+                      onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                      placeholder="Optional details about this expense"
+                    />
+                  </FormField>
+                </div>
+              </section>
             </div>
           </div>
-          <DialogFooter className="border-t border-border/80 bg-slate-50/60 px-5 py-3.5 sm:justify-end">
-            <Button variant="outline" className="h-10" onClick={() => setDialogOpen(false)}>
+          <DialogFooter className="shrink-0 flex-col gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:space-x-0 sm:px-6 sm:py-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full rounded-lg border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900 sm:h-10 sm:w-auto"
+              onClick={() => setDialogOpen(false)}
+            >
               Cancel
             </Button>
-            <Button className="h-10 gap-2" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
+            <Button
+              type="button"
+              className="h-11 w-full gap-2 rounded-lg bg-[#1a2b4b] text-white shadow-sm hover:bg-[#15233d] sm:h-10 sm:w-auto"
+              disabled={saveMut.isPending}
+              onClick={() => saveMut.mutate()}
+            >
               <Plus className="h-4 w-4" />
-              {editing ? "Save changes" : "Add expense"}
+              {saveMut.isPending ? "Saving…" : editing ? "Save changes" : "Add expense"}
             </Button>
           </DialogFooter>
         </DialogContent>
