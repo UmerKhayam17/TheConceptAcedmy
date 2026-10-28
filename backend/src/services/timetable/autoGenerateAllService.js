@@ -18,6 +18,7 @@ const AcademyClass = require('../../models/academy/AcademyClass');
 const AcademySection = require('../../models/academy/AcademySection');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const ApiError = require('../../utils/ApiError');
+const { todayYmd } = require('../../utils/schoolDay');
 const { WEEKDAYS } = require('../../models/timetable/constants');
 const { assertSessionWritable } = require('../session/sessionGuard');
 const { createVersion } = require('./timetableVersionService');
@@ -1036,7 +1037,7 @@ async function autoGenerateAll(body, userId) {
         unplacedCount: unplaced.reduce((s, u) => s + u.remaining, 0),
         ranAt: new Date(),
       },
-      notes: `Auto-generated ${new Date().toISOString().slice(0, 10)} (${ENGINE})`,
+      notes: `Auto-generated ${todayYmd()} (${ENGINE})`,
     });
   }
 

@@ -1,24 +1,25 @@
 const ApiError = require('../utils/ApiError');
+const { dayBounds } = require('../utils/schoolDay');
 const StaffAttendance = require('../models/StaffAttendance');
 const User = require('../models/User');
 const Role = require('../models/Role');
 
+/** Day bounds in the academy timezone. YYYY-MM-DD is a calendar day; anything else is an instant. */
 function dayRange(dateStr) {
-  const day = new Date(dateStr);
-  if (Number.isNaN(day.getTime())) throw new ApiError(400, 'Invalid date');
-  day.setHours(0, 0, 0, 0);
-  const end = new Date(day);
-  end.setHours(23, 59, 59, 999);
-  return { start: day, end };
+  const trimmed = String(dateStr || '').trim();
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : new Date(dateStr);
+  if (day instanceof Date && Number.isNaN(day.getTime())) throw new ApiError(400, 'Invalid date');
+  return dayBounds(day);
 }
 
 function monthRange(month, year) {
   const m = Number(month);
   const y = Number(year);
   if (!m || !y || m < 1 || m > 12) throw new ApiError(400, 'Invalid month/year');
-  const start = new Date(y, m - 1, 1);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(y, m, 0, 23, 59, 59, 999);
+  const mm = String(m).padStart(2, '0');
+  const lastDay = String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0');
+  const { start } = dayBounds(`${y}-${mm}-01`);
+  const { end } = dayBounds(`${y}-${mm}-${lastDay}`);
   return { start, end };
 }
 
@@ -62,7 +63,7 @@ async function listTeachers() {
 }
 
 async function listByDate({ date, userId }) {
-  const { start, end } = dayRange(date);
+  const { start, end, ymd } = dayRange(date);
   const q = { date: { $gte: start, $lte: end } };
   if (userId) q.userId = userId;
 
@@ -81,7 +82,7 @@ async function listByDate({ date, userId }) {
   });
 
   return {
-    date: start.toISOString().slice(0, 10),
+    date: ymd,
     records,
     summary,
   };

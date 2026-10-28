@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SyllabusText } from "@/components/ui/syllabus-text";
 import PanelStatCard from "@/components/modules/PanelStatCard";
-import { cn } from "@/lib/utils";
+import { cn, localYmd } from "@/lib/utils";
 import { containsUrduScript } from "@/lib/urduText";
 import {
   Select,
@@ -109,7 +109,7 @@ function disciplineNameOf(a: AssessmentAssignment) {
 function paperDate(p: AssessmentPlanPaper) {
   if (!p.examDate) return "";
   try {
-    return new Date(p.examDate).toISOString().slice(0, 10);
+    return localYmd(p.examDate);
   } catch {
     return "";
   }

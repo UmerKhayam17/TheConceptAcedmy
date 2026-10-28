@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { localYmd } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +57,7 @@ export default function AssessmentFormDialog({
   const [subjectId, setSubjectId] = useState("");
   const [title, setTitle] = useState("");
   const [assessmentType, setAssessmentType] = useState<AssessmentType>("weekly");
-  const [examDate, setExamDate] = useState(new Date().toISOString().slice(0, 10));
+  const [examDate, setExamDate] = useState(localYmd());
   const [obtained, setObtained] = useState("");
   const [total, setTotal] = useState("20");
   const [remarks, setRemarks] = useState("");
@@ -87,7 +88,7 @@ export default function AssessmentFormDialog({
       setSubjectId("");
       setTitle("");
       setAssessmentType("weekly");
-      setExamDate(new Date().toISOString().slice(0, 10));
+      setExamDate(localYmd());
       setObtained("");
       setTotal("20");
       setRemarks("");

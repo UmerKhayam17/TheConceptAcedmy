@@ -5,6 +5,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Calendar date as YYYY-MM-DD in the viewer's local timezone (toISOString() would use UTC). */
+export function localYmd(value: string | Date = new Date()) {
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return "";
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
 /** Clock time as 12-hour AM/PM, using the viewer's local timezone. */
 export function formatClockTime(value?: string | Date | null) {
   if (!value) return "—";

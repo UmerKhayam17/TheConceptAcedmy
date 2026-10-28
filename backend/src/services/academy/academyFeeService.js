@@ -16,6 +16,7 @@ const { populateCreatedBy } = require('../../utils/createdBy');
 const { notifyByAccess } = require('../realtime/realtimeService');
 const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
 const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
+const { dayBounds, formatDateInTz, todayYmd } = require('../../utils/schoolDay');
 
 async function resolveFeeReportContext({ sessionId, classId }) {
   let sessionLabel = '';
@@ -38,9 +39,8 @@ function resolvePaidAt(value) {
   const raw = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(raw.getTime())) throw new ApiError(400, 'Invalid payment date');
   const paidAt = new Date(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate(), 12, 0, 0, 0);
-  const endOfToday = new Date();
-  endOfToday.setHours(23, 59, 59, 999);
-  if (paidAt > endOfToday) throw new ApiError(400, 'Payment date cannot be in the future');
+  const paidYmd = `${raw.getUTCFullYear()}-${String(raw.getUTCMonth() + 1).padStart(2, '0')}-${String(raw.getUTCDate()).padStart(2, '0')}`;
+  if (paidYmd > todayYmd()) throw new ApiError(400, 'Payment date cannot be in the future');
   return paidAt;
 }
 
@@ -59,13 +59,22 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+/** Start of today in the academy timezone (not the host timezone). */
+function startOfSchoolToday() {
+  return dayBounds(todayYmd()).start;
+}
+
+function ymdToUtcMs(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
 function daysSince(date) {
   if (!date) return 0;
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
   const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return Math.max(0, Math.floor((startOfToday - d) / (24 * 60 * 60 * 1000)));
+  if (Number.isNaN(d.getTime())) return 0;
+  const diff = ymdToUtcMs(todayYmd()) - ymdToUtcMs(formatDateInTz(d));
+  return Math.max(0, Math.round(diff / (24 * 60 * 60 * 1000)));
 }
 
 function escapeCsvCell(value) {
@@ -771,8 +780,7 @@ async function safeNotify(fn) {
 /** Mark pending vouchers past due date as overdue, and alert staff once. */
 async function syncOverdueFees(filter = {}) {
   const q = await buildFeeQuery(filter);
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
+  const startOfToday = startOfSchoolToday();
 
   const flipping = await AcademyFeeRecord.find({
     ...q,
@@ -1712,8 +1720,7 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
 
 function unpaidStatusFromDueDate(dueDate) {
   if (!dueDate) return 'pending';
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
+  const startOfToday = startOfSchoolToday();
   const due = new Date(dueDate);
   if (Number.isNaN(due.getTime())) return 'pending';
   return due < startOfToday ? 'overdue' : 'pending';
@@ -1742,8 +1749,8 @@ async function reversePayment(id, { reason, kind = 'reverse' } = {}, userId) {
 
   const action = kind === 'refund' ? 'refund' : 'reverse';
   const label = action === 'refund' ? 'Refunded' : 'Payment reversed';
-  const when = new Date().toISOString().slice(0, 10);
-  const prevPaid = record.paidAt ? new Date(record.paidAt).toISOString().slice(0, 10) : '—';
+  const when = todayYmd();
+  const prevPaid = record.paidAt ? formatDateInTz(record.paidAt) : '—';
   const noteLine = `${label} ${when} (was paid ${prevPaid}; ₨${Number(record.amount || 0).toLocaleString()}): ${why}`;
 
   const updated = await AcademyFeeRecord.findOneAndUpdate(
@@ -1823,7 +1830,7 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
     throw new ApiError(400, 'Target fee must be pending or overdue');
   }
 
-  const when = new Date().toISOString().slice(0, 10);
+  const when = todayYmd();
   const paidAt = source.paidAt || new Date();
   const paymentMethod = source.paymentMethod || 'cash';
   const paymentSlip = source.paymentSlip || '';
@@ -2292,7 +2299,7 @@ function defaultersToCsv(items) {
     d.totalDue ?? 0,
     d.unpaidCount ?? 0,
     d.overdueCount ?? 0,
-    d.oldestDueDate ? new Date(d.oldestDueDate).toISOString().slice(0, 10) : '',
+    d.oldestDueDate ? formatDateInTz(d.oldestDueDate) : '',
     d.daysOverdue ?? 0,
   ]);
   return [header, ...rows].map((r) => r.map(escapeCsvCell).join(',')).join('\n');

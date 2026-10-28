@@ -4,6 +4,7 @@ const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const { hasAnySubjectEnrollment, isEnrolledInSubject } = require('./studentEnrollment');
 const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
+const { dayBounds } = require('../../utils/schoolDay');
 
 async function assertStudent(id) {
   const student = await AcademyStudent.findById(id);
@@ -117,12 +118,11 @@ async function removeAssessment(id) {
   return doc;
 }
 
+/** Day bounds in the academy timezone. YYYY-MM-DD is a calendar day; anything else is an instant. */
 function dayRange(examDate) {
-  const d = new Date(examDate);
-  const start = new Date(d);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(d);
-  end.setHours(23, 59, 59, 999);
+  const trimmed = String(examDate || '').trim();
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : new Date(examDate);
+  const { start, end } = dayBounds(day);
   return { start, end };
 }
 

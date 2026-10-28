@@ -39,7 +39,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, localYmd } from "@/lib/utils";
 import {
   cnicValidationMessage,
   formatCnicInput,
@@ -1010,7 +1010,7 @@ export default function RegisterStudentPage({
                 id="input-date-of-birth"
                 value={form.dateOfBirth}
                 onChange={(iso) => setForm((f) => ({ ...f, dateOfBirth: iso }))}
-                maxIso={new Date().toISOString().slice(0, 10)}
+                maxIso={localYmd()}
                 className={cn(fieldErr("field-date-of-birth") && "[&_input]:border-destructive")}
               />
               {!fieldErr("field-date-of-birth") && (

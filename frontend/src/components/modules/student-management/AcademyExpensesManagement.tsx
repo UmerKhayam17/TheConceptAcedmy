@@ -29,7 +29,7 @@ import {
   type ExpenseCategory,
   type ExpenseReportFormat,
 } from "@/lib/studentManagementApi";
-import { cn } from "@/lib/utils";
+import { cn, localYmd } from "@/lib/utils";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import { formatPkr } from "./studentDisplayUtils";
 import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
@@ -62,7 +62,7 @@ const emptyForm = () => ({
   category: "rent" as ExpenseCategory,
   categoryOther: "",
   amount: "",
-  expenseDate: new Date().toISOString().slice(0, 10),
+  expenseDate: localYmd(),
   vendor: "",
   description: "",
   paymentMethod: "cash",

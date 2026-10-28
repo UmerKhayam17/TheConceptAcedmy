@@ -160,7 +160,7 @@ async function upcomingBirthdays(limit = 8) {
         name: s.studentName,
         studentId: s.studentId || '',
         className: s.classId?.className || '',
-        dateOfBirth: dob.toISOString().slice(0, 10),
+        dateOfBirth: formatDateInTz(dob),
         nextBirthday: formatDateInTz(next),
         daysUntil,
         isToday: md === todayMd,

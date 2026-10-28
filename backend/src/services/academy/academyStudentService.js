@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const ApiError = require('../../utils/ApiError');
+const { todayYmd } = require('../../utils/schoolDay');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const AcademySubject = require('../../models/academy/AcademySubject');
@@ -1126,7 +1127,7 @@ async function changeStudentSection(id, payload) {
 
   const note = String(payload.notes || '').trim();
   if (note) {
-    const stamp = `Section change ${new Date().toISOString().slice(0, 10)}: ${note}`;
+    const stamp = `Section change ${todayYmd()}: ${note}`;
     student.intakeNotes = [String(student.intakeNotes || '').trim(), stamp].filter(Boolean).join('\n');
   }
 

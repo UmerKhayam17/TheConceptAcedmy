@@ -18,7 +18,7 @@ import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchAcademyClasses, fetchFeeStructureByClass, registerProvisionalStudent } from "@/lib/studentManagementApi";
 import { formatMobileInput, isValidMobile, mobileValidationMessage } from "@/lib/pkFieldFormat";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
-import { cn } from "@/lib/utils";
+import { cn, localYmd } from "@/lib/utils";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
 
 const emptyForm = {
@@ -223,7 +223,7 @@ export default function ProvisionalIntakeDialog({
               id="intake-dob"
               value={form.dateOfBirth}
               onChange={(iso) => setForm((f) => ({ ...f, dateOfBirth: iso }))}
-              maxIso={new Date().toISOString().slice(0, 10)}
+              maxIso={localYmd()}
               className={cn(fieldErr("intake-dob") && "[&_input]:border-destructive")}
             />
             {fieldErr("intake-dob") ? (
