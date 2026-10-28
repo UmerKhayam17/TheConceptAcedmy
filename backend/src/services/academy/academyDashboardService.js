@@ -12,6 +12,7 @@ const Role = require('../../models/Role');
 const Exam = require('../../models/Exam');
 const Announcement = require('../../models/Announcement');
 const feeService = require('./academyFeeService');
+const { categoryNameMap } = require('./expenseCategoryService');
 const { dayBounds, todayYmd, formatDateInTz } = require('../../utils/schoolDay');
 
 function monthWindow(monthsBack = 5) {
@@ -90,16 +91,23 @@ async function monthlyFinanceTrends(months) {
 async function expenseByCategory(month, year) {
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59, 999);
-  const rows = await AcademyExpense.aggregate([
-    { $match: { expenseDate: { $gte: start, $lte: end }, status: 'paid' } },
-    { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
-    { $sort: { total: -1 } },
+  const [rows, names] = await Promise.all([
+    AcademyExpense.aggregate([
+      { $match: { expenseDate: { $gte: start, $lte: end }, status: 'paid' } },
+      { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      { $sort: { total: -1 } },
+    ]),
+    categoryNameMap(),
   ]);
-  return rows.map((r) => ({
-    category: r._id || 'other',
-    total: r.total,
-    count: r.count,
-  }));
+  return rows.map((r) => {
+    const category = r._id || 'other';
+    return {
+      category,
+      name: names[category] || category,
+      total: r.total,
+      count: r.count,
+    };
+  });
 }
 
 async function studentsByClass() {
@@ -449,7 +457,7 @@ async function getDashboardOverview({ months = 6 } = {}) {
     AcademyExpense.find({ status: 'paid' })
       .sort({ expenseDate: -1 })
       .limit(15)
-      .select('title amount expenseDate category paymentMethod vendor status')
+      .select('title amount expenseDate category categoryOther paymentMethod vendor status')
       .lean(),
     AcademySalaryRecord.find({})
       .sort({ updatedAt: -1 })
@@ -480,6 +488,7 @@ async function getDashboardOverview({ months = 6 } = {}) {
   const feeStatusMap = Object.fromEntries(
     feeStatusAmounts.map((r) => [r._id, { amount: r.amount, count: r.count }])
   );
+  const categoryNames = await categoryNameMap();
 
   return {
     generatedAt: new Date().toISOString(),
@@ -594,6 +603,10 @@ async function getDashboardOverview({ months = 6 } = {}) {
         amount: e.amount,
         expenseDate: e.expenseDate,
         category: e.category || 'other',
+        categoryName:
+          e.category === 'other' && String(e.categoryOther || '').trim()
+            ? String(e.categoryOther).trim()
+            : categoryNames[e.category] || e.category || 'Other',
         paymentMethod: e.paymentMethod || 'other',
         vendor: e.vendor || '',
         status: e.status,

@@ -41,7 +41,6 @@ import {
   type AcademySubject,
 } from "@/lib/studentManagementApi";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
-import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import {
   generateSubjectCode,
@@ -602,12 +601,12 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
         </div>
       ) : null}
 
-      {/* Filter / action bar — matches registration filter row */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-        <FilterToolbar>
+      {/* One row on a wide screen. If the row cannot fit, controls wrap inside the card. */}
+      <div className="w-full min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex w-full min-w-0 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
           <ClassProgramSelect
             id="subject-class-select"
-            className="w-[16.5rem] shrink-0 min-w-0"
+            className="w-full !min-w-0 lg:w-52 lg:max-w-[15rem] lg:shrink"
             label={false}
             value={classId}
             onChange={setClassId}
@@ -615,7 +614,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
             allowAll
             allLabel="All classes (School + College)"
             disabled={classesLoading || !hasScope}
-            selectClassName={filterSelectClass}
+            selectClassName={cn(filterSelectClass, "w-full min-w-0")}
             optionSuffix={
               isAll
                 ? (c) =>
@@ -625,7 +624,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
             }
           />
           <select
-            className={cn(filterSelectClass, "w-[10rem]")}
+            className={cn(filterSelectClass, "w-full min-w-0 lg:w-36 lg:shrink-0")}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as "" | "active" | "inactive")}
             aria-label="Status filter"
@@ -634,39 +633,39 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-          <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
+          <div className="relative w-full min-w-[8rem] lg:w-44 lg:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input
               id="subjects-search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search subjects..."
-              className="h-10 pl-9 rounded-md border-slate-200 bg-white shadow-none"
+              className="h-10 w-full min-w-0 rounded-md border-slate-200 bg-white pl-9 shadow-none"
             />
           </div>
 
           {writable && (caps.canCreate || caps.canEdit) ? (
-            <FilterToolbarActions>
+            <div className="flex w-full min-w-0 max-w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end lg:ml-auto lg:w-auto">
               {caps.canCreate ? (
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-10 gap-2 rounded-md border-slate-800 text-slate-800 hover:bg-slate-50"
+                  className="h-10 w-full shrink-0 justify-center gap-2 whitespace-nowrap rounded-md border-slate-800 bg-white px-3 text-slate-800 hover:bg-slate-50 hover:text-slate-800 lg:w-auto"
                   disabled={defaultsMut.isPending}
                   onClick={() => {
                     if (!requireClassForAction("auto-initialize subjects")) return;
                     defaultsMut.mutate();
                   }}
                 >
-                  <Sparkles className="h-4 w-4" />
-                  {defaultsMut.isPending ? "Initializing…" : "Auto initialize"}
+                  <Sparkles className="h-4 w-4 shrink-0 text-slate-800" />
+                  <span>{defaultsMut.isPending ? "Initializing…" : "Auto initialize"}</span>
                 </Button>
               ) : null}
               {caps.canEdit && subjects.length > 0 ? (
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-10 gap-2 rounded-md border-slate-800 text-slate-800 hover:bg-slate-50"
+                  className="h-10 w-full shrink-0 justify-center gap-2 whitespace-nowrap rounded-md border-slate-800 bg-white px-3 text-slate-800 hover:bg-slate-50 hover:text-slate-800 lg:w-auto"
                   disabled={weightsMut.isPending}
                   onClick={() => {
                     if (!requireClassForAction("apply subject share")) return;
@@ -679,21 +678,22 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
                     }
                   }}
                 >
-                  <Link2 className="h-4 w-4" />
-                  {weightsMut.isPending ? "Applying…" : "Apply subject share"}
+                  <Link2 className="h-4 w-4 shrink-0 text-slate-800" />
+                  <span>{weightsMut.isPending ? "Applying…" : "Apply subject share"}</span>
                 </Button>
               ) : null}
               {caps.canCreate ? (
                 <Button
-                  className="h-10 gap-2 rounded-md bg-slate-900 text-white hover:bg-slate-800"
+                  className="h-10 w-full shrink-0 justify-center gap-2 whitespace-nowrap rounded-md bg-slate-900 px-3 text-white hover:bg-slate-800 hover:text-white lg:w-auto"
                   onClick={openCreate}
                 >
-                  <Plus className="h-4 w-4" /> Add Subject
+                  <Plus className="h-4 w-4 shrink-0" />
+                  <span>Add Subject</span>
                 </Button>
               ) : null}
-            </FilterToolbarActions>
+            </div>
           ) : null}
-        </FilterToolbar>
+        </div>
       </div>
 
       {/* Table */}

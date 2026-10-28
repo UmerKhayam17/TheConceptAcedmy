@@ -33,6 +33,7 @@ import {
   KeyRound,
   Route,
   ArrowLeftRight,
+  Tags,
 } from "lucide-react";
 import type { Role } from "./auth";
 import type { ModuleKey } from "./permissions";
@@ -185,6 +186,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: SlidersHorizontal,
         moduleKey: "timetable-rules",
         href: (role) => systemConfigHref(role, "timetable-rules"),
+      },
+      {
+        id: "expense-categories",
+        label: "Expense Categories",
+        icon: Tags,
+        moduleKey: "expense-categories",
+        href: (role) => systemConfigHref(role, "expense-categories"),
       },
       {
         id: "timetable-builder",

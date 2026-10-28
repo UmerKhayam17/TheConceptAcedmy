@@ -1099,7 +1099,7 @@ export type DashboardOverview = {
     }[];
     feeStatusMonth: { name: string; value: number; count: number }[];
     attendanceToday: { name: string; value: number }[];
-    expensesByCategory: { category: string; total: number; count: number }[];
+    expensesByCategory: { category: string; name?: string; total: number; count: number }[];
     studentsByClass: { classId: string | null; className: string; count: number }[];
     genderDistribution: { name: string; value: number }[];
     feesByClass?: {
@@ -1168,6 +1168,7 @@ export type DashboardOverview = {
       amount: number;
       expenseDate: string;
       category: string;
+      categoryName?: string;
       paymentMethod: string;
       vendor: string;
       status: string;
@@ -1863,18 +1864,22 @@ export const updateAcademySalaryAmount = (id: string, amount: number) =>
     body: JSON.stringify({ amount }),
   });
 
-// Academy expenses
-export type ExpenseCategory =
-  | "rent"
-  | "utilities"
-  | "supplies"
-  | "maintenance"
-  | "marketing"
-  | "transport"
-  | "staff_other"
-  | "other";
+// Academy expenses — category keys come from Academic Setup → Expense Categories.
+export type ExpenseCategory = string;
 
-export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
+export interface ExpenseCategoryConfig {
+  _id: string;
+  key: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder: number;
+  usageCount?: number;
+  createdAt?: string;
+}
+
+/** Fallback labels for the original built-in keys, used until the catalog loads. */
+export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   rent: "Rent",
   utilities: "Utilities",
   supplies: "Supplies",
@@ -1900,11 +1905,45 @@ export interface AcademyExpense {
   status: "paid" | "planned";
 }
 
-/** Display label for expense category (uses custom name for Other). */
-export function expenseCategoryLabel(row: Pick<AcademyExpense, "category" | "categoryOther">): string {
+/** Display label for an expense category (configured name, or the free-text Other label). */
+export function expenseCategoryLabel(
+  row: Pick<AcademyExpense, "category" | "categoryOther">,
+  categories?: Pick<ExpenseCategoryConfig, "key" | "name">[],
+): string {
   if (row.category === "other" && row.categoryOther?.trim()) return row.categoryOther.trim();
+  const configured = categories?.find((c) => c.key === row.category)?.name;
+  if (configured) return configured;
   return EXPENSE_CATEGORY_LABELS[row.category] || row.category;
 }
+
+export const fetchExpenseCategories = () => api<ExpenseCategoryConfig[]>("/expense-categories");
+
+export const createExpenseCategory = (body: {
+  name: string;
+  description?: string;
+  isActive?: boolean;
+}) =>
+  api<ExpenseCategoryConfig>("/expense-categories", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const seedExpenseCategories = () =>
+  api<{ created: number; skipped: number; total: number }>("/expense-categories/seed", {
+    method: "POST",
+  });
+
+export const updateExpenseCategory = (
+  id: string,
+  body: { name?: string; description?: string; isActive?: boolean },
+) =>
+  api<ExpenseCategoryConfig>(`/expense-categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+
+export const deleteExpenseCategory = (id: string) =>
+  api<{ deleted: boolean }>(`/expense-categories/${id}`, { method: "DELETE" });
 
 export interface AcademyExpenseSummary {
   recordsCount: number;

@@ -458,20 +458,9 @@ const academySalaryGenerate = Joi.object({
   roleName: Joi.string().valid('teacher', 'accountant').optional(),
 });
 
-const expenseCategories = [
-  'rent',
-  'utilities',
-  'supplies',
-  'maintenance',
-  'marketing',
-  'transport',
-  'staff_other',
-  'other',
-];
-
 const academyExpenseBody = Joi.object({
   title: Joi.string().trim().required(),
-  category: Joi.string().valid(...expenseCategories).default('other'),
+  category: Joi.string().trim().max(60).default('other'),
   categoryOther: Joi.string().allow('').trim().max(80),
   amount: Joi.number().min(0).required(),
   expenseDate: Joi.date().required(),
@@ -482,9 +471,21 @@ const academyExpenseBody = Joi.object({
   status: Joi.string().valid('paid', 'planned').optional(),
 });
 
+const expenseCategoryBody = Joi.object({
+  name: Joi.string().trim().min(1).max(80).required(),
+  description: Joi.string().allow('').trim().max(160).optional(),
+  isActive: Joi.boolean().optional(),
+});
+
+const expenseCategoryPatch = Joi.object({
+  name: Joi.string().trim().min(1).max(80),
+  description: Joi.string().allow('').trim().max(160),
+  isActive: Joi.boolean(),
+}).min(1);
+
 const academyExpensePatch = Joi.object({
   title: Joi.string().trim(),
-  category: Joi.string().valid(...expenseCategories),
+  category: Joi.string().trim().max(60),
   categoryOther: Joi.string().allow('').trim().max(80),
   amount: Joi.number().min(0),
   expenseDate: Joi.date(),
@@ -682,6 +683,8 @@ module.exports = {
   academySalaryGenerate,
   academyExpenseBody,
   academyExpensePatch,
+  expenseCategoryBody,
+  expenseCategoryPatch,
   feePreview,
   discountReportQuery,
   academyAssessmentBody,

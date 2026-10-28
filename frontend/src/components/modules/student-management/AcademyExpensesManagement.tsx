@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Receipt, Search } from "lucide-react";
+import { ChevronDown, Plus, Receipt, Search, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
+import { systemConfigHref } from "@/lib/systemConfigMenus";
 import {
   createAcademyExpense,
   deleteAcademyExpense,
@@ -24,9 +27,10 @@ import {
   exportAcademyExpenseReport,
   fetchAcademyExpenses,
   fetchAcademyExpenseSummary,
+  fetchExpenseCategories,
   updateAcademyExpense,
   type AcademyExpense,
-  type ExpenseCategory,
+  type ExpenseCategoryConfig,
   type ExpenseReportFormat,
 } from "@/lib/studentManagementApi";
 import { cn, localYmd } from "@/lib/utils";
@@ -35,9 +39,6 @@ import { formatPkr } from "./studentDisplayUtils";
 import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
 import { DefaulterListDownload } from "./DefaulterListDownload";
-import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
-
-const CATEGORIES = Object.keys(EXPENSE_CATEGORY_LABELS) as ExpenseCategory[];
 
 const FULL_MONTH_NAMES = [
   "January",
@@ -54,12 +55,43 @@ const FULL_MONTH_NAMES = [
   "December",
 ];
 
-const selectClass =
-  "h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[7.5rem] shrink-0";
+const filterLabelClass =
+  "mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400";
+const filterControlClass =
+  "h-10 w-full cursor-pointer appearance-none truncate rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-800 shadow-none outline-none transition-[border-color,box-shadow] hover:border-slate-300 focus:border-[#1a2b4b]/40 focus:ring-2 focus:ring-[#1a2b4b]/10";
 
-const emptyForm = () => ({
+function ExpenseFilterSelect({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className={filterLabelClass}>{label}</span>
+      <span className="relative block">
+        <select
+          className={filterControlClass}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={label}
+        >
+          {children}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      </span>
+    </label>
+  );
+}
+
+const emptyForm = (category = "rent") => ({
   title: "",
-  category: "rent" as ExpenseCategory,
+  category,
   categoryOther: "",
   amount: "",
   expenseDate: localYmd(),
@@ -86,8 +118,29 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+function categoryChoices(
+  categories: ExpenseCategoryConfig[],
+  selectedKey: string,
+): ExpenseCategoryConfig[] {
+  const active = categories.filter((c) => c.isActive);
+  if (!selectedKey || active.some((c) => c.key === selectedKey)) return active;
+  const current = categories.find((c) => c.key === selectedKey);
+  if (current) return [current, ...active];
+  return [
+    {
+      _id: selectedKey,
+      key: selectedKey,
+      name: EXPENSE_CATEGORY_LABELS[selectedKey] || selectedKey,
+      isActive: false,
+      sortOrder: 0,
+    },
+    ...active,
+  ];
+}
+
 export default function AcademyExpensesManagement({ caps }: { caps: ModuleActionCaps }) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const now = new Date();
   const [month, setMonth] = useState(String(now.getMonth() + 1));
@@ -103,6 +156,16 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
   const [deleteTarget, setDeleteTarget] = useState<AcademyExpense | null>(null);
   const [exporting, setExporting] = useState<ExpenseReportFormat | null>(null);
 
+  const { data: categories = [] } = useQuery({
+    queryKey: ["expense-categories"],
+    queryFn: fetchExpenseCategories,
+  });
+  const activeCategories = useMemo(() => categories.filter((c) => c.isActive), [categories]);
+  const formCategories = useMemo(
+    () => categoryChoices(categories, form.category),
+    [categories, form.category],
+  );
+
   const filterParams = useMemo(
     () => ({
       month: Number(month),
@@ -115,6 +178,12 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
   useEffect(() => {
     setPage(1);
   }, [month, year, categoryFilter, statusFilter, search]);
+
+  useEffect(() => {
+    if (!dialogOpen || editing || activeCategories.length === 0) return;
+    if (activeCategories.some((c) => c.key === form.category)) return;
+    setForm((f) => ({ ...f, category: activeCategories[0].key }));
+  }, [activeCategories, dialogOpen, editing, form.category]);
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["academy-expenses-summary", filterParams],
@@ -139,6 +208,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
       if (!form.title.trim() || !amount || amount <= 0) {
         throw new Error("Title and a valid amount are required");
       }
+      if (!form.category) throw new Error("Choose an expense category");
       const body = {
         title: form.title.trim(),
         category: form.category,
@@ -184,7 +254,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyForm());
+    setForm(emptyForm(activeCategories[0]?.key || "rent"));
     setDialogOpen(true);
   };
 
@@ -321,77 +391,80 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                 key={cat}
                 className="text-xs rounded-full bg-muted px-2.5 py-1"
               >
-                {EXPENSE_CATEGORY_LABELS[cat as ExpenseCategory] || cat}: {formatPkr(amt)}
+                {expenseCategoryLabel({ category: cat }, categories)}: {formatPkr(amt)}
               </span>
             ))}
           </div>
         </Card>
       )}
 
-      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
-        <FilterToolbar>
-          <select
-            className={cn(selectClass, "w-[10rem]")}
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            aria-label="Month"
-          >
-            {FULL_MONTH_NAMES.map((name, i) => (
-              <option key={name} value={String(i + 1)}>
-                {name}
-              </option>
-            ))}
-          </select>
-          <select
-            className={cn(selectClass, "w-[7rem] min-w-[7rem]")}
-            value={year}
-            onChange={(e) => setYear(e.target.value)}
-            aria-label="Year"
-          >
-            {Array.from({ length: 6 }, (_, i) => now.getFullYear() - 2 + i).map((y) => (
-              <option key={y} value={String(y)}>
-                {y}
-              </option>
-            ))}
-          </select>
-          <select
-            className={cn(selectClass, "min-w-[10rem]")}
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            aria-label="Category"
-          >
-            <option value="">All categories</option>
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {EXPENSE_CATEGORY_LABELS[c]}
-              </option>
-            ))}
-          </select>
-          <select
-            className={cn(selectClass, "min-w-[8rem]")}
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            aria-label="Status"
-          >
-            <option value="">All status</option>
-            <option value="paid">Paid</option>
-            <option value="planned">Planned</option>
-          </select>
-
-          <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search title, vendor, invoice / slip…"
-              className="h-10 pl-9"
-              aria-label="Search expenses"
-            />
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+          <div className="grid min-w-0 flex-1 grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <ExpenseFilterSelect label="Month" value={month} onChange={setMonth}>
+              {FULL_MONTH_NAMES.map((name, i) => (
+                <option key={name} value={String(i + 1)}>
+                  {name}
+                </option>
+              ))}
+            </ExpenseFilterSelect>
+            <ExpenseFilterSelect label="Year" value={year} onChange={setYear}>
+              {Array.from({ length: 6 }, (_, i) => now.getFullYear() - 2 + i).map((y) => (
+                <option key={y} value={String(y)}>
+                  {y}
+                </option>
+              ))}
+            </ExpenseFilterSelect>
+            <ExpenseFilterSelect
+              label="Category"
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+            >
+              <option value="">All categories</option>
+              {categories.map((c) => (
+                <option key={c._id} value={c.key}>
+                  {c.name}
+                  {c.isActive ? "" : " (inactive)"}
+                </option>
+              ))}
+            </ExpenseFilterSelect>
+            <ExpenseFilterSelect label="Status" value={statusFilter} onChange={setStatusFilter}>
+              <option value="">All status</option>
+              <option value="paid">Paid</option>
+              <option value="planned">Planned</option>
+            </ExpenseFilterSelect>
           </div>
 
-          <FilterToolbarActions>
+          <label className="block min-w-0 xl:w-72 xl:shrink-0">
+            <span className={filterLabelClass}>Search</span>
+            <span className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Title, vendor, invoice…"
+                className="h-10 rounded-lg border-slate-200 bg-white pl-9 pr-9 text-sm shadow-none placeholder:text-slate-400 focus-visible:border-[#1a2b4b]/40 focus-visible:ring-[#1a2b4b]/10"
+                aria-label="Search expenses"
+              />
+              {search ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </span>
+          </label>
+
+          <div className="flex min-w-0 flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:justify-end xl:shrink-0 xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0">
             {canManage && (
-              <Button className="gap-2 h-10" onClick={openCreate}>
+              <Button
+                className="h-10 gap-2 rounded-lg bg-[#1a2b4b] px-4 text-white shadow-sm hover:bg-[#15233d]"
+                onClick={openCreate}
+              >
                 <Plus className="h-4 w-4" /> Add expense
               </Button>
             )}
@@ -399,13 +472,14 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
               <DefaulterListDownload
                 size="default"
                 label="Print / Export"
+                className="rounded-lg border-slate-200 shadow-none"
                 exporting={exporting}
                 onDownload={(format) => void handleExport(format)}
               />
             )}
-          </FilterToolbarActions>
-        </FilterToolbar>
-      </Card>
+          </div>
+        </div>
+      </div>
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -448,7 +522,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                     )}
                   </td>
                   <td className="p-2.5 hidden md:table-cell">
-                    {expenseCategoryLabel(row)}
+                    {expenseCategoryLabel(row, categories)}
                   </td>
                   <td className="p-2.5">{formatPkr(row.amount)}</td>
                   <td className="p-2.5">
@@ -524,18 +598,31 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                 onChange={(e) =>
                   setForm((f) => ({
                     ...f,
-                    category: e.target.value as ExpenseCategory,
-                    categoryOther:
-                      e.target.value === "other" ? f.categoryOther : "",
+                    category: e.target.value,
+                    categoryOther: e.target.value === "other" ? f.categoryOther : "",
                   }))
                 }
               >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {EXPENSE_CATEGORY_LABELS[c]}
+                {formCategories.length === 0 && <option value="">No categories</option>}
+                {formCategories.map((c) => (
+                  <option key={c._id} value={c.key}>
+                    {c.name}
+                    {c.isActive ? "" : " (inactive)"}
                   </option>
                 ))}
               </select>
+              {activeCategories.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Add categories in{" "}
+                  <Link
+                    to={systemConfigHref(user?.role ?? "admin", "expense-categories")}
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    Academic Setup → Expense Categories
+                  </Link>
+                  .
+                </p>
+              )}
             </div>
             {form.category === "other" && (
               <div className="space-y-1.5">

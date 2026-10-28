@@ -32,6 +32,7 @@ const PARENT_FORBIDDEN_MODULE_KEYS = [
   'changeSection',
   'salary',
   'academyExpense',
+  'expenseCategories',
   'profile',
   'role',
   'parentUsers',

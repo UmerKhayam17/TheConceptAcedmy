@@ -65,7 +65,6 @@ import {
   EXPENSE_CATEGORY_LABELS,
   fetchDashboardOverview,
   fetchFeeDefaulters,
-  type ExpenseCategory,
 } from "@/lib/studentManagementApi";
 
 type PeriodView = "monthly" | "quarterly" | "yearly";
@@ -354,7 +353,7 @@ const FinanceDashboard = () => {
 
   const expenseBreakdown = useMemo(() => {
     const cats = (overview?.charts.expensesByCategory || []).map((c, i) => ({
-      name: EXPENSE_CATEGORY_LABELS[c.category as ExpenseCategory] || c.category,
+      name: c.name || EXPENSE_CATEGORY_LABELS[c.category] || c.category,
       amount: c.total,
       color: CHART_COLORS[i % CHART_COLORS.length],
       count: c.count,
@@ -438,7 +437,7 @@ const FinanceDashboard = () => {
       date: formatShortDate(e.expenseDate),
       type: "Expense",
       studentOrPayee: e.vendor || e.title,
-      description: EXPENSE_CATEGORY_LABELS[e.category as ExpenseCategory] || e.category,
+      description: e.categoryName || EXPENSE_CATEGORY_LABELS[e.category] || e.category,
       method: mapPaymentMethod(e.paymentMethod),
       amount: e.amount,
       status: e.status === "paid" ? "Paid" : "Pending",

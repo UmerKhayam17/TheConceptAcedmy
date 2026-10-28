@@ -1,5 +1,6 @@
 const AcademyExpense = require('../../models/academy/AcademyExpense');
 const { renderBrandedPdf, renderBrandedExcel, formatDate } = require('./academyReportDocument');
+const { categoryNameMap, displayCategory } = require('./expenseCategoryService');
 
 const MONTHS = [
   'January',
@@ -15,17 +16,6 @@ const MONTHS = [
   'November',
   'December',
 ];
-
-const CATEGORY_LABELS = {
-  rent: 'Rent',
-  utilities: 'Utilities',
-  supplies: 'Supplies',
-  maintenance: 'Maintenance',
-  marketing: 'Marketing',
-  transport: 'Transport',
-  staff_other: 'Staff (other)',
-  other: 'Other',
-};
 
 function buildExpenseQuery({ category, status, month, year, search }) {
   const q = {};
@@ -54,12 +44,8 @@ function buildExpenseQuery({ category, status, month, year, search }) {
   return q;
 }
 
-function categoryDisplay(r) {
-  if (r.category === 'other' && r.categoryOther) return String(r.categoryOther).trim();
-  return CATEGORY_LABELS[r.category] || r.category || '—';
-}
-
 async function loadExpenseData(filters) {
+  const names = await categoryNameMap();
   const q = buildExpenseQuery(filters);
   const records = await AcademyExpense.find(q)
     .sort({ expenseDate: -1, createdAt: -1 })
@@ -79,7 +65,7 @@ async function loadExpenseData(filters) {
       serial: idx + 1,
       date: formatDate(r.expenseDate),
       title: r.title || '—',
-      category: categoryDisplay(r),
+      category: displayCategory(r, names),
       vendor: r.vendor || '—',
       amount,
       status: String(r.status || '').replace(/^\w/, (c) => c.toUpperCase()),

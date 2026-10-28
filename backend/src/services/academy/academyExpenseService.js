@@ -1,6 +1,7 @@
 const ApiError = require('../../utils/ApiError');
 const AcademyExpense = require('../../models/academy/AcademyExpense');
 const { populateCreatedBy } = require('../../utils/createdBy');
+const { assertActiveCategory } = require('./expenseCategoryService');
 
 async function buildExpenseQuery({ category, status, month, year, search }) {
   const q = {};
@@ -67,7 +68,7 @@ function resolveCategoryOther(category, categoryOther) {
 }
 
 async function createExpense(body, userId) {
-  const category = body.category || 'other';
+  const category = await assertActiveCategory(body.category || 'other');
   return AcademyExpense.create({
     ...body,
     category,
@@ -82,7 +83,10 @@ async function updateExpense(id, body) {
   const row = await AcademyExpense.findById(id);
   if (!row) throw new ApiError(404, 'Expense not found');
   if (body.title !== undefined) row.title = body.title;
-  if (body.category !== undefined) row.category = body.category;
+  if (body.category !== undefined) {
+    const next = String(body.category).trim().toLowerCase();
+    row.category = next === row.category ? row.category : await assertActiveCategory(next);
+  }
   if (body.categoryOther !== undefined || body.category !== undefined) {
     const nextCategory = body.category !== undefined ? body.category : row.category;
     const nextOther =

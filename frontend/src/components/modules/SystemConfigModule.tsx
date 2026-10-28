@@ -19,6 +19,7 @@ import TimetableSettingsTab from "@/components/modules/timetable/TimetableSettin
 import SessionHistoryTab from "@/components/modules/timetable/SessionHistoryTab";
 import SessionDetailPage from "@/components/modules/timetable/SessionDetailPage";
 import AssessmentsConfigTab from "@/components/modules/timetable/AssessmentsConfigTab";
+import ExpenseCategoriesTab from "@/components/modules/timetable/ExpenseCategoriesTab";
 import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 
 const SystemConfigModule = ({
@@ -73,7 +74,7 @@ const SystemConfigModule = ({
     return <Navigate to={`../${section}`} replace />;
   }
 
-  const needsSession = section !== "history";
+  const needsSession = section !== "history" && section !== "expense-categories";
   const editCaps: ModuleActionCaps = writable
     ? caps
     : { ...caps, canCreate: false, canEdit: false, canDelete: false };
@@ -109,6 +110,7 @@ const SystemConfigModule = ({
           )}
           {section === "timetable-rules" && <TimetableSettingsTab sessionId={sessionId} caps={editCaps} />}
           {section === "history" && <SessionHistoryTab caps={caps} />}
+          {section === "expense-categories" && <ExpenseCategoriesTab caps={caps} />}
         </>
       )}
     </div>

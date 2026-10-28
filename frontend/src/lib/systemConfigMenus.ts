@@ -8,6 +8,7 @@ import {
   History,
   Link2,
   SlidersHorizontal,
+  Tags,
   UserCircle,
 } from "lucide-react";
 import type { Role } from "./auth";
@@ -25,6 +26,7 @@ export type SystemConfigSection =
   | "teacher-assignments"
   | "subject-teachers"
   | "timetable-rules"
+  | "expense-categories"
   | "history";
 
 export const SYSTEM_CONFIG_SECTIONS: {
@@ -41,6 +43,7 @@ export const SYSTEM_CONFIG_SECTIONS: {
     { key: "teachers", label: "Teachers", icon: UserCircle },
     { key: "subject-teachers", label: "Subject Teachers", icon: Link2 },
     { key: "timetable-rules", label: "Timetable Rules", icon: SlidersHorizontal },
+    { key: "expense-categories", label: "Expense Categories", icon: Tags },
   ];
 
 export const SYSTEM_CONFIG_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(SYSTEM_CONFIG_SECTIONS, [
@@ -53,6 +56,7 @@ export const SYSTEM_CONFIG_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(SYSTEM_CON
     label: "Teachers",
     keys: ["teachers", "subject-teachers"],
   },
+  { label: "Finance", keys: ["expense-categories"] },
 ]);
 
 export const DEFAULT_SYSTEM_CONFIG_SECTION: SystemConfigSection = "academic";

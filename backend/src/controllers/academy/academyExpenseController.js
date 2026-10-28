@@ -1,6 +1,7 @@
 const catchAsync = require('../../utils/catchAsync');
 const expenseService = require('../../services/academy/academyExpenseService');
 const expenseExportService = require('../../services/academy/academyExpenseExportService');
+const expenseCategoryService = require('../../services/academy/expenseCategoryService');
 
 const list = catchAsync(async (req, res) => {
   const result = await expenseService.listExpenses({
@@ -81,4 +82,41 @@ const exportReport = catchAsync(async (req, res) => {
   res.send(Buffer.from(buffer));
 });
 
-module.exports = { list, summary, create, update, remove, exportReport };
+const listCategories = catchAsync(async (_req, res) => {
+  const data = await expenseCategoryService.listCategories();
+  res.json({ success: true, data });
+});
+
+const createCategory = catchAsync(async (req, res) => {
+  const data = await expenseCategoryService.createCategory(req.body);
+  res.status(201).json({ success: true, data });
+});
+
+const seedCategories = catchAsync(async (_req, res) => {
+  const data = await expenseCategoryService.seedSheetCategories();
+  res.status(201).json({ success: true, data });
+});
+
+const updateCategory = catchAsync(async (req, res) => {
+  const data = await expenseCategoryService.updateCategory(req.params.id, req.body);
+  res.json({ success: true, data });
+});
+
+const removeCategory = catchAsync(async (req, res) => {
+  const data = await expenseCategoryService.deleteCategory(req.params.id);
+  res.json({ success: true, data });
+});
+
+module.exports = {
+  list,
+  summary,
+  create,
+  update,
+  remove,
+  exportReport,
+  listCategories,
+  createCategory,
+  seedCategories,
+  updateCategory,
+  removeCategory,
+};

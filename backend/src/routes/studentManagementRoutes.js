@@ -1,6 +1,15 @@
 const { Router } = require('express');
 const { protect } = require('../middleware/auth');
-const { requirePermission, requireAnyPermission, requireFeeReadAccess } = require('../middleware/permissions');
+const {
+  requirePermission,
+  requireAnyPermission,
+  requireFeeReadAccess,
+  requireModulePermission,
+  hasLegacyOrModulePermission,
+} = require('../middleware/permissions');
+const { hasModulePermission } = require('../modules');
+const { isSystemAdmin } = require('../utils/systemAdmin');
+const ApiError = require('../utils/ApiError');
 const { validate } = require('../middleware/validate');
 const schemas = require('../validators/academySchemas');
 
@@ -603,6 +612,40 @@ router.patch(
   requirePermission('manage_academy_salaries'),
   validate(schemas.academySalaryPay),
   salaryCtrl.pay
+);
+
+function canReadExpenseCategories(req, res, next) {
+  if (isSystemAdmin(req.user)) return next();
+  if (hasModulePermission(req.user, 'expenseCategories', 'view')) return next();
+  if (hasModulePermission(req.user, 'academyExpense', 'view')) return next();
+  if (hasLegacyOrModulePermission(req.user, 'view_academy_expenses')) return next();
+  if (hasLegacyOrModulePermission(req.user, 'manage_academy_expenses')) return next();
+  return next(new ApiError(403, 'You do not have permission for this action'));
+}
+
+// Expense categories (configured in Academic Setup, used by Academy Expenses)
+router.get('/expense-categories', canReadExpenseCategories, expenseCtrl.listCategories);
+router.post(
+  '/expense-categories/seed',
+  requireModulePermission('expenseCategories', 'create'),
+  expenseCtrl.seedCategories
+);
+router.post(
+  '/expense-categories',
+  requireModulePermission('expenseCategories', 'create'),
+  validate(schemas.expenseCategoryBody),
+  expenseCtrl.createCategory
+);
+router.patch(
+  '/expense-categories/:id',
+  requireModulePermission('expenseCategories', 'edit'),
+  validate(schemas.expenseCategoryPatch),
+  expenseCtrl.updateCategory
+);
+router.delete(
+  '/expense-categories/:id',
+  requireModulePermission('expenseCategories', 'delete'),
+  expenseCtrl.removeCategory
 );
 
 // Academy expenses

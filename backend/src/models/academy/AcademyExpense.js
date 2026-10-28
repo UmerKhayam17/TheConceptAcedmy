@@ -1,20 +1,10 @@
 const mongoose = require('mongoose');
 
-const EXPENSE_CATEGORIES = [
-  'rent',
-  'utilities',
-  'supplies',
-  'maintenance',
-  'marketing',
-  'transport',
-  'staff_other',
-  'other',
-];
-
 const academyExpenseSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
-    category: { type: String, enum: EXPENSE_CATEGORIES, default: 'other', index: true },
+    /** Key from Academic Setup → Expense Categories. */
+    category: { type: String, required: true, trim: true, lowercase: true, index: true },
     /** Free-text category name when category is `other`. */
     categoryOther: { type: String, trim: true },
     amount: { type: Number, required: true, min: 0 },
@@ -35,4 +25,3 @@ const academyExpenseSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model('AcademyExpense', academyExpenseSchema);
-module.exports.EXPENSE_CATEGORIES = EXPENSE_CATEGORIES;

@@ -2,7 +2,7 @@ import {
   ShieldCheck, Calculator, GraduationCap, Users, LayoutDashboard,
   BookOpen, DollarSign, Calendar, Bell, BarChart3, UserCog, ClipboardList,
   Wallet, MessageSquare, Award, Receipt, Settings as SettingsIcon, FileText, School, KeyRound, ListTree,
-  SlidersHorizontal, NotebookPen, FolderOpen, ListChecks, TrendingUp, ShieldAlert, UsersRound,
+  SlidersHorizontal, Tags, NotebookPen, FolderOpen, ListChecks, TrendingUp, ShieldAlert, UsersRound,
   ScanFace, Shield,
   Video, Library, CalendarRange, BellRing, Palmtree, Clock, User,
 } from "lucide-react";
@@ -24,7 +24,7 @@ import {
 export const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard, Users, UserCog, GraduationCap, ClipboardList, Calendar,
   BookOpen, Award, Wallet, DollarSign, MessageSquare, Bell, BarChart3,
-  Settings: SettingsIcon, FileText, KeyRound, ListTree, School, SlidersHorizontal, Receipt,
+  Settings: SettingsIcon, FileText, KeyRound, ListTree, School, SlidersHorizontal, Receipt, Tags,
   NotebookPen, FolderOpen, ListChecks, TrendingUp, ShieldAlert, UsersRound,
   Video, Library, CalendarRange, BellRing, Palmtree, Clock, User, ScanFace, Shield,
 };
@@ -126,6 +126,7 @@ const LEAF_HREF: Partial<Record<ModuleKey, (role: Role) => string>> = {
   rooms: (role) => systemConfigHref(role, "rooms"),
   periods: (role) => systemConfigHref(role, "periods"),
   "timetable-rules": (role) => systemConfigHref(role, "timetable-rules"),
+  "expense-categories": (role) => systemConfigHref(role, "expense-categories"),
   teachers: (role) => systemConfigHref(role, "teachers"),
   "subject-teachers": (role) => systemConfigHref(role, "subject-teachers"),
   classes: (role) => studentManagementHref(role, "classes"),

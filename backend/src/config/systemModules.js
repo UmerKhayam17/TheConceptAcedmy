@@ -203,6 +203,16 @@ const SYSTEM_MODULES = [
     actions: CRUD,
     parentGroup: 'teacher-management',
   },
+  {
+    key: 'expenseCategories',
+    panelSlug: 'expense-categories',
+    label: 'Expense Categories',
+    icon: 'Tags',
+    description: 'Categories used when recording academy expenses',
+    order: 33,
+    actions: CRUD,
+    parentGroup: 'academic-setup',
+  },
   // Coarse parent — migration only
   {
     key: 'config',
@@ -641,6 +651,7 @@ const LEGACY_MODULE_EXPANSION = {
     'examCatalog',
     'teachers',
     'subjectTeachers',
+    'expenseCategories',
   ],
   studentManagement: [
     'classes',
