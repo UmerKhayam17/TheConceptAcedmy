@@ -228,6 +228,11 @@ function isWorkingDay(session, weekday) {
   return days.length === 0 || days.includes(weekday);
 }
 
+/** A period with no saved mark counts as present. */
+function defaultStatus(status) {
+  return PERIOD_STATUSES.has(status) ? status : 'present';
+}
+
 function dayPeriod(status) {
   return {
     periodKey: DAY_PERIOD_KEY,
@@ -238,7 +243,7 @@ function dayPeriod(status) {
     classLabel: '',
     sectionLabel: '',
     subjectLabel: '',
-    status: status || '',
+    status: defaultStatus(status),
   };
 }
 
@@ -272,7 +277,7 @@ function publicPeriod(row, status) {
     classLabel: classLabel(row),
     sectionLabel: sectionLabel(row),
     subjectLabel: subjectLabel(row),
-    status: status || '',
+    status: defaultStatus(status),
   };
 }
 

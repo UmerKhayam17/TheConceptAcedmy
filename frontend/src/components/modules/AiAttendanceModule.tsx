@@ -975,7 +975,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
               <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
                 AI Attendance
               </h2>
-              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
+              <p className="mt-0.5 hidden text-xs leading-snug text-slate-500 max-w-md sm:block sm:text-sm">
                 Enroll faces with webcam or phone camera. CCTV is used only for live attendance.
               </p>
             </div>
@@ -1511,9 +1511,6 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
 
       {tab === "monitor" && (
         <Card className="p-3 sm:p-4 space-y-3 w-full">
-          <p className="text-sm text-muted-foreground">
-            Start the webcam. A recognized face is marked automatically when confidence is at least 75%. The phone says the student’s name and “is present.” Keep the volume up.
-          </p>
           <video
             ref={monitorVideoRef}
             className="w-full rounded-md bg-black aspect-[4/3] sm:aspect-video object-cover"

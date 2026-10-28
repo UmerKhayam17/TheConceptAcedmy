@@ -63,12 +63,18 @@ import { localTodayYmd } from "@/lib/localDate";
 import { cn, formatWallClockRange } from "@/lib/utils";
 
 const PERIOD_STATUSES: { value: StaffPeriodStatus; label: string }[] = [
-  { value: "", label: "Unmarked" },
   { value: "present", label: "Present" },
   { value: "absent", label: "Absent" },
   { value: "late", label: "Late" },
   { value: "leave", label: "Leave" },
 ];
+
+function defaultPeriodStatus(status?: string | null): StaffPeriodStatus {
+  if (status === "present" || status === "late" || status === "absent" || status === "leave") {
+    return status;
+  }
+  return "present";
+}
 
 const STATUS_SELECT_CLASS: Record<string, string> = {
   present:
@@ -88,15 +94,15 @@ const STATUS_PILL_CLASS: Record<string, string> = {
 };
 
 function StatusPill({ status }: { status?: string | null }) {
-  if (!status) return <span className="text-muted-foreground">Unmarked</span>;
+  const resolved = defaultPeriodStatus(status);
   return (
     <span
       className={cn(
         "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize",
-        STATUS_PILL_CLASS[status] || "bg-muted text-muted-foreground"
+        STATUS_PILL_CLASS[resolved] || "bg-muted text-muted-foreground"
       )}
     >
-      {status.replace("_", " ")}
+      {resolved.replace("_", " ")}
     </span>
   );
 }
@@ -215,7 +221,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
           const key = periodDraftKey(teacher.userId, period.periodKey);
           if (next[key]?.dirty) return;
           next[key] = {
-            status: (period.status || "") as StaffPeriodStatus,
+            status: defaultPeriodStatus(period.status),
             dirty: false,
           };
         });
@@ -299,28 +305,28 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     return dailyTeachers;
   }, [dailyTeachers, isAdmin, reportStaffId]);
 
+  const saveableCount = useMemo(
+    () => markingTeachers.reduce((n, teacher) => n + teacher.periods.length, 0),
+    [markingTeachers]
+  );
+
   const saveAll = async () => {
     if (!sessionId) {
       toast({ title: "Select a session first", variant: "destructive" });
       return;
     }
     const marks = markingTeachers.flatMap((teacher) =>
-      teacher.periods
-        .map((period) => {
-          const draft = drafts[periodDraftKey(teacher.userId, period.periodKey)];
-          if (!draft?.dirty) return null;
-          return {
-            userId: teacher.userId,
-            periodKey: period.periodKey,
-            status: draft.status,
-          };
-        })
-        .filter((row): row is { userId: string; periodKey: string; status: StaffPeriodStatus } =>
-          Boolean(row)
-        )
+      teacher.periods.map((period) => {
+        const draft = drafts[periodDraftKey(teacher.userId, period.periodKey)];
+        return {
+          userId: teacher.userId,
+          periodKey: period.periodKey,
+          status: defaultPeriodStatus(draft?.status ?? period.status),
+        };
+      })
     );
     if (!marks.length) {
-      toast({ title: "Nothing to save", description: "Choose present, absent, late, or leave." });
+      toast({ title: "Nothing to save", description: "No periods on the timetable for this day." });
       return;
     }
     setSavingAll(true);
@@ -404,14 +410,11 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     if (view === "daily") {
       markingTeachers.forEach((teacher) =>
         teacher.periods.forEach((period) => {
-          const status =
-            drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ?? period.status ?? "";
+          const status = defaultPeriodStatus(
+            drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ?? period.status
+          );
           counts.totalClasses += 1;
-          if (status === "present" || status === "late" || status === "absent" || status === "leave") {
-            counts[status] += 1;
-          } else {
-            counts.unmarked += 1;
-          }
+          counts[status] += 1;
         })
       );
     } else {
@@ -456,8 +459,8 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                 Staff Attendance
               </h1>
               <p className="mt-0.5 max-w-xl text-xs leading-snug text-slate-500 sm:text-sm">
-                Period time and class come from the published timetable. Mark each period as
-                present, absent, late, or leave.
+                Period time and class come from the published timetable. Each period starts as
+                present — change it to absent, late, or leave when needed.
               </p>
             </div>
           </div>
@@ -659,7 +662,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
             {view === "daily" && canMark && (
               <Button
                 className="hidden h-10 gap-2 lg:inline-flex"
-                disabled={savingAll || dirtyCount === 0}
+                disabled={savingAll || saveableCount === 0}
                 onClick={() => void saveAll()}
               >
                 <Save className="h-4 w-4" />
@@ -806,11 +809,15 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
         </Card>
       )}
     </div>
-    {view === "daily" && canMark && dirtyCount > 0 && (
+    {view === "daily" && canMark && saveableCount > 0 && (
       <div className="shrink-0 border-t border-slate-200 bg-white/95 px-3 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:hidden">
         <Button className="h-11 w-full gap-2" disabled={savingAll} onClick={() => void saveAll()}>
           <Save className="h-4 w-4" />
-          {savingAll ? "Saving…" : `Save ${dirtyCount} change${dirtyCount === 1 ? "" : "s"}`}
+          {savingAll
+            ? "Saving…"
+            : dirtyCount > 0
+              ? `Save ${dirtyCount} change${dirtyCount === 1 ? "" : "s"}`
+              : "Save"}
         </Button>
       </div>
     )}
@@ -874,7 +881,7 @@ function DayStatusControl({
 }) {
   const style = DAY_STATUS_STYLE[status] || DAY_STATUS_STYLE[""];
   const Icon = style.icon;
-  const text = PERIOD_STATUSES.find((s) => s.value === status)?.label || "Unmarked";
+  const text = PERIOD_STATUSES.find((s) => s.value === status)?.label || "Present";
   return (
     <div
       className={cn(
@@ -1027,9 +1034,9 @@ function DayClassGrid({
   if (loading) return <p className="p-2 text-sm text-muted-foreground">Loading timetable…</p>;
 
   const statusFor = (teacher: StaffPeriodTeacher, period: StaffPeriodTeacher["periods"][number]) =>
-    (drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ??
-      period.status ??
-      "") as StaffPeriodStatus;
+    defaultPeriodStatus(
+      drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ?? period.status
+    );
 
   const teacherWidth = "15rem";
   const classWidth = "13.5rem";
@@ -1051,9 +1058,6 @@ function DayClassGrid({
       { key: "present", label: "Mark all present", icon: UserCheck, onClick: () => markAll("present") },
       { key: "absent", label: "Mark all absent", icon: CircleX, onClick: () => markAll("absent") },
       { key: "leave", label: "Mark all leave", icon: PlaneTakeoff, onClick: () => markAll("leave") },
-      ...(statuses.some(Boolean)
-        ? [{ key: "clear", label: "Clear marks", icon: CircleDashed, onClick: () => markAll("") }]
-        : []),
     ];
     return { teacher, statuses, total, present, hasLate, items };
   });
@@ -1240,7 +1244,7 @@ function StaffDayTable({
           {staff.map((person) => {
             const period = person.periods[0];
             const draft = period ? drafts[periodDraftKey(person.userId, period.periodKey)] : undefined;
-            const status = (draft?.status ?? period?.status ?? "") as StaffPeriodStatus;
+            const status = defaultPeriodStatus(draft?.status ?? period?.status);
             const summary = DAY_STATUS_SUMMARY[status] || DAY_STATUS_SUMMARY[""];
             const role = String(person.role || "staff").toLowerCase();
             const mark = (next: StaffPeriodStatus) => {
@@ -1310,11 +1314,6 @@ function StaffDayTable({
                               <Icon className="mr-2 h-4 w-4" /> {label}
                             </DropdownMenuItem>
                           ))}
-                        {canMark && period && status && (
-                          <DropdownMenuItem onClick={() => mark("")}>
-                            <CircleDashed className="mr-2 h-4 w-4" /> Clear mark
-                          </DropdownMenuItem>
-                        )}
                         {canMark && onViewDetails && <DropdownMenuSeparator />}
                         {onViewDetails && (
                           <DropdownMenuItem onClick={() => onViewDetails(person.userId)}>
@@ -1491,9 +1490,9 @@ function PeriodMarkTable({
   onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
 }) {
   const periodStatus = (periodKey: string, fallback: string) =>
-    (canMark
-      ? drafts[periodDraftKey(teacher.userId, periodKey)]?.status ?? fallback ?? ""
-      : fallback || "") as StaffPeriodStatus;
+    defaultPeriodStatus(
+      canMark ? (drafts[periodDraftKey(teacher.userId, periodKey)]?.status ?? fallback) : fallback
+    );
 
   const renderStatus = (periodKey: string, label: string, status: StaffPeriodStatus) =>
     canMark ? (

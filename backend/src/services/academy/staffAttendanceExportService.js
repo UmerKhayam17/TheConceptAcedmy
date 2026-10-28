@@ -59,7 +59,7 @@ const REPORT_OPTS = {
 };
 
 function statusLabel(status) {
-  if (!status) return 'Unmarked';
+  if (!status) return 'Present';
   return String(status)
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
