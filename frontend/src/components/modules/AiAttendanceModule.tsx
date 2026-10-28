@@ -118,11 +118,6 @@ type MonitorTone = "present" | "late" | "out" | "already" | "error";
 /** One recently marked person shown as a big card on the live monitor. */
 type MonitorHit = { key: string; name: string; label: string; pct: string; tone: MonitorTone; at: number };
 
-/** How long a marked name stays on screen after the last sighting. */
-const MONITOR_HIT_MS = 2000;
-/** Unrecognised-face notice. It is not refreshed while the face stays in frame, so it clears quickly. */
-const UNKNOWN_HIT_MS = 1500;
-
 function monitorTone(action?: string, status?: string | null, error?: string): MonitorTone {
   if (error) return "error";
   if (action === "check_out" || action === "check_out_update") return "out";
@@ -595,23 +590,10 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     };
   }, [tab, selectedCameraId]);
 
-  // CCTV "face not recognised" uses the first sighting time from the server and then hides itself.
+  // CCTV "face not recognised" stays while the server still sees the face; it clears lastUnknown once the face leaves.
   useEffect(() => {
-    const unknown = liveMeta.lastUnknown;
-    const at = unknown?.at ? new Date(unknown.at).getTime() : 0;
-    const count = Number(unknown?.count) || 0;
-    if (!at || count < 1) {
-      setCctvUnknown(null);
-      return;
-    }
-    const left = at + UNKNOWN_HIT_MS - Date.now();
-    if (left <= 0) {
-      setCctvUnknown(null);
-      return;
-    }
-    setCctvUnknown({ count });
-    const timer = setTimeout(() => setCctvUnknown(null), left);
-    return () => clearTimeout(timer);
+    const count = Number(liveMeta.lastUnknown?.count) || 0;
+    setCctvUnknown(count > 0 ? { count } : null);
   }, [liveMeta.lastUnknown?.at, liveMeta.lastUnknown?.count]);
 
   const runCameraAction = async (action: string, cameraId?: string) => {
@@ -824,38 +806,15 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       return;
     }
     let cancelled = false;
-    // Once an unrecognised face is shown, keep it from popping back until that face leaves the frame.
-    const unknownLatch = { shown: false };
-    const hitLifetime = (hit: MonitorHit) => (hit.tone === "error" ? UNKNOWN_HIT_MS : MONITOR_HIT_MS);
-    // Drop names not seen for a while. A repeat of the same unrecognised card does not reset its timer.
-    const pruneHits = (fresh: MonitorHit[] = [], clearUnknown = false) => {
-      const now = Date.now();
+    // Cards mirror the latest scan: each stays while its face is in frame and goes as soon as a scan misses it.
+    // A face that stays keeps its original time so the card order doesn't jump around.
+    const showHits = (fresh: MonitorHit[]) => {
       setMonitorHits((prev) => {
-        const byKey = new Map(
-          prev
-            .filter((h) => (clearUnknown ? h.key !== "__unknown__" : true))
-            .filter((h) => now - h.at < hitLifetime(h))
-            .map((h) => [h.key, h])
-        );
-        for (const h of fresh) {
-          if (h.tone === "error" && byKey.has(h.key)) continue;
-          byKey.set(h.key, h);
-        }
-        return [...byKey.values()].sort((a, b) => b.at - a.at);
+        const seenAt = new Map(prev.map((h) => [h.key, h.at]));
+        return fresh
+          .map((h) => ({ ...h, at: seenAt.get(h.key) ?? h.at }))
+          .sort((a, b) => b.at - a.at);
       });
-    };
-    const showUnknown = (hits: MonitorHit[]) => {
-      if (!hits.length) {
-        unknownLatch.shown = false;
-        pruneHits([], true);
-        return;
-      }
-      if (unknownLatch.shown) {
-        pruneHits();
-        return;
-      }
-      unknownLatch.shown = true;
-      pruneHits(hits);
     };
     const scan = async () => {
       if (cancelled || monitorScanBusy.current) return;
@@ -885,7 +844,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
             ]
           : [];
         if (!result.matched || people.length === 0) {
-          showUnknown(unknownHit);
+          showHits(unknownHit);
           setMonitorWatch(
             result.unknownFaces
               ? `Watching… ${result.unknownFaces} unrecognised face${result.unknownFaces === 1 ? "" : "s"}`
@@ -905,15 +864,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
             at: now,
           };
         });
-        if (unknownHit.length && !unknownLatch.shown) {
-          unknownLatch.shown = true;
-          pruneHits(recognizedHits.concat(unknownHit));
-        } else if (!unknownHit.length) {
-          unknownLatch.shown = false;
-          pruneHits(recognizedHits, true);
-        } else {
-          pruneHits(recognizedHits);
-        }
+        showHits(recognizedHits.concat(unknownHit));
         setMonitorWatch(`Watching… ${people.length} recognised`);
         let changed = false;
         people.forEach((p) => {
@@ -938,12 +889,10 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     // Scans about once a second; the busy flag skips a tick while a scan is still running.
     // Worker-driven so it keeps going if the tab is in the background.
     const stopTicker = startBackgroundTicker(1000, () => void scan());
-    const pruneTimer = setInterval(() => pruneHits(), 400);
     const releaseWake = holdScreenAwake();
     return () => {
       cancelled = true;
       stopTicker();
-      clearInterval(pruneTimer);
       releaseWake();
     };
     // invalidateAttendanceQueries is recreated each render; the scan only needs the latest closure.

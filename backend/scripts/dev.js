@@ -4,6 +4,8 @@
  * the API still starts (AI Attendance shows "worker not running").
  *
  * Disable worker autostart with FACE_WORKER_AUTOSTART=false.
+ *
+ * --prod (npm run prod): no file watching / auto-reload — use this on the server.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
@@ -22,6 +24,7 @@ const VENV_PYTHON = path.join(
 const WORKER_URL = (process.env.FACE_WORKER_URL || 'http://127.0.0.1:8090').replace(/\/$/, '');
 const WORKER_PORT = Number(new URL(WORKER_URL).port) || 8090;
 const AUTOSTART = process.env.FACE_WORKER_AUTOSTART !== 'false';
+const PROD = process.argv.includes('--prod');
 
 const children = [];
 
@@ -153,7 +156,7 @@ async function startWorker() {
       '127.0.0.1',
       '--port',
       String(WORKER_PORT),
-      '--reload',
+      ...(PROD ? [] : ['--reload']),
       '--timeout-keep-alive',
       '5',
     ],
@@ -177,7 +180,7 @@ async function startWorker() {
 }
 
 function startBackend() {
-  const child = spawn(process.execPath, ['--watch', 'src/server.js'], {
+  const child = spawn(process.execPath, [...(PROD ? [] : ['--watch']), 'src/server.js'], {
     cwd: BACKEND_DIR,
     shell: false,
     stdio: 'inherit',

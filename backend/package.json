@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node scripts/dev.js",
+    "prod": "node scripts/dev.js --prod",
     "dev:api": "node --watch src/server.js",
     "dev:worker": "node scripts/dev.js --worker-only",
     "backfill:reg-numbers": "node scripts/backfillRegistrationNumbers.js"

@@ -87,6 +87,18 @@ def get_engine():
     return _engine
 
 
+@app.on_event("startup")
+def warm_engine() -> None:
+    # Load models in the background at boot so the first identify doesn't time out (~12s on CPU).
+    def _load() -> None:
+        try:
+            get_engine()
+        except Exception:
+            logger.exception("InsightFace warm-up failed; will retry on first request")
+
+    threading.Thread(target=_load, daemon=True).start()
+
+
 def decode_base64_image(data: str) -> np.ndarray:
     if "," in data:
         data = data.split(",", 1)[1]

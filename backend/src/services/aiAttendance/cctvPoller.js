@@ -114,8 +114,8 @@ async function tick(cameraId) {
       const result = await ai.identifyAndMark(frame.image, { markAttendance: true });
       const unknownCount = Number(result?.unknownFaces) || 0;
       if (unknownCount > 0) {
-        // Keep the first sighting time so the popup can expire instead of staying up
-        // for as long as the unrecognised face remains in frame.
+        // Set while an unrecognised face is in frame (first sighting time kept); cleared
+        // as soon as a frame has no unknown face, so the UI popup disappears with the face.
         if (!runtime.status.lastUnknown) {
           runtime.status.lastUnknown = { at: new Date().toISOString(), count: unknownCount };
         } else {
