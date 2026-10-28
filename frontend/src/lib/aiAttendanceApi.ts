@@ -28,6 +28,8 @@ export type AiPerson = {
   name: string;
   /** Present for students — used to disambiguate same names. */
   fatherName?: string;
+  /** Student gender. Females are shown as D/O; others as S/O. */
+  gender?: string;
   label: string;
   aiEmployeeId: string;
   hasPhoto: boolean;

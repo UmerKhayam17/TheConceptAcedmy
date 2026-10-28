@@ -74,6 +74,10 @@ type EnrollStatusFilter = "all" | "enrolled" | "not_enrolled";
 const webcamSupported =
   typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
 
+function parentOfLabel(person: Pick<AiPerson, "gender">) {
+  return String(person.gender || "").toLowerCase() === "female" ? "D/O" : "S/O";
+}
+
 async function fileToJpegBase64(file: File, maxSide = 1280): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
@@ -1099,7 +1103,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                       <div className="font-medium text-sm truncate">{p.name}</div>
                       {p.kind === "student" && p.fatherName ? (
                         <div className="text-xs font-medium text-foreground/80 truncate">
-                          S/O {p.fatherName}
+                          {parentOfLabel(p)} {p.fatherName}
                         </div>
                       ) : null}
                       <div className="text-xs text-muted-foreground truncate">
@@ -1250,7 +1254,9 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                     <div className="min-w-0 flex-1">
                       <div className="font-medium truncate">{p.name}</div>
                       {p.kind === "student" && p.fatherName ? (
-                        <div className="text-xs opacity-80 truncate">S/O {p.fatherName}</div>
+                        <div className="text-xs opacity-80 truncate">
+                          {parentOfLabel(p)} {p.fatherName}
+                        </div>
                       ) : null}
                       <div className="text-xs opacity-80 truncate">
                         {p.kind} · {p.label} · {p.totalImages ?? 0}/5
@@ -1280,7 +1286,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                 {selected
                   ? `Enroll: ${selected.name}${
                       selected.kind === "student" && selected.fatherName
-                        ? ` (S/O ${selected.fatherName})`
+                        ? ` (${parentOfLabel(selected)} ${selected.fatherName})`
                         : ""
                     }`
                   : "Select a student or staff member"}
