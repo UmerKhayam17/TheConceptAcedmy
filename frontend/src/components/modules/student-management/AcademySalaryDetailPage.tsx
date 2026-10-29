@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { cn } from "@/lib/utils";
 import { resolveUploadUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -491,30 +492,38 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
                   </div>
                 </div>
 
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={exportingSlip}
-                    onClick={handleSlipExport}
-                  >
-                    <Printer className="mr-1.5 h-4 w-4" />
-                    {exportingSlip ? "Preparing…" : "Salary slip (PDF)"}
-                  </Button>
-                  <div className="flex items-center gap-2.5 rounded-lg bg-primary/10 px-3 py-2">
-                    <Wallet className="h-4 w-4 text-primary" />
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1a2b4b]/70">
-                        Voucher amount
-                      </p>
-                      <p className="text-lg font-bold tabular-nums leading-tight text-emerald-600">
-                        {formatRs(data.amount)}
-                      </p>
-                    </div>
+                <div className="flex shrink-0 items-center gap-2.5 rounded-lg bg-primary/10 px-3 py-2">
+                  <Wallet className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1a2b4b]/70">
+                      Voucher amount
+                    </p>
+                    <p className="text-lg font-bold tabular-nums leading-tight text-emerald-600">
+                      {formatRs(data.amount)}
+                    </p>
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Action bar — same card + toolbar as the list page filter bar */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+              <FilterToolbar>
+                <p className="text-sm text-slate-500">
+                  Salary slip for <span className="font-medium text-slate-700">{period}</span>
+                </p>
+                <FilterToolbarActions>
+                  <Button
+                    type="button"
+                    className="gap-2 h-10 shrink-0 rounded-md"
+                    disabled={exportingSlip}
+                    onClick={handleSlipExport}
+                  >
+                    <Printer className="h-4 w-4" />
+                    {exportingSlip ? "Preparing PDF…" : "Salary Slip with Student Details (PDF)"}
+                  </Button>
+                </FilterToolbarActions>
+              </FilterToolbar>
             </div>
 
             {data.detailMeta && data.detailMeta.amountMatchesLive === false ? (
