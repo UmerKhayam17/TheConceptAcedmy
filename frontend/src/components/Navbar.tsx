@@ -29,7 +29,10 @@ const Navbar = () => {
   const [open, setOpen] = useState(false);
   const [instOpen, setInstOpen] = useState(false);
   const location = useLocation();
-  const { user, loading } = useAuth();
+  // `user` starts as the profile remembered in this browser and is corrected once the
+  // background session check finishes, so the buttons render immediately. This only
+  // affects what the menu shows — protected pages still wait for the server check.
+  const { user } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -116,7 +119,7 @@ const Navbar = () => {
         </nav>
 
         <div className="hidden lg:flex items-center gap-2">
-          {!loading && user ? (
+          {user ? (
             <>
               <Button asChild variant="ghost" size="sm">
                 <Link to={panelPathFor(user.role)}>
@@ -127,13 +130,13 @@ const Navbar = () => {
                 <LogOut className="h-4 w-4" /> Logout
               </Button>
             </>
-          ) : !loading ? (
+          ) : (
             <Button asChild variant="outline" size="sm">
               <Link to="/login">
                 <LogIn className="h-4 w-4" /> Login
               </Link>
             </Button>
-          ) : null}
+          )}
           <Button asChild variant="hero" size="lg">
             <Link to="/admissions">Apply Now</Link>
           </Button>
@@ -191,7 +194,7 @@ const Navbar = () => {
               </NavLink>
             )
           )}
-          {!loading && user ? (
+          {user ? (
             <>
               <NavLink to={panelPathFor(user.role)} className="px-3 py-3 font-medium text-primary">
                 My Panel ({user.role})
@@ -200,13 +203,13 @@ const Navbar = () => {
                 <LogOut className="h-4 w-4" /> Logout
               </Button>
             </>
-          ) : !loading ? (
+          ) : (
             <Button asChild variant="outline" className="mt-2">
               <Link to="/login">
                 <LogIn className="h-4 w-4" /> Login
               </Link>
             </Button>
-          ) : null}
+          )}
           <Button asChild variant="hero" className="mt-3">
             <Link to="/admissions">Apply Now</Link>
           </Button>

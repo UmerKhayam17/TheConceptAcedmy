@@ -23,6 +23,8 @@ const AUTH_EVT = "tces-auth-change";
 const REFRESH_BUFFER_MS = 90_000;
 const REFRESH_RETRY_ATTEMPTS = 3;
 const RESTORE_RETRY_MS = 4_000;
+/** Give up on a single /auth request after this long so a hung backend cannot stall the UI. */
+const AUTH_REQUEST_TIMEOUT_MS = 8_000;
 
 const authChannel =
   typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tces-auth") : null;
@@ -169,9 +171,20 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** fetch that aborts after AUTH_REQUEST_TIMEOUT_MS (the abort surfaces as a thrown error). */
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchMe(accessToken: string): Promise<SessionUser | null> {
   try {
-    const res = await fetch(`${getApiRoot()}/auth/me`, {
+    const res = await fetchWithTimeout(`${getApiRoot()}/auth/me`, {
       method: "GET",
       credentials: "include",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -207,7 +220,7 @@ type RefreshResult = {
 
 async function fetchRefreshOnce(): Promise<RefreshResult> {
   try {
-    const res = await fetch(`${getApiRoot()}/auth/refresh`, {
+    const res = await fetchWithTimeout(`${getApiRoot()}/auth/refresh`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
