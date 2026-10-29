@@ -16,7 +16,7 @@ import FilterToolbar, { FilterToolbarActions } from "@/components/modules/Filter
 import { cn } from "@/lib/utils";
 import { resolveUploadUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { deliverReportBlob, openReportPreviewTab, safeReportFileToken } from "@/lib/reportDownload";
+import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import {
   exportAcademySalarySlip,
   fetchAcademySalary,
@@ -368,7 +368,7 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
       const blob = await exportAcademySalarySlip(data._id);
       const mode = deliverReportBlob(
         blob,
-        `Salary-Slip_${safeReportFileToken(name, "staff")}_${period.replace(" ", "-")}.pdf`,
+        `Salary-Slip_${period.replace(" ", "-")}.pdf`,
         "pdf",
         preview,
       );

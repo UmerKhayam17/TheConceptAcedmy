@@ -203,7 +203,7 @@ function drawSlip(doc, ctx) {
   y = drawPdfTitlePlain(
     doc,
     {
-      title: `SALARY SLIP — ${period.toUpperCase()}`,
+      title: `SALARY SLIP WITH STUDENT DETAILS — ${period.toUpperCase()}`,
       leftFilter: `Voucher: ${rec.voucherNumber || '—'}`,
       rightFilter: `Status: ${cap(rec.status)}`,
     },
@@ -546,11 +546,10 @@ async function renderSalarySlipPdf(id) {
   const scale = await findFitScale(ctx, info);
   const { buffer } = await renderToBuffer(ctx, { scale, info });
 
-  const safeName = String(staff.name || 'staff').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '');
   return {
     buffer,
     scale,
-    fileName: `Salary-Slip_${safeName}_${MONTHS[(rec.month || 1) - 1]}-${rec.year}.pdf`,
+    fileName: `Salary-Slip_${MONTHS[(rec.month || 1) - 1]}-${rec.year}.pdf`,
   };
 }
 
