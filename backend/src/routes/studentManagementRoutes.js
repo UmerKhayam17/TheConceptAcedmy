@@ -583,6 +583,11 @@ router.get(
   requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
   salaryCtrl.getOne
 );
+router.get(
+  '/salaries/:id/slip',
+  requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
+  salaryCtrl.exportSlip
+);
 router.post(
   '/salaries/generate',
   requirePermission('manage_academy_salaries'),

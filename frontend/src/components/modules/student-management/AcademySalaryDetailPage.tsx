@@ -2,16 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BookOpen,
+  CalendarCheck,
   Calculator,
   Coins,
   Info,
+  Printer,
   Users,
   Wallet,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { resolveUploadUrl } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { deliverReportBlob, openReportPreviewTab, safeReportFileToken } from "@/lib/reportDownload";
 import {
+  exportAcademySalarySlip,
   fetchAcademySalary,
   type AcademySalaryBreakdownLine,
   type AcademySalaryRecord,
@@ -75,6 +81,168 @@ function DetailAvatar({ name, profileImage }: { name: string; profileImage?: str
     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-base font-bold text-primary-foreground">
       {initialOf(name)}
     </span>
+  );
+}
+
+function FixedClassAllocationCard({ record }: { record: AcademySalaryRecord }) {
+  const alloc = record.classAllocation;
+  const lines = alloc?.lines || [];
+  if (!lines.length) {
+    return (
+      <Card className="rounded-2xl border-0 p-10 text-center text-sm text-muted-foreground shadow-sm">
+        No teaching assignments found — the full fixed salary of {formatRs(record.amount)} is paid as
+        one amount.
+      </Card>
+    );
+  }
+  return (
+    <div className="space-y-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/60 sm:p-6">
+      <div>
+        <h2 className="text-lg font-bold text-[#0f1f3d]">Fixed salary by class</h2>
+        <p className="text-sm text-slate-500">
+          {alloc?.basis === "periods"
+            ? "Split in proportion to class periods scheduled this month"
+            : "Split equally across assigned classes (no timetable periods this month)"}
+        </p>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full min-w-[36rem] text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50/80 text-left text-xs text-slate-500">
+              <th className="px-3 py-2.5 font-medium">Class</th>
+              <th className="px-3 py-2.5 font-medium">Subject</th>
+              <th className="px-3 py-2.5 font-medium text-right">Students</th>
+              <th className="px-3 py-2.5 font-medium text-right">Periods</th>
+              <th className="px-3 py-2.5 font-medium text-right">Share</th>
+              <th className="px-3 py-2.5 font-medium text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l, idx) => (
+              <tr key={`${l.subjectId || "s"}-${idx}`} className="border-b border-slate-100 last:border-0">
+                <td className="px-3 py-3 font-medium text-[#1a2b4b]">
+                  {[l.className, l.sectionName].filter(Boolean).join(" ") || "—"}
+                </td>
+                <td className="px-3 py-3 text-slate-600">{l.subjectName || "—"}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{l.studentCount}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{l.periods}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{l.sharePercent}%</td>
+                <td className="px-3 py-3 text-right tabular-nums font-semibold text-emerald-600">
+                  {formatRs(l.salary)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AttendanceCard({ record }: { record: AcademySalaryRecord }) {
+  const cls = record.attendance?.classes;
+  const daily = record.attendance?.daily;
+  const s = cls?.summary;
+  const hasClasses = Boolean(s && s.totalClasses > 0);
+  const hasDaily = Boolean(daily && daily.totalDays > 0);
+  const tiles = s
+    ? [
+        {
+          label: cls?.attendanceType === "daily" ? "Working days" : "Classes",
+          value: s.totalClasses,
+          tone: "text-[#0f1f3d]",
+        },
+        { label: "Present", value: s.present, tone: "text-emerald-600" },
+        { label: "Late", value: s.late, tone: "text-amber-600" },
+        { label: "Absent", value: s.absent, tone: "text-red-600" },
+        { label: "Leave", value: s.leave, tone: "text-slate-600" },
+        { label: "Attendance", value: `${s.attendancePercent}%`, tone: "text-[#2563eb]" },
+      ]
+    : [];
+
+  return (
+    <div className="space-y-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/60 sm:p-6">
+      <div className="flex items-center gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-[#2563eb]">
+          <CalendarCheck className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 className="text-lg font-bold text-[#0f1f3d]">Attendance this month</h2>
+          <p className="text-sm text-slate-500">
+            {cls?.sessionName ? `Session ${cls.sessionName} · ` : ""}
+            From the published timetable up to today; unmarked periods count as present
+          </p>
+        </div>
+      </div>
+
+      {!hasClasses && !hasDaily ? (
+        <p className="text-sm text-muted-foreground">No attendance was recorded for this month.</p>
+      ) : null}
+
+      {hasClasses ? (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {tiles.map((t) => (
+            <div
+              key={t.label}
+              className="rounded-xl bg-slate-50 px-3 py-2.5 text-center ring-1 ring-slate-200/70"
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                {t.label}
+              </p>
+              <p className={cn("text-lg font-bold tabular-nums", t.tone)}>{t.value}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {hasClasses && cls && cls.attendanceType !== "daily" && cls.byClass.length ? (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full min-w-[36rem] text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/80 text-left text-xs text-slate-500">
+                <th className="px-3 py-2.5 font-medium">Class</th>
+                <th className="px-3 py-2.5 font-medium">Subject</th>
+                <th className="px-3 py-2.5 font-medium text-right">Classes</th>
+                <th className="px-3 py-2.5 font-medium text-right">Present</th>
+                <th className="px-3 py-2.5 font-medium text-right">Late</th>
+                <th className="px-3 py-2.5 font-medium text-right">Absent</th>
+                <th className="px-3 py-2.5 font-medium text-right">Leave</th>
+                <th className="px-3 py-2.5 font-medium text-right">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cls.byClass.map((r, idx) => (
+                <tr
+                  key={`${r.className}-${r.sectionName}-${r.subjectName}-${idx}`}
+                  className="border-b border-slate-100 last:border-0"
+                >
+                  <td className="px-3 py-2.5 font-medium text-[#1a2b4b]">
+                    {[r.className, r.sectionName].filter(Boolean).join(" ") || "—"}
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-600">{r.subjectName || "—"}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{r.totalClasses}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600">{r.present}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-amber-600">{r.late}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-red-600">{r.absent}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{r.leave}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold">
+                    {r.attendancePercent}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {hasDaily && daily ? (
+        <p className="text-sm text-slate-600">
+          Daily check-in: {daily.totalDays} day{daily.totalDays === 1 ? "" : "s"} recorded ·{" "}
+          {daily.present} present · {daily.late} late · {daily.half_day} half day · {daily.absent}{" "}
+          absent · {daily.leave} leave
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -180,6 +348,8 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
   });
 
   const [selectedClassKey, setSelectedClassKey] = useState<string>("");
+  const [exportingSlip, setExportingSlip] = useState(false);
+  const { toast } = useToast();
 
   const staff = data ? staffFromRecord(data) : null;
   const name = staff?.name ?? "—";
@@ -187,6 +357,36 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
   const breakdown = data?.calculationBreakdown || [];
   const pct = data?.detailMeta?.teacherPercentage ?? data?.salaryPercentage ?? 0;
   const period = data ? `${MONTH_NAMES[(data.month || 1) - 1]} ${data.year}` : "—";
+  const isPercentage = data?.payType === "percentage" || data?.calculationSource === "tuition_pool";
+
+  const handleSlipExport = async () => {
+    if (!data) return;
+    setExportingSlip(true);
+    const preview = openReportPreviewTab("pdf");
+    try {
+      const blob = await exportAcademySalarySlip(data._id);
+      const mode = deliverReportBlob(
+        blob,
+        `Salary-Slip_${safeReportFileToken(name, "staff")}_${period.replace(" ", "-")}.pdf`,
+        "pdf",
+        preview,
+      );
+      toast({
+        title: mode === "preview" ? "Salary slip preview opened" : "Salary slip downloaded",
+        description:
+          mode === "preview" ? "Use Print or Download from the preview window." : undefined,
+      });
+    } catch (e) {
+      preview?.close();
+      toast({
+        title: "Export failed",
+        description: e instanceof Error ? e.message : "Could not generate salary slip",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingSlip(false);
+    }
+  };
   const allClassesTotal = breakdown.reduce((s, line) => s + (Number(line.salary) || 0), 0);
 
   const classTabs = useMemo(() => {
@@ -291,15 +491,27 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2.5 rounded-lg bg-primary/10 px-3 py-2">
-                  <Wallet className="h-4 w-4 text-primary" />
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1a2b4b]/70">
-                      Voucher amount
-                    </p>
-                    <p className="text-lg font-bold tabular-nums leading-tight text-emerald-600">
-                      {formatRs(data.amount)}
-                    </p>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={exportingSlip}
+                    onClick={handleSlipExport}
+                  >
+                    <Printer className="mr-1.5 h-4 w-4" />
+                    {exportingSlip ? "Preparing…" : "Salary slip (PDF)"}
+                  </Button>
+                  <div className="flex items-center gap-2.5 rounded-lg bg-primary/10 px-3 py-2">
+                    <Wallet className="h-4 w-4 text-primary" />
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1a2b4b]/70">
+                        Voucher amount
+                      </p>
+                      <p className="text-lg font-bold tabular-nums leading-tight text-emerald-600">
+                        {formatRs(data.amount)}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -313,6 +525,7 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
             ) : null}
 
             {/* How calculated */}
+            {isPercentage ? (
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 p-5 shadow-sm ring-1 ring-sky-100/80 sm:p-6">
               <div className="pointer-events-none absolute -right-6 -top-6 hidden h-36 w-36 opacity-[0.18] sm:block">
                 <Calculator className="h-full w-full text-sky-700" strokeWidth={1} />
@@ -360,13 +573,17 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
                 </div>
               </div>
             </div>
+            ) : null}
 
             {breakdown.length === 0 ? (
-              <Card className="rounded-2xl border-0 p-10 text-center text-sm text-muted-foreground shadow-sm">
-                {data.payType === "percentage"
-                  ? "No tuition pool lines yet — assign teaching or wait for enrolled students with monthly fees."
-                  : "Fixed salary vouchers do not use tuition pools."}
-              </Card>
+              isPercentage ? (
+                <Card className="rounded-2xl border-0 p-10 text-center text-sm text-muted-foreground shadow-sm">
+                  No tuition pool lines yet — assign teaching or wait for enrolled students with monthly
+                  fees.
+                </Card>
+              ) : (
+                <FixedClassAllocationCard record={data} />
+              )
             ) : (
               <>
                 {/* Classes selector */}
@@ -510,6 +727,8 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
                 </div>
               </div>
             ) : null}
+
+            <AttendanceCard record={data} />
           </>
         )}
       </div>

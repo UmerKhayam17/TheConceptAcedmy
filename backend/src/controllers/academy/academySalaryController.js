@@ -1,6 +1,7 @@
 const catchAsync = require('../../utils/catchAsync');
 const salaryService = require('../../services/academy/academySalaryService');
 const salaryExportService = require('../../services/academy/academySalaryExportService');
+const { renderSalarySlipPdf } = require('../../services/academy/salarySlipPdfService');
 const rt = require('../../services/realtime/academyRealtime');
 
 const list = catchAsync(async (req, res) => {
@@ -112,9 +113,17 @@ const exportReport = catchAsync(async (req, res) => {
   res.send(Buffer.from(buffer));
 });
 
+const exportSlip = catchAsync(async (req, res) => {
+  const { buffer, fileName } = await renderSalarySlipPdf(req.params.id);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+  res.send(buffer);
+});
+
 module.exports = {
   list,
   getOne,
+  exportSlip,
   summary,
   generate,
   recalculate,

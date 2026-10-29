@@ -5,6 +5,7 @@ const AcademySalaryRecord = require('../../models/academy/AcademySalaryRecord');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { calculateTeacherPercentageSalary } = require('./percentageSalaryCalculator');
+const { buildSalaryAttendance, buildFixedClassAllocation } = require('./salarySlipDetails');
 
 /**
  * Fill missing tuitionSharePercent on stored breakdown lines from live subject docs
@@ -487,7 +488,7 @@ async function getSalaryRecordById(id) {
   const record = await populateCreatedBy(
     AcademySalaryRecord.findById(id).populate({
       path: 'staffId',
-      select: 'name email phone salary payType salaryPercentage profileImage',
+      select: 'name email phone salary payType salaryPercentage profileImage aiEmployeeId createdAt',
       populate: { path: 'role', select: 'name' },
     })
   );
@@ -524,6 +525,22 @@ async function getSalaryRecordById(id) {
       teacherPercentage: 0,
       formula: 'Fixed salary from staff profile (or manual amount on the voucher).',
     };
+  }
+
+  if (staff?._id) {
+    enriched.attendance = await buildSalaryAttendance(staff._id, enriched.month, enriched.year);
+    if (!isPercentage) {
+      try {
+        enriched.classAllocation = await buildFixedClassAllocation(
+          staff._id,
+          enriched.amount,
+          enriched.attendance
+        );
+      } catch (err) {
+        console.error('[salary] Could not split fixed salary by class:', err?.message || err);
+        enriched.classAllocation = { basis: 'none', lines: [] };
+      }
+    }
   }
 
   return enriched;

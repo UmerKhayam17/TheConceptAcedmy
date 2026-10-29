@@ -1703,6 +1703,58 @@ export interface AcademySalaryDetailMeta {
   formula?: string;
 }
 
+export interface AcademySalaryAttendanceCounts {
+  totalClasses: number;
+  present: number;
+  late: number;
+  absent: number;
+  leave: number;
+  attendancePercent: number;
+}
+
+export interface AcademySalaryAttendance {
+  period: string;
+  /** Per-class-period marks from the published timetable (unmarked counts as present). */
+  classes: {
+    sessionName: string;
+    attendanceType: "class" | "daily";
+    workingDaysCount: number;
+    summary: AcademySalaryAttendanceCounts;
+    byClass: (AcademySalaryAttendanceCounts & {
+      className: string;
+      sectionName: string;
+      subjectName: string;
+    })[];
+    exceptions: { day: string; items: { status: string; label: string; classLabel: string }[] }[];
+  } | null;
+  /** Daily check-in marks (AI camera / manual). */
+  daily: {
+    totalDays: number;
+    present: number;
+    late: number;
+    absent: number;
+    half_day: number;
+    leave: number;
+  } | null;
+}
+
+export interface AcademySalaryClassAllocationLine {
+  subjectId?: string;
+  subjectName: string;
+  className: string;
+  sectionName: string;
+  studentCount: number;
+  periods: number;
+  sharePercent: number;
+  salary: number;
+}
+
+export interface AcademySalaryClassAllocation {
+  /** periods = split by class periods this month; equal = split evenly. */
+  basis: "periods" | "equal" | "none";
+  lines: AcademySalaryClassAllocationLine[];
+}
+
 export interface AcademySalaryRecord {
   _id: string;
   staffId: {
@@ -1714,6 +1766,8 @@ export interface AcademySalaryRecord {
     payType?: "fixed" | "percentage";
     salaryPercentage?: number;
     profileImage?: string;
+    aiEmployeeId?: string;
+    createdAt?: string;
     role?: { name: string };
   } | string;
   month: number;
@@ -1730,6 +1784,11 @@ export interface AcademySalaryRecord {
   paymentMethod?: string;
   notes?: string;
   detailMeta?: AcademySalaryDetailMeta;
+  /** Detail endpoint only. */
+  attendance?: AcademySalaryAttendance;
+  /** Detail endpoint only — fixed pay divided across the teacher's classes. */
+  classAllocation?: AcademySalaryClassAllocation;
+  createdAt?: string;
 }
 
 export interface AcademySalarySummary {
@@ -1855,6 +1914,13 @@ export const exportAcademySalaryReport = async (
     method: "GET",
   });
   if (!res.ok) throw new Error("Export failed");
+  return res.blob();
+};
+
+/** Printable salary slip PDF for one voucher. */
+export const exportAcademySalarySlip = async (id: string) => {
+  const res = await authedFetch(`/student-management/salaries/${id}/slip`, { method: "GET" });
+  if (!res.ok) throw new Error("Could not generate salary slip");
   return res.blob();
 };
 
