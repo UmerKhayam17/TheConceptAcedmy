@@ -479,6 +479,12 @@ router.get(
   feeCtrl.exportPaidFeesReport
 );
 router.get(
+  '/fees/class-accounts/export-report',
+  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  validate(schemas.feeClassAccountsExportQuery, 'query'),
+  feeCtrl.exportClassAccountsReport
+);
+router.get(
   '/fees',
   requireFeeReadAccess(),
   feeCtrl.list

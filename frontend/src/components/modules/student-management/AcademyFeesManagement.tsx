@@ -57,6 +57,7 @@ import {
   fetchStudentFeeHistory,
   exportFeeDefaultersMonthWise,
   exportPaidFeesReport,
+  exportClassAccountsReport,
   type DefaulterReportFormat,
   type PaidFeeExportParams,
   applyFeeCharges,
@@ -573,6 +574,7 @@ export default function AcademyFeesManagement({
   const [challanPrint, setChallanPrint] = useState<ChallanPrintRequest | null>(null);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
   const [exportingPaidReport, setExportingPaidReport] = useState<DefaulterReportFormat | null>(null);
+  const [exportingClassAccounts, setExportingClassAccounts] = useState<DefaulterReportFormat | null>(null);
   const [enrollmentWizardOpen, setEnrollmentWizardOpen] = useState(false);
   const [assignSectionStudentId, setAssignSectionStudentId] = useState<string | null>(null);
   const [correction, setCorrection] = useState<{
@@ -1158,6 +1160,40 @@ export default function AcademyFeesManagement({
     }
   };
 
+  const downloadClassAccounts = async (format: DefaulterReportFormat) => {
+    if (!classFilter) {
+      toast({
+        title: "Select a class",
+        description: "Choose a class in the filters to export its accounts report.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setExportingClassAccounts(format);
+    const preview = openReportPreviewTab(format);
+    try {
+      const blob = await exportClassAccountsReport(
+        { classId: classFilter, sessionId: apiSessionId },
+        format
+      );
+      const mode = deliverReportBlob(blob, `Class-Accounts.${format}`, format, preview);
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description:
+          mode === "preview" ? "Use Print or Download from the preview window." : undefined,
+      });
+    } catch (e) {
+      preview?.close();
+      toast({
+        title: "Export failed",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setExportingClassAccounts(null);
+    }
+  };
+
   const downloadMonthWise = async (format: DefaulterReportFormat) => {
     setExportingMonthWise(format);
     const preview = openReportPreviewTab(format);
@@ -1409,6 +1445,16 @@ export default function AcademyFeesManagement({
                       label="Defaulter list"
                       exporting={exportingMonthWise}
                       onDownload={(format) => void downloadMonthWise(format)}
+                    />
+                  </div>
+                )}
+                {showBulkActions && !studentId && caps.canView && (
+                  <div className="w-full sm:w-auto">
+                    <DefaulterListDownload
+                      className="w-full justify-center sm:w-auto"
+                      label="Class accounts report"
+                      exporting={exportingClassAccounts}
+                      onDownload={(format) => void downloadClassAccounts(format)}
                     />
                   </div>
                 )}

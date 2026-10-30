@@ -435,6 +435,12 @@ const feePaidExportQuery = Joi.object({
   format: Joi.string().valid('xlsx', 'pdf'),
 });
 
+const feeClassAccountsExportQuery = Joi.object({
+  classId: objectId.required(),
+  sessionId: objectId,
+  format: Joi.string().valid('xlsx', 'pdf'),
+});
+
 const academySalaryPay = Joi.object({
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').optional(),
   notes: Joi.string().allow('').trim(),
@@ -677,6 +683,7 @@ module.exports = {
   academyFeeTransfer,
   feeDefaultersQuery,
   feePaidExportQuery,
+  feeClassAccountsExportQuery,
   academySalaryPay,
   academySalaryPayBulk,
   academySalaryAmount,

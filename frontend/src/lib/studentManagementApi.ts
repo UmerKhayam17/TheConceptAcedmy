@@ -1663,6 +1663,26 @@ export const exportPaidFeesReport = async (
   return res.blob();
 };
 
+export type ClassAccountsExportParams = {
+  classId: string;
+  sessionId?: string;
+};
+
+export const exportClassAccountsReport = async (
+  params: ClassAccountsExportParams,
+  format: DefaulterReportFormat = "xlsx"
+) => {
+  const q = new URLSearchParams();
+  q.set("format", format);
+  q.set("classId", params.classId);
+  if (params.sessionId) q.set("sessionId", params.sessionId);
+  const res = await authedFetch(`/student-management/fees/class-accounts/export-report?${q}`, {
+    method: "GET",
+  });
+  if (!res.ok) throw new Error("Export failed");
+  return res.blob();
+};
+
 // Teacher / staff salary
 export interface AcademySalaryStudentLine {
   studentId?: string;

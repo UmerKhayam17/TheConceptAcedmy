@@ -366,6 +366,24 @@ const exportPaidFeesReport = catchAsync(async (req, res) => {
   res.send(Buffer.from(buffer));
 });
 
+const exportClassAccountsReport = catchAsync(async (req, res) => {
+  const format = String(req.query.format || 'xlsx').toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
+  const q = { classId: req.query.classId, sessionId: req.query.sessionId };
+  const buffer = await feeService.exportClassAccountsReport({ ...q, format });
+  const base = feeReportFileBase('Class-Accounts', q);
+  if (format === 'pdf') {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${base}.pdf"`);
+  } else {
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${base}.xlsx"`);
+  }
+  res.send(Buffer.from(buffer));
+});
+
 module.exports = {
   list,
   generate,
@@ -388,4 +406,5 @@ module.exports = {
   exportDefaultersMonthWise,
   exportPaidFees,
   exportPaidFeesReport,
+  exportClassAccountsReport,
 };

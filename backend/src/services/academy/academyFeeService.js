@@ -15,6 +15,7 @@ const Session = require('../../models/Session');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { notifyByAccess } = require('../realtime/realtimeService');
 const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
+const { renderDualTablePdf } = require('./academyStudentExportService');
 const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
 const { dayBounds, formatDateInTz, todayYmd } = require('../../utils/schoolDay');
 
@@ -2788,6 +2789,119 @@ async function exportFeeDefaultersMonthWise({ classId, month, year, search, sess
   return renderBrandedExcel(payload);
 }
 
+function subjectListOrder(a, b) {
+  const ra = a.enrollmentType === 'required' ? 0 : 1;
+  const rb = b.enrollmentType === 'required' ? 0 : 1;
+  if (ra !== rb) return ra - rb;
+  return String(a.subjectName || '').localeCompare(String(b.subjectName || ''));
+}
+
+function formatRupees(n) {
+  return `Rs ${roundMoney(n).toLocaleString('en-PK')}`;
+}
+
+/** One row per active student: roll #, name, monthly fee, discipline / group, subjects. */
+async function loadClassAccountsRows(classId) {
+  if (!classId) throw new ApiError(400, 'Select a class to export the class accounts report');
+
+  const students = await AcademyStudent.find({ classId, status: 'active' })
+    .select(
+      'studentId registrationNumber rollNumber studentName disciplineId selectedSubjects isFullPackage monthlyFee monthlyFeeDiscount'
+    )
+    .populate({ path: 'disciplineId', select: 'name' })
+    .populate({ path: 'selectedSubjects', select: 'subjectName subjectCode enrollmentType' })
+    .lean();
+  students.sort(compareStudentsByRollAsc);
+
+  let totalFee = 0;
+  const rows = students.map((student, index) => {
+    const fee = monthlyBillAmount(student);
+    totalFee = roundMoney(totalFee + fee);
+    const subjects = (student.selectedSubjects || [])
+      .filter((sub) => sub && typeof sub === 'object')
+      .sort(subjectListOrder)
+      .map((sub) => sub.subjectName || sub.subjectCode)
+      .filter(Boolean);
+    return {
+      serial: index + 1,
+      regNo: student.rollNumber || student.studentId || student.registrationNumber || '',
+      name: student.studentName || '',
+      fee,
+      discipline:
+        student.disciplineId?.name || (student.isFullPackage ? 'Full package' : 'Part-time'),
+      subjects: subjects.join(', '),
+    };
+  });
+  return { rows, totalFee };
+}
+
+async function exportClassAccountsReport({ classId, sessionId, format }) {
+  const { rows, totalFee } = await loadClassAccountsRows(classId);
+  const { sessionLabel, classLabel } = await resolveFeeReportContext({ sessionId, classId });
+  const count = rows.length;
+  const countLabel = `${count} student${count === 1 ? '' : 's'}`;
+  const meta = {
+    sessionLabel,
+    leftFilter: `Class: ${classLabel}`,
+    centerFilter: countLabel,
+    rightFilter: `Total monthly fee: ${formatRupees(totalFee)}`,
+    filterLine: `Class: ${classLabel}`,
+    countLabel,
+    generatedAt: new Date(),
+  };
+  const title = 'Accounts Report';
+  const confidentialLabel = 'Class wise accounts';
+  const emptyMessage = 'No active students in this class.';
+
+  if (String(format).toLowerCase() === 'pdf') {
+    // Same two-tables-per-page layout as the Student List.
+    return renderDualTablePdf({
+      title,
+      subject: 'Class wise student fee and subjects',
+      confidentialLabel,
+      emptyMessage,
+      rows: rows.map((row) => ({ ...row, fee: row.fee.toLocaleString('en-PK') })),
+      meta,
+      buildCols: (tableW) => {
+        const cols = [
+          { key: 'serial', w: 18, label: 'Sr #', align: 'center', wrap: false },
+          { key: 'regNo', w: 44, label: 'Roll #', align: 'center', wrap: true },
+          { key: 'name', w: 62, label: 'Student Name', align: 'left', wrap: true },
+          { key: 'fee', w: 34, label: 'Fee (Rs)', align: 'center', wrap: false },
+          { key: 'discipline', w: 44, label: 'Discipline', align: 'center', wrap: true },
+          { key: 'subjects', w: 0, label: 'Subjects', align: 'left', wrap: true },
+        ];
+        const used = cols.reduce((sum, c) => sum + c.w, 0);
+        cols[5].w = Math.max(40, tableW - used);
+        return cols;
+      },
+    });
+  }
+
+  const excelRows = rows.slice();
+  if (excelRows.length) {
+    excelRows.push({ _isTotal: true, name: 'Total', fee: totalFee });
+  }
+  return renderBrandedExcel({
+    title,
+    sheetName: 'Class accounts',
+    confidentialLabel,
+    columns: [
+      { key: 'serial', header: 'Sr #', excelWidth: 6, align: 'center' },
+      { key: 'regNo', header: 'Roll #', excelWidth: 22, align: 'center' },
+      { key: 'name', header: 'Student Name', excelWidth: 24, wrap: true },
+      { key: 'fee', header: 'Fee (Rs)', excelWidth: 12, align: 'center', numFmt: '#,##0' },
+      { key: 'discipline', header: 'Discipline', excelWidth: 18, align: 'center', wrap: true },
+      { key: 'subjects', header: 'Subjects', excelWidth: 50, wrap: true },
+    ],
+    rows: excelRows,
+    meta,
+    plain: true,
+    layout: 'portrait',
+    lightHeader: true,
+  });
+}
+
 module.exports = {
   listFeeRecords,
   getFeeRecordById,
@@ -2813,5 +2927,6 @@ module.exports = {
   exportFeeDefaultersMonthWise,
   exportPaidFees,
   exportPaidFeesReport,
+  exportClassAccountsReport,
   receiptNumber,
 };

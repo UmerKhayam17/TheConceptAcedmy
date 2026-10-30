@@ -350,11 +350,34 @@ async function renderStudentsExcel(students, meta = {}, options = {}) {
 async function renderStudentsPdf(students, meta = {}, options = {}) {
   const preset = resolvePreset(options);
   const rows = mapStudentsToRows(students, options);
-  const reportMeta = buildMeta(meta, rows.length, preset);
+  const omitSensitive = Boolean(options.omitSensitive);
+  return renderDualTablePdf({
+    title: preset.title,
+    subject: preset.subject,
+    confidentialLabel: preset.confidentialLabel,
+    emptyMessage: preset.emptyMessage,
+    rows,
+    meta: buildMeta(meta, rows.length, preset),
+    buildCols: (tableW) => buildDualCols(tableW, preset.kind, omitSensitive),
+  });
+}
+
+/**
+ * Portrait A4, letterhead, then rows packed into two side-by-side tables per page.
+ * `buildCols(tableW)` returns [{ key, w, label, align, wrap }] for one half-width table;
+ * a `regNo` column gets the two-line roll number layout.
+ */
+async function renderDualTablePdf({
+  title,
+  subject,
+  confidentialLabel,
+  emptyMessage,
+  rows,
+  meta: reportMeta,
+  buildCols,
+}) {
   const brand = ACADEMY_BRAND;
   const logoPath = resolveLogoPath();
-  const omitSensitive = Boolean(options.omitSensitive);
-  const kind = preset.kind;
 
   return new Promise((resolve, reject) => {
     try {
@@ -364,9 +387,9 @@ async function renderStudentsPdf(students, meta = {}, options = {}) {
         margin: 28,
         bufferPages: true,
         info: {
-          Title: `${preset.title} — ${brand.name}`,
+          Title: `${title} — ${brand.name}`,
           Author: brand.name,
-          Subject: preset.subject,
+          Subject: subject || title,
           Creator: brand.legalName,
         },
       });
@@ -388,7 +411,7 @@ async function renderStudentsPdf(students, meta = {}, options = {}) {
         y = drawPdfTitlePlain(
           doc,
           {
-            title: preset.title,
+            title,
             filterLine: reportMeta.filterLine || '',
             countLabel: reportMeta.countLabel,
             sessionLabel: reportMeta.sessionLabel || '',
@@ -404,11 +427,11 @@ async function renderStudentsPdf(students, meta = {}, options = {}) {
       if (rows.length === 0) {
         const y = startBodyY();
         doc.fillColor('#444444').font('Helvetica-Oblique').fontSize(10);
-        doc.text(preset.emptyMessage, margin, y + 16, {
+        doc.text(emptyMessage, margin, y + 16, {
           width: contentW,
           align: 'center',
         });
-        drawPdfFooterTextPlain(doc, brand, preset.confidentialLabel, reportMeta, 1, 1);
+        drawPdfFooterTextPlain(doc, brand, confidentialLabel, reportMeta, 1, 1);
         doc.end();
         return;
       }
@@ -421,7 +444,7 @@ async function renderStudentsPdf(students, meta = {}, options = {}) {
       // once the leftover count looked like it fit in one column — wrapped roll
       // numbers are taller than that estimate, so those pages never matched page 1.
       const tableW = (contentW - gap) / 2;
-      const cols = buildDualCols(tableW, kind, omitSensitive);
+      const cols = buildCols(tableW);
 
       const fillColumn = (source, availableH) => {
         const packed = [];
@@ -512,7 +535,7 @@ async function renderStudentsPdf(students, meta = {}, options = {}) {
         drawPdfFooterTextPlain(
           doc,
           brand,
-          preset.confidentialLabel,
+          confidentialLabel,
           reportMeta,
           i + 1,
           range.count
@@ -529,6 +552,7 @@ module.exports = {
   mapStudentsToRows,
   renderStudentsExcel,
   renderStudentsPdf,
+  renderDualTablePdf,
   statusLabel,
   normalizeReportType,
 };
