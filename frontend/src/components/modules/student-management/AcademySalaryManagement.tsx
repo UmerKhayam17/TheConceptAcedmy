@@ -72,8 +72,12 @@ function staffName(rec: AcademySalaryRecord) {
 }
 
 function staffRole(rec: AcademySalaryRecord) {
-  const r = staffFromRecord(rec)?.role;
-  return typeof r === "object" && r?.name ? r.name : "—";
+  const s = staffFromRecord(rec);
+  const r = s?.role;
+  if (typeof r !== "object" || !r?.name) return "—";
+  // Support staff show their job (Guard, Sweeper, …) instead of the role key.
+  if (r.name === "non_teaching_staff") return s?.designation || "Non-teaching";
+  return r.name;
 }
 
 function recordPayType(rec: AcademySalaryRecord): "fixed" | "percentage" {
@@ -211,7 +215,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
   const [statusFilter, setStatusFilter] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"" | "teacher" | "accountant">("");
+  const [roleFilter, setRoleFilter] = useState<"" | "teacher" | "accountant" | "non_teaching_staff">("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
@@ -571,12 +575,13 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
           <select
             className={selectClass}
             value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value as "" | "teacher" | "accountant")}
+            onChange={(e) => setRoleFilter(e.target.value as "" | "teacher" | "accountant" | "non_teaching_staff")}
             aria-label="Role"
           >
             <option value="">All staff</option>
             <option value="teacher">Teachers</option>
             <option value="accountant">Accountants</option>
+            <option value="non_teaching_staff">Non-teaching staff</option>
           </select>
           <select
             className={selectClass}

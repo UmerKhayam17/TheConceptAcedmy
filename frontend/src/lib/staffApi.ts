@@ -45,6 +45,12 @@ export interface StaffUser {
   payType?: "fixed" | "percentage";
   salary?: number;
   salaryPercentage?: number;
+  /** false = record-only staff (guard, sweeper, …) with no portal login. */
+  canLogin?: boolean;
+  /** Job title for non-teaching staff, e.g. "Guard". */
+  designation?: string;
+  /** Optional responsibilities, e.g. "Main gate security". */
+  jobDescription?: string;
   profileImage?: string;
   modulePermissions?: Record<string, string[]>;
   role?: RoleOption | string;
@@ -126,8 +132,52 @@ export async function fetchAllRoles(): Promise<RoleOption[]> {
   return body.data;
 }
 
+/** Built-in role for guards, sweepers, drivers, … (no login by default). */
+export const NON_TEACHING_ROLE = "non_teaching_staff";
+
+/** Job titles offered for non-teaching staff; "Other" lets the operator type one. */
+export const STAFF_DESIGNATIONS = [
+  "Guard",
+  "Sweeper",
+  "Peon",
+  "Driver",
+  "Gardener",
+  "Cook",
+  "Electrician",
+  "Plumber",
+  "Clerk",
+  "Receptionist",
+  "Helper",
+] as const;
+
+/** Suggested responsibilities shown as the job description placeholder. */
+export const DESIGNATION_JOB_HINTS: Record<string, string> = {
+  Guard: "Main gate security, visitor checking and school security.",
+  Sweeper: "Classroom cleaning, washroom cleaning and campus cleanliness.",
+  Peon: "Office errands, file delivery and serving staff.",
+  Driver: "Student transportation and vehicle maintenance.",
+  Gardener: "Lawns, plants and outdoor area upkeep.",
+  Cook: "Preparing meals and keeping the kitchen clean.",
+  Electrician: "Electrical repairs and maintenance.",
+  Plumber: "Water supply, washroom fittings and pipe repairs.",
+  Clerk: "Record keeping, filing and office paperwork.",
+  Receptionist: "Front desk, phone calls and visitor guidance.",
+  Helper: "General assistance to staff and maintenance work.",
+};
+
+/** Placeholder emails the backend assigns to staff with no system login. */
+export function isNoLoginEmail(email?: string): boolean {
+  return String(email || "").toLowerCase().endsWith("@nologin.local");
+}
+
+/** Email to display — "No login" instead of the generated placeholder. */
+export function displayEmail(email?: string, empty = "—"): string {
+  if (isNoLoginEmail(email)) return "No login";
+  return email || empty;
+}
+
 export function staffRolesOnly(roles: RoleOption[]): RoleOption[] {
-  const allow = new Set(["teacher", "accountant"]);
+  const allow = new Set(["teacher", "accountant", NON_TEACHING_ROLE]);
   return roles.filter((r) => allow.has(String(r.name).toLowerCase()));
 }
 
@@ -149,6 +199,7 @@ export function roleDisplayLabel(name: string): string {
   const n = String(name || "").toLowerCase();
   if (n === "accountant") return "Accountant";
   if (n === "admin") return "Admin";
+  if (n === NON_TEACHING_ROLE) return "Non-Teaching Staff";
   return n ? n.charAt(0).toUpperCase() + n.slice(1) : name;
 }
 
@@ -253,8 +304,12 @@ export async function assignParentStudents(parentUserId: string, studentIds: str
 
 export async function createStaffUser(payload: {
   name: string;
-  email: string;
-  password: string;
+  /** Optional when canLogin is false (backend generates a placeholder). */
+  email?: string;
+  password?: string;
+  canLogin?: boolean;
+  designation?: string;
+  jobDescription?: string;
   phone: string;
   role: string;
   isActive?: boolean;
@@ -285,6 +340,9 @@ export async function updateStaffUser(
     salary: number;
     salaryPercentage: number;
     password: string;
+    canLogin: boolean;
+    designation: string;
+    jobDescription: string;
     modulePermissions: Record<string, string[]>;
   }>,
 ): Promise<StaffUser> {

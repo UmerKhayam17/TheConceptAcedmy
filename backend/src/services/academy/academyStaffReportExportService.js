@@ -10,6 +10,7 @@ const {
   drawPdfRow,
 } = require('./academyReportDocument');
 const { ACADEMY_BRAND, resolveLogoPath } = require('../../config/academyBrand');
+const { publicEmail } = require('../../config/staffRoles');
 const { formatTimeInTz } = require('../../utils/schoolDay');
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -158,7 +159,7 @@ async function renderStaffReportPdf(payload) {
         doc.fillColor(brand.colors.navy).font('Helvetica-Bold').fontSize(13);
         pdfLine(doc, 'STAFF REPORT', 32, 96);
         doc.fillColor(brand.colors.muted).font('Helvetica').fontSize(8.5);
-        pdfLine(doc, `${user.name}  ·  ${cap(roleNameOf(user))}  ·  ${user.email || ''}`, 32, 114);
+        pdfLine(doc, `${user.name}  ·  ${cap(roleNameOf(user))}  ·  ${publicEmail(user.email)}`, 32, 114);
         return 134;
       };
 
@@ -177,7 +178,7 @@ async function renderStaffReportPdf(payload) {
       const profileBits = [
         `Name: ${user.name}`,
         `Role: ${cap(roleNameOf(user))}`,
-        `Email: ${user.email || '—'}`,
+        `Email: ${publicEmail(user.email) || 'No login'}`,
         `Phone: ${user.phone || '—'}`,
         `Monthly salary: ${money(user.salary)}`,
         `Status: ${user.isActive ? 'Active' : 'Inactive'}`,
@@ -292,7 +293,7 @@ async function renderStaffReportExcel(payload) {
   [
     ['Name', user.name],
     ['Role', cap(roleNameOf(user))],
-    ['Email', user.email || ''],
+    ['Email', publicEmail(user.email) || 'No login'],
     ['Phone', user.phone || ''],
     ['Monthly salary', money(user.salary)],
     ['Status', user.isActive ? 'Active' : 'Inactive'],

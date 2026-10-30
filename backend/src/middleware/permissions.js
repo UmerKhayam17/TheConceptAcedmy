@@ -1,6 +1,7 @@
 const ApiError = require('../utils/ApiError');
 const { hasModulePermission } = require('../modules');
 const { isSystemAdmin } = require('../utils/systemAdmin');
+const { isStaffRoleName } = require('../config/staffRoles');
 
 /** Separate Administration account panels (Parents / Staff / Admins). */
 const ACCOUNT_MODULE_KEYS = ['parentUsers', 'staffUsers', 'adminUsers'];
@@ -8,7 +9,7 @@ const ACCOUNT_MODULE_KEYS = ['parentUsers', 'staffUsers', 'adminUsers'];
 function accountModuleForRoleName(roleName) {
   const n = String(roleName || '').toLowerCase();
   if (n === 'parent') return 'parentUsers';
-  if (n === 'teacher' || n === 'accountant') return 'staffUsers';
+  if (isStaffRoleName(n)) return 'staffUsers';
   if (n === 'admin') return 'adminUsers';
   return null;
 }

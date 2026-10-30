@@ -2,6 +2,7 @@ const AcademySalaryRecord = require('../../models/academy/AcademySalaryRecord');
 const User = require('../../models/User');
 const Role = require('../../models/Role');
 const { renderBrandedPdf, renderBrandedExcel, formatDate } = require('./academyReportDocument');
+const { STAFF_ROLE_NAMES, NON_TEACHING_ROLE } = require('../../config/staffRoles');
 
 const MONTHS = [
   'January',
@@ -25,9 +26,12 @@ function staffName(rec) {
 }
 
 function staffRole(rec) {
-  const r = rec.staffId && typeof rec.staffId === 'object' ? rec.staffId.role : null;
-  if (r && typeof r === 'object') return r.name || '—';
-  return '—';
+  const s = rec.staffId && typeof rec.staffId === 'object' ? rec.staffId : null;
+  const r = s?.role;
+  if (!r || typeof r !== 'object') return '—';
+  // Support staff show their job (Guard, Sweeper, …) instead of the generic role name.
+  if (r.name === NON_TEACHING_ROLE) return s.designation || 'Non-teaching';
+  return r.name || '—';
 }
 
 function payTypeOf(rec) {
@@ -69,7 +73,7 @@ async function buildSalaryQuery({ staffId, status, month, year, roleName, search
     q.staffId = { $in: users.map((u) => u._id) };
     return q;
   }
-  const roles = await Role.find({ name: { $in: ['teacher', 'accountant'] } }).select('_id');
+  const roles = await Role.find({ name: { $in: STAFF_ROLE_NAMES } }).select('_id');
   const users = await User.find({ role: { $in: roles.map((r) => r._id) }, isActive: true }).select(
     '_id'
   );
@@ -80,7 +84,7 @@ async function buildSalaryQuery({ staffId, status, month, year, roleName, search
     const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const rx = { $regex: escaped, $options: 'i' };
     const matched = await User.find({
-      $or: [{ name: rx }, { email: rx }, { phone: rx }],
+      $or: [{ name: rx }, { email: rx }, { phone: rx }, { designation: rx }],
     }).select('_id');
     return {
       $and: [
@@ -103,7 +107,7 @@ async function loadSalaryData(filters) {
   const records = await AcademySalaryRecord.find(q)
     .populate({
       path: 'staffId',
-      select: 'name email phone salary payType salaryPercentage',
+      select: 'name email phone salary payType salaryPercentage designation',
       populate: { path: 'role', select: 'name' },
     })
     .sort({ year: -1, month: -1, createdAt: -1 })
@@ -149,7 +153,15 @@ function filterLine({ month, year, status, roleName, search }) {
   const parts = [];
   if (month && year) parts.push(`${MONTHS[Number(month) - 1] || month} ${year}`);
   else if (year) parts.push(`Year ${year}`);
-  if (roleName) parts.push(roleName === 'teacher' ? 'Teachers' : 'Accountants');
+  if (roleName) {
+    parts.push(
+      roleName === 'teacher'
+        ? 'Teachers'
+        : roleName === NON_TEACHING_ROLE
+          ? 'Non-teaching staff'
+          : 'Accountants'
+    );
+  }
   else parts.push('All staff');
   if (status) parts.push(String(status).replace(/^\w/, (c) => c.toUpperCase()));
   else parts.push('All statuses');
@@ -200,7 +212,9 @@ async function exportSalaryReport(filters = {}) {
       ? 'Teachers'
       : filters.roleName === 'accountant'
         ? 'Accountants'
-        : 'All staff';
+        : filters.roleName === NON_TEACHING_ROLE
+          ? 'Non-teaching staff'
+          : 'All staff';
 
   const meta = {
     leftFilter: staffLabel,

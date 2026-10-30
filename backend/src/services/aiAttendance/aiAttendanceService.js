@@ -12,6 +12,7 @@ const {
   parseAiEmployeeId,
 } = require('./aiAttendanceIds');
 const Role = require('../../models/Role');
+const { STAFF_ROLE_NAMES } = require('../../config/staffRoles');
 const {
   resolveStudentAttendanceStatus,
   resolveFallbackAttendanceStatus,
@@ -293,7 +294,7 @@ async function syncRoster() {
     }
   }
 
-  const staffRoles = await Role.find({ name: { $in: ['teacher', 'accountant'] } }).select('_id').lean();
+  const staffRoles = await Role.find({ name: { $in: STAFF_ROLE_NAMES } }).select('_id').lean();
   const users = await User.find({
     isActive: true,
     role: { $in: staffRoles.map((r) => r._id) },
@@ -323,7 +324,7 @@ async function listPeopleForEnrollment() {
       .populate('classId', 'className')
       .sort({ rollNumber: 1, studentName: 1 })
       .lean(),
-    Role.find({ name: { $in: ['teacher', 'accountant'] } }).select('_id name').lean(),
+    Role.find({ name: { $in: STAFF_ROLE_NAMES } }).select('_id name').lean(),
   ]);
   const staff = await User.find({
     isActive: true,

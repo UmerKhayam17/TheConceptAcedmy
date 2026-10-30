@@ -23,17 +23,17 @@ function monthRange(month, year) {
   return { start, end };
 }
 
-/** Staff accounts for attendance marking: teacher, accountant, admin (active first). */
+/** Staff accounts for attendance marking: teacher, accountant, admin, non-teaching (active first). */
 async function listTeachers() {
   const roles = await Role.find({
-    name: { $regex: /^(teacher|accountant|admin)$/i },
+    name: { $regex: /^(teacher|accountant|admin|non_teaching_staff)$/i },
   })
     .select('_id name')
     .lean();
   const byRole =
     roles.length > 0
       ? await User.find({ role: { $in: roles.map((r) => r._id) } })
-          .select('name email phone role isActive')
+          .select('name email phone role isActive designation canLogin')
           .populate('role', 'name')
           .lean()
       : [];
@@ -45,7 +45,7 @@ async function listTeachers() {
     const userIds = await TeacherProfile.distinct('user');
     if (userIds.length) {
       byProfile = await User.find({ _id: { $in: userIds } })
-        .select('name email phone role isActive')
+        .select('name email phone role isActive designation canLogin')
         .populate('role', 'name')
         .lean();
     }

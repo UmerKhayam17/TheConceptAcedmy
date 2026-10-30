@@ -61,6 +61,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { localTodayYmd } from "@/lib/localDate";
 import { cn, formatWallClockRange } from "@/lib/utils";
+import { isNoLoginEmail } from "@/lib/staffApi";
 
 const PERIOD_STATUSES: { value: StaffPeriodStatus; label: string }[] = [
   { value: "present", label: "Present" },
@@ -1181,7 +1182,9 @@ function StaffIdentity({ person }: { person: StaffPeriodTeacher }) {
         <p className="truncate text-[13px] font-semibold text-[#1a2b4b] dark:text-slate-100">
           {person.name}
         </p>
-        {person.email ? <p className="truncate text-xs text-slate-500">{person.email}</p> : null}
+        {person.email && !isNoLoginEmail(person.email) ? (
+          <p className="truncate text-xs text-slate-500">{person.email}</p>
+        ) : null}
       </div>
     </div>
   );

@@ -107,7 +107,7 @@ const login = catchAsync(async (req, res) => {
   const user = await User.findOne({ email: String(email).toLowerCase().trim() })
     .select('+password')
     .populate('role');
-  if (!user || !user.isActive) {
+  if (!user || !user.isActive || user.canLogin === false) {
     throw new ApiError(401, 'Invalid credentials');
   }
   if (!user.password) {
@@ -172,6 +172,7 @@ const refresh = catchAsync(async (req, res) => {
   const user = await User.findOne({
     _id: userId,
     isActive: true,
+    canLogin: { $ne: false },
     $or: [
       { refreshToken: presented },
       { refreshTokenPrev: presented, refreshTokenRotatedAt: { $gte: graceCutoff } },
@@ -326,6 +327,9 @@ const verifyOtp = catchAsync(async (req, res) => {
   const parentRole = await Role.findOne({ name: 'parent' });
   if (!parentRole) throw new ApiError(500, 'Roles not initialized');
   let user = await User.findOne({ phone }).populate('role');
+  if (user && user.canLogin === false) {
+    throw new ApiError(403, 'This account does not have system login');
+  }
   if (!user) {
     // Prefer linking via student guardianEmail if a matching guardian phone student exists later;
     // email uses phone placeholder only when no real guardian email is known.

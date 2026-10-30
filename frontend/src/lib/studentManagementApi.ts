@@ -1790,6 +1790,9 @@ export interface AcademySalaryRecord {
     profileImage?: string;
     aiEmployeeId?: string;
     createdAt?: string;
+    designation?: string;
+    jobDescription?: string;
+    canLogin?: boolean;
     role?: { name: string };
   } | string;
   month: number;
@@ -1872,7 +1875,7 @@ export const fetchAcademySalary = (id: string) =>
 export const generateMonthlySalaries = (body: {
   month: number;
   year: number;
-  roleName?: "teacher" | "accountant";
+  roleName?: "teacher" | "accountant" | "non_teaching_staff";
 }) =>
   api<{ created: number; skipped: number }>("/salaries/generate", {
     method: "POST",
@@ -1883,7 +1886,7 @@ export const generateMonthlySalaries = (body: {
 export const recalculatePercentageSalaries = (body: {
   month: number;
   year: number;
-  roleName?: "teacher" | "accountant";
+  roleName?: "teacher" | "accountant" | "non_teaching_staff";
 }) =>
   api<{ updated: number; skipped: number }>("/salaries/recalculate", {
     method: "POST",

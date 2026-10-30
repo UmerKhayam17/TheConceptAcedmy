@@ -22,8 +22,20 @@ const otpVerify = Joi.object({
 
 const createUser = Joi.object({
   name: Joi.string().required(),
-  email: Joi.string().email({ tlds: { allow: false } }).required(),
-  password: Joi.string().min(8).required(),
+  canLogin: Joi.boolean().optional(),
+  // Record-only staff (canLogin false) get a generated placeholder email and random password.
+  email: Joi.when('canLogin', {
+    is: false,
+    then: Joi.string().email({ tlds: { allow: false } }).allow('').optional(),
+    otherwise: Joi.string().email({ tlds: { allow: false } }).required(),
+  }),
+  password: Joi.when('canLogin', {
+    is: false,
+    then: Joi.string().allow('').optional(),
+    otherwise: Joi.string().min(8).required(),
+  }),
+  designation: Joi.string().trim().max(80).allow('').optional(),
+  jobDescription: Joi.string().trim().max(1000).allow('').optional(),
   phone: Joi.string().required(),
   role: Joi.string().hex().length(24).required(),
   permissionIds: Joi.array().items(Joi.string().hex().length(24)).optional(),
@@ -42,7 +54,10 @@ const updateUser = Joi.object({
   role: Joi.string().hex().length(24),
   isActive: Joi.boolean(),
   fcmToken: Joi.string().allow('', null),
-  password: Joi.string().min(8),
+  password: Joi.string().min(8).allow(''),
+  canLogin: Joi.boolean(),
+  designation: Joi.string().trim().max(80).allow(''),
+  jobDescription: Joi.string().trim().max(1000).allow(''),
   profileImage: Joi.string().max(2048).allow(''),
   payType: Joi.string().valid('fixed', 'percentage'),
   salary: Joi.number().min(0),

@@ -12,7 +12,10 @@ export type UserFieldKey =
   | "isActive"
   | "payType"
   | "salary"
-  | "salaryPercentage";
+  | "salaryPercentage"
+  | "canLogin"
+  | "designation"
+  | "jobDescription";
 
 export type UserFieldType = "text" | "email" | "password" | "tel" | "select" | "number";
 
@@ -137,6 +140,16 @@ export const USER_SCHEMA_FIELDS: UserSchemaField[] = [
     showInTable: false,
     placeholder: "e.g. 40",
   },
+  {
+    // Rendered by the form as a custom select (non-teaching staff only); listed here for the table.
+    key: "designation",
+    label: "Designation",
+    inputType: "text",
+    modes: ["create", "edit"],
+    required: false,
+    colSpan: 1,
+    showInTable: true,
+  },
 ];
 
 export function visibleFormFields(mode: UserFormMode): UserSchemaField[] {
@@ -160,6 +173,9 @@ export function emptyUserForm(): UserFormValues {
     payType: "fixed",
     salary: "0",
     salaryPercentage: "0",
+    canLogin: "true",
+    designation: "",
+    jobDescription: "",
   };
 }
 
@@ -171,6 +187,9 @@ export function userToFormValues(u: {
   payType?: "fixed" | "percentage" | string;
   salary?: number;
   salaryPercentage?: number;
+  canLogin?: boolean;
+  designation?: string;
+  jobDescription?: string;
   role?: { _id?: string; name?: string } | string;
 }): UserFormValues {
   const roleId = typeof u.role === "object" && u.role?._id ? String(u.role._id) : "";
@@ -184,5 +203,8 @@ export function userToFormValues(u: {
     payType: u.payType === "percentage" ? "percentage" : "fixed",
     salary: String(u.salary ?? 0),
     salaryPercentage: String(u.salaryPercentage ?? 0),
+    canLogin: u.canLogin === false ? "false" : "true",
+    designation: u.designation ?? "",
+    jobDescription: u.jobDescription ?? "",
   };
 }

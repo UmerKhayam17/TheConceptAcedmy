@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Briefcase,
   Eye,
   EyeOff,
   GraduationCap,
@@ -63,6 +65,10 @@ import {
   updateStaffUser,
   uploadStaffProfilePhoto,
   normalizeModulePermissions,
+  NON_TEACHING_ROLE,
+  STAFF_DESIGNATIONS,
+  DESIGNATION_JOB_HINTS,
+  isNoLoginEmail,
   type RoleOption,
   type StaffUser,
 } from "@/lib/staffApi";
@@ -299,6 +305,8 @@ export default function UserFormPage({
     password: string;
   } | null>(null);
   const [showParentPassword, setShowParentPassword] = useState(true);
+  /** "Other" picked in the designation dropdown → free-text job title. */
+  const [customDesignation, setCustomDesignation] = useState(false);
 
   const { data: rolesRaw = [] } = useQuery({
     queryKey: ["staffRoles"],
@@ -331,11 +339,26 @@ export default function UserFormPage({
   const isParentRole = (selectedRole?.name || "").toLowerCase() === "parent";
   const isTeacherRole = (selectedRole?.name || "").toLowerCase() === "teacher";
   const isAccountantRole = (selectedRole?.name || "").toLowerCase() === "accountant";
+  const isNonTeachingRole = (selectedRole?.name || "").toLowerCase() === NON_TEACHING_ROLE;
   const isParentCreate = mode === "create" && isParentRole;
+  // Login toggle applies to staff only; parents and admins always log in.
+  const showLoginToggle = isStaffScope && !isParentRole;
+  const noLogin = showLoginToggle && form.canLogin === "false";
+  const showDesignation = isNonTeachingRole || Boolean(form.designation);
+  const designationPreset = (STAFF_DESIGNATIONS as readonly string[]).includes(form.designation);
+  const showCustomDesignation =
+    customDesignation || (!designationPreset && Boolean(form.designation));
 
   useEffect(() => {
     if (mode !== "edit" || !editingUser) return;
-    setForm(userToFormValues(editingUser));
+    const values = userToFormValues(editingUser);
+    // Never show the generated placeholder email for record-only staff.
+    if (isNoLoginEmail(values.email)) values.email = "";
+    setForm(values);
+    setCustomDesignation(
+      Boolean(values.designation) &&
+        !(STAFF_DESIGNATIONS as readonly string[]).includes(values.designation),
+    );
     setModulePerms(normalizeModulePermissions(editingUser.modulePermissions));
     const uRoleName =
       typeof editingUser.role === "object" && editingUser.role?.name
@@ -489,6 +512,8 @@ export default function UserFormPage({
       const fields = visibleFormFields(mode);
       for (const f of fields) {
         const v = (form[f.key] || "").trim();
+        if (f.key === "designation") continue;
+        if (noLogin && (f.key === "email" || f.key === "password")) continue;
         if (f.key === "password" && mode === "edit" && f.optionalOnEdit) continue;
         if (f.required && !v && f.key !== "salary" && f.key !== "salaryPercentage") {
           throw new Error(`${f.label} is required.`);
@@ -511,22 +536,43 @@ export default function UserFormPage({
       if (isParentRole && mode === "edit" && parentStudentIds.length === 0) {
         throw new Error("Select at least one student for this parent.");
       }
+      if (isNonTeachingRole && !form.designation.trim()) {
+        throw new Error("Select the designation (job) for this staff member.");
+      }
+      if (
+        mode === "edit" &&
+        !noLogin &&
+        editingUser?.canLogin === false &&
+        !form.password.trim()
+      ) {
+        throw new Error("Set a password to enable login for this staff member.");
+      }
+
+      const staffExtras = showLoginToggle
+        ? {
+            canLogin: !noLogin,
+            designation: form.designation.trim(),
+            jobDescription: form.jobDescription.trim(),
+          }
+        : {};
 
       if (mode === "create") {
-        if (!form.password || form.password.length < 8) {
+        if (!noLogin && (!form.password || form.password.length < 8)) {
           throw new Error("Password must be at least 8 characters.");
         }
         const u = await createStaffUser({
           name: form.name.trim(),
-          email: form.email.trim().toLowerCase(),
-          password: form.password,
+          ...(noLogin
+            ? {}
+            : { email: form.email.trim().toLowerCase(), password: form.password }),
+          ...staffExtras,
           phone: form.phone.trim(),
           role: form.role,
           isActive: form.isActive === "true",
           payType,
           salary: payType === "fixed" ? salaryNum : 0,
           salaryPercentage: payType === "percentage" ? pctNum : 0,
-          modulePermissions: { ...modulePerms },
+          modulePermissions: noLogin ? {} : { ...modulePerms },
         });
         if (photoFile) await uploadStaffProfilePhoto(u._id, photoFile);
         return { user: u, parentCredentials: null };
@@ -535,16 +581,17 @@ export default function UserFormPage({
       if (!userId) throw new Error("Missing user");
       const payload: Parameters<typeof updateStaffUser>[1] = {
         name: form.name.trim(),
-        email: form.email.trim().toLowerCase(),
+        ...(noLogin ? {} : { email: form.email.trim().toLowerCase() }),
+        ...staffExtras,
         phone: form.phone.trim(),
         role: form.role,
         isActive: form.isActive === "true",
         payType,
         salary: payType === "fixed" ? salaryNum : 0,
         salaryPercentage: payType === "percentage" ? pctNum : 0,
-        modulePermissions: { ...modulePerms },
+        ...(noLogin ? {} : { modulePermissions: { ...modulePerms } }),
       };
-      if (form.password.trim()) payload.password = form.password;
+      if (!noLogin && form.password.trim()) payload.password = form.password;
       const u = await updateStaffUser(userId, payload);
       if (photoFile) await uploadStaffProfilePhoto(userId, photoFile);
       if (isParentRole) await assignParentStudents(userId, parentStudentIds);
@@ -593,7 +640,7 @@ export default function UserFormPage({
   const pageHint =
     mode === "create"
       ? isStaffScope
-        ? "Create a teacher or accountant with pay settings and module access."
+        ? "Create a teacher, accountant or non-teaching staff member (guard, sweeper, …)."
         : isAdminsScope
           ? "Create an administration account and set module permissions."
           : "Create a parent portal account and link students."
@@ -630,6 +677,8 @@ export default function UserFormPage({
   const detailFields = visibleFormFields(mode).filter((field) => {
     if (field.key === "role") return false;
     if (field.key === "isActive") return false;
+    if (field.key === "designation") return false;
+    if (noLogin && (field.key === "email" || field.key === "password")) return false;
     const isPayField =
       field.key === "payType" || field.key === "salary" || field.key === "salaryPercentage";
     // Pay/salary only for Staff (teachers & accountants) — not parents or admins.
@@ -679,11 +728,20 @@ export default function UserFormPage({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-4 items-start",
+            !noLogin && "xl:grid-cols-2",
+          )}
+        >
           <StepSection
             step={1}
             title="Basic Information"
-            description="Enter the user's personal and login details."
+            description={
+              noLogin
+                ? "Enter the staff member's personal, job and pay details."
+                : "Enter the user's personal and login details."
+            }
           >
             {!isParentCreate && (
               <div className="mb-5 flex flex-wrap items-center gap-4">
@@ -737,6 +795,12 @@ export default function UserFormPage({
                       if (mode === "create" && roleName === "accountant") {
                         setModulePerms({ ...ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS });
                       }
+                      if (mode === "create") {
+                        // Non-teaching staff are record-only by default.
+                        const nonTeaching = roleName === NON_TEACHING_ROLE;
+                        setFormField(setForm, "canLogin", nonTeaching ? "false" : "true");
+                        if (nonTeaching) setModulePerms({});
+                      }
                     }}
                     required
                   >
@@ -766,6 +830,101 @@ export default function UserFormPage({
                     </span>
                   </div>
                 </div>
+              )}
+
+              {showLoginToggle && (
+                <div className="sm:col-span-2">
+                  <Label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    System login
+                  </Label>
+                  <div className="flex min-h-10 items-center gap-3 rounded-md border border-input bg-background px-3 py-2">
+                    <Switch
+                      checked={!noLogin}
+                      onCheckedChange={(checked) =>
+                        setFormField(setForm, "canLogin", checked ? "true" : "false")
+                      }
+                      aria-label="Can log in to the system"
+                    />
+                    <span className="text-sm text-slate-700">
+                      {noLogin ? (
+                        <>
+                          <span className="font-medium">No login</span>
+                          <span className="text-slate-500">
+                            {" "}
+                            · record, attendance and salary only
+                          </span>
+                        </>
+                      ) : (
+                        <span className="font-medium">Can log in with email &amp; password</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {showLoginToggle && showDesignation && (
+                <>
+                  <div>
+                    <Label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Designation / Job
+                      {isNonTeachingRole ? <span className="text-destructive"> *</span> : null}
+                    </Label>
+                    <IconFieldShell icon={Briefcase}>
+                      <select
+                        className="w-full h-10 rounded-md border border-input bg-background pl-9 pr-3 text-sm appearance-none"
+                        value={showCustomDesignation ? "__other" : form.designation}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "__other") {
+                            setCustomDesignation(true);
+                            setFormField(setForm, "designation", "");
+                          } else {
+                            setCustomDesignation(false);
+                            setFormField(setForm, "designation", v);
+                          }
+                        }}
+                      >
+                        <option value="">Select job…</option>
+                        {STAFF_DESIGNATIONS.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                        <option value="__other">Other</option>
+                      </select>
+                    </IconFieldShell>
+                  </div>
+                  {showCustomDesignation ? (
+                    <div>
+                      <Label className="mb-1.5 block text-sm font-medium text-slate-700">
+                        Other job title <span className="text-destructive"> *</span>
+                      </Label>
+                      <Input
+                        value={form.designation}
+                        onChange={(e) => setFormField(setForm, "designation", e.target.value)}
+                        placeholder="e.g. Lab assistant"
+                        maxLength={80}
+                      />
+                    </div>
+                  ) : (
+                    <div className="hidden sm:block" />
+                  )}
+                  <div className="sm:col-span-2">
+                    <Label className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Job description / Responsibilities
+                    </Label>
+                    <Textarea
+                      value={form.jobDescription}
+                      onChange={(e) => setFormField(setForm, "jobDescription", e.target.value)}
+                      placeholder={
+                        DESIGNATION_JOB_HINTS[form.designation] ||
+                        "What is this person responsible for? (optional)"
+                      }
+                      rows={3}
+                      maxLength={1000}
+                    />
+                  </div>
+                </>
               )}
 
               {isParentCreate ? (
@@ -924,6 +1083,8 @@ export default function UserFormPage({
             </div>
           </StepSection>
 
+          {/* No system login → nothing to grant, so the permissions step is hidden. */}
+          {!noLogin && (
           <StepSection
             step={2}
             title="Module Permissions"
@@ -962,6 +1123,7 @@ export default function UserFormPage({
               <p className="text-sm text-slate-500">Select a role to load default module permissions.</p>
             )}
           </StepSection>
+          )}
         </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2 pt-2">

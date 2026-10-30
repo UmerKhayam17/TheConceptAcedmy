@@ -4,6 +4,7 @@ const Role = require('../../models/Role');
 const AcademySalaryRecord = require('../../models/academy/AcademySalaryRecord');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const { populateCreatedBy } = require('../../utils/createdBy');
+const { STAFF_ROLE_NAMES } = require('../../config/staffRoles');
 const { calculateTeacherPercentageSalary } = require('./percentageSalaryCalculator');
 const { buildSalaryAttendance, buildFixedClassAllocation } = require('./salarySlipDetails');
 
@@ -64,7 +65,7 @@ function staffHasPayroll(member) {
 }
 
 async function staffRoleIds() {
-  const roles = await Role.find({ name: { $in: ['teacher', 'accountant'] } }).select('_id');
+  const roles = await Role.find({ name: { $in: STAFF_ROLE_NAMES } }).select('_id');
   return roles.map((r) => r._id);
 }
 
@@ -106,7 +107,7 @@ async function listSalaryRecords({
     const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const rx = { $regex: escaped, $options: 'i' };
     const users = await User.find({
-      $or: [{ name: rx }, { email: rx }, { phone: rx }],
+      $or: [{ name: rx }, { email: rx }, { phone: rx }, { designation: rx }],
     }).select('_id');
     q = {
       $and: [
@@ -129,7 +130,7 @@ async function listSalaryRecords({
       AcademySalaryRecord.find(q)
         .populate({
           path: 'staffId',
-          select: 'name email phone salary payType salaryPercentage profileImage',
+          select: 'name email phone salary payType salaryPercentage profileImage designation canLogin',
           populate: { path: 'role', select: 'name' },
         })
         .sort({ year: -1, month: -1, createdAt: -1 })
@@ -474,7 +475,7 @@ async function updateSalaryAmount(id, amount, userId) {
   await record.save();
   return record.populate({
     path: 'staffId',
-    select: 'name email phone salary payType salaryPercentage profileImage',
+    select: 'name email phone salary payType salaryPercentage profileImage designation canLogin',
     populate: { path: 'role', select: 'name' },
   });
 }
@@ -488,7 +489,7 @@ async function getSalaryRecordById(id) {
   const record = await populateCreatedBy(
     AcademySalaryRecord.findById(id).populate({
       path: 'staffId',
-      select: 'name email phone salary payType salaryPercentage profileImage aiEmployeeId createdAt',
+      select: 'name email phone salary payType salaryPercentage profileImage aiEmployeeId createdAt designation jobDescription canLogin',
       populate: { path: 'role', select: 'name' },
     })
   );

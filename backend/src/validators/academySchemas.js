@@ -462,7 +462,7 @@ const academySalaryAmount = Joi.object({
 const academySalaryGenerate = Joi.object({
   month: Joi.number().integer().min(1).max(12).required(),
   year: Joi.number().integer().min(2000).max(2100).required(),
-  roleName: Joi.string().valid('teacher', 'accountant').optional(),
+  roleName: Joi.string().valid('teacher', 'accountant', 'non_teaching_staff').optional(),
 });
 
 const academyExpenseBody = Joi.object({

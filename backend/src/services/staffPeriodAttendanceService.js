@@ -10,6 +10,7 @@ require('../models/academy/AcademySubject');
 const Role = require('../models/Role');
 const StaffPeriodAttendance = require('../models/StaffPeriodAttendance');
 const { weekdayName, dayBounds } = require('../utils/schoolDay');
+const { publicEmail } = require('../config/staffRoles');
 
 const PERIOD_STATUSES = new Set(['present', 'late', 'absent', 'leave']);
 /** Non-teaching staff are marked once per day instead of per class. */
@@ -196,7 +197,7 @@ async function loadWeekdayPeriods(sessionId) {
 async function teacherUsers(ids) {
   if (!ids.length) return new Map();
   const users = await User.find({ _id: { $in: ids } })
-    .select('name email role isActive profileImage')
+    .select('name email role isActive profileImage designation')
     .populate('role', 'name')
     .lean();
   return new Map(users.map((u) => [String(u._id), u]));
@@ -217,7 +218,7 @@ async function dailyStaffUsers(timetableTeacherIds) {
     isActive: { $ne: false },
     _id: { $nin: [...timetableTeacherIds] },
   })
-    .select('name email role isActive profileImage')
+    .select('name email role isActive profileImage designation')
     .populate('role', 'name')
     .lean();
   return users;
@@ -288,7 +289,7 @@ function teacherShape(user, periods, attendanceType = 'class') {
     attendanceType,
     userId: String(user._id),
     name: user.name || '',
-    email: user.email || '',
+    email: publicEmail(user.email),
     profileImage: user.profileImage || '',
     isActive: user.isActive !== false,
     role: user.role && typeof user.role === 'object' ? user.role.name || '' : '',

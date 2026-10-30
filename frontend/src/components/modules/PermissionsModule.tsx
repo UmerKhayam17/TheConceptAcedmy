@@ -20,6 +20,7 @@ import {
   fetchModuleRegistry,
   fetchPermissionCatalog,
   normalizeModulePermissions,
+  displayEmail,
   patchUserPermissionIds,
   updateStaffUser,
   type PermissionDefinition,
@@ -206,7 +207,7 @@ const PermissionsModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Modul
                 usersFiltered.map((u) => (
                   <tr key={u._id} className="border-t border-border hover:bg-secondary/30">
                     <td className="px-4 py-3 font-medium text-primary">{u.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{displayEmail(u.email)}</td>
                     <td className="px-4 py-3 capitalize">{roleLabel(u)}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs leading-snug max-w-md">
                       {apiPermissionSummary(u)}
@@ -247,7 +248,7 @@ const PermissionsModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Modul
               <p className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">{editing.name}</span>
                 {" · "}
-                {editing.email}
+                {displayEmail(editing.email)}
                 {" · "}
                 <span className="capitalize">{roleLabel(editing)}</span>
               </p>

@@ -10,8 +10,10 @@ async function socketAuthMiddleware(socket, next) {
     if (!token) return next(new Error('Access token required'));
 
     const decoded = verifyAccessToken(token);
-    const user = await User.findById(decoded.sub).select('name email profileImage isActive');
-    if (!user || !user.isActive) return next(new Error('User not found or inactive'));
+    const user = await User.findById(decoded.sub).select('name email profileImage isActive canLogin');
+    if (!user || !user.isActive || user.canLogin === false) {
+      return next(new Error('User not found or inactive'));
+    }
 
     socket.user = user;
     next();

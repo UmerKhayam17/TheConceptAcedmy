@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const catchAsync = require('../utils/catchAsync');
 const ApiError = require('../utils/ApiError');
@@ -16,6 +17,19 @@ const {
   hasAnyAccountModulePermission,
 } = require('../middleware/permissions');
 const rt = require('../services/realtime/academyRealtime');
+const {
+  NON_TEACHING_ROLE,
+  NO_LOGIN_EMAIL_DOMAIN,
+  isStaffRoleName,
+  isNoLoginEmail,
+} = require('../config/staffRoles');
+
+/** Unique placeholder + unguessable password for record-only staff (no portal login). */
+async function noLoginCredentials() {
+  const email = `staff-${crypto.randomBytes(8).toString('hex')}@${NO_LOGIN_EMAIL_DOMAIN}`;
+  const password = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 12);
+  return { email, password };
+}
 
 function assertAccountAction(reqUser, moduleName, action, label = 'this action') {
   if (isSystemAdmin(reqUser)) return;
@@ -158,10 +172,7 @@ const listUsers = catchAsync(async (req, res) => {
   }
 
   if (staffOnly || scope === 'staff') {
-    list = users.filter((u) => {
-      const n = roleName(u);
-      return n === 'teacher' || n === 'accountant';
-    });
+    list = users.filter((u) => isStaffRoleName(roleName(u)));
     attachParents = false;
   } else if (scope === 'parents' || scope === 'parent') {
     list = users.filter((u) => roleName(u) === 'parent');
@@ -179,7 +190,7 @@ const listUsers = catchAsync(async (req, res) => {
       list = users.filter((u) => {
         const n = roleName(u);
         if (n === 'parent') return canParent;
-        if (n === 'teacher' || n === 'accountant') return canStaff;
+        if (isStaffRoleName(n)) return canStaff;
         if (n === 'admin') return canAdmin;
         return false;
       });
@@ -262,10 +273,10 @@ const createUser = catchAsync(async (req, res) => {
     salary,
     payType,
     salaryPercentage,
+    canLogin,
+    designation,
+    jobDescription,
   } = req.body;
-  const exists = await User.findOne({ email });
-  if (exists) throw new ApiError(409, 'Email already in use');
-  const hash = await bcrypt.hash(password, 12);
   // Only fall back to role defaults when the client omitted the field entirely.
   // An explicit `{}` / partial matrix from Users/Permissions must be respected.
   const modulePermissionsProvided = Object.prototype.hasOwnProperty.call(
@@ -291,9 +302,33 @@ const createUser = catchAsync(async (req, res) => {
   const createModule = accountModuleForRoleName(roleName);
   assertAccountAction(req.user, createModule, 'create', `creating ${roleName || 'user'} accounts`);
 
+  // Non-teaching staff are record-only unless the operator explicitly enables login.
+  const resolvedCanLogin =
+    typeof canLogin === 'boolean' ? canLogin : roleName !== NON_TEACHING_ROLE;
+  if (!resolvedCanLogin && roleName === 'admin') {
+    throw new ApiError(400, 'Admin accounts must be able to log in.');
+  }
+  let finalEmail = String(email || '').toLowerCase().trim();
+  let hash;
+  if (resolvedCanLogin) {
+    if (isNoLoginEmail(finalEmail)) {
+      throw new ApiError(400, 'Enter a real email address for accounts that can log in.');
+    }
+    hash = await bcrypt.hash(password, 12);
+  } else {
+    const generated = await noLoginCredentials();
+    if (!finalEmail) finalEmail = generated.email;
+    hash = generated.password;
+    // No login → no module access.
+    userModulePerms = new Map();
+  }
+  const exists = await User.findOne({ email: finalEmail });
+  if (exists) throw new ApiError(409, 'Email already in use');
+
   // New teachers / accountants / parents inherit role defaults when none provided.
   // Secondary admins keep the request matrix (or empty) — they never inherit full admin-role access.
   if (
+    resolvedCanLogin &&
     (roleName === 'teacher' || roleName === 'accountant' || roleName === 'parent') &&
     !modulePermissionsProvided
   ) {
@@ -332,8 +367,7 @@ const createUser = catchAsync(async (req, res) => {
   }
 
   if (roleName === 'admin') {
-    const newEmail = String(email || '').toLowerCase().trim();
-    if (newEmail === seedAdminEmail()) {
+    if (finalEmail === seedAdminEmail()) {
       throw new ApiError(400, 'Cannot create another account with the system admin email.');
     }
     // Ensure Map exists so secondary admins always use dynamic permissions (not role full-access).
@@ -342,13 +376,16 @@ const createUser = catchAsync(async (req, res) => {
 
   const user = await User.create({
     name,
-    email,
+    email: finalEmail,
     password: hash,
     phone,
     role,
-    permissions: permissionIds || roleDoc?.permissions || [],
+    permissions: resolvedCanLogin ? permissionIds || roleDoc?.permissions || [] : [],
     modulePermissions: userModulePerms,
     isActive: typeof isActive === 'boolean' ? isActive : true,
+    canLogin: resolvedCanLogin,
+    designation: String(designation || '').trim(),
+    jobDescription: String(jobDescription || '').trim(),
     payType: resolvedPayType,
     salary: resolvedPayType === 'fixed' ? resolvedSalary : 0,
     salaryPercentage: resolvedPayType === 'percentage' ? resolvedPct : 0,
@@ -379,6 +416,9 @@ const updateUser = catchAsync(async (req, res) => {
     payType,
     salaryPercentage,
     modulePermissions,
+    canLogin,
+    designation,
+    jobDescription,
   } = req.body;
 
   const targetIsSystemAdmin = isSystemAdmin(user);
@@ -435,12 +475,43 @@ const updateUser = catchAsync(async (req, res) => {
     user.payType = 'fixed';
     user.salaryPercentage = 0;
   }
-  if (password) {
-    user.password = await bcrypt.hash(password, 12);
+  if (designation !== undefined) user.designation = String(designation || '').trim();
+  if (jobDescription !== undefined) user.jobDescription = String(jobDescription || '').trim();
+
+  const wasLoginDisabled = user.canLogin === false;
+  if (typeof canLogin === 'boolean') {
+    if (!canLogin && (targetIsSystemAdmin || roleNameFromUserDoc(user) === 'admin')) {
+      throw new ApiError(400, 'Admin accounts must be able to log in.');
+    }
+    user.canLogin = canLogin;
+  }
+
+  let skipModulePermissions = false;
+  if (user.canLogin === false) {
+    if (!wasLoginDisabled) {
+      // Login just turned off: scramble password, end sessions and drop module access.
+      const generated = await noLoginCredentials();
+      user.password = generated.password;
+      user.refreshToken = undefined;
+      user.refreshTokenPrev = undefined;
+      setUserModulePermissions(user, new Map());
+    }
+    skipModulePermissions = true;
+  } else {
+    if (isNoLoginEmail(user.email)) {
+      throw new ApiError(400, 'Enter a real email address to enable login for this staff member.');
+    }
+    if (wasLoginDisabled && !password) {
+      throw new ApiError(400, 'Set a password to enable login for this staff member.');
+    }
+    if (password) {
+      user.password = await bcrypt.hash(password, 12);
+    }
   }
   // System admin access is always full at runtime — ignore matrix edits that could confuse operators.
   if (
     !targetIsSystemAdmin &&
+    !skipModulePermissions &&
     modulePermissions !== undefined &&
     typeof modulePermissions === 'object'
   ) {

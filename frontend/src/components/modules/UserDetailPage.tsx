@@ -48,6 +48,7 @@ import {
   fetchUsersByScope,
   normalizeModulePermissions,
   roleDisplayLabel,
+  displayEmail,
   type LinkedStudentSummary,
   type ModuleRegistryEntry,
   type PermissionDefinition,
@@ -934,7 +935,7 @@ export default function UserDetailPage({
                     <div className="min-w-0">
                       <p className="text-xs text-slate-500">Email</p>
                       <p className="text-sm font-medium text-primary break-all">
-                        {account.email || "—"}
+                        {displayEmail(account.email)}
                       </p>
                     </div>
                   </div>
@@ -1047,7 +1048,7 @@ export default function UserDetailPage({
             <SectionTitle>Contact</SectionTitle>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
               <DetailRow label="Full name" value={account.name} />
-              <DetailRow label="Email" value={account.email || "—"} />
+              <DetailRow label="Email" value={displayEmail(account.email)} />
               <DetailRow label="Phone" value={account.phone || "—"} />
                 <DetailRow
                   label="Portal password"
@@ -1236,7 +1237,7 @@ export default function UserDetailPage({
                   <div className="min-w-0">
                     <p className="text-xs text-slate-500">Email</p>
                     <p className="text-sm font-medium text-primary break-all">
-                      {account.email || "—"}
+                      {displayEmail(account.email)}
                     </p>
                   </div>
                 </div>
@@ -1324,7 +1325,7 @@ export default function UserDetailPage({
             <SectionTitle>Contact</SectionTitle>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
               <DetailRow label="Full name" value={account.name} />
-              <DetailRow label="Email" value={account.email || "—"} />
+              <DetailRow label="Email" value={displayEmail(account.email)} />
               <DetailRow label="Phone" value={account.phone || "—"} />
             </div>
           </section>

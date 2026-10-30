@@ -41,6 +41,8 @@ import {
   updateStaffUser,
   bulkUsersAction,
   roleDisplayLabel,
+  isNoLoginEmail,
+  STAFF_DESIGNATIONS,
   type BulkUserAction,
   type BulkUsersResult,
   type RoleOption,
@@ -297,6 +299,13 @@ function PayTypeBadge({ user }: { user: StaffUser }) {
 function formatTableCell(user: StaffUser, key: UserFieldKey): React.ReactNode {
   if (key === "name") return <NameCell user={user} />;
   if (key === "email") {
+    if (user.canLogin === false || isNoLoginEmail(user.email)) {
+      return (
+        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+          No login
+        </span>
+      );
+    }
     return (
       <span className="block max-w-[14rem] truncate text-muted-foreground" title={user.email}>
         {user.email}
@@ -315,6 +324,13 @@ function formatTableCell(user: StaffUser, key: UserFieldKey): React.ReactNode {
     );
   }
   if (key === "isActive") return <StatusBadge active={Boolean(user.isActive)} />;
+  if (key === "designation") {
+    return (
+      <span className="block max-w-[12rem] truncate" title={user.jobDescription || undefined}>
+        {user.designation || "—"}
+      </span>
+    );
+  }
   if (key === "payType") return <PayTypeBadge user={user} />;
   if (key === "salary") {
     const n = Number(user.salary ?? 0);
@@ -379,6 +395,8 @@ const UsersModule = ({
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "active" | "inactive">("");
   const [payTypeFilter, setPayTypeFilter] = useState<"" | "fixed" | "percentage">("");
+  /** Designation (job) filter; "__other" = any title outside STAFF_DESIGNATIONS. */
+  const [designationFilter, setDesignationFilter] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [sectionFilter, setSectionFilter] = useState("");
@@ -422,6 +440,8 @@ const UsersModule = ({
         : "",
     u.isActive ? "active" : "inactive",
     u.payType === "percentage" ? "percentage" : "fixed",
+    u.designation ?? "",
+    u.jobDescription ?? "",
     ...(u.modulePermissions && typeof u.modulePermissions === "object"
       ? Object.keys(u.modulePermissions)
       : []),
@@ -461,6 +481,14 @@ const UsersModule = ({
         const pay = u.payType === "percentage" ? "percentage" : "fixed";
         if (pay !== payTypeFilter) return false;
       }
+      if (designationFilter) {
+        const d = (u.designation || "").trim();
+        if (designationFilter === "__other") {
+          if (!d || (STAFF_DESIGNATIONS as readonly string[]).includes(d)) return false;
+        } else if (d.toLowerCase() !== designationFilter.toLowerCase()) {
+          return false;
+        }
+      }
       if (moduleFilter) {
         const mods =
           u.modulePermissions && typeof u.modulePermissions === "object"
@@ -486,6 +514,7 @@ const UsersModule = ({
     roleFilter,
     statusFilter,
     payTypeFilter,
+    designationFilter,
     moduleFilter,
     classFilter,
     sectionFilter,
@@ -495,6 +524,7 @@ const UsersModule = ({
     Boolean(roleFilter) ||
     Boolean(statusFilter) ||
     Boolean(payTypeFilter) ||
+    Boolean(designationFilter) ||
     Boolean(moduleFilter) ||
     (isParentsScope && (Boolean(classFilter) || Boolean(sectionFilter))) ||
     Boolean(search.trim());
@@ -503,6 +533,7 @@ const UsersModule = ({
     setRoleFilter("");
     setStatusFilter("");
     setPayTypeFilter("");
+    setDesignationFilter("");
     setModuleFilter("");
     setClassFilter("");
     setSectionFilter("");
@@ -515,6 +546,7 @@ const UsersModule = ({
     setRoleFilter("");
     setStatusFilter("");
     setPayTypeFilter("");
+    setDesignationFilter("");
     setModuleFilter("");
     setClassFilter("");
     setSectionFilter("");
@@ -633,9 +665,14 @@ const UsersModule = ({
 
   const isStaffScope = scope === "staff";
   const isAdminsScope = scope === "admins";
-  // Pay / salary columns only apply to teachers & accountants.
+  // Pay / salary / designation columns only apply to staff.
   const cols = tableColumns().filter((c) => {
-    if (c.key === "payType" || c.key === "salary" || c.key === "salaryPercentage") {
+    if (
+      c.key === "payType" ||
+      c.key === "salary" ||
+      c.key === "salaryPercentage" ||
+      c.key === "designation"
+    ) {
       return isStaffScope;
     }
     return true;
@@ -644,6 +681,7 @@ const UsersModule = ({
   const showClassSectionCols = isParentsScope;
   const showParentPasswordCol = isParentsScope;
   const showPayTypeFilter = isStaffScope;
+  const showDesignationFilter = isStaffScope;
   const showRoleFilter = isStaffScope;
   const showActions = caps.canView || caps.canEdit || caps.canDelete;
   // checkbox + data cols + modules (+ linked/class/section/password/actions when shown)
@@ -713,7 +751,7 @@ const UsersModule = ({
 
   const pageTitle = isStaffScope ? "Staff" : isAdminsScope ? "Admins" : "Parents";
   const pageHint = isStaffScope
-    ? "Manage teachers, accountants, pay type, and module access."
+    ? "Manage teachers, accountants, non-teaching staff, pay type, and module access."
     : isAdminsScope
       ? "Manage administration accounts and access."
       : "Manage parent portal accounts and linked students.";
@@ -773,7 +811,7 @@ const UsersModule = ({
             <PanelStatCard
               label="Total Staff"
               value={staffLoading ? "…" : stats.total}
-              hint="Teachers & accountants"
+              hint="Teaching & non-teaching"
               icon={UserCog}
               iconWrapClass="bg-[#dbeafe]"
               iconClass="text-[#2563eb]"
@@ -963,6 +1001,25 @@ const UsersModule = ({
               <option value="percentage">Percentage</option>
             </select>
           ) : null}
+          {showDesignationFilter ? (
+            <select
+              className={`${filterSelectClass} w-[11rem]`}
+              value={designationFilter}
+              onChange={(e) => {
+                setDesignationFilter(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Designation filter"
+            >
+              <option value="">All designations</option>
+              {STAFF_DESIGNATIONS.map((d) => (
+                <option key={d} value={d}>
+                  {d}s
+                </option>
+              ))}
+              <option value="__other">Other</option>
+            </select>
+          ) : null}
           <select
             className={`${filterSelectClass} w-[11rem]`}
             value={moduleFilter}
@@ -979,7 +1036,7 @@ const UsersModule = ({
           <PanelSearchBar
             value={search}
             onChange={setSearch}
-            placeholder="Search name, email, phone…"
+            placeholder={isStaffScope ? "Search name, phone, job…" : "Search name, email, phone…"}
             className="min-w-[12rem] flex-1 max-w-md"
           />
           <FilterToolbarActions>
@@ -1153,7 +1210,7 @@ const UsersModule = ({
                 <tr>
                   <td colSpan={tableColSpan} className="p-10 text-center text-muted-foreground">
                     {isStaffScope
-                      ? "No teachers or accountants yet."
+                      ? "No staff members yet."
                       : isAdminsScope
                         ? "No admin accounts yet."
                         : "No parent accounts yet."}

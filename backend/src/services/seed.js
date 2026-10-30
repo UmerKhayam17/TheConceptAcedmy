@@ -172,6 +172,12 @@ function buildDefaultRoleDefs(allPermissionIds) {
       description: 'Finance',
       modulePermissions: accountantModulePermissionsMap(),
     },
+    nonTeachingStaff: {
+      name: 'non_teaching_staff',
+      permissionNames: [],
+      description: 'Support staff (guard, sweeper, driver, …) — payroll & attendance, no login',
+      modulePermissions: new Map(),
+    },
   };
 }
 

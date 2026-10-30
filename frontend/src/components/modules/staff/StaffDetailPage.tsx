@@ -35,6 +35,7 @@ import {
   fetchStaffUsers,
   normalizeModulePermissions,
   roleDisplayLabel,
+  displayEmail,
   type ModuleRegistryEntry,
   type PermissionDefinition,
   type RoleOption,
@@ -431,7 +432,7 @@ export default function StaffDetailPage({
                   <div className="min-w-0">
                     <p className="text-xs text-slate-500">Email</p>
                     <p className="text-sm font-medium text-primary break-all">
-                      {staff.email || "—"}
+                      {displayEmail(staff.email)}
                     </p>
                   </div>
                 </div>

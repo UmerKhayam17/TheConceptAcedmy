@@ -42,7 +42,7 @@ async function loadUserFromAccessToken(token) {
     })
     .populate('permissions');
 
-  if (!user || !user.isActive) {
+  if (!user || !user.isActive || user.canLogin === false) {
     throw new ApiError(401, 'User not found or inactive');
   }
   return user;

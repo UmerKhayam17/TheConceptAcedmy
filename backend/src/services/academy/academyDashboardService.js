@@ -14,6 +14,7 @@ const Announcement = require('../../models/Announcement');
 const feeService = require('./academyFeeService');
 const { categoryNameMap } = require('./expenseCategoryService');
 const { dayBounds, todayYmd, formatDateInTz } = require('../../utils/schoolDay');
+const { STAFF_ROLE_NAMES } = require('../../config/staffRoles');
 
 function monthWindow(monthsBack = 5) {
   const out = [];
@@ -348,7 +349,7 @@ async function getDashboardOverview({ months = 6 } = {}) {
   const [teacherRole, accountantRole, staffRoles] = await Promise.all([
     Role.findOne({ name: 'teacher' }).select('_id').lean(),
     Role.findOne({ name: 'accountant' }).select('_id').lean(),
-    Role.find({ name: { $in: ['teacher', 'accountant'] } }).select('_id').lean(),
+    Role.find({ name: { $in: STAFF_ROLE_NAMES } }).select('_id').lean(),
   ]);
 
   const [

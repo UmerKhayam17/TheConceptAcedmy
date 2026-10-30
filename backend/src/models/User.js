@@ -16,6 +16,15 @@ const userSchema = new mongoose.Schema(
     },
     isActive: { type: Boolean, default: true },
     /**
+     * false → record-only staff (guard, sweeper, …): no portal access. Such users get a
+     * placeholder `@nologin.local` email and a random password so the unique email index holds.
+     */
+    canLogin: { type: Boolean, default: true },
+    /** Job title for non-teaching staff (Guard, Sweeper, Driver, …). */
+    designation: { type: String, trim: true, default: '' },
+    /** Optional responsibilities, e.g. "Main gate security and visitor checking". */
+    jobDescription: { type: String, trim: true, default: '' },
+    /**
      * Staff payroll type:
      * - fixed → monthly PKR in `salary`
      * - percentage → tuition pools × `salaryPercentage` (set when creating the teacher)
