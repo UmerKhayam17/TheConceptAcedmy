@@ -674,6 +674,14 @@ export default function AcademyFeesManagement({
     enabled: showFilters && !studentId && !isParent && hasScope,
   });
 
+  // A section belongs to one class, so the Accounts Report only needs the section picked.
+  const accountsClassId = useMemo(() => {
+    if (classFilter) return classFilter;
+    const sec = sections.find((s) => s._id === sectionFilter);
+    const cid = sec?.classId;
+    return cid ? (typeof cid === "object" ? cid._id : String(cid)) : "";
+  }, [classFilter, sectionFilter, sections]);
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["academy-fees", page, pageSize, search, effectiveStatusFilter, filterParams],
     queryFn: () =>
@@ -1166,10 +1174,10 @@ export default function AcademyFeesManagement({
   };
 
   const downloadClassAccounts = async (format: DefaulterReportFormat) => {
-    if (!classFilter || !sectionFilter) {
+    if (!sectionFilter || !accountsClassId) {
       toast({
-        title: "Select class and section",
-        description: "Choose a class and section in the filters to export the accounts report.",
+        title: "Select a section",
+        description: "Choose a section in the filters to export its accounts report.",
         variant: "destructive",
       });
       return;
@@ -1178,7 +1186,7 @@ export default function AcademyFeesManagement({
     const preview = openReportPreviewTab(format);
     try {
       const blob = await exportClassAccountsReport(
-        { classId: classFilter, sectionId: sectionFilter, sessionId: apiSessionId },
+        { classId: accountsClassId, sectionId: sectionFilter, sessionId: apiSessionId },
         format
       );
       const mode = deliverReportBlob(blob, `Class-Accounts.${format}`, format, preview);
@@ -1434,8 +1442,8 @@ export default function AcademyFeesManagement({
                         {
                           id: "accounts",
                           label: "Accounts Report",
-                          disabled: !classFilter || !sectionFilter,
-                          hint: "Select class and section first",
+                          disabled: !sectionFilter || !accountsClassId,
+                          hint: "Select a section first",
                         },
                       ]}
                       onDownload={(format, reportKind) =>
