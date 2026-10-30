@@ -37,6 +37,7 @@ import type { Role } from "@/lib/auth";
 import { salaryDetailHref } from "@/lib/panelMenus";
 import { resolveUploadUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { avatarTone } from "@/lib/avatarTone";
 import {
   fetchAcademySalaries,
   fetchAcademySalarySummary,
@@ -141,12 +142,18 @@ function StaffAvatar({ name, profileImage }: { name: string; profileImage?: stri
       <img
         src={src}
         alt=""
-        className="h-9 w-9 rounded-full object-cover shrink-0 border border-border"
+        className="h-8 w-8 shrink-0 rounded-md border border-border object-cover"
       />
     );
   }
+  // Same coloured square as the Staff list.
   return (
-    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#dbeafe] text-sm font-semibold text-[#2563eb]">
+    <span
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold",
+        avatarTone(name || ""),
+      )}
+    >
       {initialOf(name)}
     </span>
   );
