@@ -1943,8 +1943,13 @@ export const exportAcademySalaryReport = async (
 };
 
 /** Printable salary slip PDF for one voucher. */
-export const exportAcademySalarySlip = async (id: string) => {
-  const res = await authedFetch(`/student-management/salaries/${id}/slip`, { method: "GET" });
+/** `summary` = salary sheet + attendance only; `students` = full slip with student-wise lists. */
+export const exportAcademySalarySlip = async (
+  id: string,
+  variant: "students" | "summary" = "students",
+) => {
+  const q = variant === "summary" ? "?variant=summary" : "";
+  const res = await authedFetch(`/student-management/salaries/${id}/slip${q}`, { method: "GET" });
   if (!res.ok) throw new Error("Could not generate salary slip");
   return res.blob();
 };

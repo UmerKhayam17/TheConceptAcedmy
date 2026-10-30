@@ -3,6 +3,9 @@
  * Uses the same plain letterhead, tables and footer as the other academy PDF exports.
  * When the slip is too long (many students), it is scaled down just enough to fit,
  * and the extra width this gives is used for more student columns.
+ *
+ * variant 'summary' prints the salary sheet (class-wise fee → teacher % → leave deduction →
+ * total payable) and attendance only, without the student-wise lists.
  */
 
 const PDFDocument = require('pdfkit');
@@ -123,6 +126,7 @@ function classShares(rec, isPercentage) {
 /** Draws the whole slip from the top of the current page. Returns the bottom y. */
 function drawSlip(doc, ctx) {
   const { rec, staff, role, period, isPercentage, pct, amount, brand, logoPath } = ctx;
+  const summary = ctx.variant === 'summary';
   const usable = doc.page.width - MARGIN * 2;
   let y;
 
@@ -198,12 +202,94 @@ function drawSlip(doc, ctx) {
     y = maxY;
   };
 
+  /** Register-style salary sheet: bordered grid like the school's paper salary sheet. */
+  const salarySheet = () => {
+    const pools = new Map();
+    (rec.calculationBreakdown || []).forEach((l) => {
+      const key = classLabel(l.className, l.sectionName);
+      pools.set(key, (pools.get(key) || 0) + (Number(l.pool) || 0));
+    });
+    const classCols = isPercentage ? [...pools.entries()] : [];
+    const showPools = classCols.length > 0;
+    const poolTotal = classCols.reduce((sum, [, v]) => sum + v, 0);
+
+    const att = rec.attendance?.classes;
+    const daily = rec.attendance?.daily;
+    const fullLeaves = att?.fullLeaveDays ?? (daily ? (daily.absent || 0) + (daily.leave || 0) : 0);
+    const daysInMonth = new Date(rec.year, rec.month, 0).getDate() || 30;
+    const perDay = Math.round(amount / daysInMonth);
+    const deduction = fullLeaves * perDay;
+    const advance = 0;
+    const extra = 0;
+    const net = Math.max(0, amount - advance - deduction);
+    const totalPayable = net + extra;
+
+    const whole = (n) => (Math.round(Number(n) || 0) ? Math.round(n).toLocaleString('en-PK') : '-');
+    const labelW = 118;
+    const totalW = 80;
+    const midW = usable - labelW - totalW;
+    const classW = showPools ? midW / classCols.length : midW;
+    const fs = classCols.length > 7 ? 7 : 8.5;
+    const rowH = 18;
+
+    const box = (x, w, text, { align = 'left', bold = false, fill = null, size = fs } = {}) => {
+      doc.save();
+      if (fill) doc.rect(x, y, w, rowH).fill(fill);
+      doc.strokeColor('#222222').lineWidth(0.6).rect(x, y, w, rowH).stroke();
+      doc.restore();
+      if (text === '' || text == null) return;
+      doc.fillColor('#111111').font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size);
+      pdfLine(doc, String(text), x + 4, y + (rowH - size) / 2 + 0.5, { width: w - 8, align });
+    };
+    const totalX = MARGIN + labelW + midW;
+    const row = (label, value, mid = '', opts = {}) => {
+      box(MARGIN, labelW, label, { bold: true, fill: opts.fill });
+      box(MARGIN + labelW, midW, mid, { fill: opts.fill, size: 8 });
+      box(totalX, totalW, value, { align: 'right', bold: true, fill: opts.fill, size: opts.size || fs });
+      y += rowH;
+    };
+
+    if (showPools) {
+      box(MARGIN, labelW, '', { fill: '#F0F0F0' });
+      box(MARGIN + labelW, midW + totalW, 'SUBJECT-WISE TOTAL FEE', { align: 'center', bold: true, fill: '#F0F0F0' });
+      y += rowH;
+      box(MARGIN, labelW, 'Month', { align: 'center', bold: true, fill: '#F0F0F0' });
+      classCols.forEach(([label], i) => {
+        box(MARGIN + labelW + i * classW, classW, label, { align: 'center', bold: true, fill: '#F0F0F0' });
+      });
+      box(totalX, totalW, 'Total', { align: 'center', bold: true, fill: '#F0F0F0' });
+      y += rowH;
+      box(MARGIN, labelW, period.toUpperCase(), { align: 'center', bold: true });
+      classCols.forEach(([, pool], i) => {
+        box(MARGIN + labelW + i * classW, classW, whole(pool), { align: 'right' });
+      });
+      box(totalX, totalW, whole(poolTotal), { align: 'right', bold: true });
+      y += rowH;
+      row('Teacher Percentage', `${pct}%`);
+    } else {
+      row('Month', period.toUpperCase(), 'Fixed monthly salary');
+    }
+    row('Total Salary Payable', whole(amount));
+    row('Advance Payment', whole(advance));
+    row(
+      'Leave Deduction',
+      whole(deduction),
+      `Full leaves during the month: ${fullLeaves}    Per day salary: ${whole(perDay)} (${daysInMonth} days)`
+    );
+    row('Net Salary Payable', whole(net));
+    row('Extra', whole(extra));
+    row('TOTAL PAYABLE', `Rs ${whole(totalPayable)}`, '', { fill: '#E4E4E4', size: 9.5 });
+    note(amountInWords(totalPayable), { color: '#333333' });
+  };
+
   // ── Header ──────────────────────────────────────────────────────────
   y = drawPdfLetterheadPlain(doc, brand, logoPath);
   y = drawPdfTitlePlain(
     doc,
     {
-      title: `SALARY SLIP WITH STUDENT DETAILS — ${period.toUpperCase()}`,
+      title: summary
+        ? `SALARY SLIP — ${period.toUpperCase()}`
+        : `SALARY SLIP WITH STUDENT DETAILS — ${period.toUpperCase()}`,
       leftFilter: `Voucher: ${rec.voucherNumber || '—'}`,
       rightFilter: `Status: ${cap(rec.status)}`,
     },
@@ -242,8 +328,12 @@ function drawSlip(doc, ctx) {
   });
   y += boxH;
 
-  // ── 1. Salary by class ──────────────────────────────────────────────
   const shares = classShares(rec, isPercentage);
+  if (summary) {
+    heading('1. Salary detail');
+    salarySheet();
+  } else {
+  // ── 1. Salary by class ──────────────────────────────────────────────
   heading('1. Salary by class');
   // Class-wise salary table; the amount column is keyed `salary` so the Grand Total lines up.
   const summaryRows = shares.pools.length
@@ -337,9 +427,10 @@ function drawSlip(doc, ctx) {
         ? `Fixed salary of ${rs(amount)} divided between classes by periods taught this month; per-student share is for reference only.`
         : `Fixed salary of ${rs(amount)} divided equally between classes; per-student share is for reference only.`
   );
+  }
 
   // ── 3. Attendance ───────────────────────────────────────────────────
-  heading(`3. Attendance — ${period}`);
+  heading(`${summary ? 2 : 3}. Attendance — ${period}`);
   const cls = rec.attendance?.classes;
   const daily = rec.attendance?.daily;
   let anyAttendance = false;
@@ -399,7 +490,8 @@ function drawSlip(doc, ctx) {
   }
   if (!anyAttendance) note('No attendance was recorded for this month.');
 
-  // ── 4. Payment summary ──────────────────────────────────────────────
+  // ── 4. Payment summary (the summary variant shows this inside the sheet) ──
+  if (!summary) {
   heading('4. Payment summary');
   // Deductions / adjustment on the left, net salary box on the right.
   const adjustment = Math.round((amount - shares.total) * 100) / 100;
@@ -436,6 +528,7 @@ function drawSlip(doc, ctx) {
   doc.fillColor('#333333').font('Helvetica-Oblique').fontSize(7);
   doc.text(amountInWords(amount), netX + 10, y + 36, { width: netW - 20 });
   y += Math.max(sumH, lines.length * lineH + 4) + 2;
+  }
 
   // Notes typed by staff (auto-generated calculation notes are already explained above).
   const remarks = String(rec.notes || '').trim();
@@ -514,7 +607,7 @@ async function findFitScale(ctx, info) {
   return lo;
 }
 
-async function renderSalarySlipPdf(id) {
+async function renderSalarySlipPdf(id, { variant = 'students' } = {}) {
   const rec = await getSalaryRecordById(id);
   // A paid slip shows what was actually paid: the breakdown saved on the voucher,
   // not today's live recalculation (fees or assignments may have changed since).
@@ -527,7 +620,11 @@ async function renderSalarySlipPdf(id) {
   const ctx = {
     rec,
     staff,
-    role: staff.role && typeof staff.role === 'object' ? staff.role.name : '',
+    // Support staff show their job (Guard, Sweeper, …) as the designation.
+    role:
+      staff.role && typeof staff.role === 'object'
+        ? (staff.role.name === 'non_teaching_staff' && staff.designation) || staff.role.name
+        : '',
     period,
     isPercentage: rec.payType === 'percentage' || rec.calculationSource === 'tuition_pool',
     pct: rec.detailMeta?.teacherPercentage ?? rec.salaryPercentage ?? 0,
@@ -535,6 +632,7 @@ async function renderSalarySlipPdf(id) {
     brand: ACADEMY_BRAND,
     logoPath: resolveLogoPath(),
     generatedAt: new Date(),
+    variant,
   };
   const info = {
     Title: `Salary Slip — ${staff.name || ''} — ${period}`,
@@ -549,7 +647,7 @@ async function renderSalarySlipPdf(id) {
   return {
     buffer,
     scale,
-    fileName: `Salary-Slip_${MONTHS[(rec.month || 1) - 1]}-${rec.year}.pdf`,
+    fileName: `Salary-Slip${variant === 'summary' ? '-Summary' : ''}_${MONTHS[(rec.month || 1) - 1]}-${rec.year}.pdf`,
   };
 }
 

@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, Clock3, Plus, Receipt, Search, Wallet, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  Clock3,
+  Pencil,
+  Plus,
+  Receipt,
+  Search,
+  Trash2,
+  Wallet,
+  X,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import { Button } from "@/components/ui/button";
@@ -599,20 +610,27 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                   <td className="p-2.5">
                     <StatusPill status={row.status} />
                   </td>
-                  <td className="p-2.5 text-right space-x-1">
+                  <td className="p-2.5 text-right space-x-1 whitespace-nowrap">
                     {canManage && (
-                      <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
-                        Edit
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEdit(row)}
+                        aria-label="Edit"
+                        title="Edit"
+                      >
+                        <Pencil className="h-4 w-4" />
                       </Button>
                     )}
                     {canDelete && (
                       <Button
-                        size="sm"
                         variant="ghost"
-                        className="text-destructive"
+                        size="icon"
                         onClick={() => setDeleteTarget(row)}
+                        aria-label="Delete"
+                        title="Delete"
                       >
-                        Delete
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     )}
                   </td>

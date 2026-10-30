@@ -68,12 +68,18 @@ async function periodAttendance(staffId, month, year) {
   const byClass = new Map();
   const daysWithClasses = new Set();
   const daysAbsent = new Map();
+  /** day → { total, missed } periods, to find days with no class attended at all. */
+  const perDay = new Map();
 
   for (const p of periods) {
     const status = p.status;
     summary.totalClasses += 1;
     if (summary[status] != null) summary[status] += 1;
     daysWithClasses.add(p.day);
+    const dayCount = perDay.get(p.day) || { total: 0, missed: 0 };
+    dayCount.total += 1;
+    if (status === 'absent' || status === 'leave') dayCount.missed += 1;
+    perDay.set(p.day, dayCount);
 
     const entries = p.classes?.length
       ? p.classes
@@ -105,6 +111,8 @@ async function periodAttendance(staffId, month, year) {
     sessionName: data.sessionName || session.name || '',
     attendanceType: teacher?.attendanceType || 'class',
     workingDaysCount: daysWithClasses.size,
+    // Full leave = every scheduled period that day was absent / leave.
+    fullLeaveDays: [...perDay.values()].filter((d) => d.total > 0 && d.missed === d.total).length,
     summary: { ...summary, attendancePercent: percentOf(summary) },
     byClass: [...byClass.values()].map((row) => ({ ...row, attendancePercent: percentOf(row) })),
     exceptions: [...daysAbsent.entries()]

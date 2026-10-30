@@ -349,7 +349,7 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
   });
 
   const [selectedClassKey, setSelectedClassKey] = useState<string>("");
-  const [exportingSlip, setExportingSlip] = useState(false);
+  const [exportingSlip, setExportingSlip] = useState<"" | "students" | "summary">("");
   const { toast } = useToast();
 
   const staff = data ? staffFromRecord(data) : null;
@@ -360,15 +360,15 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
   const period = data ? `${MONTH_NAMES[(data.month || 1) - 1]} ${data.year}` : "—";
   const isPercentage = data?.payType === "percentage" || data?.calculationSource === "tuition_pool";
 
-  const handleSlipExport = async () => {
+  const handleSlipExport = async (variant: "students" | "summary") => {
     if (!data) return;
-    setExportingSlip(true);
+    setExportingSlip(variant);
     const preview = openReportPreviewTab("pdf");
     try {
-      const blob = await exportAcademySalarySlip(data._id);
+      const blob = await exportAcademySalarySlip(data._id, variant);
       const mode = deliverReportBlob(
         blob,
-        `Salary-Slip_${period.replace(" ", "-")}.pdf`,
+        `Salary-Slip${variant === "summary" ? "" : "-Students"}_${period.replace(" ", "-")}.pdf`,
         "pdf",
         preview,
       );
@@ -385,7 +385,7 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
         variant: "destructive",
       });
     } finally {
-      setExportingSlip(false);
+      setExportingSlip("");
     }
   };
   const allClassesTotal = breakdown.reduce((s, line) => s + (Number(line.salary) || 0), 0);
@@ -515,12 +515,24 @@ export default function AcademySalaryDetailPage({ salaryId }: { salaryId: string
                 <FilterToolbarActions>
                   <Button
                     type="button"
-                    className="gap-2 h-10 shrink-0 rounded-md"
-                    disabled={exportingSlip}
-                    onClick={handleSlipExport}
+                    variant="outline"
+                    className="gap-2 h-10 shrink-0 rounded-md border-primary/40 text-primary"
+                    disabled={Boolean(exportingSlip)}
+                    onClick={() => handleSlipExport("summary")}
                   >
                     <Printer className="h-4 w-4" />
-                    {exportingSlip ? "Preparing PDF…" : "Salary Slip with Student Details (PDF)"}
+                    {exportingSlip === "summary" ? "Preparing PDF…" : "Print Salary Slip (PDF)"}
+                  </Button>
+                  <Button
+                    type="button"
+                    className="gap-2 h-10 shrink-0 rounded-md"
+                    disabled={Boolean(exportingSlip)}
+                    onClick={() => handleSlipExport("students")}
+                  >
+                    <Printer className="h-4 w-4" />
+                    {exportingSlip === "students"
+                      ? "Preparing PDF…"
+                      : "Salary Slip with Student Details (PDF)"}
                   </Button>
                 </FilterToolbarActions>
               </FilterToolbar>

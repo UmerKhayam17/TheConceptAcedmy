@@ -114,7 +114,9 @@ const exportReport = catchAsync(async (req, res) => {
 });
 
 const exportSlip = catchAsync(async (req, res) => {
-  const { buffer, fileName } = await renderSalarySlipPdf(req.params.id);
+  // ?variant=summary → salary sheet + attendance, without student-wise lists.
+  const variant = req.query.variant === 'summary' ? 'summary' : 'students';
+  const { buffer, fileName } = await renderSalarySlipPdf(req.params.id, { variant });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
   res.send(buffer);
