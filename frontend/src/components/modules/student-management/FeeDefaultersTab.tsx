@@ -1,11 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, FileText, Loader2, Phone, Printer, Receipt, Search, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  CalendarDays,
+  FileText,
+  Loader2,
+  Phone,
+  Printer,
+  Receipt,
+  ReceiptText,
+  Search,
+  TriangleAlert,
+  UserX,
+  X,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +41,7 @@ import {
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { DefaulterListDownload } from "./DefaulterListDownload";
+import { FeeMetricCard } from "./FeeMetricCards";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import {
   ChallanPrintDialog,
@@ -37,6 +51,8 @@ import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function SeverityBadge({ days }: { days: number }) {
   if (days >= 30) {
@@ -81,6 +97,22 @@ export default function FeeDefaultersTab({
 
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
+  /** Month dropdown choices: 3 months ahead back to 24 months ago, newest first. */
+  const monthOptions = useMemo(() => {
+    const base = new Date();
+    return Array.from({ length: 28 }, (_, i) => {
+      const d = new Date(base.getFullYear(), base.getMonth() + 3 - i, 1);
+      const m = d.getMonth() + 1;
+      const y = d.getFullYear();
+      return { value: `${y}-${m}`, label: `${MONTH_LABELS[m - 1]} ${y}` };
+    });
+  }, []);
+  const monthValue = month && year ? `${year}-${month}` : "";
+  const onMonthChange = (value: string) => {
+    const [y = "", m = ""] = value ? value.split("-") : [];
+    setYear(y);
+    setMonth(m);
+  };
   const [classFilter, setClassFilter] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -214,114 +246,98 @@ export default function FeeDefaultersTab({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Defaulters</p>
-          <p className="text-lg font-semibold text-destructive">
-            {summaryLoading ? "…" : summary?.defaulterCount ?? 0}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Outstanding</p>
-          <p className="text-lg font-semibold text-destructive">
-            {summaryLoading ? "…" : formatPkr(summary?.totalOutstanding)}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Unpaid vouchers</p>
-          <p className="text-lg font-semibold text-primary">
-            {summaryLoading ? "…" : summary?.totalUnpaidVouchers ?? 0}
-          </p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Overdue vouchers</p>
-          <p className="text-lg font-semibold text-amber-700 dark:text-amber-400">
-            {summaryLoading ? "…" : summary?.overdueVouchers ?? 0}
-          </p>
-        </Card>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 min-[1101px]:grid-cols-4">
+        <FeeMetricCard
+          title="Defaulters"
+          value={summaryLoading ? "…" : String(summary?.defaulterCount ?? 0)}
+          description="students with unpaid fees"
+          icon={UserX}
+          variant="purple"
+        />
+        <FeeMetricCard
+          title="Outstanding"
+          value={summaryLoading ? "…" : formatPkr(summary?.totalOutstanding)}
+          description="total amount due"
+          icon={TriangleAlert}
+          variant="danger"
+        />
+        <FeeMetricCard
+          title="Unpaid Vouchers"
+          value={summaryLoading ? "…" : String(summary?.totalUnpaidVouchers ?? 0)}
+          description="pending and overdue"
+          icon={ReceiptText}
+          variant="primary"
+        />
+        <FeeMetricCard
+          title="Overdue Vouchers"
+          value={summaryLoading ? "…" : String(summary?.overdueVouchers ?? 0)}
+          description="past their due date"
+          icon={CalendarClock}
+          variant="danger"
+        />
       </div>
 
       <Card className="p-3">
-        <div className="grid grid-cols-1 min-[480px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
-          <div className="min-w-0">
-            <Label className="text-xs">Month (optional)</Label>
-            <Input
-              type="number"
-              min={1}
-              max={12}
-              placeholder="All"
-              className="w-full h-9"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-            />
-          </div>
-          <div className="min-w-0">
-            <Label className="text-xs">Year (optional)</Label>
-            <Input
-              type="number"
-              placeholder="All"
-              className="w-full h-9"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-            />
+        <div className="grid grid-cols-1 items-center gap-3 min-[480px]:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.6fr)_auto]">
+          <div className="relative min-w-0">
+            <label className="sr-only" htmlFor="defaulters-month">
+              Month
+            </label>
+            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <select
+              id="defaulters-month"
+              className="h-9 w-full cursor-pointer truncate rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-sm text-foreground outline-none transition-colors hover:border-primary/30 focus:border-primary focus:ring-2 focus:ring-primary/10"
+              value={monthValue}
+              onChange={(e) => onMonthChange(e.target.value)}
+            >
+              <option value="">All months</option>
+              {monthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
           <ClassProgramSelect
-            className="min-w-0 min-[480px]:col-span-2 sm:col-span-1"
+            className="min-w-0 sm:min-w-0"
+            label={false}
             value={classFilter}
             onChange={setClassFilter}
             classes={classes}
             allowAll
+            allLabel="All classes (School + College)"
             selectClassName="h-9 rounded-md"
           />
-          <div className="relative min-w-0 col-span-full sm:col-span-3 lg:col-span-2">
-            <Label className="text-xs">Search</Label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="h-9 w-full pl-8 pr-8 text-sm"
-                placeholder="Search student, father, phone, ID…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                aria-label="Search defaulters"
-              />
-              {search ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
-                  onClick={() => setSearch("")}
-                  aria-label="Clear search"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              ) : null}
-            </div>
+          <div className="relative min-w-0 min-[480px]:col-span-2 lg:col-span-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="h-9 w-full pl-8 pr-8 text-sm"
+              placeholder="Search student, father, phone, ID…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search defaulters"
+            />
+            {search ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
           </div>
-          {(month || year) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full h-9"
-              onClick={() => {
-                setMonth("");
-                setYear("");
-              }}
-            >
-              Clear period
-            </Button>
-          )}
           {canExport && (
-            <div className="col-span-2 sm:col-span-1 min-w-0">
-              <Label className="text-xs opacity-0 pointer-events-none select-none">Download</Label>
-              <DefaulterListDownload
-                variant="default"
-                className="w-full justify-center sm:w-auto"
-                label="Defaulter list"
-                exporting={exportingMonthWise}
-                onDownload={(format) => void handleMonthWiseExport(format)}
-              />
-            </div>
+            <DefaulterListDownload
+              variant="default"
+              className="w-full justify-center min-[480px]:col-span-2 lg:col-span-1 lg:w-auto"
+              label="Defaulter list"
+              exporting={exportingMonthWise}
+              onDownload={(format) => void handleMonthWiseExport(format)}
+            />
           )}
         </div>
       </Card>

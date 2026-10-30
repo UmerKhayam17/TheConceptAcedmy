@@ -2801,10 +2801,12 @@ function formatRupees(n) {
 }
 
 /** One row per active student: roll #, name, monthly fee, discipline / group, subjects. */
-async function loadClassAccountsRows(classId) {
-  if (!classId) throw new ApiError(400, 'Select a class to export the class accounts report');
+async function loadClassAccountsRows(classId, sectionId) {
+  if (!classId || !sectionId) {
+    throw new ApiError(400, 'Select a class and section to export the accounts report');
+  }
 
-  const students = await AcademyStudent.find({ classId, status: 'active' })
+  const students = await AcademyStudent.find({ classId, sectionId, status: 'active' })
     .select(
       'studentId registrationNumber rollNumber studentName disciplineId selectedSubjects isFullPackage monthlyFee monthlyFeeDiscount'
     )
@@ -2835,23 +2837,25 @@ async function loadClassAccountsRows(classId) {
   return { rows, totalFee };
 }
 
-async function exportClassAccountsReport({ classId, sessionId, format }) {
-  const { rows, totalFee } = await loadClassAccountsRows(classId);
+async function exportClassAccountsReport({ classId, sectionId, sessionId, format }) {
+  const { rows, totalFee } = await loadClassAccountsRows(classId, sectionId);
   const { sessionLabel, classLabel } = await resolveFeeReportContext({ sessionId, classId });
+  const section = await AcademySection.findById(sectionId).select('sectionName').lean();
+  const sectionLabel = section?.sectionName || '';
   const count = rows.length;
   const countLabel = `${count} student${count === 1 ? '' : 's'}`;
   const meta = {
     sessionLabel,
     leftFilter: `Class: ${classLabel}`,
-    centerFilter: countLabel,
+    centerFilter: `Section: ${sectionLabel} · ${countLabel}`,
     rightFilter: `Total monthly fee: ${formatRupees(totalFee)}`,
-    filterLine: `Class: ${classLabel}`,
+    filterLine: `Class: ${classLabel} · Section: ${sectionLabel}`,
     countLabel,
     generatedAt: new Date(),
   };
   const title = 'Accounts Report';
   const confidentialLabel = 'Class wise accounts';
-  const emptyMessage = 'No active students in this class.';
+  const emptyMessage = 'No active students in this class and section.';
 
   if (String(format).toLowerCase() === 'pdf') {
     // Same two-tables-per-page layout as the Student List.

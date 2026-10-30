@@ -17,6 +17,10 @@ const itemClass =
 export type ReportExportKind = {
   id: string;
   label: string;
+  /** Greys out this kind's Excel / PDF items (e.g. until required filters are chosen). */
+  disabled?: boolean;
+  /** Shown next to the label while disabled. */
+  hint?: string;
 };
 
 /** Shared Print / Export menu (Excel + PDF preview) used across fee, salary, attendance, etc. */
@@ -44,10 +48,11 @@ export function DefaulterListDownload({
   const busy = Boolean(exporting);
   const kinds = reportKinds?.length ? reportKinds : null;
 
-  const formatItems = (reportKind?: string) => (
+  const formatItems = (reportKind?: string, itemsDisabled = false) => (
     <>
       <DropdownMenuItem
         className={itemClass}
+        disabled={itemsDisabled}
         onClick={() => onDownload("xlsx", reportKind)}
       >
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
@@ -60,6 +65,7 @@ export function DefaulterListDownload({
       </DropdownMenuItem>
       <DropdownMenuItem
         className={itemClass}
+        disabled={itemsDisabled}
         onClick={() => onDownload("pdf", reportKind)}
       >
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
@@ -117,8 +123,13 @@ export function DefaulterListDownload({
               {index > 0 ? <DropdownMenuSeparator className="my-1.5" /> : null}
               <DropdownMenuLabel className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 {kind.label}
+                {kind.disabled && kind.hint ? (
+                  <span className="ml-1 normal-case tracking-normal text-muted-foreground/80">
+                    · {kind.hint}
+                  </span>
+                ) : null}
               </DropdownMenuLabel>
-              {formatItems(kind.id)}
+              {formatItems(kind.id, kind.disabled)}
             </div>
           ))
         ) : (

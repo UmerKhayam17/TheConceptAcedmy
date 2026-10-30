@@ -111,7 +111,7 @@ export function TimetableFilters({
                 <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All classes</SelectItem>
+                <SelectItem value="all">All classes (School + College)</SelectItem>
                 {classOptions.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}

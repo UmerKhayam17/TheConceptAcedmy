@@ -452,7 +452,7 @@ export default function AssignAssessmentsPanel({
                 value={classFilter}
                 onChange={(e) => setClassFilter(e.target.value)}
               >
-                <option value="">All classes</option>
+                <option value="">All classes (School + College)</option>
                 {filterClasses.map((c) => (
                   <option key={c._id} value={c._id}>
                     {c.className}

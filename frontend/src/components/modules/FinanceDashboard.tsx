@@ -724,7 +724,7 @@ const FinanceDashboard = () => {
                 <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All classes</SelectItem>
+                <SelectItem value="all">All classes (School + College)</SelectItem>
                 {classCollections.map((c) => (
                   <SelectItem key={c.className} value={c.className}>
                     {c.className}

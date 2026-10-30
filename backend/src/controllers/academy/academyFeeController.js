@@ -368,7 +368,11 @@ const exportPaidFeesReport = catchAsync(async (req, res) => {
 
 const exportClassAccountsReport = catchAsync(async (req, res) => {
   const format = String(req.query.format || 'xlsx').toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
-  const q = { classId: req.query.classId, sessionId: req.query.sessionId };
+  const q = {
+    classId: req.query.classId,
+    sectionId: req.query.sectionId,
+    sessionId: req.query.sessionId,
+  };
   const buffer = await feeService.exportClassAccountsReport({ ...q, format });
   const base = feeReportFileBase('Class-Accounts', q);
   if (format === 'pdf') {

@@ -437,6 +437,7 @@ const feePaidExportQuery = Joi.object({
 
 const feeClassAccountsExportQuery = Joi.object({
   classId: objectId.required(),
+  sectionId: objectId.required(),
   sessionId: objectId,
   format: Joi.string().valid('xlsx', 'pdf'),
 });

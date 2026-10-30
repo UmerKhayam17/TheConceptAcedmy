@@ -103,17 +103,6 @@ import {
 const EMPTY_ADDITIONAL_CHARGES: Awaited<ReturnType<typeof fetchAdditionalCharges>> = [];
 const EMPTY_PARENT_STUDENTS: AcademyStudent[] = [];
 const EMPTY_FEE_RECORDS: AcademyFeeRecord[] = [];
-const PAID_EXPORT_FEE_TYPES = new Set<NonNullable<PaidFeeExportParams["feeType"]>>([
-  "admission",
-  "monthly",
-  "stationery",
-]);
-
-function paidExportFeeType(value: string): PaidFeeExportParams["feeType"] {
-  return PAID_EXPORT_FEE_TYPES.has(value as NonNullable<PaidFeeExportParams["feeType"]>)
-    ? (value as NonNullable<PaidFeeExportParams["feeType"]>)
-    : undefined;
-}
 
 function todayInputValue() {
   const d = new Date();
@@ -122,8 +111,6 @@ function todayInputValue() {
   return `${d.getFullYear()}-${month}-${day}`;
 }
 
-const feeFilterLabelClass =
-  "mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
 const feeFilterSelectClass =
   "h-9 w-full cursor-pointer appearance-none rounded-md border border-border bg-background py-1.5 text-sm text-foreground shadow-none outline-none transition-colors hover:border-primary/30 focus:border-primary focus:ring-2 focus:ring-primary/10";
 
@@ -138,7 +125,7 @@ function FeeFilterField({
 }) {
   return (
     <div className={cn("min-w-0", className)}>
-      <label className={feeFilterLabelClass}>{label}</label>
+      <label className="sr-only">{label}</label>
       {children}
     </div>
   );
@@ -543,6 +530,27 @@ export default function AcademyFeesManagement({
   const now = new Date();
   const [month, setMonth] = useState(() => String(now.getMonth() + 1));
   const [year, setYear] = useState(() => String(now.getFullYear()));
+  /** Month dropdown choices: 3 months ahead back to 24 months ago, newest first. */
+  const monthOptions = useMemo(() => {
+    const base = new Date();
+    return Array.from({ length: 28 }, (_, i) => {
+      const d = new Date(base.getFullYear(), base.getMonth() + 3 - i, 1);
+      const m = d.getMonth() + 1;
+      const y = d.getFullYear();
+      return { value: `${y}-${m}`, label: `${MONTH_NAMES[m - 1]} ${y}` };
+    });
+  }, []);
+  const monthValue = month && year ? `${year}-${month}` : "";
+  const onMonthChange = (value: string) => {
+    if (!value) {
+      setMonth("");
+      setYear("");
+      return;
+    }
+    const [y, m] = value.split("-");
+    setYear(y);
+    setMonth(m);
+  };
   const [statusFilter, setStatusFilter] = useState(() =>
     lockedStatus || (user?.role === "parent" ? "paid" : "")
   );
@@ -555,7 +563,6 @@ export default function AcademyFeesManagement({
       return "";
     }
   });
-  const [feeTypeFilter, setFeeTypeFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
@@ -611,7 +618,7 @@ export default function AcademyFeesManagement({
     setPage(1);
     setClassFilter("");
     setSectionFilter("");
-  }, [month, year, statusFilter, feeTypeFilter, effectiveStudentId, sessionId]);
+  }, [month, year, statusFilter, effectiveStudentId, sessionId]);
 
   useEffect(() => {
     setSectionFilter("");
@@ -668,14 +675,13 @@ export default function AcademyFeesManagement({
   });
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["academy-fees", page, pageSize, search, effectiveStatusFilter, feeTypeFilter, filterParams],
+    queryKey: ["academy-fees", page, pageSize, search, effectiveStatusFilter, filterParams],
     queryFn: () =>
       fetchAcademyFees({
         page,
         limit: pageSize,
         search: search.trim() || undefined,
         status: effectiveStatusFilter || undefined,
-        feeType: feeTypeFilter || undefined,
         ...filterParams,
       }),
     enabled: scopeEnabled && (!isParent || Boolean(effectiveStudentId)),
@@ -1110,11 +1116,10 @@ export default function AcademyFeesManagement({
       month: month ? Number(month) : undefined,
       year: year ? Number(year) : undefined,
       classId: classFilter || undefined,
-      feeType: paidExportFeeType(feeTypeFilter),
       search: search.trim() || undefined,
       sessionId: apiSessionId,
     }),
-    [month, year, classFilter, feeTypeFilter, search, apiSessionId]
+    [month, year, classFilter, search, apiSessionId]
   );
 
   const downloadPaidReport = async (format: DefaulterReportFormat) => {
@@ -1161,10 +1166,10 @@ export default function AcademyFeesManagement({
   };
 
   const downloadClassAccounts = async (format: DefaulterReportFormat) => {
-    if (!classFilter) {
+    if (!classFilter || !sectionFilter) {
       toast({
-        title: "Select a class",
-        description: "Choose a class in the filters to export its accounts report.",
+        title: "Select class and section",
+        description: "Choose a class and section in the filters to export the accounts report.",
         variant: "destructive",
       });
       return;
@@ -1173,7 +1178,7 @@ export default function AcademyFeesManagement({
     const preview = openReportPreviewTab(format);
     try {
       const blob = await exportClassAccountsReport(
-        { classId: classFilter, sessionId: apiSessionId },
+        { classId: classFilter, sectionId: sectionFilter, sessionId: apiSessionId },
         format
       );
       const mode = deliverReportBlob(blob, `Class-Accounts.${format}`, format, preview);
@@ -1288,37 +1293,24 @@ export default function AcademyFeesManagement({
               <>
                 <div
                   className={cn(
-                    "grid items-end gap-3",
+                    "grid items-end gap-3 grid-cols-1 min-[480px]:grid-cols-2",
                     lockedStatus
-                      ? "grid-cols-1 min-[480px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
-                      : "grid-cols-1 min-[480px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
+                      ? "lg:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.6fr)]"
+                      : "lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.6fr)]",
                   )}
                 >
                   <FeeFilterField label="Month">
                     <FeeFilterSelect
-                      value={month}
-                      onChange={setMonth}
+                      value={monthValue}
+                      onChange={onMonthChange}
                       leadingIcon={<CalendarDays className="h-3.5 w-3.5" />}
                     >
                       {paidOnlyView ? <option value="">All months</option> : null}
-                      {MONTH_NAMES.map((name, idx) => (
-                        <option key={name} value={String(idx + 1)}>
-                          {name} {year || now.getFullYear()}
+                      {monthOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
                         </option>
                       ))}
-                    </FeeFilterSelect>
-                  </FeeFilterField>
-                  <FeeFilterField label="Year">
-                    <FeeFilterSelect value={year} onChange={setYear}>
-                      {paidOnlyView ? <option value="">All years</option> : null}
-                      {Array.from({ length: 6 }, (_, i) => {
-                        const y = String(Number(now.getFullYear()) - 2 + i);
-                        return (
-                          <option key={y} value={y}>
-                            {y}
-                          </option>
-                        );
-                      })}
                     </FeeFilterSelect>
                   </FeeFilterField>
                   <FeeFilterField label="Class">
@@ -1326,7 +1318,7 @@ export default function AcademyFeesManagement({
                       <ClassProgramOptions
                         classes={classes}
                         allowAll
-                        allLabel="All classes"
+                        allLabel="All classes (School + College)"
                       />
                     </FeeFilterSelect>
                   </FeeFilterField>
@@ -1354,35 +1346,28 @@ export default function AcademyFeesManagement({
                       </FeeFilterSelect>
                     </FeeFilterField>
                   )}
-                  <FeeFilterField label="Type">
-                    <FeeFilterSelect value={feeTypeFilter} onChange={setFeeTypeFilter}>
-                      <option value="">All types</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="admission">Admission</option>
-                    </FeeFilterSelect>
-                  </FeeFilterField>
-                </div>
-                <div className="relative min-w-0">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    className="h-9 w-full rounded-md border-border bg-background pl-8 pr-8 text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-primary/15"
-                    placeholder="Search student, class, receipt"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    aria-label="Search fees"
-                  />
-                  {search ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
-                      onClick={() => setSearch("")}
-                      aria-label="Clear search"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  ) : null}
+                  <div className="relative min-w-0 min-[480px]:col-span-2 lg:col-span-1">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="h-9 w-full rounded-md border-border bg-background pl-8 pr-8 text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-primary/15"
+                      placeholder="Search student, class, receipt"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      aria-label="Search fees"
+                    />
+                    {search ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0.5 top-0.5 h-8 w-8 text-muted-foreground"
+                        onClick={() => setSearch("")}
+                        aria-label="Clear search"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </>
             )}
@@ -1442,19 +1427,22 @@ export default function AcademyFeesManagement({
                   <div className="w-full sm:w-auto">
                     <DefaulterListDownload
                       className="w-full justify-center sm:w-auto"
-                      label="Defaulter list"
-                      exporting={exportingMonthWise}
-                      onDownload={(format) => void downloadMonthWise(format)}
-                    />
-                  </div>
-                )}
-                {showBulkActions && !studentId && caps.canView && (
-                  <div className="w-full sm:w-auto">
-                    <DefaulterListDownload
-                      className="w-full justify-center sm:w-auto"
-                      label="Class accounts report"
-                      exporting={exportingClassAccounts}
-                      onDownload={(format) => void downloadClassAccounts(format)}
+                      label="Print / Export"
+                      exporting={exportingMonthWise ?? exportingClassAccounts}
+                      reportKinds={[
+                        { id: "defaulters", label: "Defaulter List" },
+                        {
+                          id: "accounts",
+                          label: "Accounts Report",
+                          disabled: !classFilter || !sectionFilter,
+                          hint: "Select class and section first",
+                        },
+                      ]}
+                      onDownload={(format, reportKind) =>
+                        void (reportKind === "accounts"
+                          ? downloadClassAccounts(format)
+                          : downloadMonthWise(format))
+                      }
                     />
                   </div>
                 )}

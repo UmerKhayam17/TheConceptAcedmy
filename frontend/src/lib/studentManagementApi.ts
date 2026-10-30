@@ -1665,6 +1665,7 @@ export const exportPaidFeesReport = async (
 
 export type ClassAccountsExportParams = {
   classId: string;
+  sectionId: string;
   sessionId?: string;
 };
 
@@ -1675,6 +1676,7 @@ export const exportClassAccountsReport = async (
   const q = new URLSearchParams();
   q.set("format", format);
   q.set("classId", params.classId);
+  q.set("sectionId", params.sectionId);
   if (params.sessionId) q.set("sessionId", params.sessionId);
   const res = await authedFetch(`/student-management/fees/class-accounts/export-report?${q}`, {
     method: "GET",
