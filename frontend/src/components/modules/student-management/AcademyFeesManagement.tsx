@@ -1505,10 +1505,12 @@ export default function AcademyFeesManagement({
                 <th className="text-left p-2.5 font-medium">Period</th>
                 <th className="text-left p-2.5 font-medium">Type</th>
                 <th className="text-left p-2.5 font-medium">Amount</th>
-                <th className="text-left p-2.5 font-medium">Status</th>
                 {showPaidPaymentCols && (
-                  <th className="text-left p-2.5 font-semibold whitespace-nowrap text-foreground">Slip number</th>
+                  <th className="text-left p-2.5 font-semibold whitespace-nowrap text-foreground">
+                    Payment slip no.
+                  </th>
                 )}
+                <th className="text-left p-2.5 font-medium">Status</th>
                 {showPaidPaymentCols && (
                   <th className="text-left p-2.5 font-medium whitespace-nowrap min-w-[4.5rem] sm:min-w-[5.5rem]">Slip</th>
                 )}
@@ -1609,9 +1611,6 @@ export default function AcademyFeesManagement({
                         </ul>
                       )}
                     </td>
-                    <td className="p-2.5">
-                      <StatusPill status={r.status} />
-                    </td>
                     {showPaidPaymentCols && (
                       <td className="p-2.5 whitespace-nowrap">
                         {r.status === "paid" && r.paymentSlipNumber ? (
@@ -1623,6 +1622,9 @@ export default function AcademyFeesManagement({
                         ) : null}
                       </td>
                     )}
+                    <td className="p-2.5">
+                      <StatusPill status={r.status} />
+                    </td>
                     {showPaidPaymentCols && (
                       <td className="p-2.5 align-middle">
                         {r.status === "paid" && r.paymentSlip ? (

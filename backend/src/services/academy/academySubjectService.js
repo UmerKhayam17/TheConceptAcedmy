@@ -377,11 +377,64 @@ async function deleteSubject(id) {
   return { deleted: true };
 }
 
+async function createOneStandardSubject({
+  classId,
+  className,
+  subjectName,
+  userId,
+  nameSet,
+  codeSet,
+  enrollmentType = 'required',
+  choiceGroupName,
+  pickCount = 1,
+}) {
+  const { generateSubjectCode } = require('../../config/academyDefaultSubjects');
+  const nameKey = subjectName.toLowerCase();
+  let subjectCode = generateSubjectCode(subjectName, className);
+
+  if (nameSet.has(nameKey)) {
+    return { skipped: true, subjectName };
+  }
+
+  if (codeSet.has(subjectCode)) {
+    let n = 2;
+    let alt = `${subjectCode}-${n}`;
+    while (codeSet.has(alt) && n < 50) {
+      n += 1;
+      alt = `${subjectCode}-${n}`;
+    }
+    subjectCode = alt;
+  }
+
+  const weights = defaultSalaryWeights(className, subjectName, subjectCode);
+  const doc = await AcademySubject.create({
+    subjectName,
+    subjectCode,
+    classId,
+    status: 'active',
+    enrollmentType: enrollmentType === 'choice' ? 'choice' : 'required',
+    choiceGroupName: enrollmentType === 'choice' ? choiceGroupName : undefined,
+    pickCount: Math.max(1, Number(pickCount) || 1),
+    tuitionSharePercent: weights.tuitionSharePercent,
+    createdBy: userId,
+  });
+  nameSet.add(nameKey);
+  codeSet.add(subjectCode);
+  return { skipped: false, doc };
+}
+
 /**
  * Create the standard core subject list for a class (idempotent by name or code).
+ * 9th / 10th: Biology + Computer Science as a choice group (pick 1).
  */
 async function createStandardSubjects(classId, userId) {
-  const { DEFAULT_ACADEMY_SUBJECTS, generateSubjectCode } = require('../../config/academyDefaultSubjects');
+  const {
+    DEFAULT_ACADEMY_SUBJECTS,
+    DEFAULT_REQUIRED_SUBJECTS,
+    NINTH_TENTH_CHOICE_GROUP,
+    isNinthOrTenthClass,
+  } = require('../../config/academyDefaultSubjects');
+  const { ensureNinthTenthChoiceGroupForClass } = require('./academyNinthTenthChoiceGroup');
   const cls = await AcademyClass.findById(classId);
   if (!cls) throw new ApiError(404, 'Class not found');
 
@@ -391,42 +444,45 @@ async function createStandardSubjects(classId, userId) {
 
   const created = [];
   const skipped = [];
+  const ninthTenth = isNinthOrTenthClass(cls.className);
 
-  for (const def of DEFAULT_ACADEMY_SUBJECTS) {
+  const requiredDefs = ninthTenth ? DEFAULT_REQUIRED_SUBJECTS : DEFAULT_ACADEMY_SUBJECTS;
+
+  for (const def of requiredDefs) {
     const subjectName = String(def.subjectName).trim();
-    const nameKey = subjectName.toLowerCase();
-    let subjectCode = generateSubjectCode(subjectName, cls.className);
-
-    if (nameSet.has(nameKey)) {
-      skipped.push(subjectName);
-      continue;
-    }
-
-    // Avoid unique-index collisions if a custom subject already used this code.
-    if (codeSet.has(subjectCode)) {
-      let n = 2;
-      let alt = `${subjectCode}-${n}`;
-      while (codeSet.has(alt) && n < 50) {
-        n += 1;
-        alt = `${subjectCode}-${n}`;
-      }
-      subjectCode = alt;
-    }
-
-    const weights = defaultSalaryWeights(cls.className, subjectName, subjectCode);
-    const doc = await AcademySubject.create({
-      subjectName,
-      subjectCode,
+    const result = await createOneStandardSubject({
       classId,
-      status: 'active',
+      className: cls.className,
+      subjectName,
+      userId,
+      nameSet,
+      codeSet,
       enrollmentType: 'required',
-      pickCount: 1,
-      tuitionSharePercent: weights.tuitionSharePercent,
-      createdBy: userId,
     });
-    created.push(doc);
-    nameSet.add(nameKey);
-    codeSet.add(subjectCode);
+    if (result.skipped) skipped.push(subjectName);
+    else created.push(result.doc);
+  }
+
+  if (ninthTenth) {
+    const group = NINTH_TENTH_CHOICE_GROUP;
+    for (const def of group.subjects) {
+      const subjectName = String(def.subjectName).trim();
+      const result = await createOneStandardSubject({
+        classId,
+        className: cls.className,
+        subjectName,
+        userId,
+        nameSet,
+        codeSet,
+        enrollmentType: 'choice',
+        choiceGroupName: group.groupName,
+        pickCount: group.pickCount,
+      });
+      if (result.skipped) skipped.push(subjectName);
+      else created.push(result.doc);
+    }
+    // Stamp existing Bio/CS that were already created as required.
+    await ensureNinthTenthChoiceGroupForClass(cls);
   }
 
   await syncSubjectCount(classId);

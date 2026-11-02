@@ -1,19 +1,42 @@
 /**
- * Default core subjects created by "Auto initialize" on a class.
+ * Default subjects created by "Auto initialize" on a class.
  * Idempotent — existing names/codes are skipped.
+ *
+ * For 9th / 10th: Biology + Computer Science form a choice group (pick 1).
  */
 
-const DEFAULT_ACADEMY_SUBJECTS = [
+const { classLevelWeight } = require('../utils/classLevelSort');
+
+/** Core subjects shared by all grades (always enrollmentType: required). */
+const DEFAULT_REQUIRED_SUBJECTS = [
   { subjectName: 'English' },
   { subjectName: 'Urdu' },
   { subjectName: 'Mathematics' },
   { subjectName: 'Physics' },
   { subjectName: 'Chemistry' },
-  { subjectName: 'Biology' },
-  { subjectName: 'Computer Science' },
   { subjectName: 'Islamiat' },
   { subjectName: 'Pakistan Studies' },
 ];
+
+/** 9th / 10th elective group — student picks exactly one. */
+const NINTH_TENTH_CHOICE_GROUP = {
+  groupName: 'Biology / Computer',
+  pickCount: 1,
+  subjects: [{ subjectName: 'Biology' }, { subjectName: 'Computer Science' }],
+};
+
+/** Full list used when grade is not 9th/10th (all required, including Bio + CS). */
+const DEFAULT_ACADEMY_SUBJECTS = [
+  ...DEFAULT_REQUIRED_SUBJECTS.slice(0, 5),
+  { subjectName: 'Biology' },
+  { subjectName: 'Computer Science' },
+  ...DEFAULT_REQUIRED_SUBJECTS.slice(5),
+];
+
+function isNinthOrTenthClass(className) {
+  const w = classLevelWeight(className);
+  return w === 9 || w === 10;
+}
 
 function extractClassGradeSuffix(className) {
   const text = String(className || '').trim();
@@ -53,7 +76,42 @@ function generateSubjectCode(subjectName, className) {
   return `${prefix}-${grade}`;
 }
 
+function normalizeSubjectKey(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/** Match Biology / Computer Science (and common aliases) on a class. */
+function matchChoiceSubject(subject, defName) {
+  const key = normalizeSubjectKey(subject.subjectName);
+  const code = normalizeSubjectKey(subject.subjectCode);
+  const want = normalizeSubjectKey(defName);
+  if (want === 'biology') {
+    return key === 'biology' || key === 'bio' || key.startsWith('biol') || code === 'bio' || code.startsWith('biol');
+  }
+  if (want === 'computerscience') {
+    return (
+      key === 'computerscience' ||
+      key === 'computer' ||
+      key === 'cs' ||
+      key === 'ict' ||
+      key.includes('computer') ||
+      code === 'cs' ||
+      code === 'comp' ||
+      code.startsWith('cs')
+    );
+  }
+  return key === want || key.includes(want);
+}
+
 module.exports = {
   DEFAULT_ACADEMY_SUBJECTS,
+  DEFAULT_REQUIRED_SUBJECTS,
+  NINTH_TENTH_CHOICE_GROUP,
+  isNinthOrTenthClass,
   generateSubjectCode,
+  normalizeSubjectKey,
+  matchChoiceSubject,
 };

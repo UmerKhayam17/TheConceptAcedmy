@@ -18,6 +18,7 @@ const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocumen
 const { renderDualTablePdf } = require('./academyStudentExportService');
 const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
 const { dayBounds, formatDateInTz, todayYmd } = require('../../utils/schoolDay');
+const { getEnrollmentLayout } = require('./academyEnrollmentSubjectService');
 
 async function resolveFeeReportContext({ sessionId, classId }) {
   let sessionLabel = '';
@@ -2800,7 +2801,86 @@ function formatRupees(n) {
   return `Rs ${roundMoney(n).toLocaleString('en-PK')}`;
 }
 
-/** One row per active student: roll #, name, monthly fee, discipline / group, subjects. */
+function subjectNamesList(subjectDocs) {
+  return (subjectDocs || [])
+    .filter((sub) => sub && typeof sub === 'object')
+    .sort(subjectListOrder)
+    .map((sub) => sub.subjectName || sub.subjectCode)
+    .filter(Boolean)
+    .join(', ');
+}
+
+/**
+ * Accounts Report subjects:
+ * - Full package + choice groups (9th/10th): only selected group electives
+ * - Full package + discipline (1st/2nd year): only that discipline's stream subjects
+ * - Part-time: only the subjects the student selected
+ */
+async function resolveAccountsSubjectDocs(student, classId, sectionId, layoutCache) {
+  const selected = (student.selectedSubjects || []).filter((sub) => sub && typeof sub === 'object');
+  const selectedIds = new Set(selected.map((s) => String(s._id)));
+
+  // Part-time: only what they picked.
+  if (!student.isFullPackage) {
+    return selected;
+  }
+
+  const disciplineId = student.disciplineId?._id || student.disciplineId || null;
+  const cacheKey = `${classId}:${sectionId}:${disciplineId || ''}`;
+  let layout = layoutCache.get(cacheKey);
+  if (!layout) {
+    layout = await getEnrollmentLayout(classId, sectionId, disciplineId);
+    layoutCache.set(cacheKey, layout);
+  }
+
+  // 1st / 2nd year: discipline stream subjects only (not shared / all-package subjects).
+  if (disciplineId && (layout.streamSubjects || []).length) {
+    return layout.streamSubjects.slice();
+  }
+
+  // 9th / 10th: choice groups — only the group subjects they selected.
+  if (layout.hasChoiceGroups) {
+    const picks = [];
+    const seen = new Set();
+    for (const group of layout.choiceGroups || []) {
+      for (const sub of group.subjects || []) {
+        const id = String(sub._id);
+        if (!selectedIds.has(id) || seen.has(id)) continue;
+        seen.add(id);
+        picks.push(sub);
+      }
+    }
+    return picks;
+  }
+
+  // Full package with neither groups nor discipline stream — keep selected list as-is.
+  return selected;
+}
+
+/** Latest non-empty payment slip number per student (most recent paidAt first). */
+async function latestPaymentSlipByStudent(studentIds) {
+  const slipByStudent = new Map();
+  if (!studentIds.length) return slipByStudent;
+
+  const paid = await AcademyFeeRecord.find({
+    studentId: { $in: studentIds },
+    status: 'paid',
+    paymentSlipNumber: { $exists: true, $nin: [null, ''] },
+  })
+    .select('studentId paymentSlipNumber paidAt')
+    .sort({ paidAt: -1, updatedAt: -1 })
+    .lean();
+
+  for (const record of paid) {
+    const id = String(record.studentId);
+    if (slipByStudent.has(id)) continue;
+    const slip = String(record.paymentSlipNumber || '').trim();
+    if (slip) slipByStudent.set(id, slip);
+  }
+  return slipByStudent;
+}
+
+/** One row per active student: roll #, name, monthly fee, payment slip no., discipline, subjects. */
 async function loadClassAccountsRows(classId, sectionId) {
   if (!classId || !sectionId) {
     throw new ApiError(400, 'Select a class and section to export the accounts report');
@@ -2811,29 +2891,34 @@ async function loadClassAccountsRows(classId, sectionId) {
       'studentId registrationNumber rollNumber studentName disciplineId selectedSubjects isFullPackage monthlyFee monthlyFeeDiscount'
     )
     .populate({ path: 'disciplineId', select: 'name' })
-    .populate({ path: 'selectedSubjects', select: 'subjectName subjectCode enrollmentType' })
+    .populate({
+      path: 'selectedSubjects',
+      select: 'subjectName subjectCode enrollmentType choiceGroupName',
+    })
     .lean();
   students.sort(compareStudentsByRollAsc);
 
+  const slipByStudent = await latestPaymentSlipByStudent(students.map((s) => s._id));
+  const layoutCache = new Map();
   let totalFee = 0;
-  const rows = students.map((student, index) => {
+  const rows = [];
+  for (let index = 0; index < students.length; index += 1) {
+    const student = students[index];
     const fee = monthlyBillAmount(student);
     totalFee = roundMoney(totalFee + fee);
-    const subjects = (student.selectedSubjects || [])
-      .filter((sub) => sub && typeof sub === 'object')
-      .sort(subjectListOrder)
-      .map((sub) => sub.subjectName || sub.subjectCode)
-      .filter(Boolean);
-    return {
+    // eslint-disable-next-line no-await-in-loop
+    const subjectDocs = await resolveAccountsSubjectDocs(student, classId, sectionId, layoutCache);
+    rows.push({
       serial: index + 1,
       regNo: student.rollNumber || student.studentId || student.registrationNumber || '',
       name: student.studentName || '',
       fee,
+      slipNo: slipByStudent.get(String(student._id)) || '',
       discipline:
         student.disciplineId?.name || (student.isFullPackage ? 'Full package' : 'Part-time'),
-      subjects: subjects.join(', '),
-    };
-  });
+      subjects: subjectNamesList(subjectDocs),
+    });
+  }
   return { rows, totalFee };
 }
 
@@ -2868,15 +2953,16 @@ async function exportClassAccountsReport({ classId, sectionId, sessionId, format
       meta,
       buildCols: (tableW) => {
         const cols = [
-          { key: 'serial', w: 18, label: 'Sr #', align: 'center', wrap: false },
-          { key: 'regNo', w: 44, label: 'Roll #', align: 'center', wrap: true },
-          { key: 'name', w: 62, label: 'Student Name', align: 'left', wrap: true },
-          { key: 'fee', w: 34, label: 'Fee (Rs)', align: 'center', wrap: false },
-          { key: 'discipline', w: 44, label: 'Discipline', align: 'center', wrap: true },
+          { key: 'serial', w: 16, label: 'Sr #', align: 'center', wrap: false },
+          { key: 'regNo', w: 42, label: 'Roll #', align: 'center', wrap: true },
+          { key: 'name', w: 56, label: 'Student Name', align: 'left', wrap: true },
+          { key: 'fee', w: 32, label: 'Fee (Rs)', align: 'center', wrap: false },
+          { key: 'slipNo', w: 40, label: 'Slip no.', align: 'center', wrap: true },
+          { key: 'discipline', w: 36, label: 'Discipline', align: 'center', wrap: true },
           { key: 'subjects', w: 0, label: 'Subjects', align: 'left', wrap: true },
         ];
         const used = cols.reduce((sum, c) => sum + c.w, 0);
-        cols[5].w = Math.max(40, tableW - used);
+        cols[6].w = Math.max(36, tableW - used);
         return cols;
       },
     });
@@ -2892,11 +2978,12 @@ async function exportClassAccountsReport({ classId, sectionId, sessionId, format
     confidentialLabel,
     columns: [
       { key: 'serial', header: 'Sr #', excelWidth: 6, align: 'center' },
-      { key: 'regNo', header: 'Roll #', excelWidth: 22, align: 'center' },
-      { key: 'name', header: 'Student Name', excelWidth: 24, wrap: true },
+      { key: 'regNo', header: 'Roll #', excelWidth: 18, align: 'center' },
+      { key: 'name', header: 'Student Name', excelWidth: 22, wrap: true },
       { key: 'fee', header: 'Fee (Rs)', excelWidth: 12, align: 'center', numFmt: '#,##0' },
-      { key: 'discipline', header: 'Discipline', excelWidth: 18, align: 'center', wrap: true },
-      { key: 'subjects', header: 'Subjects', excelWidth: 50, wrap: true },
+      { key: 'slipNo', header: 'Slip no.', excelWidth: 14, align: 'center', wrap: true },
+      { key: 'discipline', header: 'Discipline', excelWidth: 16, align: 'center', wrap: true },
+      { key: 'subjects', header: 'Subjects', excelWidth: 48, wrap: true },
     ],
     rows: excelRows,
     meta,

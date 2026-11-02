@@ -207,8 +207,12 @@ function buildDualCols(tableW, kind, omitSensitive) {
 }
 
 function dualCellFontSize(key) {
-  if (key === 'regNo' || key === 'phone') return 6;
+  if (key === 'regNo' || key === 'slipNo' || key === 'phone') return 6;
   return 6.5;
+}
+
+function isCompactIdColumn(key) {
+  return key === 'regNo' || key === 'slipNo';
 }
 
 /**
@@ -239,7 +243,7 @@ function dualRowHeight(doc, row, cols, { minRowH = 15, pad = 3 } = {}) {
     const raw = row[c.key];
     const value = raw == null || raw === '' ? '' : String(raw);
     if (!value || !c.wrap) return;
-    if (c.key === 'regNo') {
+    if (isCompactIdColumn(c.key)) {
       const { height } = rollCellLayout(doc, value, Math.max(8, c.w - 4));
       maxH = Math.max(maxH, Math.ceil(height + pad * 2));
       return;
@@ -289,7 +293,7 @@ function drawDualStudentRow(doc, blockX, y, row, tableW, cols, rowH) {
       const fontSize = dualCellFontSize(c.key);
       doc.font('Helvetica').fontSize(fontSize).fillColor('#000');
       const innerW = Math.max(8, c.w - 4);
-      if (c.key === 'regNo') {
+      if (isCompactIdColumn(c.key)) {
         const { lines, fontSize: rollFont, height } = rollCellLayout(doc, value, innerW);
         doc.fontSize(rollFont).fillColor('#000');
         const textY = y + Math.max(2, (rowH - height) / 2);
