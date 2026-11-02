@@ -155,10 +155,11 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
   }, [students, search, studentFilter, user?.role]);
 
   const visibleSummary = useMemo(() => {
-    const counts = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
+    const counts = { present: 0, absent: 0, leave: 0, late: 0 };
     studentsFiltered.forEach((s) => {
       const rec = recordMap.get(s._id);
-      if (!rec) counts.unmarked += 1;
+      // No saved mark → absent by default
+      if (!rec) counts.absent += 1;
       else if (rec.status in counts) (counts as Record<string, number>)[rec.status] += 1;
     });
     return counts;
@@ -243,7 +244,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
           </div>
         </Card>
 
-        <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
           <PanelStatCard
             label="Present"
             value={visibleSummary.present}
@@ -263,7 +264,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
           <PanelStatCard
             label="Absent"
             value={visibleSummary.absent}
-            hint="Today"
+            hint="Default until marked"
             icon={UserX}
             iconWrapClass="bg-[#ffe4e6]"
             iconClass="text-[#e11d48]"
@@ -275,14 +276,6 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
             icon={Palmtree}
             iconWrapClass="bg-[#dbeafe]"
             iconClass="text-[#2563eb]"
-          />
-          <PanelStatCard
-            label="Unmarked"
-            value={visibleSummary.unmarked}
-            hint="Need marking"
-            icon={ClipboardList}
-            iconWrapClass="bg-[#ede9fe]"
-            iconClass="text-[#7c3aed]"
           />
         </div>
 
@@ -394,8 +387,8 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                   </tr>
                 )}
                 {studentsFiltered.map((s) => {
-                  const cur = recordMap.get(s._id)?.status;
                   const record = recordMap.get(s._id);
+                  const cur = record?.status ?? "absent";
                   return (
                     <tr key={s._id} className="border-t border-border">
                       <td className="px-4 py-3 font-medium text-primary">{s.studentName}</td>
@@ -413,7 +406,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                                   : "bg-muted text-muted-foreground"
                           }`}
                         >
-                          {cur || "unmarked"}
+                          {cur}
                         </span>
                         {record?.source === "ai" && (
                           <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary/80">

@@ -34,7 +34,6 @@ import {
   Clock,
   UserX,
   Plane,
-  CircleDashed,
   TrendingUp,
   Building2,
   Calculator,
@@ -90,7 +89,6 @@ const attendanceTodayConfig: ChartConfig = {
   Late: { label: "Late", color: "hsl(38 90% 48%)" },
   Absent: { label: "Absent", color: "hsl(var(--destructive))" },
   Leave: { label: "Leave", color: "hsl(210 70% 50%)" },
-  Unmarked: { label: "Unmarked", color: "hsl(220 10% 65%)" },
 };
 
 const feeStatusConfig: ChartConfig = {
@@ -625,13 +623,6 @@ export default function AdminDashboard({ role, name }: { role: Role; name: strin
                       color="hsl(210 70% 50%)"
                       icon={Plane}
                     />
-                    <AttendanceMeter
-                      label="Unmarked"
-                      value={k.unmarkedToday}
-                      total={k.activeStudents}
-                      color="hsl(220 10% 65%)"
-                      icon={CircleDashed}
-                    />
                     <div className="rounded-2xl border border-border/70 bg-background/80 p-3.5 flex flex-col justify-center">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Staff today</div>
                       <div className="mt-1 flex items-baseline gap-3">
@@ -739,13 +730,6 @@ export default function AdminDashboard({ role, name }: { role: Role; name: strin
                   label="Late arrivals"
                   value={String(k.lateToday)}
                   hint="Students marked late"
-                  tone="warn"
-                />
-                <KpiCard
-                  icon={CircleDashed}
-                  label="Unmarked"
-                  value={String(k.unmarkedToday)}
-                  hint="Not marked yet today"
                   tone="warn"
                 />
                 <KpiCard

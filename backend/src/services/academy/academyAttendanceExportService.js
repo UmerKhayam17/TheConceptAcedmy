@@ -37,7 +37,8 @@ function studentRef(s) {
 }
 
 function statusLabel(status) {
-  if (!status) return 'Unmarked';
+  // No saved mark → absent by default
+  if (!status) return 'Absent';
   return String(status).charAt(0).toUpperCase() + String(status).slice(1);
 }
 
@@ -81,7 +82,7 @@ function reportMeta(meta, rows) {
       .filter(Boolean)
       .join('   |   ') || 'All classes',
     extraLine: meta.summary
-      ? `Present ${meta.summary.present ?? 0}  ·  Late ${meta.summary.late ?? 0}  ·  Absent ${meta.summary.absent ?? 0}  ·  Leave ${meta.summary.leave ?? 0}  ·  Unmarked ${meta.summary.unmarked ?? 0}`
+      ? `Present ${meta.summary.present ?? 0}  ·  Late ${meta.summary.late ?? 0}  ·  Absent ${meta.summary.absent ?? 0}  ·  Leave ${meta.summary.leave ?? 0}`
       : '',
     countLabel: `${rows.length} student${rows.length === 1 ? '' : 's'}`,
   };

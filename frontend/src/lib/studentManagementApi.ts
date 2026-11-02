@@ -2146,7 +2146,8 @@ export interface AcademyAttendanceDay {
     absent: number;
     leave: number;
     late: number;
-    unmarked: number;
+    /** Always 0 — unmarked students count as absent. */
+    unmarked?: number;
   };
 }
 

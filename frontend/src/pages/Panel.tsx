@@ -204,7 +204,7 @@ const Dashboard = ({
     ],
     teacher: [
       { label: "Present today", value: String(present), hint: today },
-      { label: "Unmarked today", value: String(todayAttendance?.summary?.unmarked ?? "—"), hint: "Academy attendance" },
+      { label: "Absent today", value: String(todayAttendance?.summary?.absent ?? "—"), hint: "Academy attendance" },
       { label: "Term exams", value: String(termExamCount), hint: "Mid / final terms" },
       { label: "Announcements", value: String(announcementCount), hint: "Published notices" },
     ],

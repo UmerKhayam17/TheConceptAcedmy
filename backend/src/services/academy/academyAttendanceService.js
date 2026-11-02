@@ -74,10 +74,11 @@ async function listByDate({
     if (nextIn < prevIn) recordByStudent.set(key, r);
   }
 
+  // Students without a saved mark count as absent by default.
   const summary = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
   students.forEach((s) => {
     const rec = recordByStudent.get(String(s._id));
-    if (!rec) summary.unmarked += 1;
+    if (!rec) summary.absent += 1;
     else if (summary[rec.status] !== undefined) summary[rec.status] += 1;
   });
 

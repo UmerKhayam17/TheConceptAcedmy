@@ -479,7 +479,9 @@ async function getDashboardOverview({ months = 6 } = {}) {
     (attendanceToday.absent || 0) +
     (attendanceToday.late || 0) +
     (attendanceToday.leave || 0);
+  // Students without a saved mark count as absent by default.
   const unmarkedToday = Math.max(0, activeStudents - markedToday);
+  const absentToday = (attendanceToday.absent || 0) + unmarkedToday;
 
   const netThisMonth =
     (feeSummaryMonth.totalPaid || 0) -
@@ -518,9 +520,9 @@ async function getDashboardOverview({ months = 6 } = {}) {
       defaulterOutstanding: defaulters?.totalOutstanding || 0,
       presentToday: attendanceToday.present || 0,
       lateToday: attendanceToday.late || 0,
-      absentToday: attendanceToday.absent || 0,
+      absentToday,
       leaveToday: attendanceToday.leave || 0,
-      unmarkedToday,
+      unmarkedToday: 0,
       staffPresentToday: (staffAtt.present || 0) + (staffAtt.late || 0),
       staffAbsentToday: staffAtt.absent || 0,
       upcomingExamsCount: upcomingExams.length,
@@ -554,9 +556,8 @@ async function getDashboardOverview({ months = 6 } = {}) {
       attendanceToday: [
         { name: 'Present', value: attendanceToday.present || 0 },
         { name: 'Late', value: attendanceToday.late || 0 },
-        { name: 'Absent', value: attendanceToday.absent || 0 },
+        { name: 'Absent', value: absentToday },
         { name: 'Leave', value: attendanceToday.leave || 0 },
-        { name: 'Unmarked', value: unmarkedToday },
       ],
       expensesByCategory: expenseCategories,
       studentsByClass: classBreakdown,
