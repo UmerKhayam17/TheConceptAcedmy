@@ -490,6 +490,20 @@ const expenseCategoryPatch = Joi.object({
   isActive: Joi.boolean(),
 }).min(1);
 
+const concessionCategoryBody = Joi.object({
+  name: Joi.string().trim().min(1).max(80).required(),
+  description: Joi.string().allow('').trim().max(160).optional(),
+  discountPercent: Joi.number().min(0).max(100).required(),
+  isActive: Joi.boolean().optional(),
+});
+
+const concessionCategoryPatch = Joi.object({
+  name: Joi.string().trim().min(1).max(80),
+  description: Joi.string().allow('').trim().max(160),
+  discountPercent: Joi.number().min(0).max(100),
+  isActive: Joi.boolean(),
+}).min(1);
+
 const academyExpensePatch = Joi.object({
   title: Joi.string().trim(),
   category: Joi.string().trim().max(60),
@@ -693,6 +707,8 @@ module.exports = {
   academyExpensePatch,
   expenseCategoryBody,
   expenseCategoryPatch,
+  concessionCategoryBody,
+  concessionCategoryPatch,
   feePreview,
   discountReportQuery,
   academyAssessmentBody,

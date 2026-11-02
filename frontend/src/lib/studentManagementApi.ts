@@ -2041,6 +2041,48 @@ export const updateExpenseCategory = (
 export const deleteExpenseCategory = (id: string) =>
   api<{ deleted: boolean }>(`/expense-categories/${id}`, { method: "DELETE" });
 
+/** Fee concession / discount types from Academic Setup → Concession Categories. */
+export interface ConcessionCategoryConfig {
+  _id: string;
+  key: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder: number;
+  usageCount?: number;
+  createdAt?: string;
+}
+
+export const fetchConcessionCategories = () =>
+  api<ConcessionCategoryConfig[]>("/concession-categories");
+
+export const createConcessionCategory = (body: {
+  name: string;
+  description?: string;
+  isActive?: boolean;
+}) =>
+  api<ConcessionCategoryConfig>("/concession-categories", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const seedConcessionCategories = () =>
+  api<{ created: number; skipped: number; total: number }>("/concession-categories/seed", {
+    method: "POST",
+  });
+
+export const updateConcessionCategory = (
+  id: string,
+  body: { name?: string; description?: string; isActive?: boolean },
+) =>
+  api<ConcessionCategoryConfig>(`/concession-categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+
+export const deleteConcessionCategory = (id: string) =>
+  api<{ deleted: boolean }>(`/concession-categories/${id}`, { method: "DELETE" });
+
 export interface AcademyExpenseSummary {
   recordsCount: number;
   totalAmount: number;
@@ -2218,17 +2260,64 @@ export const fetchStudentMonthAttendance = (params: {
 
 export type AttendanceExportFormat = "xlsx" | "pdf";
 
+export type AttendanceExportReportKind = "attendance" | "absent";
+
+export interface AcademyAbsentDayGroup {
+  date: string;
+  count: number;
+  students: AcademyStudent[];
+}
+
+export interface AcademyAbsentList {
+  dateFrom: string;
+  dateTo: string;
+  days: AcademyAbsentDayGroup[];
+  totalAbsent: number;
+  summary: { absent: number; days: number };
+}
+
+export const fetchAcademyAbsentList = (params: {
+  date?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  classId?: string;
+  sectionId?: string;
+  sessionId?: string;
+  studentId?: string;
+}) => {
+  const dateFrom = params.dateFrom || params.date;
+  const dateTo = params.dateTo || params.dateFrom || params.date;
+  if (!dateFrom || !dateTo) throw new Error("dateFrom and dateTo are required");
+  const q = new URLSearchParams({ dateFrom, dateTo });
+  if (dateFrom === dateTo) q.set("date", dateFrom);
+  if (params.classId) q.set("classId", params.classId);
+  if (params.sectionId) q.set("sectionId", params.sectionId);
+  if (params.sessionId) q.set("sessionId", params.sessionId);
+  if (params.studentId) q.set("studentId", params.studentId);
+  return api<AcademyAbsentList>(`/attendance/absent?${q}`);
+};
+
 export const exportAcademyAttendance = async (
   params: {
-    date: string;
+    /** Single day (legacy). Prefer dateFrom + dateTo for custom ranges. */
+    date?: string;
+    dateFrom?: string;
+    dateTo?: string;
     classId?: string;
     sectionId?: string;
     sessionId?: string;
     studentId?: string;
+    reportKind?: AttendanceExportReportKind;
   },
   format: AttendanceExportFormat = "xlsx",
 ) => {
-  const q = new URLSearchParams({ date: params.date, format });
+  const dateFrom = params.dateFrom || params.date;
+  const dateTo = params.dateTo || params.dateFrom || params.date;
+  if (!dateFrom || !dateTo) throw new Error("dateFrom and dateTo are required");
+  const q = new URLSearchParams({ dateFrom, dateTo, format });
+  // Keep `date` for older backends when range is a single day
+  if (dateFrom === dateTo) q.set("date", dateFrom);
+  if (params.reportKind) q.set("reportKind", params.reportKind);
   if (params.classId) q.set("classId", params.classId);
   if (params.sectionId) q.set("sectionId", params.sectionId);
   if (params.sessionId) q.set("sessionId", params.sessionId);

@@ -21,6 +21,7 @@ const studentCtrl = require('../controllers/academy/academyStudentController');
 const feeCtrl = require('../controllers/academy/academyFeeController');
 const salaryCtrl = require('../controllers/academy/academySalaryController');
 const expenseCtrl = require('../controllers/academy/academyExpenseController');
+const concessionCategoryCtrl = require('../controllers/academy/academyConcessionCategoryController');
 const attendanceCtrl = require('../controllers/academy/academyAttendanceController');
 const assessmentCtrl = require('../controllers/academy/academyAssessmentController');
 const classTestCtrl = require('../controllers/academy/academyClassTestController');
@@ -659,6 +660,39 @@ router.delete(
   expenseCtrl.removeCategory
 );
 
+function canReadConcessionCategories(req, res, next) {
+  if (isSystemAdmin(req.user)) return next();
+  if (hasModulePermission(req.user, 'concessionCategories', 'view')) return next();
+  if (hasLegacyOrModulePermission(req.user, 'manage_academy_fees')) return next();
+  if (hasLegacyOrModulePermission(req.user, 'view_academy_fee_reports')) return next();
+  return next(new ApiError(403, 'You do not have permission for this action'));
+}
+
+// Concession discount categories (Academic Setup — fee concession types + %)
+router.get('/concession-categories', canReadConcessionCategories, concessionCategoryCtrl.listCategories);
+router.post(
+  '/concession-categories/seed',
+  requireModulePermission('concessionCategories', 'create'),
+  concessionCategoryCtrl.seedCategories
+);
+router.post(
+  '/concession-categories',
+  requireModulePermission('concessionCategories', 'create'),
+  validate(schemas.concessionCategoryBody),
+  concessionCategoryCtrl.createCategory
+);
+router.patch(
+  '/concession-categories/:id',
+  requireModulePermission('concessionCategories', 'edit'),
+  validate(schemas.concessionCategoryPatch),
+  concessionCategoryCtrl.updateCategory
+);
+router.delete(
+  '/concession-categories/:id',
+  requireModulePermission('concessionCategories', 'delete'),
+  concessionCategoryCtrl.removeCategory
+);
+
 // Academy expenses
 router.get(
   '/expenses/summary',
@@ -708,6 +742,11 @@ router.get(
   '/attendance/export',
   requireAnyPermission('view_attendance', 'mark_attendance'),
   attendanceCtrl.exportAttendance
+);
+router.get(
+  '/attendance/absent',
+  requireAnyPermission('view_attendance', 'mark_attendance'),
+  attendanceCtrl.listAbsent
 );
 router.get(
   '/attendance',

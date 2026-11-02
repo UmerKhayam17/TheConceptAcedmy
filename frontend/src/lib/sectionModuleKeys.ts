@@ -25,6 +25,7 @@ export const SYSTEM_CONFIG_SECTION_MAP: Record<string, ModuleKey> = {
   teachers: "teachers",
   "subject-teachers": "subject-teachers",
   "expense-categories": "expense-categories",
+  "concession-categories": "concession-categories",
 };
 
 export const STUDENT_MGMT_SECTION_MAP: Record<string, ModuleKey> = {
@@ -58,6 +59,7 @@ export const HUB_LEAF_KEYS: Record<string, ModuleKey[]> = {
     "teachers",
     "subject-teachers",
     "expense-categories",
+    "concession-categories",
   ],
   "student-management": [
     "classes",

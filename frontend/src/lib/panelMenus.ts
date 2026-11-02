@@ -127,6 +127,7 @@ const LEAF_HREF: Partial<Record<ModuleKey, (role: Role) => string>> = {
   periods: (role) => systemConfigHref(role, "periods"),
   "timetable-rules": (role) => systemConfigHref(role, "timetable-rules"),
   "expense-categories": (role) => systemConfigHref(role, "expense-categories"),
+  "concession-categories": (role) => systemConfigHref(role, "concession-categories"),
   teachers: (role) => systemConfigHref(role, "teachers"),
   "subject-teachers": (role) => systemConfigHref(role, "subject-teachers"),
   classes: (role) => studentManagementHref(role, "classes"),

@@ -1,23 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { format, isValid, parseISO } from "date-fns";
 import {
+  CalendarDays,
   CheckCircle2,
   ClipboardList,
   Clock3,
   Palmtree,
+  Users,
   UserX,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DateRangePickerField } from "@/components/ui/date-range-picker";
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { matchesPanelSearch } from "@/lib/panelSearch";
-import { formatClockTime } from "@/lib/utils";
+import { cn, formatClockTime } from "@/lib/utils";
 import {
   exportAcademyAttendance,
+  fetchAcademyAbsentList,
   fetchAcademyAttendanceDay,
   fetchAcademyClasses,
   fetchSectionsByClass,
@@ -25,6 +30,7 @@ import {
   type AcademyAttendanceRecord,
   type AcademyStudent,
   type AttendanceExportFormat,
+  type AttendanceExportReportKind,
 } from "@/lib/studentManagementApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
@@ -36,6 +42,8 @@ import { DefaulterListDownload } from "@/components/modules/student-management/D
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 
 const today = () => localTodayYmd();
+
+type AttendanceView = "mark" | "absent";
 
 function classLabel(s: AcademyStudent) {
   const c = s.classId;
@@ -57,6 +65,18 @@ function fmtTime(iso?: string) {
   return formatClockTime(iso);
 }
 
+function formatDisplayDate(ymd?: string) {
+  if (!ymd) return "—";
+  const d = parseISO(ymd.slice(0, 10));
+  if (!isValid(d)) return ymd;
+  return format(d, "dd MMM yyyy");
+}
+
+function formatRangeLabel(from: string, to: string) {
+  if (from === to) return formatDisplayDate(from);
+  return `${formatDisplayDate(from)} – ${formatDisplayDate(to)}`;
+}
+
 function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -64,13 +84,20 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
   const { sessionId } = usePanelSession();
   const { apiSessionId, writable, hasScope } = useSessionScope(sessionId);
 
-  const [date, setDate] = useState(today());
+  const [view, setView] = useState<AttendanceView>("mark");
+  const [dateFrom, setDateFrom] = useState(today());
+  const [dateTo, setDateTo] = useState(today());
   const [classFilter, setClassFilter] = useState("");
   const [sectionFilter, setSectionFilter] = useState("");
   const [studentFilter, setStudentFilter] = useState("");
   const [exporting, setExporting] = useState<AttendanceExportFormat | null>(null);
   const [search, setSearch] = useState("");
   const canMark = writable && (caps.canCreate || caps.canEdit);
+
+  /** Marking list always uses the To date. */
+  const date = dateTo;
+  const isRange = dateFrom !== dateTo;
+  const rangeLabel = formatRangeLabel(dateFrom, dateTo);
 
   useEffect(() => {
     setClassFilter("");
@@ -108,7 +135,34 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
         sectionId: sectionFilter || undefined,
         sessionId: classFilter ? undefined : apiSessionId,
       }),
-    enabled: hasScope,
+    enabled: hasScope && view === "mark",
+  });
+
+  const {
+    data: absentData,
+    isLoading: absentLoading,
+    isError: absentIsError,
+    error: absentError,
+  } = useQuery({
+    queryKey: [
+      "academy-attendance-absent",
+      dateFrom,
+      dateTo,
+      sessionId,
+      classFilter,
+      sectionFilter,
+      studentFilter,
+    ],
+    queryFn: () =>
+      fetchAcademyAbsentList({
+        dateFrom,
+        dateTo,
+        classId: classFilter || undefined,
+        sectionId: sectionFilter || undefined,
+        sessionId: classFilter ? undefined : apiSessionId,
+        studentId: studentFilter || undefined,
+      }),
+    enabled: hasScope && view === "absent" && dateFrom <= dateTo,
   });
 
   const markMut = useMutation({
@@ -119,6 +173,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["academy-attendance-day", date] });
+      qc.invalidateQueries({ queryKey: ["academy-attendance-absent"] });
       qc.invalidateQueries({ queryKey: ["academy-attendance-summary"] });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -165,26 +220,65 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
     return counts;
   }, [studentsFiltered, recordMap]);
 
-  const handleExport = async (format: AttendanceExportFormat) => {
+  /** Flat rows for the absent list — same date filter as the toolbar. */
+  const absentRows = useMemo(() => {
+    const rows: { date: string; student: AcademyStudent }[] = [];
+    (absentData?.days ?? []).forEach((day) => {
+      day.students.forEach((s) => {
+        if (studentFilter && s._id !== studentFilter) return;
+        if (
+          search.trim() &&
+          !matchesPanelSearch(
+            search,
+            s.studentName,
+            s.studentId,
+            studentRef(s),
+            classLabel(s),
+            sectionLabel(s),
+            user?.role === "teacher" ? undefined : s.phone,
+          )
+        ) {
+          return;
+        }
+        rows.push({ date: day.date, student: s });
+      });
+    });
+    return rows;
+  }, [absentData?.days, search, studentFilter, user?.role]);
+
+  const handleExport = async (
+    format: AttendanceExportFormat,
+    reportKind: AttendanceExportReportKind = "attendance",
+  ) => {
+    if (dateFrom > dateTo) {
+      toast({
+        title: "Invalid date range",
+        description: "From date must be on or before To date.",
+        variant: "destructive",
+      });
+      return;
+    }
     setExporting(format);
     const preview = openReportPreviewTab(format);
     try {
       const blob = await exportAcademyAttendance(
         {
-          date,
+          dateFrom,
+          dateTo,
           classId: classFilter || undefined,
           sectionId: sectionFilter || undefined,
           sessionId: classFilter ? undefined : apiSessionId,
           studentId: studentFilter || undefined,
+          reportKind,
         },
         format,
       );
-      const mode = deliverReportBlob(
-        blob,
-        `Student-Attendance_${date}.${format}`,
-        format,
-        preview,
-      );
+      const rangeStub = dateFrom === dateTo ? dateFrom : `${dateFrom}_to_${dateTo}`;
+      const fileStub =
+        reportKind === "absent"
+          ? `Absent-List_${rangeStub}`
+          : `Student-Attendance_${rangeStub}`;
+      const mode = deliverReportBlob(blob, `${fileStub}.${format}`, format, preview);
       toast({
         title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
         description:
@@ -226,7 +320,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                   Student Attendance
                 </h1>
                 <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
-                  Mark daily attendance for students by class and section.
+                  Mark attendance day by day, or open the absent list for the selected date range.
                 </p>
               </div>
             </div>
@@ -281,12 +375,13 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
 
         <Card className="p-3 sm:p-4 shadow-sm border-border/80">
           <FilterToolbar>
-            <input
-              type="date"
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm shrink-0"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              aria-label="Date"
+            <DateRangePickerField
+              from={dateFrom}
+              to={dateTo}
+              onChange={(nextFrom, nextTo) => {
+                setDateFrom(nextFrom);
+                setDateTo(nextTo);
+              }}
             />
             <ClassProgramSelect
               className="w-[16.5rem] shrink-0"
@@ -336,10 +431,22 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
             <FilterToolbarActions>
               <DefaulterListDownload
                 size="default"
-                label="Print / Export"
+                label={isRange ? "Export range" : "Print / Export"}
                 exporting={exporting}
-                disabled={!hasScope}
-                onDownload={(format) => void handleExport(format)}
+                disabled={!hasScope || dateFrom > dateTo}
+                reportKinds={[
+                  {
+                    id: "attendance",
+                    label: isRange ? "Attendance summary" : "Daily attendance",
+                  },
+                  { id: "absent", label: "Absent list (date-wise)" },
+                ]}
+                onDownload={(format, reportKind) =>
+                  void handleExport(
+                    format,
+                    reportKind === "absent" ? "absent" : "attendance",
+                  )
+                }
               />
             </FilterToolbarActions>
           </FilterToolbar>

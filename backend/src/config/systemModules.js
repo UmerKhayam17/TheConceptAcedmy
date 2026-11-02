@@ -213,6 +213,16 @@ const SYSTEM_MODULES = [
     actions: CRUD,
     parentGroup: 'academic-setup',
   },
+  {
+    key: 'concessionCategories',
+    panelSlug: 'concession-categories',
+    label: 'Concession Discount Categories',
+    icon: 'BadgePercent',
+    description: 'Fee concession discount types and percentages used at registration',
+    order: 34,
+    actions: CRUD,
+    parentGroup: 'academic-setup',
+  },
   // Coarse parent — migration only
   {
     key: 'config',
@@ -652,6 +662,7 @@ const LEGACY_MODULE_EXPANSION = {
     'teachers',
     'subjectTeachers',
     'expenseCategories',
+    'concessionCategories',
   ],
   studentManagement: [
     'classes',

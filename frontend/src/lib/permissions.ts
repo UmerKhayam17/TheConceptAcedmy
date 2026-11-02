@@ -46,6 +46,7 @@ export type ModuleKey =
   | "periods"
   | "timetable-rules"
   | "expense-categories"
+  | "concession-categories"
   | "teachers"
   | "subject-teachers"
   /** Student ops leaves */
@@ -148,6 +149,7 @@ export const MODULES: ModuleDef[] = [
   { key: "periods", label: "Academy Time Configuration", shortLabel: "Periods", icon: "Clock", desc: "Period and bell schedule" },
   { key: "timetable-rules", label: "Timetable Rules", icon: "SlidersHorizontal", desc: "Timetable generation rules" },
   { key: "expense-categories", label: "Expense Categories", icon: "Tags", desc: "Categories used when recording academy expenses" },
+  { key: "concession-categories", label: "Concession Discount Categories", icon: "BadgePercent", desc: "Fee concession discount types and percentages used at registration" },
   { key: "teachers", label: "Teachers", icon: "UserCircle", desc: "Teacher directory in setup" },
   { key: "subject-teachers", label: "Subject Teachers", icon: "Link2", desc: "Assign teachers to subjects" },
   { key: "timetable-builder", label: "Timetable Builder", icon: "LayoutGrid", desc: "Build and publish timetables" },
@@ -324,6 +326,7 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
       "periods",
       "timetable-rules",
       "expense-categories",
+      "concession-categories",
       "timetable-builder",
       "timetable-board",
     ],
@@ -512,6 +515,7 @@ export const LEGACY_BACKEND_EXPANSION: Record<string, string[]> = {
     "teachers",
     "subjectTeachers",
     "expenseCategories",
+    "concessionCategories",
   ],
   studentManagement: [
     "classes",
@@ -570,6 +574,7 @@ export const BACKEND_MODULE_KEY_MAP: Record<string, ModuleKey> = {
   teachers: "teachers",
   subjectTeachers: "subject-teachers",
   expenseCategories: "expense-categories",
+  concessionCategories: "concession-categories",
   studentRegistration: "student-registration",
   changeSection: "change-section",
   feeStructure: "fee-structure",

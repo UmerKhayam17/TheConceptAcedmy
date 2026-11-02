@@ -4,6 +4,10 @@ const attendanceService = require('../../services/academy/academyAttendanceServi
 const {
   renderAttendanceExcel,
   renderAttendancePdf,
+  renderAttendanceRangeExcel,
+  renderAttendanceRangePdf,
+  renderAbsentListExcel,
+  renderAbsentListPdf,
 } = require('../../services/academy/academyAttendanceExportService');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const AcademySection = require('../../models/academy/AcademySection');
@@ -63,7 +67,7 @@ const list = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
-async function resolveExportMeta(req, summary) {
+async function resolveExportMeta(req, summary, { date, dateFrom, dateTo } = {}) {
   let className = '';
   let sessionName = '';
   let sectionName = '';
@@ -94,8 +98,13 @@ async function resolveExportMeta(req, summary) {
     }
   }
 
+  const from = dateFrom || req.query.dateFrom || date || req.query.date || '';
+  const to = dateTo || req.query.dateTo || date || req.query.date || '';
+
   return {
-    date: req.query.date || '',
+    date: from && to && from !== to ? `${from}–${to}` : from || to || '',
+    dateFrom: from,
+    dateTo: to,
     className,
     sessionName,
     sectionName,
@@ -113,50 +122,155 @@ function recordMapFromDay(data) {
   return map;
 }
 
+function sendExportBuffer(res, buffer, { format, filename }) {
+  res.setHeader(
+    'Content-Type',
+    format === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader(
+    'Content-Disposition',
+    `${format === 'pdf' ? 'inline' : 'attachment'}; filename="${filename}"`
+  );
+  return res.send(buffer);
+}
+
+const listAbsent = catchAsync(async (req, res) => {
+  const dateFrom = req.query.dateFrom || req.query.date;
+  const dateTo = req.query.dateTo || req.query.dateFrom || req.query.date;
+  if (!dateFrom || !dateTo) {
+    return res.status(400).json({
+      success: false,
+      message: 'dateFrom and dateTo (or date) required (YYYY-MM-DD)',
+    });
+  }
+
+  const isParent = roleNameOf(req) === 'parent';
+  const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
+
+  let studentIds;
+  if (isParent) {
+    studentIds = await linkedStudentIdsForParent(req);
+    if (req.query.studentId) {
+      await assertParentOwnsStudent(req, req.query.studentId);
+      studentIds = [req.query.studentId];
+    }
+  }
+
+  if (teacherScope) {
+    ensureClassInTeacherScope(teacherScope, req.query.classId);
+    ensureSectionInTeacherScope(teacherScope, req.query.classId, req.query.sectionId);
+  }
+
+  const data = await attendanceService.listAbsentByDateRange({
+    dateFrom,
+    dateTo,
+    classId: isParent ? undefined : req.query.classId,
+    sectionId: isParent ? undefined : req.query.sectionId,
+    sessionId: isParent ? undefined : req.query.classId ? undefined : req.query.sessionId,
+    studentIds,
+    studentId: isParent ? undefined : req.query.studentId,
+    scopeFilter: teacherScope?.scopeFilter || null,
+  });
+
+  if (teacherScope) {
+    data.days = (data.days || []).map((day) => ({
+      ...day,
+      students: (day.students || []).map((s) => sanitizeStudentForTeacher(s)),
+    }));
+  }
+
+  res.json({ success: true, data });
+});
+
 const exportAttendance = catchAsync(async (req, res) => {
   if (roleNameOf(req) === 'parent') {
     throw new ApiError(403, 'Parents cannot export attendance');
   }
-  const date = req.query.date;
-  if (!date) throw new ApiError(400, 'date query required (YYYY-MM-DD)');
+
+  const dateFrom = req.query.dateFrom || req.query.date;
+  const dateTo = req.query.dateTo || req.query.dateFrom || req.query.date;
+  if (!dateFrom || !dateTo) {
+    throw new ApiError(400, 'dateFrom and dateTo (or date) required (YYYY-MM-DD)');
+  }
 
   const format = String(req.query.format || 'xlsx').toLowerCase();
   if (!['xlsx', 'pdf'].includes(format)) {
     throw new ApiError(400, 'Export format must be xlsx or pdf');
   }
 
+  const reportKind = String(req.query.reportKind || 'attendance').toLowerCase();
   const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
   if (teacherScope) {
     ensureClassInTeacherScope(teacherScope, req.query.classId);
     ensureSectionInTeacherScope(teacherScope, req.query.classId, req.query.sectionId);
   }
 
-  const data = await attendanceService.listByDate({
-    date,
+  const filter = {
     classId: req.query.classId,
     sectionId: req.query.sectionId,
     sessionId: req.query.classId ? undefined : req.query.sessionId,
     studentId: req.query.studentId,
     scopeFilter: teacherScope?.scopeFilter || null,
-  });
-  const meta = await resolveExportMeta(req, data.summary);
-  const records = recordMapFromDay(data);
+  };
 
-  const attFile = `Student-Attendance_${String(date).replace(/[^0-9-]/g, '')}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
-  if (format === 'pdf') {
-    const buffer = await renderAttendancePdf(data.students, records, meta);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${attFile}"`);
-    return res.send(buffer);
+  const fromSafe = String(dateFrom).replace(/[^0-9-]/g, '');
+  const toSafe = String(dateTo).replace(/[^0-9-]/g, '');
+  const rangeStub = fromSafe === toSafe ? fromSafe : `${fromSafe}_to_${toSafe}`;
+  const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+
+  if (reportKind === 'absent') {
+    const data = await attendanceService.listAbsentByDateRange({
+      dateFrom,
+      dateTo,
+      ...filter,
+    });
+    const meta = await resolveExportMeta(req, data.summary, {
+      dateFrom: data.dateFrom,
+      dateTo: data.dateTo,
+    });
+    const buffer =
+      format === 'pdf'
+        ? await renderAbsentListPdf(data.days, meta)
+        : await renderAbsentListExcel(data.days, meta);
+    return sendExportBuffer(res, buffer, {
+      format,
+      filename: `Absent-List_${rangeStub}.${ext}`,
+    });
   }
 
-  const buffer = await renderAttendanceExcel(data.students, records, meta);
-  res.setHeader(
-    'Content-Type',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-  );
-  res.setHeader('Content-Disposition', `attachment; filename="${attFile}"`);
-  return res.send(buffer);
+  const isRange = String(dateFrom) !== String(dateTo);
+  const data = isRange
+    ? await attendanceService.listByDateRange({ dateFrom, dateTo, ...filter })
+    : await attendanceService.listByDate({ date: dateFrom, ...filter });
+
+  const meta = await resolveExportMeta(req, data.summary, {
+    date: data.date,
+    dateFrom: data.dateFrom || dateFrom,
+    dateTo: data.dateTo || dateTo,
+  });
+
+  if (isRange) {
+    const buffer =
+      format === 'pdf'
+        ? await renderAttendanceRangePdf(data.studentSummaries, meta)
+        : await renderAttendanceRangeExcel(data.studentSummaries, meta);
+    return sendExportBuffer(res, buffer, {
+      format,
+      filename: `Student-Attendance_${rangeStub}.${ext}`,
+    });
+  }
+
+  const records = recordMapFromDay(data);
+  const buffer =
+    format === 'pdf'
+      ? await renderAttendancePdf(data.students, records, meta)
+      : await renderAttendanceExcel(data.students, records, meta);
+  return sendExportBuffer(res, buffer, {
+    format,
+    filename: `Student-Attendance_${rangeStub}.${ext}`,
+  });
 });
 
 const mark = catchAsync(async (req, res) => {
@@ -215,4 +329,4 @@ const studentMonth = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
-module.exports = { list, mark, summary, exportAttendance, studentMonth };
+module.exports = { list, listAbsent, mark, summary, exportAttendance, studentMonth };

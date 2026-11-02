@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import {
   Award,
+  BadgePercent,
   ClipboardList,
   Clock,
   DoorOpen,
@@ -27,6 +28,7 @@ export type SystemConfigSection =
   | "subject-teachers"
   | "timetable-rules"
   | "expense-categories"
+  | "concession-categories"
   | "history";
 
 export const SYSTEM_CONFIG_SECTIONS: {
@@ -44,6 +46,7 @@ export const SYSTEM_CONFIG_SECTIONS: {
     { key: "subject-teachers", label: "Subject Teachers", icon: Link2 },
     { key: "timetable-rules", label: "Timetable Rules", icon: SlidersHorizontal },
     { key: "expense-categories", label: "Expense Categories", icon: Tags },
+    { key: "concession-categories", label: "Concession Discount Categories", icon: BadgePercent },
   ];
 
 export const SYSTEM_CONFIG_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(SYSTEM_CONFIG_SECTIONS, [
@@ -56,7 +59,7 @@ export const SYSTEM_CONFIG_SIDEBAR_GROUPS = buildSidebarSubmenuGroups(SYSTEM_CON
     label: "Teachers",
     keys: ["teachers", "subject-teachers"],
   },
-  { label: "Finance", keys: ["expense-categories"] },
+  { label: "Finance", keys: ["expense-categories", "concession-categories"] },
 ]);
 
 export const DEFAULT_SYSTEM_CONFIG_SECTION: SystemConfigSection = "academic";

@@ -34,6 +34,7 @@ import {
   Route,
   ArrowLeftRight,
   Tags,
+  BadgePercent,
 } from "lucide-react";
 import type { Role } from "./auth";
 import type { ModuleKey } from "./permissions";
@@ -193,6 +194,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: Tags,
         moduleKey: "expense-categories",
         href: (role) => systemConfigHref(role, "expense-categories"),
+      },
+      {
+        id: "concession-categories",
+        label: "Concession Discount Categories",
+        icon: BadgePercent,
+        moduleKey: "concession-categories",
+        href: (role) => systemConfigHref(role, "concession-categories"),
       },
       {
         id: "timetable-builder",

@@ -2,8 +2,11 @@ const ApiError = require('../../utils/ApiError');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const AcademyClass = require('../../models/academy/AcademyClass');
-const { dayBounds } = require('../../utils/schoolDay');
+const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
 const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
+
+/** Inclusive calendar-day cap for custom attendance report ranges. */
+const MAX_RANGE_DAYS = 93;
 
 function resolveDay(dateStr) {
   try {
@@ -13,8 +16,32 @@ function resolveDay(dateStr) {
   }
 }
 
-async function listByDate({
-  date,
+function nextYmd(ymd) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + 1);
+  return dt.toISOString().slice(0, 10);
+}
+
+function enumerateYmds(dateFrom, dateTo) {
+  const from = resolveDay(dateFrom);
+  const to = resolveDay(dateTo);
+  if (from.start.getTime() > to.start.getTime()) {
+    throw new ApiError(400, 'From date must be on or before To date');
+  }
+  const days = [];
+  let cur = from.ymd;
+  while (cur <= to.ymd) {
+    days.push(cur);
+    if (days.length > MAX_RANGE_DAYS) {
+      throw new ApiError(400, `Date range cannot exceed ${MAX_RANGE_DAYS} days`);
+    }
+    cur = nextYmd(cur);
+  }
+  return { from, to, days };
+}
+
+async function resolveStudents({
   classId,
   sectionId,
   sessionId,
@@ -22,7 +49,6 @@ async function listByDate({
   studentId,
   scopeFilter = null,
 }) {
-  const { start, end, ymd } = resolveDay(date);
   const studentQ = { status: 'active' };
 
   if (Array.isArray(studentIds)) {
@@ -44,23 +70,15 @@ async function listByDate({
       ? { $and: [studentQ, scopeFilter] }
       : studentQ;
 
-  const students = sortStudentsByRollAsc(
+  return sortStudentsByRollAsc(
     await AcademyStudent.find(filter)
       .populate('classId', 'className classCode sessionId')
       .populate('sectionId', 'sectionName')
       .lean()
   );
+}
 
-  const studentIdList = students.map((s) => s._id);
-  const records = studentIdList.length
-    ? await AcademyAttendance.find({
-        date: { $gte: start, $lte: end },
-        studentId: { $in: studentIdList },
-        $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
-      }).lean()
-    : [];
-
-  // Prefer day-level record; if duplicates exist, keep earliest checkIn
+function preferEarlierCheckIn(records) {
   const recordByStudent = new Map();
   for (const r of records) {
     const key = String(r.studentId);
@@ -73,6 +91,38 @@ async function listByDate({
     const nextIn = r.checkIn ? new Date(r.checkIn).getTime() : Infinity;
     if (nextIn < prevIn) recordByStudent.set(key, r);
   }
+  return recordByStudent;
+}
+
+async function listByDate({
+  date,
+  classId,
+  sectionId,
+  sessionId,
+  studentIds,
+  studentId,
+  scopeFilter = null,
+}) {
+  const { start, end, ymd } = resolveDay(date);
+  const students = await resolveStudents({
+    classId,
+    sectionId,
+    sessionId,
+    studentIds,
+    studentId,
+    scopeFilter,
+  });
+
+  const studentIdList = students.map((s) => s._id);
+  const records = studentIdList.length
+    ? await AcademyAttendance.find({
+        date: { $gte: start, $lte: end },
+        studentId: { $in: studentIdList },
+        $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+      }).lean()
+    : [];
+
+  const recordByStudent = preferEarlierCheckIn(records);
 
   // Students without a saved mark count as absent by default.
   const summary = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
@@ -84,9 +134,184 @@ async function listByDate({
 
   return {
     date: ymd,
+    dateFrom: ymd,
+    dateTo: ymd,
     students,
     records: [...recordByStudent.values()],
     summary,
+  };
+}
+
+/**
+ * Attendance across an inclusive From–To range.
+ * Unmarked student-days count as absent. Returns per-student totals for reports.
+ */
+async function listByDateRange({
+  dateFrom,
+  dateTo,
+  classId,
+  sectionId,
+  sessionId,
+  studentIds,
+  studentId,
+  scopeFilter = null,
+}) {
+  const { from, to, days } = enumerateYmds(dateFrom, dateTo);
+  if (days.length === 1) {
+    return listByDate({
+      date: days[0],
+      classId,
+      sectionId,
+      sessionId,
+      studentIds,
+      studentId,
+      scopeFilter,
+    });
+  }
+
+  const students = await resolveStudents({
+    classId,
+    sectionId,
+    sessionId,
+    studentIds,
+    studentId,
+    scopeFilter,
+  });
+
+  const studentIdList = students.map((s) => s._id);
+  const records = studentIdList.length
+    ? await AcademyAttendance.find({
+        date: { $gte: from.start, $lte: to.end },
+        studentId: { $in: studentIdList },
+        $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+      }).lean()
+    : [];
+
+  /** studentId|ymd → best day record */
+  const byStudentDay = new Map();
+  for (const r of records) {
+    const ymd = formatDateInTz(r.date);
+    const key = `${String(r.studentId)}|${ymd}`;
+    const prev = byStudentDay.get(key);
+    if (!prev) {
+      byStudentDay.set(key, r);
+      continue;
+    }
+    const prevIn = prev.checkIn ? new Date(prev.checkIn).getTime() : Infinity;
+    const nextIn = r.checkIn ? new Date(r.checkIn).getTime() : Infinity;
+    if (nextIn < prevIn) byStudentDay.set(key, r);
+  }
+
+  const dayCount = days.length;
+  const summary = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
+  const studentSummaries = students.map((s) => {
+    const counts = { present: 0, absent: 0, leave: 0, late: 0 };
+    days.forEach((ymd) => {
+      const rec = byStudentDay.get(`${String(s._id)}|${ymd}`);
+      const status = rec?.status && counts[rec.status] !== undefined ? rec.status : 'absent';
+      counts[status] += 1;
+      summary[status] += 1;
+    });
+    const markedPresent = counts.present + counts.late;
+    const attendancePercent =
+      dayCount > 0 ? Math.round((markedPresent / dayCount) * 1000) / 10 : 0;
+    return {
+      studentId: s._id,
+      student: s,
+      ...counts,
+      totalDays: dayCount,
+      attendancePercent,
+    };
+  });
+
+  return {
+    date: `${from.ymd}–${to.ymd}`,
+    dateFrom: from.ymd,
+    dateTo: to.ymd,
+    days,
+    students,
+    records,
+    summary,
+    studentSummaries,
+  };
+}
+
+/**
+ * Date-wise absent list for From–To.
+ * Unmarked students count as absent. Multi-day ranges skip days with no marks
+ * (weekends / holidays where attendance was never taken).
+ */
+async function listAbsentByDateRange({
+  dateFrom,
+  dateTo,
+  classId,
+  sectionId,
+  sessionId,
+  studentIds,
+  studentId,
+  scopeFilter = null,
+}) {
+  const { from, to, days } = enumerateYmds(dateFrom, dateTo);
+  const students = await resolveStudents({
+    classId,
+    sectionId,
+    sessionId,
+    studentIds,
+    studentId,
+    scopeFilter,
+  });
+
+  const studentIdList = students.map((s) => s._id);
+  const records = studentIdList.length
+    ? await AcademyAttendance.find({
+        date: { $gte: from.start, $lte: to.end },
+        studentId: { $in: studentIdList },
+        $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+      }).lean()
+    : [];
+
+  const byStudentDay = new Map();
+  const daysWithMarks = new Set();
+  for (const r of records) {
+    const ymd = formatDateInTz(r.date);
+    daysWithMarks.add(ymd);
+    const key = `${String(r.studentId)}|${ymd}`;
+    const prev = byStudentDay.get(key);
+    if (!prev) {
+      byStudentDay.set(key, r);
+      continue;
+    }
+    const prevIn = prev.checkIn ? new Date(prev.checkIn).getTime() : Infinity;
+    const nextIn = r.checkIn ? new Date(r.checkIn).getTime() : Infinity;
+    if (nextIn < prevIn) byStudentDay.set(key, r);
+  }
+
+  const singleDay = days.length === 1;
+  const byDate = [];
+  let totalAbsent = 0;
+
+  days.forEach((ymd) => {
+    if (!singleDay && !daysWithMarks.has(ymd)) return;
+    const absentees = students.filter((s) => {
+      const rec = byStudentDay.get(`${String(s._id)}|${ymd}`);
+      const status = rec?.status || 'absent';
+      return status === 'absent';
+    });
+    if (absentees.length === 0) return;
+    totalAbsent += absentees.length;
+    byDate.push({
+      date: ymd,
+      count: absentees.length,
+      students: absentees,
+    });
+  });
+
+  return {
+    dateFrom: from.ymd,
+    dateTo: to.ymd,
+    days: byDate,
+    totalAbsent,
+    summary: { absent: totalAbsent, days: byDate.length },
   };
 }
 
@@ -210,4 +435,12 @@ async function listByStudentMonth({ studentId, month, year }) {
   };
 }
 
-module.exports = { listByDate, markAttendance, getSummary, listByStudentMonth };
+module.exports = {
+  listByDate,
+  listByDateRange,
+  listAbsentByDateRange,
+  markAttendance,
+  getSummary,
+  listByStudentMonth,
+  MAX_RANGE_DAYS,
+};
