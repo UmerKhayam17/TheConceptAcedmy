@@ -2896,20 +2896,17 @@ async function loadClassAccountsRows(classId, sectionId) {
       select: 'subjectName subjectCode enrollmentType choiceGroupName',
     })
     .lean();
-  students.sort(compareStudentsByRollAsc);
-
   const slipByStudent = await latestPaymentSlipByStudent(students.map((s) => s._id));
   const layoutCache = new Map();
   let totalFee = 0;
   const rows = [];
-  for (let index = 0; index < students.length; index += 1) {
-    const student = students[index];
+  for (const student of students) {
     const fee = monthlyBillAmount(student);
     totalFee = roundMoney(totalFee + fee);
     // eslint-disable-next-line no-await-in-loop
     const subjectDocs = await resolveAccountsSubjectDocs(student, classId, sectionId, layoutCache);
     rows.push({
-      serial: index + 1,
+      serial: 0,
       regNo: student.rollNumber || student.studentId || student.registrationNumber || '',
       name: student.studentName || '',
       fee,
@@ -2917,8 +2914,27 @@ async function loadClassAccountsRows(classId, sectionId) {
       discipline:
         student.disciplineId?.name || (student.isFullPackage ? 'Full package' : 'Part-time'),
       subjects: subjectNamesList(subjectDocs),
+      _roll: student.rollNumber || '',
     });
   }
+
+  // Ascending by payment slip number; blank slips last; roll # as tie-breaker.
+  rows.sort((a, b) => {
+    const sa = String(a.slipNo || '').trim();
+    const sb = String(b.slipNo || '').trim();
+    if (!sa && !sb) return compareStudentsByRollAsc({ rollNumber: a._roll }, { rollNumber: b._roll });
+    if (!sa) return 1;
+    if (!sb) return -1;
+    const bySlip = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
+    if (bySlip !== 0) return bySlip;
+    return compareStudentsByRollAsc({ rollNumber: a._roll }, { rollNumber: b._roll });
+  });
+
+  rows.forEach((row, index) => {
+    row.serial = index + 1;
+    delete row._roll;
+  });
+
   return { rows, totalFee };
 }
 
