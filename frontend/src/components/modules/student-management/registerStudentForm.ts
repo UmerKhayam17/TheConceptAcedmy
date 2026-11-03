@@ -20,6 +20,28 @@ export const emptyAcademicRow = (): AcademicRow => ({
   year: "",
 });
 
+export type FeeReliefType = "" | "concession" | "exemption";
+
+/** Reasons offered when an exemption is applied (registration form + Student Fee modal). */
+export const EXEMPTION_REMARKS = [
+  "Full fee waiver",
+  "Financial hardship",
+  "Orphan",
+  "Staff child",
+  "Sibling",
+  "Merit / position holder",
+  "Management approval",
+  "Principal approval",
+  "Other",
+];
+
+/** Active relief; a discount from before categories existed counts as a concession. */
+export function studentFeeRelief(student: AcademyStudent): FeeReliefType {
+  if (student.feeReliefType) return student.feeReliefType;
+  if (student.concessionCategory || Number(student.monthlyFeeDiscount) > 0) return "concession";
+  return "";
+}
+
 export const defaultRegisterForm = () => ({
   studentName: "",
   fatherName: "",
@@ -52,6 +74,15 @@ export const defaultRegisterForm = () => ({
   monthlyPayable: "",
   /** What parent pays for admission (discount = list − this). */
   admissionPayable: "",
+  /** Tuition relief: a concession (category %) OR an exemption (amount + reason) — never both. */
+  feeReliefType: "" as FeeReliefType,
+  /** PKR / month off tuition for the chosen relief (becomes monthlyFeeDiscount). */
+  reliefAmount: "0",
+  concessionCategory: "",
+  concessionPercent: "0",
+  exemptionRemarks: "",
+  /** True once staff touch the relief fields — only then are they sent (keeps old discounts as-is). */
+  reliefDirty: false,
   defaultChargeIds: [] as string[],
   status: "active" as "active" | "inactive" | "suspended" | "pending_fee",
 });
@@ -106,6 +137,12 @@ export function mapStudentToForm(student: AcademyStudent) {
     admissionPayable: String(
       Math.max(0, (Number(student.admissionFee) || 0) - (Number(student.admissionFeeDiscount) || 0)),
     ),
+    feeReliefType: studentFeeRelief(student),
+    reliefAmount: String(studentFeeRelief(student) ? student.monthlyFeeDiscount ?? 0 : 0),
+    concessionCategory: student.concessionCategory || "",
+    concessionPercent: String(student.concessionPercent ?? 0),
+    exemptionRemarks: student.exemptionRemarks || "",
+    reliefDirty: false,
     defaultChargeIds: (student.defaultChargeIds || []).map((id) =>
       typeof id === "object" && id && "_id" in id ? String((id as { _id: string })._id) : String(id),
     ),
@@ -141,6 +178,14 @@ export function buildStudentPayload(form: ReturnType<typeof defaultRegisterForm>
     isFullPackage: form.isFullPackage,
     monthlyFeeDiscount: Number(form.monthlyFeeDiscount) || 0,
     admissionFeeDiscount: Number(form.admissionFeeDiscount) || 0,
+    ...(form.reliefDirty
+      ? {
+          feeReliefType: form.feeReliefType,
+          concessionCategory: form.feeReliefType === "concession" ? form.concessionCategory : "",
+          concessionPercent: form.feeReliefType === "concession" ? Number(form.concessionPercent) || 0 : 0,
+          exemptionRemarks: form.feeReliefType === "exemption" ? form.exemptionRemarks.trim() : "",
+        }
+      : {}),
     defaultChargeIds: form.defaultChargeIds,
     status: form.status,
   };

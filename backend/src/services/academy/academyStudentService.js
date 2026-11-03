@@ -291,6 +291,7 @@ async function registerStudent(payload, userId) {
   }
 
   const defaultChargeIds = normalizeDefaultChargeIds(payload.defaultChargeIds);
+  const relief = await resolveFeeRelief(payload);
 
   const student = await AcademyStudent.create({
     studentId,
@@ -306,6 +307,7 @@ async function registerStudent(payload, userId) {
     selectedSubjects: subjectIds,
     isFullPackage,
     ...fees,
+    ...relief,
     defaultChargeIds,
     feeStructureId: feeStructure._id,
     status: payload.status || 'active',
@@ -322,6 +324,36 @@ async function registerStudent(payload, userId) {
     { path: 'selectedSubjects', select: 'subjectName subjectCode' },
     { path: 'createdBy', select: 'name email' },
   ]);
+}
+
+/**
+ * Tuition relief: a concession (category %) OR an exemption (fixed PKR + reason) — never both.
+ * The amount itself is `monthlyFeeDiscount`; this only records which kind it is and why.
+ * Used by registration, activation and the Student Fee modal.
+ */
+async function resolveFeeRelief(payload = {}) {
+  if (payload.feeReliefType === undefined) return {};
+  const type = String(payload.feeReliefType || '');
+  if (type === 'concession') {
+    const raw = String(payload.concessionCategory || '').trim();
+    if (!raw) throw new ApiError(400, 'Choose a concession category');
+    return {
+      feeReliefType: type,
+      concessionCategory: await assertActiveConcessionCategory(raw),
+      concessionPercent: Math.min(100, Math.max(0, Number(payload.concessionPercent) || 0)),
+      exemptionRemarks: '',
+    };
+  }
+  if (type === 'exemption') {
+    const reason = String(payload.exemptionRemarks || '').trim();
+    if (!reason) throw new ApiError(400, 'Exemption remarks are required');
+    return { feeReliefType: type, exemptionRemarks: reason, concessionCategory: '', concessionPercent: 0 };
+  }
+  return { feeReliefType: '', concessionCategory: '', concessionPercent: 0, exemptionRemarks: '' };
+}
+
+async function applyFeeRelief(student, payload = {}) {
+  Object.assign(student, await resolveFeeRelief(payload));
 }
 
 async function updateStudent(id, payload) {
@@ -349,25 +381,6 @@ async function updateStudent(id, payload) {
       { path: 'classId', select: 'className' },
       { path: 'createdBy', select: 'name email' },
     ]);
-  }
-
-  // Tuition relief (concession / exemption) sits ON TOP of the discount agreed at registration.
-  // Remember that base discount so removing the relief restores it instead of wiping it.
-  let reliefBase;
-  let reliefAmount;
-  if (payload.feeReliefType !== undefined) {
-    const monthlyList = Math.max(0, Number(student.monthlyFee) || 0);
-    reliefBase = student.feeReliefType
-      ? Math.max(0, Number(student.reliefBaseMonthlyDiscount) || 0)
-      : Math.max(0, Number(student.monthlyFeeDiscount) || 0);
-    reliefBase = Math.min(reliefBase, monthlyList);
-    reliefAmount = payload.feeReliefType
-      ? Math.min(Math.max(0, Math.round(Number(payload.reliefAmount) || 0)), monthlyList - reliefBase)
-      : 0;
-    if (payload.feeReliefType && reliefAmount <= 0) {
-      throw new ApiError(400, 'Relief amount must be greater than 0');
-    }
-    payload = { ...payload, monthlyFeeDiscount: reliefBase + reliefAmount };
   }
 
   const classId = payload.classId || student.classId;
@@ -442,43 +455,11 @@ async function updateStudent(id, payload) {
     student.feeStructureId = feeStructure._id;
   }
 
-  // Tuition relief: a concession (category %) OR an exemption (fixed PKR + reason) — never both.
   if (payload.feeReliefType !== undefined) {
-    const type = String(payload.feeReliefType || '');
-    if (type === 'concession') {
-      const raw = String(payload.concessionCategory || '').trim();
-      if (!raw) throw new ApiError(400, 'Choose a concession category');
-      student.concessionCategory = await assertActiveConcessionCategory(raw);
-      student.concessionPercent = Math.min(100, Math.max(0, Number(payload.concessionPercent) || 0));
-      student.exemptionRemarks = '';
-    } else if (type === 'exemption') {
-      const reason = String(payload.exemptionRemarks || '').trim();
-      if (!reason) throw new ApiError(400, 'Exemption remarks are required');
-      student.exemptionRemarks = reason;
-      student.concessionCategory = '';
-      student.concessionPercent = 0;
-    } else {
-      student.concessionCategory = '';
-      student.concessionPercent = 0;
-      student.exemptionRemarks = '';
-    }
-    student.feeReliefType = type;
-    student.reliefBaseMonthlyDiscount = type ? reliefBase : 0;
-    student.reliefAmount = type ? reliefAmount : 0;
-  } else if (payload.concessionCategory !== undefined) {
-    const raw = String(payload.concessionCategory || '').trim();
-    student.concessionCategory = raw ? await assertActiveConcessionCategory(raw) : '';
-    student.concessionPercent = raw ? Math.min(100, Math.max(0, Number(payload.concessionPercent) || 0)) : 0;
-    student.feeReliefType = raw ? 'concession' : '';
-    if (raw) student.exemptionRemarks = '';
+    await applyFeeRelief(student, payload);
   } else if (needsFeeRecalc && !(Number(student.monthlyFeeDiscount) > 0)) {
     // Tuition discount cleared elsewhere (e.g. edit form) — no relief applies any more.
-    student.concessionCategory = '';
-    student.concessionPercent = 0;
-    student.feeReliefType = '';
-    student.exemptionRemarks = '';
-    student.reliefBaseMonthlyDiscount = 0;
-    student.reliefAmount = 0;
+    await applyFeeRelief(student, { feeReliefType: '' });
   }
 
   await student.save();
@@ -987,6 +968,7 @@ async function activateStudent(id, payload, userId) {
   student.selectedSubjects = subjectIds;
   student.isFullPackage = isFullPackage;
   Object.assign(student, fees);
+  await applyFeeRelief(student, payload);
   if (payload.defaultChargeIds !== undefined) {
     student.defaultChargeIds = normalizeDefaultChargeIds(payload.defaultChargeIds);
   }
@@ -1097,6 +1079,7 @@ async function prepareEnrollmentVoucher(id, payload, userId) {
   student.selectedSubjects = subjectIds;
   student.isFullPackage = isFullPackage;
   Object.assign(student, fees);
+  await applyFeeRelief(student, payload);
   if (payload.defaultChargeIds !== undefined) {
     student.defaultChargeIds = normalizeDefaultChargeIds(payload.defaultChargeIds);
   }
@@ -1376,6 +1359,7 @@ async function registerDirectStudent(payload, userId) {
   });
 
   const defaultChargeIds = normalizeDefaultChargeIds(payload.defaultChargeIds);
+  const relief = await resolveFeeRelief(payload);
 
   const student = await AcademyStudent.create({
     registrationNumber,
@@ -1395,6 +1379,7 @@ async function registerDirectStudent(payload, userId) {
     selectedSubjects: subjectIds,
     isFullPackage,
     ...fees,
+    ...relief,
     defaultChargeIds,
     feeStructureId: feeStructure._id,
     status: 'active',

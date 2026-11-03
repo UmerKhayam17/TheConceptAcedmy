@@ -2,6 +2,14 @@ const Joi = require('joi');
 
 const objectId = Joi.string().hex().length(24);
 
+/** Tuition relief chosen at registration / in Student Fee modal (concession OR exemption). */
+const feeReliefFields = {
+  feeReliefType: Joi.string().valid('', 'concession', 'exemption'),
+  concessionCategory: Joi.string().trim().allow(''),
+  concessionPercent: Joi.number().min(0).max(100),
+  exemptionRemarks: Joi.string().trim().allow('').max(200),
+};
+
 const academyClassBody = Joi.object({
   sessionId: objectId.required(),
   className: Joi.string().trim().required(),
@@ -164,6 +172,7 @@ const academyStudentRegister = Joi.object({
   discountAmount: Joi.number().min(0).default(0),
   monthlyFeeDiscount: Joi.number().min(0).default(0),
   admissionFeeDiscount: Joi.number().min(0).default(0),
+  ...feeReliefFields,
   defaultChargeIds: Joi.array().items(objectId).default([]),
   status: Joi.string().valid('pending_fee', 'active', 'inactive', 'suspended').optional(),
   ...studentProfileFields,
@@ -194,6 +203,7 @@ const academyStudentActivate = Joi.object({
   discountAmount: Joi.number().min(0).default(0),
   monthlyFeeDiscount: Joi.number().min(0).default(0),
   admissionFeeDiscount: Joi.number().min(0).default(0),
+  ...feeReliefFields,
   defaultChargeIds: Joi.array().items(objectId).default([]),
   guardianEmail: Joi.string().trim().allow('').empty('').email({ tlds: { allow: false } }),
   parentPassword: Joi.string().min(8).optional(),
@@ -232,6 +242,7 @@ const academyEnrollmentVoucher = Joi.object({
   discountAmount: Joi.number().min(0).default(0),
   monthlyFeeDiscount: Joi.number().min(0).default(0),
   admissionFeeDiscount: Joi.number().min(0).default(0),
+  ...feeReliefFields,
   defaultChargeIds: Joi.array().items(objectId).default([]),
   paymentDate: Joi.date().optional(),
   guardianName: Joi.string().allow('').trim(),
@@ -297,6 +308,7 @@ const academyStudentDirectRegister = Joi.object({
   discountAmount: Joi.number().min(0).default(0),
   monthlyFeeDiscount: Joi.number().min(0).default(0),
   admissionFeeDiscount: Joi.number().min(0).default(0),
+  ...feeReliefFields,
   defaultChargeIds: Joi.array().items(objectId).default([]),
   guardianEmail: Joi.string().trim().allow('').empty('').email({ tlds: { allow: false } }),
   studentPassword: Joi.string().min(8).optional(),
@@ -332,11 +344,7 @@ const academyStudentPatch = Joi.object({
   discountAmount: Joi.number().min(0),
   monthlyFeeDiscount: Joi.number().min(0),
   admissionFeeDiscount: Joi.number().min(0),
-  concessionCategory: Joi.string().trim().allow(''),
-  concessionPercent: Joi.number().min(0).max(100),
-  feeReliefType: Joi.string().valid('', 'concession', 'exemption'),
-  reliefAmount: Joi.number().min(0),
-  exemptionRemarks: Joi.string().trim().allow('').max(200),
+  ...feeReliefFields,
   defaultChargeIds: Joi.array().items(objectId),
   status: Joi.string().valid('pending_fee', 'active', 'inactive', 'suspended'),
   dateOfBirth: Joi.date(),
@@ -529,6 +537,7 @@ const feePreview = Joi.object({
   discountAmount: Joi.number().min(0).default(0),
   monthlyFeeDiscount: Joi.number().min(0).default(0),
   admissionFeeDiscount: Joi.number().min(0).default(0),
+  ...feeReliefFields,
 });
 
 const discountReportQuery = Joi.object({

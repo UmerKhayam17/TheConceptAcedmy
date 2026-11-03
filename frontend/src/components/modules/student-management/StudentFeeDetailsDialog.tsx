@@ -24,6 +24,7 @@ import {
 import type { AcademyStudentRoutes } from "@/lib/studentManagementMenus";
 import { cn } from "@/lib/utils";
 import { isFreeFeeStudent } from "./FeeModeSelector";
+import { EXEMPTION_REMARKS, studentFeeRelief, type FeeReliefType } from "./registerStudentForm";
 import { classLabel, formatDate, MONTH_NAMES } from "./studentDisplayUtils";
 
 const num = (n?: number) => (Number(n) || 0).toLocaleString("en-PK");
@@ -77,23 +78,19 @@ const theadCls = "bg-muted/60 text-muted-foreground";
 type FeeHeadRow = { head: string; amount: number; remarks: string; payable: number };
 
 /**
- * Which tuition relief is active. A plain discount agreed at registration is NOT a concession —
- * only a relief applied from this modal (or a concession category) counts.
+ * Which tuition relief is active. Any monthly discount counts — a discount given at registration
+ * (before categories existed) is a concession without a category.
  */
-function activeRelief(student: AcademyStudent): "" | "concession" | "exemption" {
-  if (student.feeReliefType) return student.feeReliefType;
-  if (student.concessionCategory) return "concession";
-  return "";
+function activeRelief(student: AcademyStudent): FeeReliefType {
+  return studentFeeRelief(student);
 }
 
-/** Split the student's tuition discount into the registration part and the relief part. */
+/** The whole monthly tuition discount is the active concession / exemption. */
 function tuitionSplit(student: AcademyStudent) {
   const monthly = Number(student.monthlyFee) || 0;
-  const total = Math.min(Number(student.monthlyFeeDiscount) || 0, monthly);
   const relief = activeRelief(student);
-  const reliefAmt = relief ? Math.min(Number(student.reliefAmount) || 0, total) : 0;
-  const base = relief ? Math.min(Number(student.reliefBaseMonthlyDiscount) || 0, total - reliefAmt) : total;
-  return { monthly, base, reliefAmt, relief, agreed: monthly - base };
+  const reliefAmt = relief ? Math.min(Number(student.monthlyFeeDiscount) || 0, monthly) : 0;
+  return { monthly, base: 0, reliefAmt, relief, agreed: monthly };
 }
 
 /** Break a challan into fee heads (actual vs payable, with concession / exemption remarks). */
@@ -350,30 +347,31 @@ function useSaveRelief(student: AcademyStudent, label: "Concession" | "Exemption
   });
 }
 
-/** Tuition summary: full fee, discount agreed at registration, and the fee the relief is applied to. */
+/** Tuition summary: list fee, active concession / exemption, and what the parent pays. */
 function TuitionBasis({ student }: { student: AcademyStudent }) {
-  const { monthly, base, agreed } = tuitionSplit(student);
+  const { monthly, reliefAmt, relief } = tuitionSplit(student);
+  const label = relief === "exemption" ? "Exemption" : "Concession";
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
       <div className="rounded-md border bg-muted/20 px-3 py-2">
-        <p className="text-xs text-muted-foreground">Tuition fee (list)</p>
+        <p className="text-xs text-muted-foreground">Tuition fee (monthly)</p>
         <p className="font-semibold tabular-nums">PKR {num(monthly)}</p>
       </div>
       <div className="rounded-md border bg-muted/20 px-3 py-2">
-        <p className="text-xs text-muted-foreground">Discount agreed at registration</p>
-        <p className="font-semibold tabular-nums">PKR {num(base)}</p>
+        <p className="text-xs text-muted-foreground">{relief ? `Current ${label.toLowerCase()}` : "Concession / exemption"}</p>
+        <p className="font-semibold tabular-nums">PKR {num(reliefAmt)}</p>
       </div>
       <div className="rounded-md border bg-muted/20 px-3 py-2">
-        <p className="text-xs text-muted-foreground">Agreed monthly tuition</p>
-        <p className="font-semibold tabular-nums">PKR {num(agreed)}</p>
+        <p className="text-xs text-muted-foreground">Payable tuition / month</p>
+        <p className="font-semibold tabular-nums">PKR {num(monthly - reliefAmt)}</p>
       </div>
     </div>
   );
 }
 
 function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit: boolean }) {
-  // Concession is a category % of the agreed monthly tuition; admission fee is never touched.
-  const { monthly, base, agreed, relief, reliefAmt } = tuitionSplit(student);
+  // Concession is a category % of the monthly tuition; admission fee is never touched.
+  const { monthly, agreed, relief, reliefAmt } = tuitionSplit(student);
   const curAmt = relief === "concession" ? reliefAmt : 0;
 
   const { data: categories = [], isLoading: catsLoading } = useQuery({
@@ -396,9 +394,9 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
       feeReliefType: "concession",
       concessionCategory: categoryKey,
       concessionPercent: percent,
-      reliefAmount: amount,
+      monthlyFeeDiscount: amount,
     });
-  const remove = () => saveMut.mutate({ feeReliefType: "", reliefAmount: 0 });
+  const remove = () => saveMut.mutate({ feeReliefType: "", monthlyFeeDiscount: 0 });
 
   const currentCat = categories.find((c) => c.key === student.concessionCategory);
   const pct = (d: number, b: number) => (b && d ? `${Math.round((d / b) * 100)}%` : "0%");
@@ -407,12 +405,12 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         {curAmt > 0
-          ? `Current concession: PKR ${num(curAmt)} / month${currentCat ? ` — ${currentCat.name}` : ""}${
+          ? `Current concession: PKR ${num(curAmt)} / month${currentCat ? ` — ${currentCat.name}` : " (given at registration, no category)"}${
               student.concessionPercent ? ` (${student.concessionPercent}%)` : ""
             }`
           : "No concession has been granted to this student."}
         <span className="block text-xs">
-          Concession is taken off the agreed monthly tuition. A student can have a concession or an exemption, not both.
+          Concession is taken off the monthly tuition. A student can have a concession or an exemption, not both.
         </span>
       </p>
 
@@ -492,7 +490,6 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
             <tr>
               <th className="p-3 text-center font-medium">Fee Head</th>
               <th className="p-3 text-center font-medium">Fee Amount</th>
-              <th className="p-3 text-center font-medium">Registration Discount</th>
               <th className="p-3 text-center font-medium">Concession</th>
               <th className="p-3 text-center font-medium">Concession %</th>
               <th className="p-3 text-center font-medium">Payable Amount</th>
@@ -502,7 +499,6 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
             <tr className="border-t">
               <td className="p-3 text-center">Tuition Fee (monthly)</td>
               <td className="p-3 text-center tabular-nums">{num(monthly)}</td>
-              <td className="p-3 text-center tabular-nums">{num(base)}</td>
               <td className="p-3 text-center tabular-nums text-sky-700 dark:text-sky-300">
                 {num(relief === "exemption" ? 0 : amount)}
               </td>
@@ -536,20 +532,9 @@ function ReliefLockedNotice({ student, other }: { student: AcademyStudent; other
   );
 }
 
-const EXEMPTION_REMARKS = [
-  "Financial hardship",
-  "Orphan",
-  "Staff child",
-  "Sibling",
-  "Merit / position holder",
-  "Management approval",
-  "Principal approval",
-  "Other",
-];
-
 function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: boolean }) {
-  // Exemption is a fixed PKR off the agreed monthly tuition, every month.
-  const { monthly, base, agreed, relief, reliefAmt } = tuitionSplit(student);
+  // Exemption is a fixed PKR off the monthly tuition, every month.
+  const { monthly, agreed, relief, reliefAmt } = tuitionSplit(student);
   const curAmt = relief === "exemption" ? reliefAmt : 0;
   const curRemarks = relief === "exemption" ? student.exemptionRemarks || "" : "";
 
@@ -562,8 +547,8 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
     curRemarks && !EXEMPTION_REMARKS.includes(curRemarks) ? [curRemarks, ...EXEMPTION_REMARKS] : EXEMPTION_REMARKS;
 
   const saveMut = useSaveRelief(student, "Exemption");
-  const apply = () => saveMut.mutate({ feeReliefType: "exemption", exemptionRemarks: remarks, reliefAmount: amount });
-  const remove = () => saveMut.mutate({ feeReliefType: "", reliefAmount: 0 });
+  const apply = () => saveMut.mutate({ feeReliefType: "exemption", exemptionRemarks: remarks, monthlyFeeDiscount: amount });
+  const remove = () => saveMut.mutate({ feeReliefType: "", monthlyFeeDiscount: 0 });
 
   const shownAmt = relief === "concession" ? 0 : amount;
   const previewRows: FeeHeadRow[] = [
@@ -571,7 +556,6 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
       head: "Tuition Fee (monthly)",
       amount: monthly,
       remarks: [
-        base > 0 ? `Discount ${num(base)}` : "",
         shownAmt > 0 ? `Exemption ${num(shownAmt)}${remarks ? ` — ${remarks}` : ""}` : "",
         relief === "concession" && reliefAmt > 0 ? `Concession ${num(reliefAmt)}` : "",
       ]
@@ -588,7 +572,7 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
           ? `Current exemption: PKR ${num(curAmt)} / month${curRemarks ? ` — ${curRemarks}` : ""}`
           : "No exemption has been applied to this student."}
         <span className="block text-xs">
-          Exemption is taken off the agreed monthly tuition. A student can have a concession or an exemption, not both.
+          Exemption is taken off the monthly tuition. A student can have a concession or an exemption, not both.
         </span>
       </p>
 

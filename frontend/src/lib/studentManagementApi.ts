@@ -225,10 +225,6 @@ export interface AcademyStudent {
   /** Active tuition relief — only one at a time. */
   feeReliefType?: "" | "concession" | "exemption";
   exemptionRemarks?: string;
-  /** Monthly discount agreed at registration (kept while a relief is active). */
-  reliefBaseMonthlyDiscount?: number;
-  /** PKR / month taken off tuition by the active concession or exemption. */
-  reliefAmount?: number;
   defaultChargeIds?: string[];
   totalFee: number;
   status: AcademyStudentStatus;
