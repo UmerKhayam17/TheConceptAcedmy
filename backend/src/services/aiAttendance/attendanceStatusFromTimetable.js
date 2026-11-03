@@ -1,17 +1,28 @@
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const Session = require('../../models/Session');
 const timetableVersionService = require('../timetable/timetableVersionService');
+const { isEnrolledInSubject } = require('../academy/studentEnrollment');
 const {
   weekdayName,
   minutesSinceMidnight,
   DEFAULT_TZ,
 } = require('../../utils/schoolDay');
 
-/** Fallback when no published class timetable exists for the student today. */
+/** Fallback when none of the student's subjects are on today's published timetable. */
 const FALLBACK_LATE_AFTER_HOUR = 9;
 const FALLBACK_LATE_AFTER_MINUTE = 30;
 
-/** Period types that count as the school/class start (not breaks). */
+/** Used when AI_ATTENDANCE_LATE_GRACE_MINUTES is missing or invalid. */
+const DEFAULT_GRACE_MINUTES = 10;
+
+/** Minutes after the earliest selected-subject period start. Read on each check-in. */
+function graceMinutes() {
+  const raw = Number(process.env.AI_ATTENDANCE_LATE_GRACE_MINUTES);
+  if (!Number.isFinite(raw) || raw < 0) return DEFAULT_GRACE_MINUTES;
+  return raw;
+}
+
+/** Period types that count as class time (not breaks). */
 const START_PERIOD_TYPES = new Set(['lecture', 'assembly', 'prayer']);
 
 function hhmmToMinutes(value) {
@@ -32,6 +43,26 @@ function statusFromMinutes(checkInMinutes, startMinutes, graceMinutes = 0) {
   return checkInMinutes <= startMinutes + graceMinutes ? 'present' : 'late';
 }
 
+function refId(value) {
+  if (!value || value.deleted) return null;
+  const id = value._id || value;
+  if (!id || String(id) === 'deleted') return null;
+  return String(id);
+}
+
+/** Primary subject plus any choice-group subjects taught in the same period. */
+function slotSubjectIds(slot) {
+  const ids = [refId(slot?.subject)];
+  for (const entry of slot?.parallelEntries || []) {
+    ids.push(refId(entry?.subject));
+  }
+  return ids.filter(Boolean);
+}
+
+function slotMatchesEnrollment(slot, student) {
+  return slotSubjectIds(slot).some((id) => isEnrolledInSubject(student, id));
+}
+
 async function resolveSessionTimezone(sessionId) {
   if (!sessionId) return DEFAULT_TZ;
   const session = await Session.findById(sessionId).select('timezone').lean();
@@ -39,12 +70,13 @@ async function resolveSessionTimezone(sessionId) {
 }
 
 /**
- * Earliest class start today from the student's published section timetable.
+ * Earliest start today among the student's selected subjects on the
+ * published section timetable. Empty when nothing matches (caller uses 9:30).
  */
 async function getStudentFirstPeriodStartMinutes(studentId, checkIn) {
   const student = await AcademyStudent.findById(studentId)
     .populate('classId', 'sessionId')
-    .select('classId sectionId')
+    .select('classId sectionId selectedSubjects isFullPackage')
     .lean();
   if (!student) return { startMinutes: null, timeZone: DEFAULT_TZ };
 
@@ -62,26 +94,24 @@ async function getStudentFirstPeriodStartMinutes(studentId, checkIn) {
 
   const todayStarts = (grid.slots || [])
     .filter((slot) => String(slot.day || '').toLowerCase() === weekday)
-    .map((slot) => periods.find((p) => String(p._id) === String(slot.periodId)))
+    .filter((slot) => slotMatchesEnrollment(slot, student))
+    .map((slot) => {
+      const periodId = slot.periodId?._id || slot.periodId;
+      return periods.find((p) => String(p._id) === String(periodId));
+    })
     .filter(Boolean)
     .filter((p) => !p.type || START_PERIOD_TYPES.has(p.type))
     .map((p) => hhmmToMinutes(p.startTime))
     .filter((n) => n != null);
 
-  if (todayStarts.length) {
-    return { startMinutes: Math.min(...todayStarts), timeZone };
-  }
-
-  const academyStart =
-    version.periodTemplate?.academyStartTime ||
-    grid.version?.periodTemplate?.academyStartTime;
-  return { startMinutes: hhmmToMinutes(academyStart), timeZone };
+  if (!todayStarts.length) return { startMinutes: null, timeZone };
+  return { startMinutes: Math.min(...todayStarts), timeZone };
 }
 
 async function resolveStudentAttendanceStatus(studentId, checkIn = new Date()) {
-  const grace = Number(process.env.AI_ATTENDANCE_LATE_GRACE_MINUTES) || 0;
   const { startMinutes, timeZone } = await getStudentFirstPeriodStartMinutes(studentId, checkIn);
   const checkInMinutes = minutesSinceMidnight(checkIn, timeZone);
+  const grace = startMinutes == null ? 0 : graceMinutes();
   return statusFromMinutes(checkInMinutes, startMinutes, grace);
 }
 
@@ -91,8 +121,11 @@ function resolveFallbackAttendanceStatus(checkIn = new Date()) {
 }
 
 module.exports = {
+  graceMinutes,
   resolveStudentAttendanceStatus,
   resolveFallbackAttendanceStatus,
   getStudentFirstPeriodStartMinutes,
   hhmmToMinutes,
+  statusFromMinutes,
+  slotMatchesEnrollment,
 };

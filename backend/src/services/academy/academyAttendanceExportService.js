@@ -1,5 +1,5 @@
 const { renderBrandedExcel, renderBrandedPdf, formatDateTime } = require('./academyReportDocument');
-const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
+const { sortStudentsByClassThenRoll } = require('../../utils/academyStudentSort');
 const { formatTimeInTz } = require('../../utils/schoolDay');
 const {
   renderRegisterPdf,
@@ -81,7 +81,7 @@ function fmtTime(value) {
 }
 
 function mapAttendanceRows(students, recordByStudent) {
-  const sorted = sortStudentsByRollAsc(students);
+  const sorted = sortStudentsByClassThenRoll(students);
   return sorted.map((s, i) => {
     const rec = recordByStudent.get(String(s._id));
     return {
@@ -203,7 +203,7 @@ function mapAbsentRows(absentDays) {
   const rows = [];
   let serial = 0;
   (absentDays || []).forEach((day) => {
-    const sorted = sortStudentsByRollAsc(day.students || []);
+    const sorted = sortStudentsByClassThenRoll(day.students || []);
     sorted.forEach((s) => {
       serial += 1;
       rows.push({
@@ -229,7 +229,7 @@ function absentReportMeta(meta, rows, dayCount) {
 }
 
 function dayAbsentRows(day) {
-  return sortStudentsByRollAsc(day?.students || []).map((s, i) => ({
+  return sortStudentsByClassThenRoll(day?.students || []).map((s, i) => ({
     serial: i + 1,
     studentId: studentRef(s) || '—',
     name: s.studentName || '',
@@ -352,7 +352,7 @@ function buildAttendanceRegister({ students, days, markedDays, statusByStudentDa
   const perDay = days.map(() => ({ attended: 0, total: 0 }));
   const totals = { present: 0, late: 0, absent: 0, leave: 0, days: 0, attended: 0 };
 
-  const rows = sortStudentsByRollAsc(students).map((s) => {
+  const rows = sortStudentsByClassThenRoll(students).map((s) => {
     const counts = { present: 0, late: 0, absent: 0, leave: 0 };
     let expectedDays = 0;
     const cells = days.map((day, dayIndex) => {
@@ -403,7 +403,7 @@ function buildAbsentRegister({ students, days, markedDays, statusByStudentDay })
   let totalAbsent = 0;
 
   const rows = [];
-  sortStudentsByRollAsc(students).forEach((s) => {
+  sortStudentsByClassThenRoll(students).forEach((s) => {
     let absent = 0;
     const cells = days.map((day, dayIndex) => {
       if (!markedSet.has(day)) return { text: '', fill: MARK_MUTED };

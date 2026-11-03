@@ -4,7 +4,7 @@ const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const { loadExpectationContext } = require('./attendanceExpectationService');
 const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
-const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
+const { sortStudentsByClassThenRoll } = require('../../utils/academyStudentSort');
 
 /** Inclusive calendar-day cap for custom attendance report ranges. */
 const MAX_RANGE_DAYS = 93;
@@ -71,7 +71,7 @@ async function resolveStudents({
       ? { $and: [studentQ, scopeFilter] }
       : studentQ;
 
-  return sortStudentsByRollAsc(
+  return sortStudentsByClassThenRoll(
     await AcademyStudent.find(filter)
       .populate('classId', 'className classCode sessionId')
       .populate('sectionId', 'sectionName')

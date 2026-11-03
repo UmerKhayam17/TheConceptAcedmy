@@ -6,12 +6,15 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  Loader2,
   Palmtree,
   Users,
   UserX,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SquareCheckbox } from "@/components/ui/square-checkbox";
 import { DateRangePickerField } from "@/components/ui/date-range-picker";
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
@@ -20,6 +23,8 @@ import FilterToolbar, { FilterToolbarActions } from "@/components/modules/Filter
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { cn, formatClockTime } from "@/lib/utils";
+import { avatarTone } from "@/lib/avatarTone";
+import { resolveUploadUrl } from "@/lib/api";
 import {
   exportAcademyAttendance,
   fetchAcademyAbsentList,
@@ -40,6 +45,7 @@ import ParentAttendancePanel from "@/components/modules/parent/ParentAttendanceP
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
+import { compareClassLevels } from "@/lib/configApi";
 
 const today = () => localTodayYmd();
 
@@ -59,6 +65,103 @@ function sectionLabel(s: AcademyStudent) {
 
 function studentRef(s: AcademyStudent) {
   return s.rollNumber || s.studentId || s.registrationNumber || "";
+}
+
+/** 9th → 10th → 1st Year → 2nd Year, then section, then roll. */
+function compareAttendanceStudents(a: AcademyStudent, b: AcademyStudent) {
+  const byClass = compareClassLevels(classLabel(a), classLabel(b));
+  if (byClass !== 0) return byClass;
+  const bySection = sectionLabel(a).localeCompare(sectionLabel(b), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+  if (bySection !== 0) return bySection;
+  const ra = studentRef(a);
+  const rb = studentRef(b);
+  if (ra && rb && ra !== rb) {
+    return ra.localeCompare(rb, undefined, { numeric: true, sensitivity: "base" });
+  }
+  if (ra && !rb) return -1;
+  if (!ra && rb) return 1;
+  return (a.studentName || "").localeCompare(b.studentName || "", undefined, { sensitivity: "base" });
+}
+
+const MARK_BUTTONS = [
+  {
+    status: "present" as const,
+    label: "P",
+    on: "border-transparent bg-gold-gradient text-accent-foreground shadow-gold hover:bg-gold-gradient",
+    off: "border-primary bg-transparent text-primary hover:bg-primary hover:text-primary-foreground",
+  },
+  {
+    status: "late" as const,
+    label: "Late",
+    on: "border-amber-500 bg-amber-500 text-white shadow-sm hover:bg-amber-600",
+    off: "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100",
+  },
+  {
+    status: "absent" as const,
+    label: "A",
+    on: "border-rose-600 bg-rose-600 text-white shadow-sm hover:bg-rose-700",
+    off: "border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100",
+  },
+  {
+    status: "leave" as const,
+    label: "L",
+    on: "border-sky-600 bg-sky-600 text-white shadow-sm hover:bg-sky-700",
+    off: "border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100",
+  },
+];
+
+function statusBadgeClass(status: string) {
+  if (status === "present") return "border-emerald-200/80 bg-emerald-500/10 text-emerald-700";
+  if (status === "late") return "border-amber-200 bg-amber-100 text-amber-800";
+  if (status === "absent") return "border-rose-200 bg-rose-100 text-rose-800";
+  if (status === "leave") return "border-sky-200 bg-sky-100 text-sky-800";
+  return "border-border bg-muted text-muted-foreground";
+}
+
+function statusDotClass(status: string) {
+  if (status === "present") return "bg-emerald-600";
+  if (status === "late") return "bg-amber-500";
+  if (status === "absent") return "bg-rose-600";
+  if (status === "leave") return "bg-sky-600";
+  return "bg-muted-foreground";
+}
+
+function statusLabel(status: string) {
+  if (!status) return "—";
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function initialOf(name?: string) {
+  const ch = String(name || "").trim().charAt(0);
+  return ch ? ch.toUpperCase() : "?";
+}
+
+function StudentNameCell({ student }: { student: AcademyStudent }) {
+  const imgSrc = student.photoImage ? resolveUploadUrl(student.photoImage) : null;
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      {imgSrc ? (
+        <img
+          src={imgSrc}
+          alt=""
+          className="h-8 w-8 shrink-0 rounded-md border border-border object-cover"
+        />
+      ) : (
+        <span
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold",
+            avatarTone(student.studentName || ""),
+          )}
+        >
+          {initialOf(student.studentName)}
+        </span>
+      )}
+      <span className="truncate font-medium text-foreground">{student.studentName}</span>
+    </div>
+  );
 }
 
 function fmtTime(iso?: string) {
@@ -92,6 +195,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
   const [studentFilter, setStudentFilter] = useState("");
   const [exporting, setExporting] = useState<AttendanceExportFormat | null>(null);
   const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const canMark = writable && (caps.canCreate || caps.canEdit);
 
   /** Marking list always uses the To date. */
@@ -113,6 +217,10 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
   useEffect(() => {
     setStudentFilter("");
   }, [sectionFilter]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [date, classFilter, sectionFilter, studentFilter, search, sessionId]);
 
   const { data: classes = [] } = useQuery({
     queryKey: ["academy-classes-attendance", sessionId],
@@ -166,11 +274,8 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
   });
 
   const markMut = useMutation({
-    mutationFn: (payload: { studentId: string; status: "present" | "absent" | "late" | "leave" }) =>
-      markAcademyAttendance({
-        date,
-        entries: [{ studentId: payload.studentId, status: payload.status }],
-      }),
+    mutationFn: (entries: { studentId: string; status: "present" | "absent" | "late" | "leave" }[]) =>
+      markAcademyAttendance({ date, entries }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["academy-attendance-day", date] });
       qc.invalidateQueries({ queryKey: ["academy-attendance-absent"] });
@@ -195,18 +300,20 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
     if (studentFilter) {
       base = students.filter((s) => s._id === studentFilter);
     }
-    if (!search.trim()) return base;
-    return base.filter((s) =>
-      matchesPanelSearch(
-        search,
-        s.studentName,
-        s.studentId,
-        studentRef(s),
-        classLabel(s),
-        sectionLabel(s),
-        user?.role === "teacher" ? undefined : s.phone,
-      ),
-    );
+    if (search.trim()) {
+      base = base.filter((s) =>
+        matchesPanelSearch(
+          search,
+          s.studentName,
+          s.studentId,
+          studentRef(s),
+          classLabel(s),
+          sectionLabel(s),
+          user?.role === "teacher" ? undefined : s.phone,
+        ),
+      );
+    }
+    return [...base].sort(compareAttendanceStudents);
   }, [students, search, studentFilter, user?.role]);
 
   const visibleSummary = useMemo(() => {
@@ -301,10 +408,57 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
       });
       return;
     }
-    markMut.mutate({ studentId, status }, { onSuccess: () => toast({ title: `Marked ${status}` }) });
+    markMut.mutate([{ studentId, status }], { onSuccess: () => toast({ title: `Marked ${status}` }) });
   };
 
-  const colSpan = canMark ? 7 : 6;
+  const visibleIds = studentsFiltered.map((s) => s._id);
+  const selectedCount = visibleIds.filter((id) => selectedIds.has(id)).length;
+  const allSelected = visibleIds.length > 0 && selectedCount === visibleIds.length;
+  const someSelected = selectedCount > 0 && !allSelected;
+
+  const toggleSelectAll = (next: boolean) => {
+    setSelectedIds((prev) => {
+      const copy = new Set(prev);
+      visibleIds.forEach((id) => {
+        if (next) copy.add(id);
+        else copy.delete(id);
+      });
+      return copy;
+    });
+  };
+
+  const toggleSelectOne = (id: string, next: boolean) => {
+    setSelectedIds((prev) => {
+      const copy = new Set(prev);
+      if (next) copy.add(id);
+      else copy.delete(id);
+      return copy;
+    });
+  };
+
+  const markSelected = (status: "present" | "absent" | "late" | "leave") => {
+    if (!writable) {
+      toast({
+        title: "Read-only session",
+        description: "Switch to the active session to mark attendance.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const ids = visibleIds.filter((id) => selectedIds.has(id));
+    if (!ids.length) return;
+    markMut.mutate(
+      ids.map((studentId) => ({ studentId, status })),
+      {
+        onSuccess: () => {
+          toast({ title: `Marked ${ids.length} ${ids.length === 1 ? "student" : "students"} ${status}` });
+          setSelectedIds(new Set());
+        },
+      },
+    );
+  };
+
+  const colSpan = canMark ? 9 : 7;
 
   return (
     <div>
@@ -452,41 +606,118 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
           </FilterToolbar>
         </Card>
 
-        <Card className="overflow-hidden">
-          <div className="px-4 py-3 border-b border-border font-semibold text-primary">
-            Student attendance — {date}
-          </div>
+        {canMark && selectedCount > 0 && (
+          <Card className="border-border/80 p-3 shadow-sm sm:px-4 sm:py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-semibold text-[#1a2b4b]">{selectedCount}</span>
+                {" selected"}
+                {markMut.isPending ? (
+                  <span className="ml-2 inline-flex items-center gap-1.5 text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Working…
+                  </span>
+                ) : null}
+              </p>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                  disabled={markMut.isPending}
+                  onClick={() => markSelected("present")}
+                >
+                  Present
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 border-amber-300 text-amber-800 hover:bg-amber-50"
+                  disabled={markMut.isPending}
+                  onClick={() => markSelected("late")}
+                >
+                  Late
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 border-rose-300 text-rose-800 hover:bg-rose-50"
+                  disabled={markMut.isPending}
+                  onClick={() => markSelected("absent")}
+                >
+                  Absent
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 border-sky-300 text-sky-800 hover:bg-sky-50"
+                  disabled={markMut.isPending}
+                  onClick={() => markSelected("leave")}
+                >
+                  Leave
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 gap-1.5 text-muted-foreground"
+                  disabled={markMut.isPending}
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  <X className="h-4 w-4" />
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        <Card className="overflow-hidden border-border/80 shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-secondary/50 text-muted-foreground">
+            <table className="w-full min-w-[56rem] text-sm">
+              <thead className="border-b bg-muted/40">
                 <tr>
-                  <th className="text-left px-4 py-3">Student</th>
-                  <th className="text-left px-4 py-3">Class</th>
-                  <th className="text-left px-4 py-3">Section</th>
-                  <th className="text-left px-4 py-3">Status</th>
-                  <th className="text-left px-4 py-3">First check-in</th>
-                  <th className="text-left px-4 py-3">Last check-out</th>
-                  {canMark && <th className="text-right px-4 py-3">Mark</th>}
+                  {canMark && (
+                    <th className="w-10 p-3 text-center">
+                      <SquareCheckbox
+                        checked={allSelected}
+                        indeterminate={someSelected}
+                        onChange={() => toggleSelectAll(!allSelected)}
+                        aria-label="Select all students"
+                      />
+                    </th>
+                  )}
+                  <th className="p-3 text-left font-medium whitespace-nowrap">Roll number</th>
+                  <th className="p-3 text-left font-medium whitespace-nowrap">Student</th>
+                  <th className="p-3 text-left font-medium whitespace-nowrap">Class</th>
+                  <th className="p-3 text-left font-medium whitespace-nowrap">Section</th>
+                  <th className="p-3 text-left font-medium whitespace-nowrap">Status</th>
+                  <th className="p-3 text-left font-medium whitespace-nowrap">First check-in</th>
+                  <th className="p-3 text-left font-medium whitespace-nowrap">Last check-out</th>
+                  {canMark && <th className="p-3 text-right font-medium whitespace-nowrap">Mark</th>}
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
                   <tr>
-                    <td colSpan={colSpan} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={colSpan} className="p-10 text-center text-muted-foreground">
                       Loading students…
                     </td>
                   </tr>
                 )}
                 {isError && (
                   <tr>
-                    <td colSpan={colSpan} className="px-4 py-8 text-center text-destructive">
+                    <td colSpan={colSpan} className="p-10 text-center text-destructive">
                       {(error as Error).message}
                     </td>
                   </tr>
                 )}
                 {!isLoading && !isError && studentsFiltered.length === 0 && (
                   <tr>
-                    <td colSpan={colSpan} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={colSpan} className="p-10 text-center text-muted-foreground">
                       {students.length === 0
                         ? "No active academy students for this session. Register students in Student Records."
                         : "No students match your search."}
@@ -497,23 +728,39 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                   const record = recordMap.get(s._id);
                   const cur = record?.status ?? "absent";
                   return (
-                    <tr key={s._id} className="border-t border-border">
-                      <td className="px-4 py-3 font-medium text-primary">{s.studentName}</td>
-                      <td className="px-4 py-3">{classLabel(s)}</td>
-                      <td className="px-4 py-3">{sectionLabel(s)}</td>
-                      <td className="px-4 py-3">
+                    <tr
+                      key={s._id}
+                      className={cn(
+                        "border-b last:border-0 transition-colors hover:bg-muted/20",
+                        selectedIds.has(s._id) && "bg-muted/50",
+                      )}
+                    >
+                      {canMark && (
+                        <td className="w-10 p-3 text-center">
+                          <SquareCheckbox
+                            checked={selectedIds.has(s._id)}
+                            onChange={() => toggleSelectOne(s._id, !selectedIds.has(s._id))}
+                            aria-label={`Select ${s.studentName}`}
+                          />
+                        </td>
+                      )}
+                      <td className="p-3 whitespace-nowrap text-muted-foreground">
+                        {s.rollNumber || "—"}
+                      </td>
+                      <td className="p-3">
+                        <StudentNameCell student={s} />
+                      </td>
+                      <td className="p-3 whitespace-nowrap">{classLabel(s)}</td>
+                      <td className="p-3 whitespace-nowrap">{sectionLabel(s)}</td>
+                      <td className="p-3">
                         <span
-                          className={`text-xs font-semibold rounded-full px-2 py-0.5 ${
-                            cur === "present"
-                              ? "bg-accent/15 text-accent"
-                              : cur === "absent"
-                                ? "bg-destructive/15 text-destructive"
-                                : cur === "leave" || cur === "late"
-                                  ? "bg-primary/15 text-primary"
-                                  : "bg-muted text-muted-foreground"
-                          }`}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                            statusBadgeClass(cur),
+                          )}
                         >
-                          {cur}
+                          <span className={cn("h-1.5 w-1.5 rounded-full", statusDotClass(cur))} aria-hidden />
+                          {statusLabel(cur)}
                         </span>
                         {record?.source === "ai" && (
                           <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary/80">
@@ -521,42 +768,27 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{fmtTime(record?.checkIn)}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{fmtTime(record?.checkOut)}</td>
+                      <td className="p-3 whitespace-nowrap text-muted-foreground">{fmtTime(record?.checkIn)}</td>
+                      <td className="p-3 whitespace-nowrap text-muted-foreground">{fmtTime(record?.checkOut)}</td>
                       {canMark && (
-                        <td className="px-4 py-3 text-right whitespace-nowrap space-x-1">
-                          <Button
-                            size="sm"
-                            variant={cur === "present" ? "hero" : "outline"}
-                            disabled={markMut.isPending}
-                            onClick={() => mark(s._id, "present")}
-                          >
-                            P
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={cur === "late" ? "hero" : "outline"}
-                            disabled={markMut.isPending}
-                            onClick={() => mark(s._id, "late")}
-                          >
-                            Late
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={cur === "absent" ? "hero" : "outline"}
-                            disabled={markMut.isPending}
-                            onClick={() => mark(s._id, "absent")}
-                          >
-                            A
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={cur === "leave" ? "hero" : "outline"}
-                            disabled={markMut.isPending}
-                            onClick={() => mark(s._id, "leave")}
-                          >
-                            L
-                          </Button>
+                        <td className="p-3 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center justify-end gap-1">
+                            {MARK_BUTTONS.map((btn) => (
+                              <Button
+                                key={btn.status}
+                                size="sm"
+                                variant="outline"
+                                disabled={markMut.isPending}
+                                className={cn(
+                                  "h-9 rounded-md border px-3 text-xs font-semibold",
+                                  cur === btn.status ? btn.on : btn.off,
+                                )}
+                                onClick={() => mark(s._id, btn.status)}
+                              >
+                                {btn.label}
+                              </Button>
+                            ))}
+                          </div>
                         </td>
                       )}
                     </tr>

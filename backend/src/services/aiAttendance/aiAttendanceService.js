@@ -153,7 +153,7 @@ async function markFromPersonKey(personKey, { confidence, notes, source = 'ai' }
       student = await AcademyStudent.findOne({ aiEmployeeId: personKey }).select('_id').lean();
     }
     if (!student) throw new ApiError(404, 'Student not found');
-    // Late / on-time from the student's published class timetable (first period today)
+    // Present / late from the earliest selected-subject period today, plus AI_ATTENDANCE_LATE_GRACE_MINUTES
     const status = await resolveStudentAttendanceStatus(student._id, now);
     const doc = await applyStudentAttendance(student._id, {
       status,
