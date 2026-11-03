@@ -452,14 +452,12 @@ function registerMeta(meta) {
   };
 }
 
-function attendanceRegisterSpec(register) {
-  const t = register.totals;
+function attendanceRegisterSpec() {
   return {
     ...REGISTER_COMMON,
     title: 'Student Attendance Register',
     pdfSubject: 'Student day-wise attendance register',
     emptyMessage: 'No students match the selected filters.',
-    legend: `P = Present  ·  T = Late  ·  A = Absent  ·  L = Leave  ·  – = no class that day  ·  Grey = no classes   |   Students ${register.rows.length}  ·  Present ${t.present}  ·  Late ${t.late}  ·  Absent ${t.absent}  ·  Leave ${t.leave}`,
     tailColumns: [
       { key: 'present', title: 'Present', width: 32, excelWidth: 9 },
       { key: 'late', title: 'Late', width: 24, excelWidth: 7 },
@@ -485,7 +483,6 @@ function absentRegisterSpec(register) {
     title: 'Student Absent Register',
     pdfSubject: 'Student day-wise absent register',
     emptyMessage: 'No absentees in the selected date range.',
-    legend: `A = Absent  ·  Blank = present or no class that day  ·  Grey = no classes   |   Students absent ${register.rows.length}  ·  Absent entries ${register.totals.absent}`,
     tailColumns: [
       { key: 'absent', title: 'Total Absent', width: 44, excelWidth: 12 },
     ],
