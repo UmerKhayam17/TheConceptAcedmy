@@ -54,6 +54,21 @@ const academyStudentSchema = new mongoose.Schema(
     monthlyFeeDiscount: { type: Number, default: 0, min: 0 },
     admissionFeeDiscount: { type: Number, default: 0, min: 0 },
     discountAmount: { type: Number, default: 0, min: 0 },
+    /** Concession category key (Academic Setup → Concession Categories) behind the discounts. */
+    concessionCategory: { type: String, trim: true, lowercase: true, default: '', index: true },
+    /** Percentage applied from the concession category at the time it was granted. */
+    concessionPercent: { type: Number, default: 0, min: 0, max: 100 },
+    /**
+     * Which tuition relief is active — only one at a time.
+     * concession = category % off tuition; exemption = fixed PKR off tuition every month.
+     */
+    feeReliefType: { type: String, enum: ['', 'concession', 'exemption'], default: '' },
+    /** Reason recorded when a tuition exemption is applied. */
+    exemptionRemarks: { type: String, trim: true, default: '' },
+    /** Monthly discount agreed at registration, kept so removing the relief restores it. */
+    reliefBaseMonthlyDiscount: { type: Number, default: 0, min: 0 },
+    /** PKR / month taken off tuition by the active concession or exemption (on top of the base). */
+    reliefAmount: { type: Number, default: 0, min: 0 },
     totalFee: { type: Number, default: 0, min: 0 },
     /** Additional charges opted in at registration; used on enrollment + monthly challans. */
     defaultChargeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'AcademyAdditionalCharge' }],

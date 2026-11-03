@@ -4,11 +4,13 @@ const attendanceService = require('../../services/academy/academyAttendanceServi
 const {
   renderAttendanceExcel,
   renderAttendancePdf,
-  renderAttendanceRangeExcel,
-  renderAttendanceRangePdf,
   renderAbsentListExcel,
   renderAbsentListPdf,
-} = require('../../services/academy/academyAttendanceExportService');
+  renderAttendanceRegisterPdf,
+  renderAttendanceRegisterExcel,
+  renderAbsentRegisterPdf,
+  renderAbsentRegisterExcel,
+} =require('../../services/academy/academyAttendanceExportService');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const AcademySection = require('../../models/academy/AcademySection');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
@@ -220,6 +222,32 @@ const exportAttendance = catchAsync(async (req, res) => {
   const rangeStub = fromSafe === toSafe ? fromSafe : `${fromSafe}_to_${toSafe}`;
   const ext = format === 'pdf' ? 'pdf' : 'xlsx';
 
+  const isRange = String(dateFrom) !== String(dateTo);
+
+  // Date range → day-wise register (one column per date, like the monthly sheet).
+  if (isRange) {
+    const data = await attendanceService.listRegisterByDateRange({ dateFrom, dateTo, ...filter });
+    const meta = await resolveExportMeta(req, data.summary, {
+      dateFrom: data.dateFrom,
+      dateTo: data.dateTo,
+    });
+    const absent = reportKind === 'absent';
+    let buffer;
+    if (format === 'pdf') {
+      buffer = absent
+        ? await renderAbsentRegisterPdf(data, meta)
+        : await renderAttendanceRegisterPdf(data, meta);
+    } else {
+      buffer = absent
+        ? await renderAbsentRegisterExcel(data, meta)
+        : await renderAttendanceRegisterExcel(data, meta);
+    }
+    return sendExportBuffer(res, buffer, {
+      format,
+      filename: `${absent ? 'Absent-List' : 'Student-Attendance'}_${rangeStub}.${ext}`,
+    });
+  }
+
   if (reportKind === 'absent') {
     const data = await attendanceService.listAbsentByDateRange({
       dateFrom,
@@ -240,27 +268,13 @@ const exportAttendance = catchAsync(async (req, res) => {
     });
   }
 
-  const isRange = String(dateFrom) !== String(dateTo);
-  const data = isRange
-    ? await attendanceService.listByDateRange({ dateFrom, dateTo, ...filter })
-    : await attendanceService.listByDate({ date: dateFrom, ...filter });
+  const data = await attendanceService.listByDate({ date: dateFrom, ...filter });
 
   const meta = await resolveExportMeta(req, data.summary, {
     date: data.date,
     dateFrom: data.dateFrom || dateFrom,
     dateTo: data.dateTo || dateTo,
   });
-
-  if (isRange) {
-    const buffer =
-      format === 'pdf'
-        ? await renderAttendanceRangePdf(data.studentSummaries, meta)
-        : await renderAttendanceRangeExcel(data.studentSummaries, meta);
-    return sendExportBuffer(res, buffer, {
-      format,
-      filename: `Student-Attendance_${rangeStub}.${ext}`,
-    });
-  }
 
   const records = recordMapFromDay(data);
   const buffer =

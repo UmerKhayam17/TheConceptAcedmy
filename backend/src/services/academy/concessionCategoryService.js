@@ -1,5 +1,6 @@
 const ApiError = require('../../utils/ApiError');
 const AcademyConcessionCategory = require('../../models/academy/AcademyConcessionCategory');
+const AcademyStudent = require('../../models/academy/AcademyStudent');
 
 /** Default concession discount categories. Created only by the seed button. */
 const DEFAULT_CONCESSION_CATEGORIES = [
@@ -62,11 +63,15 @@ async function assertUniqueName(name, exceptId) {
 
 async function listCategories() {
   const rows = await AcademyConcessionCategory.find().sort({ sortOrder: 1, name: 1 }).lean();
-  // usageCount reserved for when students / fee discounts link to a category key.
+  const usage = await AcademyStudent.aggregate([
+    { $match: { concessionCategory: { $nin: [null, ''] } } },
+    { $group: { _id: '$concessionCategory', count: { $sum: 1 } } },
+  ]);
+  const usageByKey = Object.fromEntries(usage.map((u) => [u._id, u.count]));
   return rows.map((row) => ({
     ...row,
     discountPercent: Number(row.discountPercent) || 0,
-    usageCount: 0,
+    usageCount: usageByKey[row.key] || 0,
   }));
 }
 

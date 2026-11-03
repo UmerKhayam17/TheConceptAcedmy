@@ -20,8 +20,10 @@ import {
   User,
   UserCheck,
   UserRound,
+  HandCoins,
   XCircle,
 } from "lucide-react";
+import StudentFeeDetailsDialog from "./StudentFeeDetailsDialog";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
@@ -1000,6 +1002,7 @@ export default function StudentDetailPage({
     else params.set("tab", next);
     setSearchParams(params, { replace: true });
   };
+  const [feeDialogOpen, setFeeDialogOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -1056,21 +1059,33 @@ export default function StudentDetailPage({
           <p className="text-xs text-muted-foreground">{classLabel(student.classId)}</p>
           <CreatedByLine createdBy={student.createdBy} className="text-xs" />
         </div>
-        {caps.canEdit && (
-          isPending ? (
-            <Button size="sm" className="gap-2 shrink-0" asChild>
-              <Link to={activateHref}>
-                <UserCheck className="h-4 w-4" /> Complete & activate
-              </Link>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {!isPending && !hideSensitive && !isParent && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 border-violet-300 text-violet-700 hover:bg-violet-50 hover:text-violet-800 dark:border-violet-500/40 dark:text-violet-300 dark:hover:bg-violet-500/10"
+              onClick={() => setFeeDialogOpen(true)}
+            >
+              <HandCoins className="h-4 w-4" /> Fee details
             </Button>
-          ) : (
-            <Button size="sm" className="gap-2 shrink-0" asChild>
-              <Link to={editHref}>
-                <Pencil className="h-4 w-4" /> Edit
-              </Link>
-            </Button>
-          )
-        )}
+          )}
+          {caps.canEdit && (
+            isPending ? (
+              <Button size="sm" className="gap-2" asChild>
+                <Link to={activateHref}>
+                  <UserCheck className="h-4 w-4" /> Complete & activate
+                </Link>
+              </Button>
+            ) : (
+              <Button size="sm" className="gap-2" asChild>
+                <Link to={editHref}>
+                  <Pencil className="h-4 w-4" /> Edit
+                </Link>
+              </Button>
+            )
+          )}
+        </div>
       </div>
 
       {isPending ? (
@@ -1175,6 +1190,14 @@ export default function StudentDetailPage({
           </>
         )}
       </Tabs>
+
+      <StudentFeeDetailsDialog
+        open={feeDialogOpen}
+        onOpenChange={setFeeDialogOpen}
+        studentId={studentId}
+        caps={caps}
+        routes={routes ?? undefined}
+      />
     </div>
   );
 }

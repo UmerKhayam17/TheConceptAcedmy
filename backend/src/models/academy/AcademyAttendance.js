@@ -14,10 +14,10 @@ const academyAttendanceSchema = new mongoose.Schema(
       enum: ['present', 'absent', 'late', 'leave'],
       default: 'present',
     },
-    /** manual | ai — how this day was marked */
+    /** manual | ai | auto (end-of-day absent job) — how this day was marked */
     source: {
       type: String,
-      enum: ['manual', 'ai'],
+      enum: ['manual', 'ai', 'auto'],
       default: 'manual',
     },
     checkIn: { type: Date },

@@ -219,6 +219,16 @@ export interface AcademyStudent {
   monthlyFeeDiscount?: number;
   admissionFeeDiscount?: number;
   discountAmount?: number;
+  /** Concession category key the discounts came from (Academic Setup). */
+  concessionCategory?: string;
+  concessionPercent?: number;
+  /** Active tuition relief — only one at a time. */
+  feeReliefType?: "" | "concession" | "exemption";
+  exemptionRemarks?: string;
+  /** Monthly discount agreed at registration (kept while a relief is active). */
+  reliefBaseMonthlyDiscount?: number;
+  /** PKR / month taken off tuition by the active concession or exemption. */
+  reliefAmount?: number;
   defaultChargeIds?: string[];
   totalFee: number;
   status: AcademyStudentStatus;
@@ -282,7 +292,7 @@ export interface AcademyAttendanceRecord {
   studentId: string;
   date: string;
   status: "present" | "absent" | "late" | "leave";
-  source?: "manual" | "ai";
+  source?: "manual" | "ai" | "auto";
   checkIn?: string;
   checkOut?: string;
   confidence?: number;
@@ -2047,6 +2057,8 @@ export interface ConcessionCategoryConfig {
   key: string;
   name: string;
   description?: string;
+  /** Default concession as a % of the fee (0–100). */
+  discountPercent?: number;
   isActive: boolean;
   sortOrder: number;
   usageCount?: number;

@@ -15,7 +15,9 @@ import {
   UserCheck,
   UserMinus,
   Users,
+  HandCoins,
 } from "lucide-react";
+import StudentFeeDetailsDialog from "./StudentFeeDetailsDialog";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
@@ -214,6 +216,7 @@ export default function RegistrationTab({
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [exporting, setExporting] = useState<ReportFileFormat | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [feeStudentId, setFeeStudentId] = useState<string | null>(null);
   const intakeParamHandled = useRef(false);
 
   const routes =
@@ -817,6 +820,18 @@ export default function RegistrationTab({
                               </Link>
                             </Button>
                           )}
+                          {caps.canView && !isPending && !isTeacher && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-violet-600 hover:text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-500/10"
+                              aria-label="Fee details"
+                              title="Fee details"
+                              onClick={() => setFeeStudentId(s._id)}
+                            >
+                              <HandCoins className="h-4 w-4" />
+                            </Button>
+                          )}
                           {writable && caps.canEdit && !isPending && (
                             <Button
                               variant="ghost"
@@ -878,6 +893,14 @@ export default function RegistrationTab({
           sessionId={writable ? sessionId : ""}
         />
       )}
+
+      <StudentFeeDetailsDialog
+        open={!!feeStudentId}
+        onOpenChange={(o) => !o && setFeeStudentId(null)}
+        studentId={feeStudentId}
+        caps={caps}
+        routes={routes ?? undefined}
+      />
     </div>
   );
 }

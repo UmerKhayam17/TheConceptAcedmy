@@ -2,6 +2,7 @@ const ApiError = require('../../utils/ApiError');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const AcademyClass = require('../../models/academy/AcademyClass');
+const { loadExpectationContext } = require('./attendanceExpectationService');
 const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
 const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
@@ -315,6 +316,89 @@ async function listAbsentByDateRange({
   };
 }
 
+/**
+ * Day-by-day register data for From–To (printed like the monthly sheet).
+ * statusByStudentDay holds a status only where the student was marked or expected;
+ * a missing entry means "no class for this student that day".
+ */
+async function listRegisterByDateRange({
+  dateFrom,
+  dateTo,
+  classId,
+  sectionId,
+  sessionId,
+  studentIds,
+  studentId,
+  scopeFilter = null,
+}) {
+  const { from, to, days } = enumerateYmds(dateFrom, dateTo);
+  const students = await resolveStudents({
+    classId,
+    sectionId,
+    sessionId,
+    studentIds,
+    studentId,
+    scopeFilter,
+  });
+
+  const studentIdList = students.map((s) => s._id);
+  const records = studentIdList.length
+    ? await AcademyAttendance.find({
+        date: { $gte: from.start, $lte: to.end },
+        studentId: { $in: studentIdList },
+        $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+      }).lean()
+    : [];
+
+  const byStudentDay = new Map();
+  const markedDays = new Set();
+  for (const r of records) {
+    const ymd = formatDateInTz(r.date);
+    markedDays.add(ymd);
+    const key = `${String(r.studentId)}|${ymd}`;
+    const prev = byStudentDay.get(key);
+    if (!prev) {
+      byStudentDay.set(key, r);
+      continue;
+    }
+    const prevIn = prev.checkIn ? new Date(prev.checkIn).getTime() : Infinity;
+    const nextIn = r.checkIn ? new Date(r.checkIn).getTime() : Infinity;
+    if (nextIn < prevIn) byStudentDay.set(key, r);
+  }
+
+  const savedStatus = new Map();
+  byStudentDay.forEach((rec, key) => savedStatus.set(key, rec.status));
+
+  // Per student-day: saved mark wins; otherwise absent only if the student was EXPECTED
+  // that day (section timetable + their subjects) and the day is not in the future.
+  const { isExpected } = await loadExpectationContext(students);
+  const todayYmd = formatDateInTz(new Date());
+  const statusByStudentDay = new Map();
+  const activeDays = new Set();
+  const summary = { present: 0, absent: 0, leave: 0, late: 0 };
+  students.forEach((s) => {
+    days.forEach((ymd) => {
+      const key = `${String(s._id)}|${ymd}`;
+      let status = savedStatus.get(key);
+      if (!status && ymd <= todayYmd && isExpected(s, ymd)) status = 'absent';
+      if (!status) return;
+      statusByStudentDay.set(key, status);
+      activeDays.add(ymd);
+      if (summary[status] !== undefined) summary[status] += 1;
+    });
+  });
+
+  return {
+    dateFrom: from.ymd,
+    dateTo: to.ymd,
+    days,
+    markedDays: days.filter((d) => activeDays.has(d)),
+    students,
+    statusByStudentDay,
+    summary,
+  };
+}
+
 async function markAttendance({ date, entries }, userId, { assertStudentAccess } = {}) {
   const { start, end } = resolveDay(date);
   const results = [];
@@ -439,6 +523,7 @@ module.exports = {
   listByDate,
   listByDateRange,
   listAbsentByDateRange,
+  listRegisterByDateRange,
   markAttendance,
   getSummary,
   listByStudentMonth,

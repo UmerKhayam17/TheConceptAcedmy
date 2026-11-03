@@ -21,6 +21,7 @@ const {
 } = require('./academyFeeService');
 const { validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
 const { resolveEnrollmentDiscipline } = require('./academyDisciplineService');
+const { assertActiveCategory: assertActiveConcessionCategory } = require('./concessionCategoryService');
 const { generateAcademyRollNumber, generateTemporaryRollNumber } = require('../../utils/academyRollNumber');
 const {
   generateRegistrationNumber,
@@ -350,6 +351,25 @@ async function updateStudent(id, payload) {
     ]);
   }
 
+  // Tuition relief (concession / exemption) sits ON TOP of the discount agreed at registration.
+  // Remember that base discount so removing the relief restores it instead of wiping it.
+  let reliefBase;
+  let reliefAmount;
+  if (payload.feeReliefType !== undefined) {
+    const monthlyList = Math.max(0, Number(student.monthlyFee) || 0);
+    reliefBase = student.feeReliefType
+      ? Math.max(0, Number(student.reliefBaseMonthlyDiscount) || 0)
+      : Math.max(0, Number(student.monthlyFeeDiscount) || 0);
+    reliefBase = Math.min(reliefBase, monthlyList);
+    reliefAmount = payload.feeReliefType
+      ? Math.min(Math.max(0, Math.round(Number(payload.reliefAmount) || 0)), monthlyList - reliefBase)
+      : 0;
+    if (payload.feeReliefType && reliefAmount <= 0) {
+      throw new ApiError(400, 'Relief amount must be greater than 0');
+    }
+    payload = { ...payload, monthlyFeeDiscount: reliefBase + reliefAmount };
+  }
+
   const classId = payload.classId || student.classId;
   const sectionId = payload.sectionId || student.sectionId;
   const isFullPackage = payload.isFullPackage !== undefined ? payload.isFullPackage : student.isFullPackage;
@@ -420,6 +440,45 @@ async function updateStudent(id, payload) {
     });
     Object.assign(student, fees);
     student.feeStructureId = feeStructure._id;
+  }
+
+  // Tuition relief: a concession (category %) OR an exemption (fixed PKR + reason) — never both.
+  if (payload.feeReliefType !== undefined) {
+    const type = String(payload.feeReliefType || '');
+    if (type === 'concession') {
+      const raw = String(payload.concessionCategory || '').trim();
+      if (!raw) throw new ApiError(400, 'Choose a concession category');
+      student.concessionCategory = await assertActiveConcessionCategory(raw);
+      student.concessionPercent = Math.min(100, Math.max(0, Number(payload.concessionPercent) || 0));
+      student.exemptionRemarks = '';
+    } else if (type === 'exemption') {
+      const reason = String(payload.exemptionRemarks || '').trim();
+      if (!reason) throw new ApiError(400, 'Exemption remarks are required');
+      student.exemptionRemarks = reason;
+      student.concessionCategory = '';
+      student.concessionPercent = 0;
+    } else {
+      student.concessionCategory = '';
+      student.concessionPercent = 0;
+      student.exemptionRemarks = '';
+    }
+    student.feeReliefType = type;
+    student.reliefBaseMonthlyDiscount = type ? reliefBase : 0;
+    student.reliefAmount = type ? reliefAmount : 0;
+  } else if (payload.concessionCategory !== undefined) {
+    const raw = String(payload.concessionCategory || '').trim();
+    student.concessionCategory = raw ? await assertActiveConcessionCategory(raw) : '';
+    student.concessionPercent = raw ? Math.min(100, Math.max(0, Number(payload.concessionPercent) || 0)) : 0;
+    student.feeReliefType = raw ? 'concession' : '';
+    if (raw) student.exemptionRemarks = '';
+  } else if (needsFeeRecalc && !(Number(student.monthlyFeeDiscount) > 0)) {
+    // Tuition discount cleared elsewhere (e.g. edit form) — no relief applies any more.
+    student.concessionCategory = '';
+    student.concessionPercent = 0;
+    student.feeReliefType = '';
+    student.exemptionRemarks = '';
+    student.reliefBaseMonthlyDiscount = 0;
+    student.reliefAmount = 0;
   }
 
   await student.save();
