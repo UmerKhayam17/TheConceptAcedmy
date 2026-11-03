@@ -41,9 +41,10 @@ const ABSENT_COLUMNS = [
   { key: 'serial', header: 'S.No', excelWidth: 7, pdfWidth: 28, align: 'center' },
   { key: 'date', header: 'Date', excelWidth: 12, pdfWidth: 62, align: 'center' },
   { key: 'studentId', header: 'Roll / ID', excelWidth: 14, pdfWidth: 72, wrap: true },
-  { key: 'name', header: 'Student Name', excelWidth: 20, pdfWidth: 120, wrap: true },
-  { key: 'className', header: 'Class', excelWidth: 12, pdfWidth: 52, align: 'center' },
-  { key: 'section', header: 'Section', excelWidth: 12, pdfWidth: 52, align: 'center' },
+  { key: 'name', header: 'Student Name', excelWidth: 20, pdfWidth: 110, wrap: true },
+  { key: 'phone', header: 'Contact No', excelWidth: 16, pdfWidth: 72, align: 'center' },
+  { key: 'className', header: 'Class', excelWidth: 12, pdfWidth: 48, align: 'center' },
+  { key: 'section', header: 'Section', excelWidth: 12, pdfWidth: 48, align: 'center' },
 ];
 
 const REPORT_OPTS = {
@@ -66,6 +67,10 @@ function sectionNameOf(s) {
 
 function studentRef(s) {
   return s.rollNumber || s.studentId || s.registrationNumber || '';
+}
+
+function contactNoOf(s) {
+  return String(s?.phone || s?.contactPhoneRes || '').trim() || '—';
 }
 
 function statusLabel(status) {
@@ -211,6 +216,7 @@ function mapAbsentRows(absentDays) {
         date: day.date || '—',
         studentId: studentRef(s) || '—',
         name: s.studentName || '',
+        phone: contactNoOf(s),
         className: classNameOf(s) || '—',
         section: sectionNameOf(s) || '—',
       });
@@ -233,6 +239,7 @@ function dayAbsentRows(day) {
     serial: i + 1,
     studentId: studentRef(s) || '—',
     name: s.studentName || '',
+    phone: contactNoOf(s),
     className: classNameOf(s) || '—',
     section: sectionNameOf(s) || '—',
   }));
@@ -251,7 +258,7 @@ function dayAbsentMeta(meta, day) {
 async function renderAbsentListExcel(absentDays, meta = {}) {
   const rows = mapAbsentRows(absentDays);
   return renderBrandedExcel({
-    title: 'Absent List — Date Wise',
+    title: 'Absent List',
     sheetName: 'Absent List',
     subject: 'Date-wise student absent register',
     columns: ABSENT_COLUMNS,
@@ -288,7 +295,7 @@ async function renderAbsentListPdf(absentDays, meta = {}) {
 
   const rows = mapAbsentRows(days);
   return renderBrandedPdf({
-    title: 'Absent List — Date Wise',
+    title: 'Absent List',
     subject: 'Date-wise student absent register',
     columns: days.length === 1 ? dayColumns : ABSENT_COLUMNS,
     rows: days.length === 1 ? dayAbsentRows(days[0]) : rows,
@@ -416,6 +423,7 @@ function buildAbsentRegister({ students, days, markedDays, statusByStudentDay })
     rows.push({
       regNo: registrationNoOf(s),
       name: s.studentName || '',
+      phone: contactNoOf(s),
       cells,
       absent,
     });
@@ -465,9 +473,15 @@ function attendanceRegisterSpec(register) {
   };
 }
 
+const ABSENT_REGISTER_LEAD = [
+  ...REGISTER_LEAD,
+  { key: 'phone', title: 'Contact No', width: 78, compactWidth: 70, excelWidth: 16, align: 'center' },
+];
+
 function absentRegisterSpec(register) {
   return {
     ...REGISTER_COMMON,
+    leadColumns: ABSENT_REGISTER_LEAD,
     title: 'Student Absent Register',
     pdfSubject: 'Student day-wise absent register',
     emptyMessage: 'No absentees in the selected date range.',

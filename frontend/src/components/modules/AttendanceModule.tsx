@@ -593,7 +593,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                     id: "attendance",
                     label: isRange ? "Attendance summary" : "Daily attendance",
                   },
-                  { id: "absent", label: "Absent list (date-wise)" },
+                  { id: "absent", label: "Absent list" },
                 ]}
                 onDownload={(format, reportKind) =>
                   void handleExport(
