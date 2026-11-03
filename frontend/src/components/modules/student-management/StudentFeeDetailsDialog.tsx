@@ -348,28 +348,6 @@ function useSaveRelief(student: AcademyStudent, label: "Concession" | "Exemption
   });
 }
 
-/** Tuition summary: list fee, active concession / exemption, and what the parent pays. */
-function TuitionBasis({ student }: { student: AcademyStudent }) {
-  const { monthly, reliefAmt, relief } = tuitionSplit(student);
-  const label = relief === "exemption" ? "Exemption" : "Concession";
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-      <div className="rounded-md border bg-muted/20 px-3 py-2">
-        <p className="text-xs text-muted-foreground">Tuition fee (monthly)</p>
-        <p className="font-semibold tabular-nums">PKR {num(monthly)}</p>
-      </div>
-      <div className="rounded-md border bg-muted/20 px-3 py-2">
-        <p className="text-xs text-muted-foreground">{relief ? `Current ${label.toLowerCase()}` : "Concession / exemption"}</p>
-        <p className="font-semibold tabular-nums">PKR {num(reliefAmt)}</p>
-      </div>
-      <div className="rounded-md border bg-muted/20 px-3 py-2">
-        <p className="text-xs text-muted-foreground">Payable tuition / month</p>
-        <p className="font-semibold tabular-nums">PKR {num(monthly - reliefAmt)}</p>
-      </div>
-    </div>
-  );
-}
-
 function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit: boolean }) {
   // Concession is a category % of the monthly tuition; admission fee is never touched.
   const { monthly, agreed, relief, reliefAmt } = tuitionSplit(student);
@@ -414,8 +392,6 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
           Concession is taken off the monthly tuition. A student can have a concession or an exemption, not both.
         </span>
       </p>
-
-      <TuitionBasis student={student} />
 
       {relief === "exemption" && <ReliefLockedNotice student={student} other="exemption" />}
 
@@ -576,8 +552,6 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
           Exemption is taken off the monthly tuition. A student can have a concession or an exemption, not both.
         </span>
       </p>
-
-      <TuitionBasis student={student} />
 
       {relief === "concession" && <ReliefLockedNotice student={student} other="concession" />}
 
