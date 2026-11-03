@@ -90,8 +90,8 @@ const MARK_BUTTONS = [
   {
     status: "present" as const,
     label: "P",
-    on: "border-transparent bg-gold-gradient text-accent-foreground shadow-gold hover:bg-gold-gradient",
-    off: "border-primary bg-transparent text-primary hover:bg-primary hover:text-primary-foreground",
+    on: "!border-primary !bg-primary !text-primary-foreground hover:!bg-primary",
+    off: "!border-primary !bg-transparent !text-primary hover:!bg-primary hover:!text-primary-foreground",
   },
   {
     status: "late" as const,
@@ -114,7 +114,7 @@ const MARK_BUTTONS = [
 ];
 
 function statusBadgeClass(status: string) {
-  if (status === "present") return "border-emerald-200/80 bg-emerald-500/10 text-emerald-700";
+  if (status === "present") return "border-primary/20 bg-primary/10 text-primary";
   if (status === "late") return "border-amber-200 bg-amber-100 text-amber-800";
   if (status === "absent") return "border-rose-200 bg-rose-100 text-rose-800";
   if (status === "leave") return "border-sky-200 bg-sky-100 text-sky-800";
@@ -122,7 +122,7 @@ function statusBadgeClass(status: string) {
 }
 
 function statusDotClass(status: string) {
-  if (status === "present") return "bg-emerald-600";
+  if (status === "present") return "bg-primary";
   if (status === "late") return "bg-amber-500";
   if (status === "absent") return "bg-rose-600";
   if (status === "leave") return "bg-sky-600";
@@ -623,7 +623,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                 <Button
                   type="button"
                   size="sm"
-                  className="h-9 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                  className="h-9 gap-1.5 bg-primary text-primary-foreground hover:bg-primary"
                   disabled={markMut.isPending}
                   onClick={() => markSelected("present")}
                 >
