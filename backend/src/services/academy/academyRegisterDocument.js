@@ -210,7 +210,18 @@ function drawRegisterIntro(doc, spec, meta, margin, usable, continued) {
   return 26;
 }
 
-/** Split the date columns into page-width blocks (e.g. 31 days per block). */
+/** How many day columns fit on one landscape page at a readable width. */
+function daysThatFit(spec, pageWidth) {
+  const margin = 12;
+  const usable = Math.floor(pageWidth - margin * 2);
+  const lead = (spec.leadColumns || []).reduce((sum, column) => sum + (column.compactWidth || column.width || 0), 0);
+  const tail = (spec.tailColumns || []).reduce((sum, column) => sum + Math.max(20, (column.width || 24) - 4), 0);
+  const budget = Math.max(0, usable - lead - tail);
+  const minDayWidth = 14;
+  return Math.max(1, Math.floor(budget / minDayWidth));
+}
+
+/** Split date columns only when they cannot fit on one page. */
 function chunkRegister(register, size) {
   const total = register.dayCols.length;
   if (!size || total <= size) return [register];
@@ -250,7 +261,7 @@ async function renderRegisterPdf(register, spec, meta = {}) {
 
       const rowH = 13;
       const bottom = doc.page.height - 40;
-      const blocks = chunkRegister(register, spec.maxDaysPerPage);
+      const blocks = chunkRegister(register, daysThatFit(spec, doc.page.width));
 
       blocks.forEach((block, blockIndex) => {
         const { margin, usable, columns } = layoutRegisterColumns(spec, block.dayCols.length, doc.page.width);

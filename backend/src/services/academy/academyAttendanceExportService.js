@@ -325,7 +325,6 @@ function registrationNoOf(s) {
 const REGISTER_COMMON = {
   footerText: 'Confidential attendance register',
   leadColumns: REGISTER_LEAD,
-  maxDaysPerPage: 31,
   sheetName: 'Register',
 };
 
