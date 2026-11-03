@@ -162,7 +162,7 @@ function KpiCard({
   return (
     <div className={cn(cardClass, "p-4 sm:p-5 flex flex-col gap-3 transition-shadow hover:shadow-md")}>
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <div
             className="h-10 w-10 rounded-xl grid place-items-center shrink-0"
             style={{ backgroundColor: iconBg }}
@@ -170,8 +170,8 @@ function KpiCard({
             <Icon className="h-5 w-5" style={{ color: iconColor }} />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-medium text-slate-500 truncate">{label}</p>
-            <p className="text-lg sm:text-xl font-bold tracking-tight text-[#10264D] truncate">{value}</p>
+            <p className="text-xs font-medium text-slate-500">{label}</p>
+            <p className="text-lg font-bold tracking-tight text-[#10264D] break-words sm:text-xl">{value}</p>
           </div>
         </div>
         <Sparkline data={sparkData} color={sparkColor} />
@@ -784,7 +784,7 @@ const FinanceDashboard = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 2xl:grid-cols-4">
           <KpiCard
             label="Total Revenue"
             value={formatPkr(feesCollected)}
@@ -1308,61 +1308,56 @@ const FinanceDashboard = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-slate-500 border-b border-slate-100">
-                    <th className="px-4 py-2.5 font-medium">Date</th>
-                    <th className="px-2 py-2.5 font-medium">Type</th>
-                    <th className="px-2 py-2.5 font-medium">Description</th>
-                    <th className="px-2 py-2.5 font-medium text-right">Amount</th>
-                    <th className="px-4 py-2.5 font-medium">Status</th>
-                    <th className="px-2 py-2.5 font-medium"> </th>
+            <table className="w-full table-fixed text-xs">
+              <thead>
+                <tr className="text-left text-slate-500 border-b border-slate-100">
+                  <th className="w-[22%] px-3 py-2.5 font-medium">Date</th>
+                  <th className="w-[28%] px-2 py-2.5 font-medium">Type</th>
+                  <th className="w-[24%] px-2 py-2.5 font-medium text-right">Amount</th>
+                  <th className="w-[18%] px-2 py-2.5 font-medium">Status</th>
+                  <th className="w-[8%] px-2 py-2.5 font-medium"> </th>
+                </tr>
+              </thead>
+              <tbody>
+                {txSlice.map((t) => (
+                  <tr
+                    key={t.id}
+                    role="button"
+                    tabIndex={0}
+                    className="border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer focus-visible:bg-slate-100 focus-visible:outline-none"
+                    onClick={() => setSelectedTx(t)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedTx(t);
+                      }
+                    }}
+                    aria-label={`View transaction ${t.id}`}
+                  >
+                    <td className="px-3 py-2.5 text-slate-600">{t.date}</td>
+                    <td className="px-2 py-2.5 font-medium text-[#10264D]">{t.type}</td>
+                    <td className="px-2 py-2.5 text-right font-semibold text-[#10264D]">
+                      {formatPkr(t.amount)}
+                    </td>
+                    <td className="px-2 py-2.5">{statusBadge(t.status)}</td>
+                    <td className="px-2 py-2.5">
+                      <span className="inline-flex text-slate-400" aria-hidden>
+                        <Eye className="h-3.5 w-3.5" />
+                      </span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {txSlice.map((t) => (
-                    <tr
-                      key={t.id}
-                      role="button"
-                      tabIndex={0}
-                      className="border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer focus-visible:bg-slate-100 focus-visible:outline-none"
-                      onClick={() => setSelectedTx(t)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSelectedTx(t);
-                        }
-                      }}
-                      aria-label={`View transaction ${t.id}`}
-                    >
-                      <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">{t.date}</td>
-                      <td className="px-2 py-2.5 text-[#10264D] font-medium whitespace-nowrap">{t.type}</td>
-                      <td className="px-2 py-2.5 text-slate-600 max-w-[140px] truncate">
-                        {t.studentOrPayee} — {t.description}
-                      </td>
-                      <td className="px-2 py-2.5 text-right font-semibold text-[#10264D] whitespace-nowrap">
-                        {formatPkr(t.amount)}
-                      </td>
-                      <td className="px-4 py-2.5">{statusBadge(t.status)}</td>
-                      <td className="px-2 py-2.5">
-                        <span className="inline-flex text-slate-400" aria-hidden>
-                          <Eye className="h-3.5 w-3.5" />
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {!txSlice.length && (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
-                        No transactions match your filters.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                ))}
+                {!txSlice.length && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                      No transactions match your filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
             <ListPagination
+              compact
               page={txPage}
               totalPages={txPages}
               total={filteredTx.length}
@@ -1475,6 +1470,7 @@ const FinanceDashboard = () => {
               <p className="text-xs font-semibold text-[#EF4444]">Total Pending {formatPkr(pendingTotal)}</p>
             </div>
             <ListPagination
+              compact
               page={duePage}
               totalPages={duePages}
               total={filteredDues.length}

@@ -81,6 +81,7 @@ export default function ListPagination({
   onPageChange,
   noun,
   attached = true,
+  compact = false,
   className,
 }: {
   page: number;
@@ -95,6 +96,8 @@ export default function ListPagination({
   noun?: string;
   /** Sits on the bottom edge of a table card. */
   attached?: boolean;
+  /** One-line pager for narrow cards: range plus previous / next. */
+  compact?: boolean;
   className?: string;
 }) {
   const safePages = Math.max(1, totalPages || 1);
@@ -102,6 +105,53 @@ export default function ListPagination({
   const rangeFrom =
     from ?? (total === 0 || !pageSize ? 0 : (safePage - 1) * pageSize + 1);
   const rangeTo = to ?? (pageSize ? Math.min(safePage * pageSize, total) : total);
+
+  if (compact) {
+    return (
+      <div
+        className={cn(
+          "flex min-w-0 items-center justify-between gap-2 px-3 py-2",
+          attached ? "border-t bg-muted/10" : "rounded-xl border bg-card shadow-sm",
+          className,
+        )}
+      >
+        <p className="min-w-0 truncate text-[11px] leading-4 text-muted-foreground">
+          <span className="font-semibold tabular-nums text-foreground">
+            {rangeFrom.toLocaleString()}–{rangeTo.toLocaleString()}
+          </span>
+          {" of "}
+          <span className="font-semibold tabular-nums text-foreground">{total.toLocaleString()}</span>
+        </p>
+        {safePages > 1 ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-7 w-7 rounded-md p-0"
+              disabled={safePage <= 1}
+              onClick={() => onPageChange(safePage - 1)}
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="min-w-[3.25rem] text-center text-[11px] font-semibold tabular-nums text-[#10264D]">
+              {safePage} / {safePages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-7 w-7 rounded-md p-0"
+              disabled={safePage >= safePages}
+              onClick={() => onPageChange(safePage + 1)}
+              aria-label="Next page"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div
