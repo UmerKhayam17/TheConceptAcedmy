@@ -35,17 +35,76 @@ export function isFreeFeeStudent(
   return /full fee waiver|free student/i.test(String(record.notes || ""));
 }
 
+export type FeeReliefTab = "" | "concession" | "exemption";
+
+function FeeOptionCard({
+  selected,
+  disabled,
+  title,
+  description,
+  onClick,
+}: {
+  selected: boolean;
+  disabled?: boolean;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "group relative rounded-md border px-4 py-3.5 text-left transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        selected
+          ? "border-foreground/25 bg-foreground/[0.04] shadow-sm"
+          : "border-border bg-background hover:border-foreground/20 hover:bg-muted/40",
+        disabled && "cursor-not-allowed opacity-50",
+      )}
+    >
+      <span className="flex items-start justify-between gap-3">
+        <span>
+          <span className="block text-sm font-semibold tracking-tight text-foreground">{title}</span>
+          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{description}</span>
+        </span>
+        <span
+          className={cn(
+            "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+            selected
+              ? "border-foreground bg-foreground text-background"
+              : "border-muted-foreground/40 bg-transparent",
+          )}
+          aria-hidden
+        >
+          {selected ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 export function FeeModeSelector({
   value,
   onChange,
   disabled,
   className,
+  relief,
 }: {
   value: FeeMode;
   onChange: (mode: FeeMode) => void;
   disabled?: boolean;
   className?: string;
+  /** When provided, Concession and Exemption are shown as their own options. */
+  relief?: {
+    value: FeeReliefTab;
+    onChange: (type: "concession" | "exemption") => void;
+  };
 }) {
+  const active: FeeMode | "concession" | "exemption" =
+    value === "waiver" ? "waiver" : relief?.value ? relief.value : "normal";
+
   return (
     <div className={cn("space-y-2.5", className)}>
       <div>
@@ -56,79 +115,47 @@ export function FeeModeSelector({
       <div
         role="group"
         aria-label="Fee arrangement"
-        className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+        className={cn(
+          "grid grid-cols-1 gap-2 sm:grid-cols-2",
+          relief && "lg:grid-cols-4",
+        )}
       >
-        <button
-          type="button"
+        <FeeOptionCard
+          selected={active === "normal"}
           disabled={disabled}
+          title="Normal fees"
+          description={
+            relief
+              ? "Standard billing at the full tuition rate"
+              : "Standard billing with optional partial discount"
+          }
           onClick={() => onChange("normal")}
-          className={cn(
-            "group relative rounded-md border px-4 py-3.5 text-left transition-colors",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            value === "normal"
-              ? "border-foreground/25 bg-foreground/[0.04] shadow-sm"
-              : "border-border bg-background hover:border-foreground/20 hover:bg-muted/40",
-            disabled && "cursor-not-allowed opacity-50",
-          )}
-        >
-          <span className="flex items-start justify-between gap-3">
-            <span>
-              <span className="block text-sm font-semibold tracking-tight text-foreground">
-                Normal fees
-              </span>
-              <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                Standard billing with optional partial discount
-              </span>
-            </span>
-            <span
-              className={cn(
-                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
-                value === "normal"
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-muted-foreground/40 bg-transparent",
-              )}
-              aria-hidden
-            >
-              {value === "normal" ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
-            </span>
-          </span>
-        </button>
-
-        <button
-          type="button"
+        />
+        {relief ? (
+          <>
+            <FeeOptionCard
+              selected={active === "concession"}
+              disabled={disabled}
+              title="Concession"
+              description="Reduced tuition based on a concession category"
+              onClick={() => relief.onChange("concession")}
+            />
+            <FeeOptionCard
+              selected={active === "exemption"}
+              disabled={disabled}
+              title="Exemption"
+              description="Fixed monthly amount waived with a recorded reason"
+              onClick={() => relief.onChange("exemption")}
+            />
+          </>
+        ) : null}
+        <FeeOptionCard
+          selected={active === "waiver"}
           disabled={disabled}
+          title="Full waiver"
+          description="No fees due — recorded as paid at ₨ 0 each month"
           onClick={() => onChange("waiver")}
-          className={cn(
-            "group relative rounded-md border px-4 py-3.5 text-left transition-colors",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            value === "waiver"
-              ? "border-foreground/25 bg-foreground/[0.04] shadow-sm"
-              : "border-border bg-background hover:border-foreground/20 hover:bg-muted/40",
-            disabled && "cursor-not-allowed opacity-50",
-          )}
-        >
-          <span className="flex items-start justify-between gap-3">
-            <span>
-              <span className="block text-sm font-semibold tracking-tight text-foreground">
-                Full waiver
-              </span>
-              <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                No fees due — recorded as paid at ₨ 0 each month
-              </span>
-            </span>
-            <span
-              className={cn(
-                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
-                value === "waiver"
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-muted-foreground/40 bg-transparent",
-              )}
-              aria-hidden
-            >
-              {value === "waiver" ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
-            </span>
-          </span>
-        </button>
+        />
       </div>
 
       {value === "waiver" && (

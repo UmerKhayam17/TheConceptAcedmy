@@ -24,7 +24,8 @@ import {
 import type { AcademyStudentRoutes } from "@/lib/studentManagementMenus";
 import { cn } from "@/lib/utils";
 import { isFreeFeeStudent } from "./FeeModeSelector";
-import { EXEMPTION_REMARKS, studentFeeRelief, type FeeReliefType } from "./registerStudentForm";
+import { ExemptionRemarksInput } from "./ExemptionRemarksInput";
+import { studentFeeRelief, type FeeReliefType } from "./registerStudentForm";
 import { classLabel, formatDate, MONTH_NAMES } from "./studentDisplayUtils";
 
 const num = (n?: number) => (Number(n) || 0).toLocaleString("en-PK");
@@ -542,12 +543,12 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
   const [remarks, setRemarks] = useState(curRemarks);
 
   const amount = Math.min(Math.max(0, Math.round(Number(amountInput) || 0)), agreed);
-  const changed = amount !== curAmt || remarks !== curRemarks;
-  const remarkOptions =
-    curRemarks && !EXEMPTION_REMARKS.includes(curRemarks) ? [curRemarks, ...EXEMPTION_REMARKS] : EXEMPTION_REMARKS;
+  const trimmedRemarks = remarks.trim();
+  const changed = amount !== curAmt || trimmedRemarks !== curRemarks;
 
   const saveMut = useSaveRelief(student, "Exemption");
-  const apply = () => saveMut.mutate({ feeReliefType: "exemption", exemptionRemarks: remarks, monthlyFeeDiscount: amount });
+  const apply = () =>
+    saveMut.mutate({ feeReliefType: "exemption", exemptionRemarks: trimmedRemarks, monthlyFeeDiscount: amount });
   const remove = () => saveMut.mutate({ feeReliefType: "", monthlyFeeDiscount: 0 });
 
   const shownAmt = relief === "concession" ? 0 : amount;
@@ -582,7 +583,7 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
 
       {canEdit && relief !== "concession" && (
         <div className="rounded-md border p-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <Field label="Class">
               <select className={selectCls} disabled value="cls">
                 <option value="cls">{classLabel(student.classId)}</option>
@@ -603,20 +604,15 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
                 onChange={(e) => setAmountInput(e.target.value)}
               />
             </Field>
-            <Field label="Exemption Remarks">
-              <select className={selectCls} value={remarks} onChange={(e) => setRemarks(e.target.value)}>
-                <option value="" />
-                {remarkOptions.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Exemption Remarks">
+                <ExemptionRemarksInput className={selectCls} value={remarks} onChange={setRemarks} />
+              </Field>
+            </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {amount > 0 && !remarks && (
-              <span className="mr-auto text-xs text-muted-foreground">Choose exemption remarks to continue.</span>
+            {amount > 0 && !trimmedRemarks && (
+              <span className="mr-auto text-xs text-muted-foreground">Enter or choose exemption remarks to continue.</span>
             )}
             <Button
               type="button"
@@ -636,7 +632,7 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
               type="button"
               size="sm"
               className="gap-2"
-              disabled={amount <= 0 || !remarks || !changed || saveMut.isPending}
+              disabled={amount <= 0 || !trimmedRemarks || !changed || saveMut.isPending}
               onClick={apply}
             >
               <ShieldCheck className="h-4 w-4" />

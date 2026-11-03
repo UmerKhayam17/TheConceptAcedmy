@@ -22,7 +22,7 @@ export const emptyAcademicRow = (): AcademicRow => ({
 
 export type FeeReliefType = "" | "concession" | "exemption";
 
-/** Reasons offered when an exemption is applied (registration form + Student Fee modal). */
+/** Suggested exemption reasons (registration form + Student Fee modal); custom text is also allowed. */
 export const EXEMPTION_REMARKS = [
   "Full fee waiver",
   "Financial hardship",
@@ -32,7 +32,6 @@ export const EXEMPTION_REMARKS = [
   "Merit / position holder",
   "Management approval",
   "Principal approval",
-  "Other",
 ];
 
 /** Active relief; a discount from before categories existed counts as a concession. */

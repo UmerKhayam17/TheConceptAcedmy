@@ -80,7 +80,6 @@ import {
   buildStudentPayload,
   defaultRegisterForm,
   emptyAcademicRow,
-  EXEMPTION_REMARKS,
   mapStudentToForm,
   type AcademicRow,
   type FeeReliefType,
@@ -89,6 +88,7 @@ import { DateDmYInput } from "@/components/ui/date-dmy-input";
 import { AdditionalChargesChecklist } from "./AdditionalChargesChecklist";
 import { ClassProgramOptions } from "@/components/modules/ClassProgramSelect";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
+import { ExemptionRemarksInput } from "./ExemptionRemarksInput";
 import {
   FeeModeSelector,
   FreeStudentBadge,
@@ -1672,6 +1672,20 @@ export default function RegisterStudentPage({
             value={feeMode}
             onChange={handleFeeModeChange}
             disabled={!feePreview}
+            relief={{
+              value: form.feeReliefType,
+              onChange: (type) => {
+                // Leaving a full waiver restores the normal admission fee too.
+                if (feeMode === "waiver") handleFeeModeChange("normal");
+                setRelief({
+                  feeReliefType: type,
+                  reliefAmount: "0",
+                  concessionCategory: "",
+                  concessionPercent: "0",
+                  exemptionRemarks: "",
+                });
+              },
+            }}
           />
 
           {feeMode === "waiver" && (
@@ -1684,34 +1698,14 @@ export default function RegisterStudentPage({
           )}
 
           <div className="grid sm:grid-cols-2 gap-4">
+            {form.feeReliefType && feeMode !== "waiver" && (
             <div className="space-y-3 sm:col-span-2 rounded-lg border p-3">
               <div className="grid sm:grid-cols-3 gap-3">
-                <FormField label="Tuition relief">
-                  <select
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-70"
-                    value={form.feeReliefType}
-                    disabled={feeMode === "waiver" || !feePreview}
-                    onChange={(e) =>
-                      setRelief({
-                        feeReliefType: e.target.value as FeeReliefType,
-                        reliefAmount: "0",
-                        concessionCategory: "",
-                        concessionPercent: "0",
-                        exemptionRemarks: "",
-                      })
-                    }
-                  >
-                    <option value="">None — full tuition</option>
-                    <option value="concession">Concession (category)</option>
-                    <option value="exemption">Exemption (amount + reason)</option>
-                  </select>
-                </FormField>
                 {form.feeReliefType === "concession" && (
                   <FormField label="Concession category">
                     <select
                       className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-70"
                       value={form.concessionCategory}
-                      disabled={feeMode === "waiver"}
                       onChange={(e) => {
                         const cat = concessionCategories.find((c) => c.key === e.target.value);
                         setRelief(
@@ -1737,23 +1731,11 @@ export default function RegisterStudentPage({
                   </FormField>
                 )}
                 {form.feeReliefType === "exemption" && (
-                  <FormField label="Exemption remarks">
-                    <select
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-70"
+                  <FormField label="Exemption remarks" className="sm:col-span-2">
+                    <ExemptionRemarksInput
                       value={form.exemptionRemarks}
-                      disabled={feeMode === "waiver"}
-                      onChange={(e) => setRelief({ exemptionRemarks: e.target.value })}
-                    >
-                      <option value="" />
-                      {(form.exemptionRemarks && !EXEMPTION_REMARKS.includes(form.exemptionRemarks)
-                        ? [form.exemptionRemarks, ...EXEMPTION_REMARKS]
-                        : EXEMPTION_REMARKS
-                      ).map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setRelief({ exemptionRemarks: v })}
+                    />
                   </FormField>
                 )}
                 {form.feeReliefType && (
@@ -1767,34 +1749,31 @@ export default function RegisterStudentPage({
                       step={1}
                       max={feePreview?.monthlyFee}
                       value={form.reliefAmount}
-                      disabled={
-                        feeMode === "waiver" ||
-                        (form.feeReliefType === "concession" && !form.concessionCategory && form.reliefDirty)
-                      }
+                      disabled={form.feeReliefType === "concession" && !form.concessionCategory && form.reliefDirty}
                       onChange={(e) => setRelief({ reliefAmount: e.target.value })}
                     />
                   </FormField>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Monthly tuition payable:{" "}
-                <span className="font-semibold text-foreground">
-                  ₨ {(Number(form.monthlyPayable) || 0).toLocaleString()}
-                </span>
-                {feePreview
-                  ? ` (list ₨ ${feePreview.monthlyFee.toLocaleString()} − ${
-                      form.feeReliefType === "exemption" ? "exemption" : "concession"
-                    } ₨ ${(Number(form.monthlyFeeDiscount) || 0).toLocaleString()})`
-                  : ""}
-                . A student can have a concession or an exemption, not both.
-              </p>
+              {feePreview && (
+                <p className="text-xs text-muted-foreground">
+                  Monthly tuition payable:{" "}
+                  <span className="font-semibold text-foreground">
+                    ₨ {(Number(form.monthlyPayable) || 0).toLocaleString()}
+                  </span>
+                  {` (₨ ${feePreview.monthlyFee.toLocaleString()} − ${
+                    form.feeReliefType === "exemption" ? "exemption" : "concession"
+                  } ₨ ${(Number(form.monthlyFeeDiscount) || 0).toLocaleString()})`}
+                </p>
+              )}
               {form.reliefDirty && form.feeReliefType === "concession" && !form.concessionCategory && (
                 <p className="text-xs text-destructive">Choose a concession category.</p>
               )}
-              {form.reliefDirty && form.feeReliefType === "exemption" && !form.exemptionRemarks && (
-                <p className="text-xs text-destructive">Choose exemption remarks.</p>
+              {form.reliefDirty && form.feeReliefType === "exemption" && !form.exemptionRemarks.trim() && (
+                <p className="text-xs text-destructive">Enter or choose exemption remarks.</p>
               )}
             </div>
+            )}
             <FormField label="Admission total payable (PKR)">
               <IconInput
                 icon={Tag}
