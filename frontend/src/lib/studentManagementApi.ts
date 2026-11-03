@@ -1009,6 +1009,8 @@ export const fetchAcademyFees = async (params?: {
   year?: number;
   sessionId?: string;
   search?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.page) q.set("page", String(params.page));
@@ -1022,6 +1024,8 @@ export const fetchAcademyFees = async (params?: {
   if (params?.year) q.set("year", String(params.year));
   if (params?.sessionId) q.set("sessionId", params.sessionId);
   if (params?.search) q.set("search", params.search);
+  if (params?.dateFrom) q.set("dateFrom", params.dateFrom);
+  if (params?.dateTo) q.set("dateTo", params.dateTo);
   const res = await authedFetch(`/student-management/fees?${q}`);
   const body = await parseJson<{
     success?: boolean;
@@ -1637,6 +1641,8 @@ export type PaidFeeExportParams = {
   search?: string;
   sessionId?: string;
   feeType?: "admission" | "monthly" | "stationery";
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export const exportPaidFeesCsv = async (params?: PaidFeeExportParams) => {
@@ -1647,6 +1653,8 @@ export const exportPaidFeesCsv = async (params?: PaidFeeExportParams) => {
   if (params?.search) q.set("search", params.search);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
   if (params?.feeType) q.set("feeType", params.feeType);
+  if (params?.dateFrom) q.set("dateFrom", params.dateFrom);
+  if (params?.dateTo) q.set("dateTo", params.dateTo);
   const res = await authedFetch(`/student-management/fees/paid/export?${q}`, { method: "GET" });
   if (!res.ok) throw new Error("Export failed");
   return res.blob();
@@ -1664,6 +1672,8 @@ export const exportPaidFeesReport = async (
   if (params?.search) q.set("search", params.search);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
   if (params?.feeType) q.set("feeType", params.feeType);
+  if (params?.dateFrom) q.set("dateFrom", params.dateFrom);
+  if (params?.dateTo) q.set("dateTo", params.dateTo);
   const res = await authedFetch(`/student-management/fees/paid/export-report?${q}`, { method: "GET" });
   if (!res.ok) throw new Error("Export failed");
   return res.blob();

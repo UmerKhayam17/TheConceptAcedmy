@@ -601,7 +601,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             <option value="paid">Paid</option>
           </select>
 
-          <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
+          <div className="relative w-full min-w-[12rem] sm:max-w-md sm:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
@@ -611,7 +611,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             />
           </div>
 
-          <FilterToolbarActions>
+          <FilterToolbarActions className="sm:ml-0 sm:w-full sm:basis-full sm:justify-end sm:border-t sm:border-slate-200 sm:pt-3">
             {canGenerate ? (
               <Button
                 className="gap-2 h-10 shrink-0 rounded-md bg-slate-900 text-white hover:bg-slate-800"

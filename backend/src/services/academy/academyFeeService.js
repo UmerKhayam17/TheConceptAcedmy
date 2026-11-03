@@ -644,6 +644,8 @@ async function buildFeeQuery({
   sectionId,
   feeType,
   sessionId,
+  dateFrom,
+  dateTo,
   /** When true, only fee rows for active students (hides inactive / suspended). */
   activeStudentsOnly = false,
 }) {
@@ -652,6 +654,12 @@ async function buildFeeQuery({
   if (feeType) q.feeType = feeType;
   if (month) q.month = Number(month);
   if (year) q.year = Number(year);
+  if (dateFrom || dateTo) {
+    const paidAt = {};
+    if (dateFrom) paidAt.$gte = dayBounds(String(dateFrom)).start;
+    if (dateTo) paidAt.$lte = dayBounds(String(dateTo)).end;
+    q.paidAt = paidAt;
+  }
 
   const toObjectIds = (ids) =>
     ids
@@ -948,6 +956,8 @@ async function listFeeRecords({
   feeType,
   sessionId,
   search,
+  dateFrom,
+  dateTo,
 }) {
   await syncOverdueFees({
     studentId,
@@ -989,6 +999,8 @@ async function listFeeRecords({
     sectionId,
     feeType,
     sessionId,
+    dateFrom,
+    dateTo,
     activeStudentsOnly,
   });
   const q = await applyFeeRecordSearch(base, search);
@@ -2550,7 +2562,7 @@ function paymentMethodExportLabel(method) {
   return map[method] || method || '';
 }
 
-async function loadPaidFees({ classId, month, year, search, sessionId, feeType }) {
+async function loadPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo }) {
   const base = await buildFeeQuery({
     classId,
     month,
@@ -2558,6 +2570,8 @@ async function loadPaidFees({ classId, month, year, search, sessionId, feeType }
     sessionId,
     status: 'paid',
     feeType,
+    dateFrom,
+    dateTo,
   });
   const q = await applyFeeRecordSearch(base, search);
   // Keep paid history for inactive / suspended students (collection lists exclude them separately).
@@ -2696,8 +2710,8 @@ function paidFeesToCsv(records) {
   return [header, ...body].map((r) => r.map(escapeCsvCell).join(',')).join('\n');
 }
 
-async function exportPaidFees({ classId, month, year, search, sessionId, feeType }) {
-  const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType });
+async function exportPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo }) {
+  const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo });
   return paidFeesToCsv(records);
 }
 
@@ -2722,13 +2736,18 @@ function formatReportMonthLabel({ month, year, records = [], allLabel = 'All mon
   return `${allLabel} (${labels.length})`;
 }
 
-async function exportPaidFeesReport({ classId, month, year, search, sessionId, feeType, format }) {
-  const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType });
+async function exportPaidFeesReport({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo, format }) {
+  const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo });
   const { columns, rows } = buildPaidCollectionReport(records);
   const { sessionLabel, classLabel } = await resolveFeeReportContext({ sessionId, classId });
   const periodBits = [
+    dateFrom && dateTo
+      ? dateFrom === dateTo
+        ? `Date: ${dateFrom}`
+        : `From ${dateFrom}  To ${dateTo}`
+      : null,
     formatReportMonthLabel({ month, year, records, allLabel: 'All paid months' }),
-  ];
+  ].filter(Boolean);
   if (feeType) periodBits.push(paidFeeTypeLabel(feeType));
   const voucherCount = rows.length ? rows.length - 1 : 0;
   const meta = {

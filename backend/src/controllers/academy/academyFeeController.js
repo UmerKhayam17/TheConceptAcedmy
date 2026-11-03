@@ -38,6 +38,8 @@ const list = catchAsync(async (req, res) => {
     feeType: req.query.feeType,
     sessionId: isParent ? undefined : req.query.sessionId,
     search: req.query.search,
+    dateFrom: req.query.dateFrom,
+    dateTo: req.query.dateTo,
   });
   res.json({ success: true, data: result.items, pagination: result.pagination });
 });
@@ -272,6 +274,9 @@ function defaulterExportQuery(req) {
 
 function feeReportFileBase(prefix, query) {
   const parts = [prefix];
+  if (query.dateFrom && query.dateTo) {
+    parts.push(query.dateFrom === query.dateTo ? query.dateFrom : `${query.dateFrom}_to_${query.dateTo}`);
+  }
   if (query.month && query.year) {
     const monthNames = [
       'January',
@@ -333,6 +338,8 @@ function paidExportQuery(req) {
     search: req.query.search,
     sessionId: req.query.sessionId,
     feeType: req.query.feeType,
+    dateFrom: req.query.dateFrom,
+    dateTo: req.query.dateTo,
   };
 }
 

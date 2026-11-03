@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DateRangePickerField } from "@/components/ui/date-range-picker";
+import { localTodayYmd } from "@/lib/localDate";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -530,6 +532,8 @@ export default function AcademyFeesManagement({
   const now = new Date();
   const [month, setMonth] = useState(() => String(now.getMonth() + 1));
   const [year, setYear] = useState(() => String(now.getFullYear()));
+  const [paidDateFrom, setPaidDateFrom] = useState(() => localTodayYmd().slice(0, 8) + "01");
+  const [paidDateTo, setPaidDateTo] = useState(() => localTodayYmd());
   /** Month dropdown choices: 3 months ahead back to 24 months ago, newest first. */
   const monthOptions = useMemo(() => {
     const base = new Date();
@@ -606,8 +610,21 @@ export default function AcademyFeesManagement({
       sectionId: effectiveStudentId || isParent ? undefined : sectionFilter || undefined,
       studentId: effectiveStudentId,
       sessionId: effectiveStudentId || isParent ? undefined : apiSessionId,
+      dateFrom: paidOnlyView ? paidDateFrom : undefined,
+      dateTo: paidOnlyView ? paidDateTo : undefined,
     }),
-    [month, year, classFilter, sectionFilter, effectiveStudentId, isParent, apiSessionId]
+    [
+      month,
+      year,
+      classFilter,
+      sectionFilter,
+      effectiveStudentId,
+      isParent,
+      apiSessionId,
+      paidOnlyView,
+      paidDateFrom,
+      paidDateTo,
+    ]
   );
 
   useEffect(() => {
@@ -627,7 +644,7 @@ export default function AcademyFeesManagement({
 
   useEffect(() => {
     setPage(1);
-  }, [search, sectionFilter]);
+  }, [search, sectionFilter, paidDateFrom, paidDateTo]);
 
   useEffect(() => {
     if (!isParent) return;
@@ -1126,8 +1143,10 @@ export default function AcademyFeesManagement({
       classId: classFilter || undefined,
       search: search.trim() || undefined,
       sessionId: apiSessionId,
+      dateFrom: paidDateFrom,
+      dateTo: paidDateTo,
     }),
-    [month, year, classFilter, search, apiSessionId]
+    [month, year, classFilter, search, apiSessionId, paidDateFrom, paidDateTo]
   );
 
   const downloadPaidReport = async (format: DefaulterReportFormat) => {
@@ -1150,11 +1169,15 @@ export default function AcademyFeesManagement({
         "December",
       ];
       const period =
-        month && year
-          ? `${MONTHS[Number(month) - 1] || month}-${year}`
-          : year
-            ? String(year)
-            : "All";
+        paidDateFrom && paidDateTo
+          ? paidDateFrom === paidDateTo
+            ? paidDateFrom
+            : `${paidDateFrom}_to_${paidDateTo}`
+          : month && year
+            ? `${MONTHS[Number(month) - 1] || month}-${year}`
+            : year
+              ? String(year)
+              : "All";
       const mode = deliverReportBlob(blob, `Paid-Fees_${period}.${format}`, format, preview);
       toast({
         title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
@@ -1302,11 +1325,26 @@ export default function AcademyFeesManagement({
                 <div
                   className={cn(
                     "grid items-end gap-3 grid-cols-1 min-[480px]:grid-cols-2",
-                    lockedStatus
-                      ? "lg:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.6fr)]"
-                      : "lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.6fr)]",
+                    paidOnlyView
+                      ? "xl:grid-cols-[minmax(14rem,1.15fr)_repeat(3,minmax(0,1fr))_minmax(0,1.3fr)]"
+                      : lockedStatus
+                        ? "lg:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.6fr)]"
+                        : "lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.6fr)]",
                   )}
                 >
+                  {paidOnlyView && (
+                    <FeeFilterField label="Date range">
+                      <DateRangePickerField
+                        from={paidDateFrom}
+                        to={paidDateTo}
+                        onChange={(nextFrom, nextTo) => {
+                          setPaidDateFrom(nextFrom);
+                          setPaidDateTo(nextTo);
+                        }}
+                        className="h-9 w-full min-w-0"
+                      />
+                    </FeeFilterField>
+                  )}
                   <FeeFilterField label="Month">
                     <FeeFilterSelect
                       value={monthValue}
