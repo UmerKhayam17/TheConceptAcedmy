@@ -6,12 +6,21 @@ const { addFeeVoucherGenerationJob } = require('./queues');
 const { DEFAULT_TZ, todayYmd, minutesSinceMidnight } = require('../utils/schoolDay');
 const { markAbsentForDay, autoAbsentTime } = require('../services/academy/autoAbsentService');
 
+const { markStaffAbsentForDay } = require('../services/staffAutoAbsentService');
+
 async function runAutoAbsent(reason) {
   try {
     const result = await markAbsentForDay(todayYmd());
     console.log(`[auto-absent] ${reason}:`, JSON.stringify(result));
   } catch (err) {
     console.error('[auto-absent] failed:', err?.message || err);
+  }
+  if (String(process.env.STAFF_AUTO_ABSENT_ENABLED || 'true').toLowerCase() === 'false') return;
+  try {
+    const result = await markStaffAbsentForDay(todayYmd());
+    console.log(`[auto-absent:staff] ${reason}:`, JSON.stringify(result));
+  } catch (err) {
+    console.error('[auto-absent:staff] failed:', err?.message || err);
   }
 }
 

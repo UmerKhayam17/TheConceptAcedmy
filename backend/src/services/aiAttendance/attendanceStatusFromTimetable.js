@@ -115,6 +115,83 @@ async function resolveStudentAttendanceStatus(studentId, checkIn = new Date()) {
   return statusFromMinutes(checkInMinutes, startMinutes, grace);
 }
 
+function scheduleSlotModels() {
+  return {
+    TimetableVersion: require('../../models/timetable/TimetableVersion'),
+    ScheduleSlot: require('../../models/timetable/ScheduleSlot'),
+  };
+}
+
+/** Active session (timezone + working days), or null. */
+async function activeSession() {
+  return Session.findOne({ isActive: true }).select('_id timezone workingDays').lean();
+}
+
+/**
+ * Teacher's timetable for the active session: start minutes of every period they
+ * teach, grouped by weekday. Empty map when the user is not on any published timetable.
+ */
+async function getTeacherWeekdayStarts(userId, sessionId) {
+  const byWeekday = new Map();
+  if (!userId || !sessionId) return byWeekday;
+  const { TimetableVersion, ScheduleSlot } = scheduleSlotModels();
+
+  const versions = await TimetableVersion.find({ session: sessionId, status: 'published' })
+    .select('_id periodTemplate')
+    .populate({ path: 'periodTemplate', select: 'slots' })
+    .lean();
+  if (!versions.length) return byWeekday;
+
+  const periodByVersion = new Map(
+    versions.map((v) => [
+      String(v._id),
+      new Map((v.periodTemplate?.slots || []).map((p) => [String(p._id), p])),
+    ])
+  );
+
+  const slots = await ScheduleSlot.find({
+    timetableVersion: { $in: versions.map((v) => v._id) },
+    cancelled: { $ne: true },
+    $or: [{ teacher: userId }, { 'parallelEntries.teacher': userId }],
+  })
+    .select('timetableVersion periodId day')
+    .lean();
+
+  slots.forEach((slot) => {
+    const period = periodByVersion.get(String(slot.timetableVersion))?.get(String(slot.periodId));
+    if (!period) return;
+    if (period.type && !START_PERIOD_TYPES.has(period.type)) return;
+    const start = hhmmToMinutes(period.startTime);
+    if (start == null) return;
+    const weekday = String(slot.day || '').toLowerCase();
+    if (!byWeekday.has(weekday)) byWeekday.set(weekday, []);
+    byWeekday.get(weekday).push(start);
+  });
+  return byWeekday;
+}
+
+/**
+ * Earliest period start today for a teacher on the published timetable of the
+ * active session. Empty when they teach nothing today (caller uses 9:30).
+ */
+async function getTeacherFirstPeriodStartMinutes(userId, checkIn = new Date()) {
+  const session = await activeSession();
+  const timeZone = session?.timezone || DEFAULT_TZ;
+  if (!session) return { startMinutes: null, timeZone };
+  const byWeekday = await getTeacherWeekdayStarts(userId, session._id);
+  const todayStarts = byWeekday.get(weekdayName(checkIn, timeZone)) || [];
+  if (!todayStarts.length) return { startMinutes: null, timeZone };
+  return { startMinutes: Math.min(...todayStarts), timeZone };
+}
+
+/** Same rule as students: earliest period today + grace; otherwise 9:30 AM. */
+async function resolveStaffAttendanceStatus(userId, checkIn = new Date()) {
+  const { startMinutes, timeZone } = await getTeacherFirstPeriodStartMinutes(userId, checkIn);
+  const checkInMinutes = minutesSinceMidnight(checkIn, timeZone);
+  const grace = startMinutes == null ? 0 : graceMinutes();
+  return statusFromMinutes(checkInMinutes, startMinutes, grace);
+}
+
 function resolveFallbackAttendanceStatus(checkIn = new Date()) {
   const checkInMinutes = minutesSinceMidnight(checkIn, DEFAULT_TZ);
   return statusFromMinutes(checkInMinutes, null, 0);
@@ -124,7 +201,11 @@ module.exports = {
   graceMinutes,
   resolveStudentAttendanceStatus,
   resolveFallbackAttendanceStatus,
+  resolveStaffAttendanceStatus,
   getStudentFirstPeriodStartMinutes,
+  getTeacherFirstPeriodStartMinutes,
+  getTeacherWeekdayStarts,
+  activeSession,
   hhmmToMinutes,
   statusFromMinutes,
   slotMatchesEnrollment,

@@ -27,7 +27,6 @@ const SUMMARY_COLUMNS = [
   { key: 'late', header: 'Late', excelWidth: 8, pdfWidth: 40, align: 'center' },
   { key: 'absent', header: 'Absent', excelWidth: 10, pdfWidth: 46, align: 'center' },
   { key: 'leave', header: 'Leave', excelWidth: 8, pdfWidth: 40, align: 'center' },
-  { key: 'unmarked', header: 'Unmarked', excelWidth: 11, pdfWidth: 50, align: 'center' },
   { key: 'attendance', header: 'Attendance %', excelWidth: 14, pdfWidth: 58, align: 'center' },
 ];
 
@@ -58,7 +57,7 @@ function statusLabel(status) {
 function summaryLine(summary) {
   if (!summary) return '';
   const total = summary.totalClasses ?? summary.present ?? 0;
-  return `Total classes ${total}  ·  Present ${summary.present ?? 0}  ·  Late ${summary.late ?? 0}  ·  Absent ${summary.absent ?? 0}  ·  Leave ${summary.leave ?? 0}  ·  Unmarked ${summary.unmarked ?? 0}`;
+  return `Total classes ${total}  ·  Present ${summary.present ?? 0}  ·  Late ${summary.late ?? 0}  ·  Absent ${summary.absent ?? 0}  ·  Leave ${summary.leave ?? 0}`;
 }
 
 function buildReportMeta(meta, summary, countLabel) {
@@ -86,7 +85,6 @@ function mapSummaryRows(teachers) {
       late: t.late ?? 0,
       absent: t.absent ?? 0,
       leave: t.leave ?? 0,
-      unmarked: t.unmarked ?? 0,
       attendance: `${t.attendancePercent ?? 0}%`,
     }));
 }
@@ -208,16 +206,16 @@ function primarySubject(teacher) {
 
 function dayMark(periods) {
   if (!periods.length) return { text: '', fill: null, attended: 0, total: 0 };
-  const counts = { present: 0, late: 0, absent: 0, leave: 0, unmarked: 0 };
+  const counts = { present: 0, late: 0, absent: 0, leave: 0 };
   periods.forEach((period) => {
+    // Statuses arrive resolved (saved mark → camera check-in → absent).
     const status = String(period.status || '').toLowerCase();
-    if (status && counts[status] != null) counts[status] += 1;
-    else counts.unmarked += 1;
+    counts[counts[status] != null ? status : 'absent'] += 1;
   });
   const total = periods.length;
   const attended = counts.present + counts.late;
   const kinds = ['present', 'late', 'absent', 'leave'].filter((kind) => counts[kind] > 0);
-  if (counts.unmarked === 0 && kinds.length === 1) {
+  if (kinds.length === 1) {
     const kind = kinds[0];
     const text = kind === 'present' ? 'P' : kind === 'late' ? 'T' : kind === 'absent' ? 'A' : 'L';
     return { text, fill: text === 'P' ? null : MARK_YELLOW, attended, total };

@@ -25,7 +25,7 @@ import type { AcademyStudentRoutes } from "@/lib/studentManagementMenus";
 import { cn } from "@/lib/utils";
 import { isFreeFeeStudent } from "./FeeModeSelector";
 import { ExemptionRemarksInput } from "./ExemptionRemarksInput";
-import { studentFeeRelief, type FeeReliefType } from "./registerStudentForm";
+import { indicativePercent, studentFeeRelief, type FeeReliefKind } from "./registerStudentForm";
 import { classLabel, formatDate, MONTH_NAMES } from "./studentDisplayUtils";
 
 const num = (n?: number) => (Number(n) || 0).toLocaleString("en-PK");
@@ -79,10 +79,10 @@ const theadCls = "bg-muted/60 text-muted-foreground";
 type FeeHeadRow = { head: string; amount: number; remarks: string; payable: number };
 
 /**
- * Which tuition relief is active. Any monthly discount counts — a discount given at registration
- * (before categories existed) is a concession without a category.
+ * Which tuition relief is active. A monthly discount given before relief types existed
+ * (no category, no reason) is a legacy discount — kept as is until staff convert it.
  */
-function activeRelief(student: AcademyStudent): FeeReliefType {
+function activeRelief(student: AcademyStudent): FeeReliefKind {
   return studentFeeRelief(student);
 }
 
@@ -99,7 +99,8 @@ function feeHeadsFor(record: AcademyFeeRecord | undefined, student: AcademyStude
   const { monthly, base, reliefAmt, relief } = tuitionSplit(student);
   const admission = Number(student.admissionFee) || 0;
   const aDisc = Math.min(Number(student.admissionFeeDiscount) || 0, admission);
-  const reliefLabel = relief === "exemption" ? "Exemption" : "Concession";
+  const reliefLabel =
+    relief === "exemption" ? "Exemption" : relief === "legacy" ? "Legacy discount" : "Concession";
   const remark = (d: number, label: string) => (d > 0 ? `${label} ${num(d)}` : "");
   /** Describe a tuition discount of `d`: registration discount first, then the relief. */
   const tuitionRemark = (d: number) => {
@@ -327,7 +328,7 @@ function StudentChallanTab({ student, records }: { student: AcademyStudent; reco
 }
 
 /** Save a tuition relief (concession / exemption) and refresh everything that shows fees. */
-function useSaveRelief(student: AcademyStudent, label: "Concession" | "Exemption") {
+function useSaveRelief(student: AcademyStudent, label: "Concession" | "Exemption" | "Legacy discount") {
   const { toast } = useToast();
   const qc = useQueryClient();
   return useMutation({
@@ -394,6 +395,7 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
       </p>
 
       {relief === "exemption" && <ReliefLockedNotice student={student} other="exemption" />}
+      {relief === "legacy" && <LegacyDiscountNotice student={student} canEdit={canEdit} convertTo="concession" />}
 
       {canEdit && relief !== "exemption" && (
         <div className="rounded-md border p-4 space-y-4">
@@ -481,12 +483,51 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
               </td>
               <td className="p-3 text-center">{pct(relief === "exemption" ? 0 : amount, agreed)}</td>
               <td className="p-3 text-center tabular-nums font-semibold">
-                {num(agreed - (relief === "exemption" ? reliefAmt : amount))}
+                {num(agreed - (relief === "exemption" || (relief === "legacy" && !categoryKey) ? reliefAmt : amount))}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/** Old discount with no category / reason: kept as is; can be converted or removed. */
+function LegacyDiscountNotice({
+  student,
+  canEdit,
+  convertTo,
+}: {
+  student: AcademyStudent;
+  canEdit: boolean;
+  convertTo: "concession" | "exemption";
+}) {
+  const { monthly, reliefAmt } = tuitionSplit(student);
+  const pct = indicativePercent(reliefAmt, monthly);
+  const removeMut = useSaveRelief(student, "Legacy discount");
+  return (
+    <div className="rounded-md border border-sky-500/40 bg-sky-500/5 p-4 text-sm space-y-2">
+      <p className="font-medium text-sky-900 dark:text-sky-200">
+        Legacy discount: PKR {num(reliefAmt)} / month{pct ? ` (≈${pct}% of current fee, indicative)` : ""}
+      </p>
+      <p className="text-muted-foreground">
+        Given before concession categories existed. The fixed amount is kept as is.{" "}
+        {convertTo === "concession"
+          ? "Choose a category below to convert it into a concession."
+          : "Enter an amount and reason below to convert it into an exemption."}
+      </p>
+      {canEdit && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={removeMut.isPending}
+          onClick={() => removeMut.mutate({ feeReliefType: "", monthlyFeeDiscount: 0 })}
+        >
+          Remove legacy discount
+        </Button>
+      )}
     </div>
   );
 }
@@ -515,7 +556,8 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
   const curAmt = relief === "exemption" ? reliefAmt : 0;
   const curRemarks = relief === "exemption" ? student.exemptionRemarks || "" : "";
 
-  const [amountInput, setAmountInput] = useState(String(curAmt));
+  // Converting a legacy discount starts from its amount; staff only need to add the reason.
+  const [amountInput, setAmountInput] = useState(String(relief === "legacy" ? reliefAmt : curAmt));
   const [remarks, setRemarks] = useState(curRemarks);
 
   const amount = Math.min(Math.max(0, Math.round(Number(amountInput) || 0)), agreed);
@@ -554,6 +596,7 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
       </p>
 
       {relief === "concession" && <ReliefLockedNotice student={student} other="concession" />}
+      {relief === "legacy" && <LegacyDiscountNotice student={student} canEdit={canEdit} convertTo="exemption" />}
 
       {canEdit && relief !== "concession" && (
         <div className="rounded-md border p-4 space-y-4">

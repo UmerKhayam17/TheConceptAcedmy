@@ -547,6 +547,8 @@ const discountReportQuery = Joi.object({
   search: Joi.string().trim().max(200).allow(''),
   from: Joi.date(),
   to: Joi.date(),
+  reliefType: Joi.string().valid('', 'concession', 'exemption', 'legacy', 'none'),
+  concessionCategory: Joi.string().trim().lowercase().allow('').max(100),
 });
 
 const {

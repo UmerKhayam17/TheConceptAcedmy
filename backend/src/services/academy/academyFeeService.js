@@ -2907,7 +2907,7 @@ async function loadClassAccountsRows(classId, sectionId) {
 
   const students = await AcademyStudent.find({ classId, sectionId, status: 'active' })
     .select(
-      'studentId registrationNumber rollNumber studentName disciplineId selectedSubjects isFullPackage monthlyFee monthlyFeeDiscount'
+      'studentId registrationNumber rollNumber studentName disciplineId selectedSubjects isFullPackage monthlyFee monthlyFeeDiscount feeReliefType concessionCategory concessionPercent exemptionRemarks'
     )
     .populate({ path: 'disciplineId', select: 'name' })
     .populate({
@@ -2916,6 +2916,9 @@ async function loadClassAccountsRows(classId, sectionId) {
     })
     .lean();
   const slipByStudent = await latestPaymentSlipByStudent(students.map((s) => s._id));
+  const { describeFeeRelief } = require('../../utils/feeRelief');
+  const { categoryNameMap } = require('./concessionCategoryService');
+  const concessionNames = await categoryNameMap();
   const layoutCache = new Map();
   let totalFee = 0;
   const rows = [];
@@ -2929,6 +2932,7 @@ async function loadClassAccountsRows(classId, sectionId) {
       regNo: student.rollNumber || student.studentId || student.registrationNumber || '',
       name: student.studentName || '',
       fee,
+      relief: describeFeeRelief(student, concessionNames).reliefLabel,
       slipNo: slipByStudent.get(String(student._id)) || '',
       discipline:
         student.disciplineId?.name || (student.isFullPackage ? 'Full package' : 'Part-time'),
@@ -3016,6 +3020,7 @@ async function exportClassAccountsReport({ classId, sectionId, sessionId, format
       { key: 'regNo', header: 'Roll #', excelWidth: 18, align: 'center' },
       { key: 'name', header: 'Student Name', excelWidth: 22, wrap: true },
       { key: 'fee', header: 'Fee (Rs)', excelWidth: 12, align: 'center', numFmt: '#,##0' },
+      { key: 'relief', header: 'Concession / Exemption', excelWidth: 26, wrap: true },
       { key: 'slipNo', header: 'Slip no.', excelWidth: 14, align: 'center', wrap: true },
       { key: 'discipline', header: 'Discipline', excelWidth: 16, align: 'center', wrap: true },
       { key: 'subjects', header: 'Subjects', excelWidth: 48, wrap: true },

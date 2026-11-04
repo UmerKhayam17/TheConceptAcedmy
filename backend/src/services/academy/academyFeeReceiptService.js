@@ -168,6 +168,24 @@ function challanItemLines(records) {
   return items;
 }
 
+/**
+ * "Concession — Sibling (20%) · PKR 2,000 / month" when the voucher's tuition matches the
+ * student's current relief (so an old receipt never shows a relief that changed later).
+ */
+function reliefLineFor(records, relief) {
+  if (!relief || !relief.feeReliefType || !(relief.reliefAmount > 0)) return null;
+  const netTuition = Math.max(0, roundMoney((Number(relief.monthlyFee) || 0) - relief.reliefAmount));
+  const matches = (Array.isArray(records) ? records : []).some((record) => {
+    const lines = feeComponents(record);
+    if (lines.length) {
+      return lines.some((l) => l.kind === 'tuition' && roundMoney(Number(l.amount) || 0) === netTuition);
+    }
+    return record.feeType === 'monthly' && roundMoney(Number(record.amount) || 0) === netTuition;
+  });
+  if (!matches) return null;
+  return { label: relief.publicLabel || relief.reliefLabel, amount: `${formatPkr(relief.reliefAmount)} / month` };
+}
+
 function challanItemsTotal(items) {
   return roundMoney((items || []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0));
 }
@@ -285,7 +303,7 @@ function pdfWrapCenter(doc, text, x, y, width, lineH) {
   return cy;
 }
 
-function drawThermalReceipt(doc, record, brand, logoPath) {
+function drawThermalReceipt(doc, record, brand, logoPath, meta = {}) {
   const { student, classLine, recordedBy } = receiptContext(record);
   const pageW = doc.page.width;
   const x = 10;
@@ -350,6 +368,11 @@ function drawThermalReceipt(doc, record, brand, logoPath) {
 
   y = thermalKv(doc, 'Fee', feeTypeLabel(record.feeType), x, y, w);
   y = thermalKv(doc, 'Period', periodLabel(record), x, y, w);
+  const receiptRelief = reliefLineFor([record], meta.feeRelief);
+  if (receiptRelief) {
+    y = thermalKv(doc, 'Relief', receiptRelief.label, x, y, w);
+    y = thermalKv(doc, 'Relief amt', receiptRelief.amount, x, y, w);
+  }
   const items = challanItemLines([record]);
   const breakdownTotal = challanItemsTotal(items);
   y += 4;
@@ -405,7 +428,7 @@ function renderThermalFeeReceiptPdf(record, meta = {}) {
   const probe = new PDFDocument({ size: [THERMAL_WIDTH_PT, 2000], margin: 0 });
   probe.on('data', () => {});
   probe.on('error', () => {});
-  const contentBottom = drawThermalReceipt(probe, record, brand, logoPath);
+  const contentBottom = drawThermalReceipt(probe, record, brand, logoPath, meta);
   probe.end();
 
   const pageHeight = Math.min(900, Math.max(300, Math.ceil(contentBottom + 16)));
@@ -427,7 +450,7 @@ function renderThermalFeeReceiptPdf(record, meta = {}) {
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
-      drawThermalReceipt(doc, record, brand, logoPath);
+      drawThermalReceipt(doc, record, brand, logoPath, meta);
       doc.end();
     } catch (err) {
       reject(err);
@@ -467,7 +490,7 @@ function renderA4FeeReceiptPdf(record, meta = {}) {
       RECEIPT_COPIES.forEach((copy, index) => {
         const x = margin + index * (panelW + gap);
         const box = { x, y: margin, w: panelW, h: panelH };
-        drawChallanCopy(doc, box, copy, [record], brand, logoPath, { paid: true });
+        drawChallanCopy(doc, box, copy, [record], brand, logoPath, { paid: true, feeRelief: meta.feeRelief });
         if (index < RECEIPT_COPIES.length - 1) {
           const cutX = x + panelW + gap / 2;
           doc.save();
@@ -609,6 +632,11 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
   writeField('Student ID', student?.studentId);
   writeField('Class', classLine);
   writeField('Period', periods);
+  const reliefLine = reliefLineFor(records, options.feeRelief);
+  if (reliefLine) {
+    writeField('Relief', reliefLine.label);
+    writeField('Relief amount', reliefLine.amount);
+  }
   if (paid) {
     const paidRecord = records[0];
     writeField('Receipt', paidRecord?.receiptNumber);
@@ -743,7 +771,7 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
   if (paid) drawPaidWatermark(doc, box);
 }
 
-function drawThermalChallan(doc, records, brand, logoPath) {
+function drawThermalChallan(doc, records, brand, logoPath, meta = {}) {
   const first = records[0];
   const { student, classLine } = receiptContext(first);
   const pageW = doc.page.width;
@@ -791,6 +819,11 @@ function drawThermalChallan(doc, records, brand, logoPath) {
   y = thermalKv(doc, 'Student ID', student?.studentId || '—', x, y, w);
   y = thermalKv(doc, 'Class', classLine || '—', x, y, w);
   if (student?.phone) y = thermalKv(doc, 'Phone', student.phone, x, y, w);
+  const challanRelief = reliefLineFor(records, meta.feeRelief);
+  if (challanRelief) {
+    y = thermalKv(doc, 'Relief', challanRelief.label, x, y, w);
+    y = thermalKv(doc, 'Relief amt', challanRelief.amount, x, y, w);
+  }
   y += 2;
   dashLine(doc, x, y, w);
   y += 10;
@@ -851,7 +884,7 @@ function renderThermalFeeChallanPdf(records, meta = {}) {
   const probe = new PDFDocument({ size: [THERMAL_WIDTH_PT, 2000], margin: 0 });
   probe.on('data', () => {});
   probe.on('error', () => {});
-  const contentBottom = drawThermalChallan(probe, records, brand, logoPath);
+  const contentBottom = drawThermalChallan(probe, records, brand, logoPath, meta);
   probe.end();
   const pageHeight = Math.min(1400, Math.max(320, Math.ceil(contentBottom + 16)));
 
@@ -872,7 +905,7 @@ function renderThermalFeeChallanPdf(records, meta = {}) {
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
-      drawThermalChallan(doc, records, brand, logoPath);
+      drawThermalChallan(doc, records, brand, logoPath, meta);
       doc.end();
     } catch (err) {
       reject(err);
@@ -911,7 +944,9 @@ function renderA4FeeChallanPdf(records, meta = {}) {
 
       CHALLAN_COPIES.forEach((copy, index) => {
         const x = margin + index * (panelW + gap);
-        drawChallanCopy(doc, { x, y: margin, w: panelW, h: panelH }, copy, records, brand, logoPath);
+        drawChallanCopy(doc, { x, y: margin, w: panelW, h: panelH }, copy, records, brand, logoPath, {
+          feeRelief: meta.feeRelief,
+        });
         if (index < CHALLAN_COPIES.length - 1) {
           const cutX = x + panelW + gap / 2;
           doc.save();

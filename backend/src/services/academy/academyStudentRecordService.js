@@ -5,6 +5,8 @@ const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const AcademyAssessment = require('../../models/academy/AcademyAssessment');
 const timetableVersionService = require('../timetable/timetableVersionService');
+const { describeFeeRelief } = require('../../utils/feeRelief');
+const { categoryNameMap } = require('./concessionCategoryService');
 
 const WEEKDAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const WEEKDAY_INDEX = WEEKDAY_NAMES.reduce((acc, day, index) => ({ ...acc, [day]: index }), {});
@@ -195,6 +197,8 @@ async function getStudentRecord(id) {
         ? allClassSubjects
         : [];
 
+  const relief = describeFeeRelief(student, student.concessionCategory ? await categoryNameMap() : {});
+
   let timetable = [];
   if (sessionId && sectionId) {
     timetable = await getPublishedTimetableSlots(sessionId, sectionId, enrolledIds);
@@ -215,6 +219,7 @@ async function getStudentRecord(id) {
     },
     fees: {
       summary: feeSummary(feeRecords),
+      relief,
       records: feeRecords,
     },
     assessments: {

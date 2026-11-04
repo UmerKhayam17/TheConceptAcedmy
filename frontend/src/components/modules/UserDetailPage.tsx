@@ -71,6 +71,7 @@ import {
   formatDate,
   formatPkr,
 } from "@/components/modules/student-management/studentDisplayUtils";
+import { studentFeeRelief } from "@/components/modules/student-management/registerStudentForm";
 import { cn } from "@/lib/utils";
 import StaffDetailPage from "@/components/modules/staff/StaffDetailPage";
 
@@ -516,6 +517,7 @@ function ParentLinkedStudentsPanel({
             <th className="p-3 text-left font-medium whitespace-nowrap">Section</th>
             <th className="p-3 text-left font-medium whitespace-nowrap">Registered</th>
             <th className="p-3 text-left font-medium whitespace-nowrap">Monthly</th>
+            <th className="p-3 text-left font-medium whitespace-nowrap">Discount</th>
             <th className="p-3 text-left font-medium whitespace-nowrap">Payable</th>
             <th className="p-3 text-left font-medium whitespace-nowrap">Status</th>
             <th className="p-3 text-right font-medium whitespace-nowrap">Actions</th>
@@ -529,6 +531,8 @@ function ParentLinkedStudentsPanel({
               0,
               (Number(s.monthlyFee) || 0) - (Number(s.monthlyFeeDiscount) || 0),
             );
+            const reliefKind = studentFeeRelief(s);
+            const discount = Math.max(0, (Number(s.monthlyFee) || 0) - payable);
             return (
               <tr key={s._id} className="border-b last:border-0 hover:bg-muted/20">
                 <td className="p-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
@@ -573,6 +577,16 @@ function ParentLinkedStudentsPanel({
                 </td>
                 <td className="p-3 whitespace-nowrap">
                   {isPending ? "—" : formatPkr(s.monthlyFee)}
+                </td>
+                <td className="p-3 whitespace-nowrap">
+                  {isPending || !reliefKind || discount <= 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <div className="leading-tight">
+                      <div className="font-medium text-emerald-700">− {formatPkr(discount)}</div>
+                      <div className="text-[11px] text-muted-foreground capitalize">{reliefKind}</div>
+                    </div>
+                  )}
                 </td>
                 <td className="p-3 whitespace-nowrap font-medium text-[#1a2b4b]">
                   {isPending ? "—" : formatPkr(payable)}

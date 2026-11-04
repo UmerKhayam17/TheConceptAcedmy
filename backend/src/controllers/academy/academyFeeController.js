@@ -6,6 +6,7 @@ const {
   renderFeeChallanPdf,
 } = require('../../services/academy/academyFeeReceiptService');
 const rt = require('../../services/realtime/academyRealtime');
+const { describeStudentFeeRelief } = require('../../services/academy/concessionCategoryService');
 const {
   roleNameOf,
   linkedStudentIdsForParent,
@@ -76,6 +77,7 @@ const receipt = catchAsync(async (req, res) => {
   const meta = {
     generatedAt: new Date(),
     generatedBy: req.user?.name || req.user?.email || '',
+    feeRelief: await describeStudentFeeRelief(studentId),
   };
   const buffer = unpaid
     ? await renderFeeChallanPdf([record], meta, size)
@@ -129,6 +131,7 @@ const challan = catchAsync(async (req, res) => {
     {
       generatedAt: new Date(),
       generatedBy: req.user?.name || req.user?.email || '',
+      feeRelief: await describeStudentFeeRelief(studentId),
     },
     size
   );

@@ -35,6 +35,7 @@ import {
   type AcademyTimetableSlot,
   getAcademyStudentRecord,
   fetchAcademyStudents,
+  fetchConcessionCategories,
   fetchStudentMonthAttendance,
   createAssessment,
   updateAssessment,
@@ -70,6 +71,7 @@ import {
   WEEKDAY_NAMES,
 } from "./studentDisplayUtils";
 import { FreeStudentBadge, isFullFeeWaiver } from "./FeeModeSelector";
+import { feeReliefSummary } from "./registerStudentForm";
 
 const FULL_MONTH_NAMES = [
   "January",
@@ -227,6 +229,16 @@ function StatusBadge({ status }: { status: string }) {
 function ProfileTab({ student, hideSensitive = false }: { student: AcademyStudent; hideSensitive?: boolean }) {
   const subtotal = (student.monthlyFee || 0) + (student.admissionFee || 0);
   const photoSrc = student.photoImage ? resolveUploadUrl(student.photoImage) : null;
+  const { data: concessionCategories = [] } = useQuery({
+    queryKey: ["concession-categories"],
+    queryFn: fetchConcessionCategories,
+    enabled: !hideSensitive && Boolean(student.concessionCategory),
+    retry: false,
+  });
+  const relief = feeReliefSummary(
+    student,
+    Object.fromEntries(concessionCategories.map((c) => [c.key, c.name])),
+  );
 
   return (
     <div className="space-y-4">
@@ -340,6 +352,22 @@ function ProfileTab({ student, hideSensitive = false }: { student: AcademyStuden
                 Math.max(0, (student.admissionFee || 0) - (student.admissionFeeDiscount || 0)),
               )}
             />
+            <DetailRow
+              label="Tuition relief"
+              value={relief.type ? `${relief.typeLabel}: ${formatPkr(relief.amount)} / month` : "None"}
+            />
+            {relief.type ? (
+              <DetailRow
+                label={
+                  relief.type === "concession"
+                    ? "Concession category"
+                    : relief.type === "exemption"
+                      ? "Exemption remarks"
+                      : "Indicative percentage"
+                }
+                value={relief.detail || "—"}
+              />
+            ) : null}
             <DetailRow label="Monthly fee discount" value={formatPkr(student.monthlyFeeDiscount)} />
             <DetailRow label="Admission fee discount" value={formatPkr(student.admissionFeeDiscount)} />
             {(student.defaultChargeIds?.length ?? 0) > 0 && (

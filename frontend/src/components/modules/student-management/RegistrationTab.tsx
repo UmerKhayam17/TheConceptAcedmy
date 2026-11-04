@@ -51,6 +51,9 @@ import { classLabel, formatPkr } from "./studentDisplayUtils";
 import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
 import ProvisionalIntakeDialog from "./ProvisionalIntakeDialog";
+import { studentFeeRelief } from "./registerStudentForm";
+
+const RELIEF_KIND_LABEL = { concession: "Concession", exemption: "Exemption", legacy: "Legacy" } as const;
 
 function studentRef(s: AcademyStudent) {
   if (s.status === "pending_fee") {
@@ -230,7 +233,7 @@ export default function RegistrationTab({
     1 +
     (hasActions ? 7 : 6) +
     (showPhoneCol ? 1 : 0) +
-    (showMonthlyCol ? 2 : 0);
+    (showMonthlyCol ? 3 : 0);
 
   const showIntake = enrollmentFlow === "intake" || enrollmentFlow === "both";
   const showDirectRegister = enrollmentFlow === "direct" || enrollmentFlow === "both";
@@ -680,6 +683,7 @@ export default function RegistrationTab({
                 {showMonthlyCol && (
                   <>
                     <th className="text-left p-3 font-medium whitespace-nowrap">Monthly Fee</th>
+                    <th className="text-left p-3 font-medium whitespace-nowrap">Discount</th>
                     <th className="text-left p-3 font-medium whitespace-nowrap">Total Payable</th>
                   </>
                 )}
@@ -768,6 +772,22 @@ export default function RegistrationTab({
                       <>
                         <td className="p-3 whitespace-nowrap">
                           {isPending ? "" : formatPkr(s.monthlyFee)}
+                        </td>
+                        <td className="p-3 whitespace-nowrap">
+                          {(() => {
+                            if (isPending) return "";
+                            const kind = studentFeeRelief(s);
+                            const fee = Number(s.monthlyFee) || 0;
+                            const disc = Math.max(0, Number(s.monthlyFeeDiscount) || 0);
+                            const amount = fee ? Math.min(disc, fee) : disc;
+                            if (!kind || amount <= 0) return <span className="text-muted-foreground">—</span>;
+                            return (
+                              <div className="leading-tight">
+                                <div className="font-medium text-emerald-700">− {formatPkr(amount)}</div>
+                                <div className="text-[11px] text-muted-foreground">{RELIEF_KIND_LABEL[kind]}</div>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="p-3 whitespace-nowrap font-medium text-[#1a2b4b]">
                           {isPending

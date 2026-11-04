@@ -457,6 +457,7 @@ export default function ParentDashboard({
   }, [record?.assessments.records, announcements, nextDueFee]);
 
   const feeRows = (record?.fees.records || []).slice(0, 5);
+  const feeRelief = record?.fees.relief;
   const loading = childrenLoading || (Boolean(selectedId) && recordLoading);
 
   const activityIcon = (tone: string) => {
@@ -935,6 +936,14 @@ export default function ParentDashboard({
           <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
             <h3 className="text-[15px] font-bold text-[#0F172A]">Fee Structure & Payments</h3>
           </div>
+          {feeRelief?.feeReliefType && feeRelief.reliefAmount > 0 ? (
+            <div className="mx-4 sm:mx-5 mb-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">
+              <span className="font-semibold">{feeRelief.publicLabel || feeRelief.reliefLabel}</span>
+              <span className="block text-xs text-sky-800">
+                Rs. {feeRelief.reliefAmount.toLocaleString()} off tuition every month
+              </span>
+            </div>
+          ) : null}
           {feeRows.length === 0 ? (
             <p className="text-sm text-slate-400 px-4 sm:px-5 py-8 text-center">
               No fee vouchers yet.

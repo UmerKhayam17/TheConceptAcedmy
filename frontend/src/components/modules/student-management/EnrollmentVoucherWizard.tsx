@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   assignSectionAfterPayment,
   fetchAcademyStudents,
+  fetchConcessionCategories,
   fetchDisciplinesByClassWithMeta,
   fetchEnrollmentSubjects,
   fetchSectionsByClass,
@@ -41,6 +42,8 @@ import {
   FreeStudentBadge,
   type FeeMode,
 } from "./FeeModeSelector";
+import { ExemptionRemarksInput } from "./ExemptionRemarksInput";
+import { indicativePercent, studentFeeRelief, type FeeReliefKind } from "./registerStudentForm";
 import {
   ChallanPrintDialog,
   type ChallanPrintRequest,
@@ -81,6 +84,11 @@ export function EnrollmentVoucherWizard({
   const [monthlyDiscount, setMonthlyDiscount] = useState("0");
   const [admissionDiscount, setAdmissionDiscount] = useState("0");
   const [feeMode, setFeeMode] = useState<FeeMode>("normal");
+  /** Tuition relief behind the monthly discount: concession (category %) or exemption (reason). */
+  const [reliefType, setReliefType] = useState<FeeReliefKind>("");
+  const [concessionCategory, setConcessionCategory] = useState("");
+  const [concessionPercent, setConcessionPercent] = useState(0);
+  const [exemptionRemarks, setExemptionRemarks] = useState("");
   const [voucher, setVoucher] = useState<AcademyFeeRecord | null>(null);
   const [fees, setFees] = useState<FeePreview | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -101,6 +109,10 @@ export function EnrollmentVoucherWizard({
     setMonthlyDiscount("0");
     setAdmissionDiscount("0");
     setFeeMode("normal");
+    setReliefType("");
+    setConcessionCategory("");
+    setConcessionPercent(0);
+    setExemptionRemarks("");
     setVoucher(null);
     setFees(null);
     setPaymentMethod("cash");
@@ -126,9 +138,31 @@ export function EnrollmentVoucherWizard({
 
   const classId = classIdOf(student);
 
+  const { data: concessionCategories = [] } = useQuery({
+    queryKey: ["concession-categories"],
+    queryFn: fetchConcessionCategories,
+    enabled: open && step === "subjects",
+  });
+  const activeConcessionCategories = concessionCategories.filter(
+    (c) => c.isActive || c.key === concessionCategory,
+  );
+
   useEffect(() => {
     if (student?.gender) setGender(student.gender);
   }, [student?.gender]);
+
+  // Re-opening a student who already has a relief (e.g. voucher regenerated) keeps it.
+  useEffect(() => {
+    if (!student) return;
+    const relief = studentFeeRelief(student);
+    if (!relief) return;
+    setReliefType(relief);
+    setConcessionCategory(relief === "concession" ? student.concessionCategory || "" : "");
+    setConcessionPercent(relief === "concession" ? Number(student.concessionPercent) || 0 : 0);
+    setExemptionRemarks(relief === "exemption" ? student.exemptionRemarks || "" : "");
+    setMonthlyDiscount(String(Number(student.monthlyFeeDiscount) || 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [student?._id]);
 
   useEffect(() => {
     if (!student?.disciplineId) return;
@@ -217,6 +251,15 @@ export function EnrollmentVoucherWizard({
         monthlyFeeDiscount: Number(monthlyDiscount) || 0,
         admissionFeeDiscount: Number(admissionDiscount) || 0,
         gender: gender || undefined,
+        // A legacy discount goes through as-is: only its amount, no relief type / category.
+        ...(reliefType === "legacy"
+          ? {}
+          : {
+              feeReliefType: reliefType,
+              concessionCategory: reliefType === "concession" ? concessionCategory : "",
+              concessionPercent: reliefType === "concession" ? concessionPercent : 0,
+              exemptionRemarks: reliefType === "exemption" ? exemptionRemarks.trim() : "",
+            }),
       }),
     onSuccess: (result) => {
       setVoucher(result.voucher);
@@ -308,8 +351,14 @@ export function EnrollmentVoucherWizard({
       toast({ title: "Could not print", description: e.message, variant: "destructive" }),
   });
 
+  const reliefInvalid =
+    (reliefType === "concession" && !concessionCategory) ||
+    (reliefType === "exemption" && !exemptionRemarks.trim()) ||
+    (Boolean(reliefType) && feeMode !== "waiver" && !(Number(monthlyDiscount) > 0));
+
   const canGenerate =
     Boolean(studentId && classId) &&
+    !reliefInvalid &&
     (!requiresDiscipline || Boolean(disciplineId)) &&
     (isFullPackage || selectedSubjects.length > 0) &&
     !generateMut.isPending;
@@ -527,16 +576,107 @@ export function EnrollmentVoucherWizard({
                   value={feeMode}
                   onChange={(mode) => {
                     setFeeMode(mode);
+                    setConcessionCategory("");
+                    setConcessionPercent(0);
                     if (mode === "waiver" && preview) {
+                      // Full waiver = full tuition exemption (same as Register Student).
+                      setReliefType("exemption");
+                      setExemptionRemarks("Full fee waiver");
                       setMonthlyDiscount(String(preview.monthlyFee || 0));
                       setAdmissionDiscount(String(preview.admissionFee || 0));
                     } else if (mode === "normal") {
+                      setReliefType("");
+                      setExemptionRemarks("");
                       setMonthlyDiscount("0");
                       setAdmissionDiscount("0");
                     }
                   }}
+                  relief={{
+                    value: feeMode === "waiver" ? "" : reliefType,
+                    onChange: (type) => {
+                      if (feeMode === "waiver") setAdmissionDiscount("0");
+                      setFeeMode("normal");
+                      setReliefType(type);
+                      setConcessionCategory("");
+                      setConcessionPercent(0);
+                      setExemptionRemarks("");
+                      setMonthlyDiscount("0");
+                    },
+                  }}
                   disabled={!preview}
                 />
+
+                {reliefType && feeMode !== "waiver" ? (
+                  <div className="space-y-2 rounded-md border p-3">
+                    {reliefType === "concession" ? (
+                      <div>
+                        <Label>Concession category</Label>
+                        <select
+                          className="mt-1 h-9 w-full rounded-md border px-2 text-sm"
+                          value={concessionCategory}
+                          onChange={(e) => {
+                            const key = e.target.value;
+                            const pct =
+                              Number(concessionCategories.find((c) => c.key === key)?.discountPercent) || 0;
+                            setConcessionCategory(key);
+                            setConcessionPercent(pct);
+                            setMonthlyDiscount(
+                              String(key ? Math.round(((preview?.monthlyFee || 0) * pct) / 100) : 0),
+                            );
+                          }}
+                        >
+                          <option value="">-- Select category --</option>
+                          {activeConcessionCategories.map((c) => (
+                            <option key={c._id} value={c.key}>
+                              {c.name} ({Number(c.discountPercent) || 0}%){c.isActive ? "" : " (inactive)"}
+                            </option>
+                          ))}
+                        </select>
+                        {concessionCategories.length > 0 &&
+                        !concessionCategories.some((c) => c.isActive) ? (
+                          <p className="mt-1 text-xs text-amber-700">
+                            No active concession categories. Add them in System Config &rarr; Concession Discount
+                            Categories.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : reliefType === "legacy" ? (
+                      <div className="text-sm space-y-1">
+                        <p className="font-medium">
+                          Legacy discount: {formatPkr(Number(monthlyDiscount) || 0)} / month
+                          {preview && indicativePercent(Number(monthlyDiscount) || 0, preview.monthlyFee)
+                            ? ` (≈${indicativePercent(Number(monthlyDiscount) || 0, preview.monthlyFee)}% of this fee)`
+                            : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Kept as is (no category needed). Choose Concession or Exemption above to convert it.
+                        </p>
+                        {preview && (Number(monthlyDiscount) || 0) > (preview.monthlyFee || 0) ? (
+                          <p className="text-xs text-destructive">
+                            More than the monthly fee ({formatPkr(preview.monthlyFee)}). It will be capped at the fee.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div>
+                        <Label>Exemption remarks</Label>
+                        <div className="mt-1">
+                          <ExemptionRemarksInput
+                            className="h-9"
+                            value={exemptionRemarks}
+                            onChange={setExemptionRemarks}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {reliefType === "concession" && !concessionCategory ? (
+                      <p className="text-xs text-destructive">Choose a concession category.</p>
+                    ) : null}
+                    {reliefType === "exemption" && !exemptionRemarks.trim() ? (
+                      <p className="text-xs text-destructive">Enter or choose exemption remarks.</p>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {feeMode === "waiver" && (
                   <div className="flex items-center gap-2 rounded-md border border-emerald-600/30 bg-emerald-500/10 px-3 py-2">
@@ -547,16 +687,27 @@ export function EnrollmentVoucherWizard({
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label>Monthly discount</Label>
+                    <Label>
+                      {reliefType === "exemption" && feeMode !== "waiver"
+                        ? "Exemption (PKR / month)"
+                        : reliefType === "concession"
+                          ? "Concession (PKR / month)"
+                          : reliefType === "legacy"
+                            ? "Legacy discount (PKR / month)"
+                            : "Monthly discount"}
+                    </Label>
                     <Input
                       type="number"
                       min={0}
                       value={monthlyDiscount}
-                      disabled={feeMode === "waiver"}
-                      onChange={(e) => {
-                        setFeeMode("normal");
-                        setMonthlyDiscount(e.target.value);
-                      }}
+                      disabled={
+                        feeMode === "waiver" ||
+                        !reliefType ||
+                        reliefType === "legacy" ||
+                        (reliefType === "concession" && !concessionCategory)
+                      }
+                      title={!reliefType ? "Choose Concession or Exemption to give a monthly discount" : undefined}
+                      onChange={(e) => setMonthlyDiscount(e.target.value)}
                       className="mt-1"
                     />
                   </div>

@@ -80,6 +80,7 @@ import {
   buildStudentPayload,
   defaultRegisterForm,
   emptyAcademicRow,
+  indicativePercent,
   mapStudentToForm,
   type AcademicRow,
   type FeeReliefType,
@@ -730,7 +731,12 @@ export default function RegisterStudentPage({
         return;
       }
       if (isEdit) {
-        toast({ title: "Student updated" });
+        const feeWarnings = (student as { feeWarnings?: string[] }).feeWarnings;
+        if (feeWarnings?.length) {
+          toast({ title: "Student updated — check the discount", description: feeWarnings.join(" "), variant: "destructive" });
+        } else {
+          toast({ title: "Student updated" });
+        }
         if (asDialog) onOpenChange?.(false);
         else navigate(detailHref);
       } else {
@@ -1698,7 +1704,36 @@ export default function RegisterStudentPage({
           )}
 
           <div className="grid sm:grid-cols-2 gap-4">
-            {form.feeReliefType && feeMode !== "waiver" && (
+            {form.feeReliefType === "legacy" && feeMode !== "waiver" && (
+              <div className="space-y-1 sm:col-span-2 rounded-lg border p-3 text-sm">
+                <p className="font-medium">
+                  Legacy discount: ₨ {(Number(form.monthlyFeeDiscount) || 0).toLocaleString()} / month
+                  {feePreview && indicativePercent(Number(form.monthlyFeeDiscount) || 0, feePreview.monthlyFee)
+                    ? ` (≈${indicativePercent(Number(form.monthlyFeeDiscount) || 0, feePreview.monthlyFee)}% of current fee)`
+                    : ""}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Given before concession categories existed. The fixed amount is kept as is; the % is indicative
+                  only. Choose Concession or Exemption above to convert it.
+                </p>
+                {feePreview && (Number(existingStudent?.monthlyFeeDiscount) || 0) > feePreview.monthlyFee && (
+                  <p className="text-xs text-destructive">
+                    The saved discount (₨ {(Number(existingStudent?.monthlyFeeDiscount) || 0).toLocaleString()}) is
+                    more than the new monthly fee (₨ {feePreview.monthlyFee.toLocaleString()}). It will be capped at
+                    the fee.
+                  </p>
+                )}
+                {feePreview && (
+                  <p className="text-xs text-muted-foreground">
+                    Monthly tuition payable:{" "}
+                    <span className="font-semibold text-foreground">
+                      ₨ {(Number(form.monthlyPayable) || 0).toLocaleString()}
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
+            {form.feeReliefType && form.feeReliefType !== "legacy" && feeMode !== "waiver" && (
             <div className="space-y-3 sm:col-span-2 rounded-lg border p-3">
               <div className="grid sm:grid-cols-3 gap-3">
                 {form.feeReliefType === "concession" && (

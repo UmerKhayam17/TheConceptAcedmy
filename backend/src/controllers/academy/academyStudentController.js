@@ -83,6 +83,11 @@ const registerDirect = catchAsync(async (req, res) => {
 const update = catchAsync(async (req, res) => {
   const data = await studentService.updateStudent(req.params.id, req.body);
   rt.studentUpdated(data);
+  const warnings = data?.$locals?.feeWarnings || [];
+  if (warnings.length) {
+    const json = typeof data.toJSON === 'function' ? data.toJSON() : { ...data };
+    return res.json({ success: true, data: { ...json, feeWarnings: warnings }, warnings });
+  }
   res.json({ success: true, data });
 });
 
@@ -262,6 +267,8 @@ const discountReport = catchAsync(async (req, res) => {
     search: req.query.search,
     from: req.query.from,
     to: req.query.to,
+    reliefType: req.query.reliefType,
+    concessionCategory: req.query.concessionCategory,
   });
   res.json({ success: true, data: result.items, summary: result.summary, pagination: result.pagination });
 });

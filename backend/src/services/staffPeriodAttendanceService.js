@@ -9,8 +9,16 @@ require('../models/academy/AcademySection');
 require('../models/academy/AcademySubject');
 const Role = require('../models/Role');
 const StaffPeriodAttendance = require('../models/StaffPeriodAttendance');
-const { weekdayName, dayBounds } = require('../utils/schoolDay');
+const StaffAttendance = require('../models/StaffAttendance');
+const {
+  weekdayName,
+  dayBounds,
+  todayYmd,
+  formatDateInTz,
+  minutesSinceMidnight,
+} = require('../utils/schoolDay');
 const { publicEmail } = require('../config/staffRoles');
+const { graceMinutes, hhmmToMinutes } = require('./aiAttendance/attendanceStatusFromTimetable');
 
 const PERIOD_STATUSES = new Set(['present', 'late', 'absent', 'leave']);
 /** Non-teaching staff are marked once per day instead of per class. */
@@ -23,16 +31,13 @@ function pad2(n) {
 }
 
 function emptyCounts() {
-  return { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0, unmarked: 0 };
+  return { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0 };
 }
 
 function addStatus(counts, status) {
   counts.totalClasses += 1;
-  if (!status) {
-    counts.unmarked += 1;
-    return;
-  }
-  if (counts[status] != null) counts[status] += 1;
+  // Statuses are already resolved (saved mark → camera check-in → absent).
+  counts[PERIOD_STATUSES.has(status) ? status : 'absent'] += 1;
 }
 
 function attendancePercent(counts) {
@@ -229,9 +234,57 @@ function isWorkingDay(session, weekday) {
   return days.length === 0 || days.includes(weekday);
 }
 
-/** A period with no saved mark counts as present. */
-function defaultStatus(status) {
-  return PERIOD_STATUSES.has(status) ? status : 'present';
+/** Saved period mark when there is one; otherwise the camera-derived status (default absent). */
+function defaultStatus(status, fallback = 'absent') {
+  return PERIOD_STATUSES.has(status) ? status : fallback;
+}
+
+/**
+ * Daily check-in rows (AI camera / manual / auto-absent) for the given days, keyed
+ * `${userId}|${YYYY-MM-DD}`. Used to fill periods that have no saved mark.
+ */
+async function dailyMarksForDays(days, userId) {
+  const map = new Map();
+  if (!days.length) return map;
+  const sorted = [...days].sort();
+  const { start } = dayBounds(sorted[0]);
+  const { end } = dayBounds(sorted[sorted.length - 1]);
+  const q = { date: { $gte: start, $lte: end } };
+  if (userId) q.userId = userId;
+  const rows = await StaffAttendance.find(q).select('userId date status checkIn').lean();
+  rows.forEach((row) => {
+    map.set(`${row.userId}|${formatDateInTz(row.date)}`, row);
+  });
+  return map;
+}
+
+/** Full-day row (non-teaching staff): absent until the camera / admin marks the day. */
+function autoDayStatus(daily) {
+  if (!daily) return 'absent';
+  if (daily.status === 'leave') return 'leave';
+  if (daily.status === 'late') return 'late';
+  if (daily.status === 'present' || daily.status === 'half_day' || daily.checkIn) return 'present';
+  return 'absent';
+}
+
+/**
+ * Class period with no saved mark: absent by default. Once the teacher has checked in
+ * (camera or manual time): present if in by period start + grace, late if in before the
+ * period ends, absent if they arrived after it ended.
+ */
+function autoPeriodStatus(row, daily, timeZone) {
+  if (!daily) return 'absent';
+  if (daily.status === 'leave') return 'leave';
+  if (!daily.checkIn) {
+    return daily.status === 'present' || daily.status === 'late' ? daily.status : 'absent';
+  }
+  const inAt = minutesSinceMidnight(new Date(daily.checkIn), timeZone);
+  const start = hhmmToMinutes(row.startTime);
+  const end = hhmmToMinutes(row.endTime);
+  if (start == null) return daily.status === 'late' ? 'late' : 'present';
+  if (inAt <= start + graceMinutes()) return 'present';
+  if (end == null || inAt < end) return 'late';
+  return 'absent';
 }
 
 function dayPeriod(status) {
@@ -310,11 +363,23 @@ async function marksForDays(sessionId, days, userId) {
   return map;
 }
 
-function periodsForTeacher(byWeekday, weekday, teacherId, day, markMap) {
+function periodsForTeacher(byWeekday, weekday, teacherId, day, markMap, dailyMap, timeZone) {
   const byPeriod = byWeekday.get(weekday)?.get(teacherId);
   if (!byPeriod) return [];
+  const daily = dailyMap.get(`${teacherId}|${day}`);
   return sortPeriods([...byPeriod.values()]).map((row) =>
-    publicPeriod(row, markMap.get(`${teacherId}|${day}|${row.periodKey}`) || '')
+    publicPeriod(
+      row,
+      markMap.get(`${teacherId}|${day}|${row.periodKey}`) || autoPeriodStatus(row, daily, timeZone)
+    )
+  );
+}
+
+/** Full-day row status: saved mark, else from the daily check-in, else absent. */
+function dayStatusFor(userId, day, markMap, dailyMap) {
+  return (
+    markMap.get(`${userId}|${day}|${DAY_PERIOD_KEY}`) ||
+    autoDayStatus(dailyMap.get(`${userId}|${day}`))
   );
 }
 
@@ -328,13 +393,19 @@ async function listDay({ sessionId, date, userId }) {
   if (userId) teacherIds = teacherIds.filter((id) => id === String(userId));
 
   const users = await teacherUsers(teacherIds);
-  const markMap = await marksForDays(sessionId, [ymd], userId || undefined);
+  const [markMap, dailyMap] = await Promise.all([
+    marksForDays(sessionId, [ymd], userId || undefined),
+    dailyMarksForDays([ymd], userId || undefined),
+  ]);
 
   const classTeachers = teacherIds
     .map((id) => users.get(id))
     .filter(Boolean)
     .map((user) =>
-      teacherShape(user, periodsForTeacher(byWeekday, weekday, String(user._id), ymd, markMap))
+      teacherShape(
+        user,
+        periodsForTeacher(byWeekday, weekday, String(user._id), ymd, markMap, dailyMap, session.timezone)
+      )
     );
 
   let dailyStaff = [];
@@ -344,7 +415,7 @@ async function listDay({ sessionId, date, userId }) {
       .map((user) =>
         teacherShape(
           user,
-          [dayPeriod(markMap.get(`${user._id}|${ymd}|${DAY_PERIOD_KEY}`))],
+          [dayPeriod(dayStatusFor(user._id, ymd, markMap, dailyMap))],
           'daily'
         )
       );
@@ -361,7 +432,6 @@ async function listDay({ sessionId, date, userId }) {
     summary.late += t.late;
     summary.absent += t.absent;
     summary.leave += t.leave;
-    summary.unmarked += t.unmarked;
   });
 
   return {
@@ -387,19 +457,36 @@ async function listMonth({ sessionId, month, year, userId }) {
   if (userId) ids = ids.filter((id) => id === String(userId));
 
   const users = await teacherUsers(ids);
-  const markMap = await marksForDays(
-    sessionId,
-    days.map((d) => d.day),
-    userId || undefined
-  );
+  // Days after today have not happened yet — they would all count as absent.
+  const today = todayYmd(session.timezone);
+  const pastDays = days.filter(({ day }) => day <= today);
+  const [markMap, dailyMap] = await Promise.all([
+    marksForDays(
+      sessionId,
+      pastDays.map((d) => d.day),
+      userId || undefined
+    ),
+    dailyMarksForDays(
+      pastDays.map((d) => d.day),
+      userId || undefined
+    ),
+  ]);
 
   const classTeachers = ids
     .map((id) => users.get(id))
     .filter(Boolean)
     .map((user) => {
       const detail = [];
-      days.forEach(({ day, weekday }) => {
-        periodsForTeacher(byWeekday, weekday, String(user._id), day, markMap).forEach((period) => {
+      pastDays.forEach(({ day, weekday }) => {
+        periodsForTeacher(
+          byWeekday,
+          weekday,
+          String(user._id),
+          day,
+          markMap,
+          dailyMap,
+          session.timezone
+        ).forEach((period) => {
           detail.push({
             day,
             weekday,
@@ -411,7 +498,7 @@ async function listMonth({ sessionId, month, year, userId }) {
       return shaped;
     });
 
-  const workingDays = days.filter(({ weekday }) => isWorkingDay(session, weekday));
+  const workingDays = pastDays.filter(({ weekday }) => isWorkingDay(session, weekday));
   const dailyStaff = (await dailyStaffUsers(teacherIds))
     .filter((user) => !userId || String(user._id) === String(userId))
     .map((user) =>
@@ -420,7 +507,7 @@ async function listMonth({ sessionId, month, year, userId }) {
         workingDays.map(({ day, weekday }) => ({
           day,
           weekday,
-          ...dayPeriod(markMap.get(`${user._id}|${day}|${DAY_PERIOD_KEY}`)),
+          ...dayPeriod(dayStatusFor(user._id, day, markMap, dailyMap)),
         })),
         'daily'
       )
@@ -437,7 +524,6 @@ async function listMonth({ sessionId, month, year, userId }) {
     summary.late += t.late;
     summary.absent += t.absent;
     summary.leave += t.leave;
-    summary.unmarked += t.unmarked;
   });
 
   return {

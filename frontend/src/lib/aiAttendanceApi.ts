@@ -303,7 +303,6 @@ export type StaffPeriodTeacher = {
   late: number;
   absent: number;
   leave: number;
-  unmarked: number;
   attendancePercent: number;
   periods: StaffPeriodRow[];
 };
@@ -321,7 +320,6 @@ export type StaffPeriodReport = {
     late: number;
     absent: number;
     leave: number;
-    unmarked: number;
     attendancePercent: number;
   };
 };

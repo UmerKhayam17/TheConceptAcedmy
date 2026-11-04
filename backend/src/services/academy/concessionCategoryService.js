@@ -84,6 +84,16 @@ async function categoryNameMap() {
   return map;
 }
 
+/** Relief description for one student (vouchers / receipts / parent portal). */
+async function describeStudentFeeRelief(studentId) {
+  const { describeFeeRelief, STUDENT_RELIEF_FIELDS } = require('../../utils/feeRelief');
+  if (!studentId) return null;
+  const student = await AcademyStudent.findById(studentId).select(STUDENT_RELIEF_FIELDS).lean();
+  if (!student) return null;
+  const names = student.concessionCategory ? await categoryNameMap() : {};
+  return { ...describeFeeRelief(student, names), monthlyFee: Number(student.monthlyFee) || 0 };
+}
+
 async function assertActiveCategory(category) {
   const key = String(category || '').trim().toLowerCase();
   if (!key) throw new ApiError(400, 'Concession discount category is required');
@@ -174,6 +184,7 @@ async function deleteCategory(id) {
 module.exports = {
   listCategories,
   categoryNameMap,
+  describeStudentFeeRelief,
   assertActiveCategory,
   createCategory,
   seedDefaultCategories,

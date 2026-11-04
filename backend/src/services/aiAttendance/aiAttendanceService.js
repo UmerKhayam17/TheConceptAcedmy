@@ -15,7 +15,7 @@ const Role = require('../../models/Role');
 const { STAFF_ROLE_NAMES } = require('../../config/staffRoles');
 const {
   resolveStudentAttendanceStatus,
-  resolveFallbackAttendanceStatus,
+  resolveStaffAttendanceStatus,
 } = require('./attendanceStatusFromTimetable');
 const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
 
@@ -171,7 +171,8 @@ async function markFromPersonKey(personKey, { confidence, notes, source = 'ai' }
       user = await User.findOne({ aiEmployeeId: personKey }).select('_id').lean();
     }
     if (!user) throw new ApiError(404, 'Staff not found');
-    const status = resolveFallbackAttendanceStatus(now);
+    // Present / late from the teacher's earliest period today + grace (9:30 AM when none)
+    const status = await resolveStaffAttendanceStatus(user._id, now);
     const doc = await applyStaffAttendance(user._id, {
       status,
       checkIn: now,

@@ -35,7 +35,7 @@ export function isFreeFeeStudent(
   return /full fee waiver|free student/i.test(String(record.notes || ""));
 }
 
-export type FeeReliefTab = "" | "concession" | "exemption";
+export type FeeReliefTab = "" | "concession" | "exemption" | "legacy";
 
 function FeeOptionCard({
   selected,
@@ -102,7 +102,7 @@ export function FeeModeSelector({
     onChange: (type: "concession" | "exemption") => void;
   };
 }) {
-  const active: FeeMode | "concession" | "exemption" =
+  const active: FeeMode | FeeReliefTab =
     value === "waiver" ? "waiver" : relief?.value ? relief.value : "normal";
 
   return (
@@ -161,6 +161,12 @@ export function FeeModeSelector({
       {value === "waiver" && (
         <p className="text-xs text-muted-foreground">
           Full waiver selected. Monthly challans will be auto-settled as Paid at ₨ 0.
+        </p>
+      )}
+      {value !== "waiver" && relief?.value === "legacy" && (
+        <p className="text-xs text-muted-foreground">
+          This student has a legacy discount, kept as is. Choose Concession or Exemption to convert it, or Normal
+          fees to remove it.
         </p>
       )}
     </div>

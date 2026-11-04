@@ -349,6 +349,8 @@ export interface AcademyStudentRecord {
       totalPending: number;
       byStatus: Record<string, number>;
     };
+    /** Active tuition relief (absent for teachers). */
+    relief?: FeeReliefInfo;
     records: AcademyFeeRecord[];
   };
   assessments: {
@@ -786,6 +788,10 @@ export type EnrollmentVoucherBody = {
   phone?: string;
   gender?: string;
   paymentDate?: string;
+  feeReliefType?: "" | "concession" | "exemption";
+  concessionCategory?: string;
+  concessionPercent?: number;
+  exemptionRemarks?: string;
 };
 
 export type EnrollmentVoucherResult = {
@@ -1227,7 +1233,34 @@ export interface DiscountReportSummary {
   bothCount: number;
   legacyCount: number;
   byStaff: DiscountReportStaffSummary[];
+  concessionCount?: number;
+  exemptionCount?: number;
+  totalConcessionAmount?: number;
+  totalExemptionAmount?: number;
+  legacyReliefCount?: number;
+  totalLegacyReliefAmount?: number;
+  byCategory?: { concessionCategory: string; name: string; studentCount: number; monthlyAmount: number }[];
 }
+
+/** Tuition relief description returned by reports, exports and the student record. */
+export interface FeeReliefInfo {
+  /** "legacy" = old monthly discount with no category / reason (amount kept as is). */
+  feeReliefType: "" | "concession" | "exemption" | "legacy";
+  reliefTypeLabel: string;
+  concessionCategory: string;
+  concessionCategoryName: string;
+  concessionPercent: number;
+  exemptionRemarks: string;
+  reliefAmount: number;
+  /** Discount / current monthly fee, display only. */
+  indicativePercent?: number;
+  /** Staff-facing label. */
+  reliefLabel: string;
+  /** Parent / printed label (a legacy discount is just "Discount"). */
+  publicLabel?: string;
+}
+
+export type DiscountReliefFilter = "" | "concession" | "exemption" | "legacy" | "none";
 
 export interface DiscountReportRow {
   _id: string;
@@ -1245,6 +1278,8 @@ export interface DiscountReportRow {
   grantedBy?: { _id: string; name: string; email: string } | null;
 }
 
+export type DiscountReportItem = DiscountReportRow & Partial<FeeReliefInfo>;
+
 export const fetchDiscountReport = async (params?: {
   page?: number;
   limit?: number;
@@ -1252,8 +1287,12 @@ export const fetchDiscountReport = async (params?: {
   search?: string;
   from?: string;
   to?: string;
+  reliefType?: DiscountReliefFilter;
+  concessionCategory?: string;
 }) => {
   const q = new URLSearchParams();
+  if (params?.reliefType) q.set("reliefType", params.reliefType);
+  if (params?.concessionCategory) q.set("concessionCategory", params.concessionCategory);
   if (params?.page) q.set("page", String(params.page));
   if (params?.limit) q.set("limit", String(params.limit));
   if (params?.classId) q.set("classId", params.classId);
@@ -1263,7 +1302,7 @@ export const fetchDiscountReport = async (params?: {
   const res = await authedFetch(`/student-management/students/discount-report?${q}`);
   const body = await parseJson<{
     success?: boolean;
-    data?: DiscountReportRow[];
+    data?: DiscountReportItem[];
     summary?: DiscountReportSummary;
     pagination?: Pagination;
     message?: string;
@@ -1752,7 +1791,7 @@ export interface AcademySalaryAttendanceCounts {
 
 export interface AcademySalaryAttendance {
   period: string;
-  /** Per-class-period marks from the published timetable (unmarked counts as present). */
+  /** Per-class-period marks from the published timetable (absent until the teacher checks in). */
   classes: {
     sessionName: string;
     attendanceType: "class" | "daily";

@@ -278,6 +278,10 @@ const TEACHER_HIDDEN_STUDENT_FIELDS = [
   'discountAmount',
   'totalFee',
   'feeStructureId',
+  'feeReliefType',
+  'concessionCategory',
+  'concessionPercent',
+  'exemptionRemarks',
 ];
 
 /** Strip contact/fee fields teachers must not see. */

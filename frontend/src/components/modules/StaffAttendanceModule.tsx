@@ -7,7 +7,6 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
-  ClipboardList,
   Clock3,
   Palmtree,
   UserX,
@@ -74,7 +73,8 @@ function defaultPeriodStatus(status?: string | null): StaffPeriodStatus {
   if (status === "present" || status === "late" || status === "absent" || status === "leave") {
     return status;
   }
-  return "present";
+  // No saved mark and no camera check-in → absent.
+  return "absent";
 }
 
 const STATUS_SELECT_CLASS: Record<string, string> = {
@@ -316,18 +316,23 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
       toast({ title: "Select a session first", variant: "destructive" });
       return;
     }
+    // Only save what the admin changed. Untouched periods keep following the camera
+    // (absent until the teacher is seen), so they must not be frozen as saved marks.
     const marks = markingTeachers.flatMap((teacher) =>
-      teacher.periods.map((period) => {
+      teacher.periods.flatMap((period) => {
         const draft = drafts[periodDraftKey(teacher.userId, period.periodKey)];
-        return {
-          userId: teacher.userId,
-          periodKey: period.periodKey,
-          status: defaultPeriodStatus(draft?.status ?? period.status),
-        };
+        if (!draft?.dirty) return [];
+        return [
+          {
+            userId: teacher.userId,
+            periodKey: period.periodKey,
+            status: defaultPeriodStatus(draft.status),
+          },
+        ];
       })
     );
     if (!marks.length) {
-      toast({ title: "Nothing to save", description: "No periods on the timetable for this day." });
+      toast({ title: "Nothing to save", description: "Change a status first." });
       return;
     }
     setSavingAll(true);
@@ -407,7 +412,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   }, [boardClasses, boardSubjects]);
 
   const stats = useMemo(() => {
-    const counts = { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0, unmarked: 0 };
+    const counts = { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0 };
     if (view === "daily") {
       markingTeachers.forEach((teacher) =>
         teacher.periods.forEach((period) => {
@@ -425,7 +430,6 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
         counts.late += t.late;
         counts.absent += t.absent;
         counts.leave += t.leave;
-        counts.unmarked += t.unmarked;
       });
     }
     const marked = counts.present + counts.late;
@@ -443,7 +447,6 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     { label: "Late", value: stats.late, valueClass: "text-amber-700" },
     { label: "Absent", value: stats.absent, valueClass: "text-rose-700" },
     { label: "Leave", value: stats.leave, valueClass: "text-blue-700" },
-    { label: "Unmarked", value: stats.unmarked, valueClass: "text-violet-700" },
   ];
 
   return (
@@ -492,7 +495,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
             </div>
           ))}
         </div>
-        <div className="hidden gap-3 sm:grid sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
+        <div className="hidden gap-3 sm:grid sm:grid-cols-3 sm:gap-4 xl:grid-cols-5">
           <PanelStatCard
             label="Total classes"
             value={stats.totalClasses}
@@ -532,14 +535,6 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
             icon={Palmtree}
             iconWrapClass="bg-[#dbeafe]"
             iconClass="text-[#2563eb]"
-          />
-          <PanelStatCard
-            label="Unmarked"
-            value={stats.unmarked}
-            hint="Need marking"
-            icon={ClipboardList}
-            iconWrapClass="bg-[#ede9fe]"
-            iconClass="text-[#7c3aed]"
           />
         </div>
         </>
@@ -663,7 +658,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
             {view === "daily" && canMark && (
               <Button
                 className="hidden h-10 gap-2 lg:inline-flex"
-                disabled={savingAll || saveableCount === 0}
+                disabled={savingAll || saveableCount === 0 || dirtyCount === 0}
                 onClick={() => void saveAll()}
               >
                 <Save className="h-4 w-4" />
@@ -812,7 +807,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     </div>
     {view === "daily" && canMark && saveableCount > 0 && (
       <div className="shrink-0 border-t border-slate-200 bg-white/95 px-3 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:hidden">
-        <Button className="h-11 w-full gap-2" disabled={savingAll} onClick={() => void saveAll()}>
+        <Button className="h-11 w-full gap-2" disabled={savingAll || dirtyCount === 0} onClick={() => void saveAll()}>
           <Save className="h-4 w-4" />
           {savingAll
             ? "Saving…"
@@ -882,7 +877,7 @@ function DayStatusControl({
 }) {
   const style = DAY_STATUS_STYLE[status] || DAY_STATUS_STYLE[""];
   const Icon = style.icon;
-  const text = PERIOD_STATUSES.find((s) => s.value === status)?.label || "Present";
+  const text = PERIOD_STATUSES.find((s) => s.value === status)?.label || "Absent";
   return (
     <div
       className={cn(
@@ -1202,7 +1197,6 @@ const DAY_STATUS_SUMMARY: Record<string, { text: string; dot: string }> = {
   late: { text: "Arrived late", dot: "bg-blue-500" },
   absent: { text: "Absent today", dot: "bg-red-500" },
   leave: { text: "On leave", dot: "bg-violet-500" },
-  "": { text: "Not marked yet", dot: "bg-slate-300 dark:bg-slate-600" },
 };
 
 const STAFF_MARK_ACTIONS: { status: StaffPeriodStatus; label: string; icon: LucideIcon }[] = [
@@ -1248,7 +1242,7 @@ function StaffDayTable({
             const period = person.periods[0];
             const draft = period ? drafts[periodDraftKey(person.userId, period.periodKey)] : undefined;
             const status = defaultPeriodStatus(draft?.status ?? period?.status);
-            const summary = DAY_STATUS_SUMMARY[status] || DAY_STATUS_SUMMARY[""];
+            const summary = DAY_STATUS_SUMMARY[status] || DAY_STATUS_SUMMARY.absent;
             const role = String(person.role || "staff").toLowerCase();
             const mark = (next: StaffPeriodStatus) => {
               if (period) onChange(person.userId, period.periodKey, next);
@@ -1381,14 +1375,13 @@ function TeacherSummaryTable({
             <th className={numHead}>Late</th>
             <th className={numHead}>Absent</th>
             <th className={numHead}>Leave</th>
-            <th className={numHead}>Unmarked</th>
             <th className={cn(headClass, "min-w-[9rem] text-left")}>Attendance</th>
           </tr>
         </thead>
         <tbody>
           {teachers.length === 0 && (
             <tr>
-              <td colSpan={9} className="p-8 text-center text-muted-foreground">
+              <td colSpan={8} className="p-8 text-center text-muted-foreground">
                 {emptyLabel}
               </td>
             </tr>
@@ -1432,7 +1425,6 @@ function TeacherSummaryTable({
                 <td className={cn(numClass, "text-blue-700 dark:text-blue-400")}>{t.late}</td>
                 <td className={cn(numClass, "text-red-700 dark:text-red-400")}>{t.absent}</td>
                 <td className={cn(numClass, "text-violet-700 dark:text-violet-400")}>{t.leave}</td>
-                <td className={cn(numClass, "text-slate-500")}>{t.unmarked}</td>
                 <td className={cellClass}>
                   <p className="text-xs font-semibold text-[#1a2b4b] mb-1.5 dark:text-slate-200">
                     {t.attendancePercent}%

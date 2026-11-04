@@ -475,7 +475,7 @@ function drawSlip(doc, ctx) {
         (s.late ? `, late ${s.late} time${s.late === 1 ? '' : 's'}` : '') +
         '. ' +
         (off.length ? `Absent / leave on: ${off.join(', ')}.` : 'No absences this month.') +
-        ' Classes not marked count as present.' +
+        ' Classes count as absent until the teacher checks in on camera or is marked.' +
         (daily && daily.totalDays > 0
           ? ` Daily check-in: ${daily.totalDays} day${daily.totalDays === 1 ? '' : 's'} recorded (${daily.present} present, ${daily.late} late, ${daily.absent} absent, ${daily.leave} leave).`
           : '')

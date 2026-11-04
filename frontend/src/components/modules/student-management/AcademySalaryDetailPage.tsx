@@ -171,7 +171,7 @@ function AttendanceCard({ record }: { record: AcademySalaryRecord }) {
           <h2 className="text-lg font-bold text-[#0f1f3d]">Attendance this month</h2>
           <p className="text-sm text-slate-500">
             {cls?.sessionName ? `Session ${cls.sessionName} · ` : ""}
-            From the published timetable up to today; unmarked periods count as present
+            From the published timetable up to today; periods count as absent until the teacher checks in
           </p>
         </div>
       </div>

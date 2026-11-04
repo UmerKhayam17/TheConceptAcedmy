@@ -4,7 +4,9 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   fetchAcademyClasses,
+  fetchConcessionCategories,
   fetchDiscountReport,
+  type DiscountReliefFilter,
   type DiscountReportRow,
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
@@ -24,6 +26,8 @@ const DISCOUNT_TYPE_LABELS: Record<DiscountReportRow["discountType"], string> = 
 export default function AcademyDiscountReport() {
   const [search, setSearch] = useState("");
   const [classId, setClassId] = useState("");
+  const [reliefType, setReliefType] = useState<DiscountReliefFilter>("");
+  const [category, setCategory] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
@@ -33,14 +37,22 @@ export default function AcademyDiscountReport() {
     retry: false,
   });
 
+  const { data: categories = [] } = useQuery({
+    queryKey: ["concession-categories"],
+    queryFn: fetchConcessionCategories,
+    retry: false,
+  });
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["academy-discount-report", page, pageSize, classId, search],
+    queryKey: ["academy-discount-report", page, pageSize, classId, search, reliefType, category],
     queryFn: () =>
       fetchDiscountReport({
         page,
         limit: pageSize,
         classId: classId || undefined,
         search: search.trim() || undefined,
+        reliefType: reliefType || undefined,
+        concessionCategory: reliefType === "concession" && category ? category : undefined,
       }),
     retry: false,
   });
@@ -80,6 +92,50 @@ export default function AcademyDiscountReport() {
             allowAll
           />
         </div>
+        <div className="w-full sm:w-auto space-y-1">
+          <Label htmlFor="discount-relief-filter" className="sr-only">
+            Relief type
+          </Label>
+          <select
+            id="discount-relief-filter"
+            className="h-10 w-full sm:w-44 rounded-md border border-input bg-background px-3 text-sm"
+            value={reliefType}
+            onChange={(e) => {
+              setReliefType(e.target.value as DiscountReliefFilter);
+              setCategory("");
+              setPage(1);
+            }}
+          >
+            <option value="">All relief types</option>
+            <option value="concession">Concession</option>
+            <option value="exemption">Exemption</option>
+            <option value="legacy">Legacy discount</option>
+            <option value="none">No tuition relief</option>
+          </select>
+        </div>
+        {reliefType === "concession" ? (
+          <div className="w-full sm:w-auto space-y-1">
+            <Label htmlFor="discount-category-filter" className="sr-only">
+              Concession category
+            </Label>
+            <select
+              id="discount-category-filter"
+              className="h-10 w-full sm:w-52 rounded-md border border-input bg-background px-3 text-sm"
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All categories</option>
+              {categories.map((c) => (
+                <option key={c._id} value={c.key}>
+                  {c.name} ({Number(c.discountPercent) || 0}%){c.isActive ? "" : " — inactive"}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
 
       {summary ? (
@@ -127,7 +183,54 @@ export default function AcademyDiscountReport() {
               <p className="font-semibold">{summary.legacyCount}</p>
             </Card>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            <Card className="p-3">
+              <span className="text-muted-foreground">Concessions</span>
+              <p className="font-semibold">
+                {summary.concessionCount ?? 0} students · {formatPkr(summary.totalConcessionAmount ?? 0)} / month
+              </p>
+            </Card>
+            <Card className="p-3">
+              <span className="text-muted-foreground">Exemptions</span>
+              <p className="font-semibold">
+                {summary.exemptionCount ?? 0} students · {formatPkr(summary.totalExemptionAmount ?? 0)} / month
+              </p>
+            </Card>
+            <Card className="p-3">
+              <span className="text-muted-foreground">Legacy discounts (no category)</span>
+              <p className="font-semibold">
+                {summary.legacyReliefCount ?? 0} students · {formatPkr(summary.totalLegacyReliefAmount ?? 0)} / month
+              </p>
+            </Card>
+          </div>
         </>
+      ) : null}
+
+      {(summary?.byCategory?.length ?? 0) > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">Concessions by category</h3>
+          <div className="rounded-lg border overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40 text-left">
+                  <th className="p-3 font-medium">Category</th>
+                  <th className="p-3 font-medium">Students</th>
+                  <th className="p-3 font-medium">Tuition relief / month</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary!.byCategory!.map((row) => (
+                  <tr key={row.concessionCategory || "none"} className="border-b last:border-0">
+                    <td className="p-3 font-medium">{row.name}</td>
+                    <td className="p-3">{row.studentCount}</td>
+                    <td className="p-3">{formatPkr(row.monthlyAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : null}
 
       {staffRows.length > 0 ? (
@@ -184,6 +287,7 @@ export default function AcademyDiscountReport() {
                     <th className="p-3 font-medium">Student</th>
                     <th className="p-3 font-medium">Class</th>
                     <th className="p-3 font-medium">Type</th>
+                    <th className="p-3 font-medium">Relief</th>
                     <th className="p-3 font-medium">Monthly</th>
                     <th className="p-3 font-medium">Admission</th>
                     <th className="p-3 font-medium">Total</th>
@@ -200,6 +304,26 @@ export default function AcademyDiscountReport() {
                       </td>
                       <td className="p-3">{row.className || "—"}</td>
                       <td className="p-3">{DISCOUNT_TYPE_LABELS[row.discountType]}</td>
+                      <td className="p-3">
+                        {row.reliefTypeLabel ? (
+                          <>
+                            <div className="font-medium">{row.reliefTypeLabel}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {row.feeReliefType === "exemption"
+                                ? row.exemptionRemarks || "—"
+                                : row.feeReliefType === "legacy"
+                                  ? row.indicativePercent
+                                    ? `≈${row.indicativePercent}% (indicative)`
+                                    : "Old discount"
+                                  : row.concessionCategoryName
+                                  ? `${row.concessionCategoryName}${row.concessionPercent ? ` (${row.concessionPercent}%)` : ""}`
+                                  : "No category"}
+                            </div>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="p-3">{formatPkr(row.monthlyFeeDiscount)}</td>
                       <td className="p-3">{formatPkr(row.admissionFeeDiscount)}</td>
                       <td className="p-3 font-semibold">{formatPkr(row.totalDiscount)}</td>

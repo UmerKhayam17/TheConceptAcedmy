@@ -21,7 +21,11 @@ const {
 } = require('./academyFeeService');
 const { validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
 const { resolveEnrollmentDiscipline } = require('./academyDisciplineService');
-const { assertActiveCategory: assertActiveConcessionCategory } = require('./concessionCategoryService');
+const {
+  assertActiveCategory: assertActiveConcessionCategory,
+  categoryNameMap: concessionCategoryNameMap,
+} = require('./concessionCategoryService');
+const { describeFeeRelief } = require('../../utils/feeRelief');
 const { generateAcademyRollNumber, generateTemporaryRollNumber } = require('../../utils/academyRollNumber');
 const {
   generateRegistrationNumber,
@@ -451,6 +455,15 @@ async function updateStudent(id, payload) {
       isFullPackage,
       ...discountOptions,
     });
+    // A fixed tuition discount (legacy / exemption / concession amount) larger than the new
+    // monthly fee is capped at the fee — tell staff instead of doing it silently.
+    const requestedMonthly = Number(discountOptions.monthlyFeeDiscount) || 0;
+    if (requestedMonthly > (Number(fees.monthlyFee) || 0)) {
+      student.$locals.feeWarnings = [
+        `Monthly discount of PKR ${requestedMonthly.toLocaleString('en-PK')} is more than the new monthly fee ` +
+          `(PKR ${(Number(fees.monthlyFee) || 0).toLocaleString('en-PK')}). It was capped at the fee.`,
+      ];
+    }
     Object.assign(student, fees);
     student.feeStructureId = feeStructure._id;
   }
@@ -683,7 +696,35 @@ function classifyDiscountType(monthlyFeeDiscount, admissionFeeDiscount, discount
   return 'none';
 }
 
-function buildDiscountReportQuery({ classId, search, from, to }) {
+/** Mongo filter for the effective relief type (old discounts without a type count as concession). */
+function reliefTypeFilter(reliefType) {
+  if (reliefType === 'exemption') return { feeReliefType: 'exemption' };
+  if (reliefType === 'concession') {
+    return {
+      $or: [
+        { feeReliefType: 'concession' },
+        { feeReliefType: { $in: ['', null] }, concessionCategory: { $nin: ['', null] } },
+      ],
+    };
+  }
+  if (reliefType === 'legacy') {
+    return {
+      feeReliefType: { $in: ['', null] },
+      concessionCategory: { $in: ['', null] },
+      monthlyFeeDiscount: { $gt: 0 },
+    };
+  }
+  if (reliefType === 'none') {
+    return {
+      feeReliefType: { $in: ['', null] },
+      concessionCategory: { $in: ['', null] },
+      monthlyFeeDiscount: { $not: { $gt: 0 } },
+    };
+  }
+  return null;
+}
+
+function buildDiscountReportQuery({ classId, search, from, to, reliefType, concessionCategory }) {
   const and = [
     {
       $or: [
@@ -694,6 +735,9 @@ function buildDiscountReportQuery({ classId, search, from, to }) {
     },
   ];
   if (classId) and.push({ classId });
+  const reliefQ = reliefTypeFilter(reliefType);
+  if (reliefQ) and.push(reliefQ);
+  if (concessionCategory) and.push({ concessionCategory: String(concessionCategory).trim().toLowerCase() });
   if (from || to) {
     const enrolledAt = {};
     if (from) enrolledAt.$gte = new Date(from);
@@ -714,12 +758,21 @@ function buildDiscountReportQuery({ classId, search, from, to }) {
   return { $and: and };
 }
 
-async function getDiscountReport({ page = 1, limit = 20, classId, search, from, to } = {}) {
-  const q = buildDiscountReportQuery({ classId, search, from, to });
+async function getDiscountReport({
+  page = 1,
+  limit = 20,
+  classId,
+  search,
+  from,
+  to,
+  reliefType,
+  concessionCategory,
+} = {}) {
+  const q = buildDiscountReportQuery({ classId, search, from, to, reliefType, concessionCategory });
   const perPage = Math.min(100, Math.max(1, limit));
   const skip = (Math.max(1, page) - 1) * perPage;
 
-  const [rows, total, allDiscountStudents] = await Promise.all([
+  const [rows, total, allDiscountStudents, categoryNames] = await Promise.all([
     AcademyStudent.find(q)
       .populate('classId', 'className')
       .populate('createdBy', 'name email')
@@ -729,8 +782,11 @@ async function getDiscountReport({ page = 1, limit = 20, classId, search, from, 
       .lean(),
     AcademyStudent.countDocuments(q),
     AcademyStudent.find(q)
-      .select('monthlyFeeDiscount admissionFeeDiscount discountAmount createdBy')
+      .select(
+        'monthlyFee monthlyFeeDiscount admissionFeeDiscount discountAmount createdBy feeReliefType concessionCategory concessionPercent exemptionRemarks'
+      )
       .lean(),
+    concessionCategoryNameMap(),
   ]);
 
   let totalMonthlyDiscount = 0;
@@ -741,8 +797,36 @@ async function getDiscountReport({ page = 1, limit = 20, classId, search, from, 
   let bothCount = 0;
   let legacyCount = 0;
   const byStaffMap = new Map();
+  let concessionCount = 0;
+  let exemptionCount = 0;
+  let legacyReliefCount = 0;
+  let totalConcessionAmount = 0;
+  let totalExemptionAmount = 0;
+  let totalLegacyReliefAmount = 0;
+  const byCategoryMap = new Map();
 
   allDiscountStudents.forEach((s) => {
+    const relief = describeFeeRelief(s, categoryNames);
+    if (relief.feeReliefType === 'concession') {
+      concessionCount += 1;
+      totalConcessionAmount += relief.reliefAmount;
+      const key = relief.concessionCategory || '';
+      const cat = byCategoryMap.get(key) || {
+        concessionCategory: key,
+        name: relief.concessionCategoryName || 'No category',
+        studentCount: 0,
+        monthlyAmount: 0,
+      };
+      cat.studentCount += 1;
+      cat.monthlyAmount += relief.reliefAmount;
+      byCategoryMap.set(key, cat);
+    } else if (relief.feeReliefType === 'exemption') {
+      exemptionCount += 1;
+      totalExemptionAmount += relief.reliefAmount;
+    } else if (relief.feeReliefType === 'legacy') {
+      legacyReliefCount += 1;
+      totalLegacyReliefAmount += relief.reliefAmount;
+    }
     const monthly = Number(s.monthlyFeeDiscount) || 0;
     const admission = Number(s.admissionFeeDiscount) || 0;
     const legacy = Number(s.discountAmount) || 0;
@@ -802,7 +886,9 @@ async function getDiscountReport({ page = 1, limit = 20, classId, search, from, 
     const discountAmount = Number(s.discountAmount) || 0;
     const discountType = classifyDiscountType(monthlyFeeDiscount, admissionFeeDiscount, discountAmount);
     const createdBy = s.createdBy;
+    const relief = describeFeeRelief(s, categoryNames);
     return {
+      ...relief,
       _id: s._id,
       studentId: s.studentId,
       studentName: s.studentName,
@@ -836,6 +922,13 @@ async function getDiscountReport({ page = 1, limit = 20, classId, search, from, 
       bothCount,
       legacyCount,
       byStaff,
+      concessionCount,
+      exemptionCount,
+      totalConcessionAmount,
+      totalExemptionAmount,
+      legacyReliefCount,
+      totalLegacyReliefAmount,
+      byCategory: [...byCategoryMap.values()].sort((a, b) => b.monthlyAmount - a.monthlyAmount),
     },
     items,
     pagination: {

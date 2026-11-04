@@ -800,6 +800,8 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     qc.invalidateQueries({ queryKey: ["academy-attendance-day"] });
     qc.invalidateQueries({ queryKey: ["staff-attendance-day"] });
     qc.invalidateQueries({ queryKey: ["staff-attendance-mine"] });
+    qc.invalidateQueries({ queryKey: ["staff-period-day"] });
+    qc.invalidateQueries({ queryKey: ["staff-period-month"] });
     qc.invalidateQueries({ queryKey: ["academy-attendance-today-dashboard"] });
   };
 

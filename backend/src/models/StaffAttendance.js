@@ -18,7 +18,8 @@ const staffAttendanceSchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      enum: ['ai', 'manual'],
+      /** manual | ai | auto (end-of-day absent job) */
+      enum: ['ai', 'manual', 'auto'],
       default: 'ai',
     },
     confidence: { type: Number },

@@ -22,6 +22,19 @@ export const emptyAcademicRow = (): AcademicRow => ({
 
 export type FeeReliefType = "" | "concession" | "exemption";
 
+/**
+ * FeeReliefType plus "legacy": a monthly discount saved before relief types existed
+ * (no category, no reason). Its PKR amount is kept as is and it is never sent back as a type.
+ */
+export type FeeReliefKind = FeeReliefType | "legacy";
+
+/** Discount as a rounded % of the monthly fee (display only, never saved). */
+export function indicativePercent(amount: number, monthlyFee: number): number {
+  const fee = Number(monthlyFee) || 0;
+  if (!fee || !(amount > 0)) return 0;
+  return Math.round((amount / fee) * 100);
+}
+
 /** Suggested exemption reasons (registration form + Student Fee modal); custom text is also allowed. */
 export const EXEMPTION_REMARKS = [
   "Full fee waiver",
@@ -34,11 +47,47 @@ export const EXEMPTION_REMARKS = [
   "Principal approval",
 ];
 
-/** Active relief; a discount from before categories existed counts as a concession. */
-export function studentFeeRelief(student: AcademyStudent): FeeReliefType {
+/** Active relief; a monthly discount with no type and no category is a legacy discount. */
+export function studentFeeRelief(student: AcademyStudent): FeeReliefKind {
   if (student.feeReliefType) return student.feeReliefType;
-  if (student.concessionCategory || Number(student.monthlyFeeDiscount) > 0) return "concession";
+  if (student.concessionCategory) return "concession";
+  if (Number(student.monthlyFeeDiscount) > 0) return "legacy";
   return "";
+}
+
+/**
+ * Readable tuition relief for display, e.g. "Concession: Sibling (20%)" / "Exemption: Orphan".
+ * `categoryNames` maps concession keys to names; falls back to the key.
+ */
+export function feeReliefSummary(
+  student: AcademyStudent,
+  categoryNames: Record<string, string> = {},
+): { type: FeeReliefKind; typeLabel: string; detail: string; amount: number } {
+  const type = studentFeeRelief(student);
+  const monthly = Number(student.monthlyFee) || 0;
+  const disc = Number(student.monthlyFeeDiscount) || 0;
+  const amount = type ? (monthly ? Math.min(disc, monthly) : disc) : 0;
+  let detail = "";
+  if (type === "concession") {
+    const key = student.concessionCategory || "";
+    const name = key ? categoryNames[key] || key : "";
+    const pct = Number(student.concessionPercent) || 0;
+    detail = name ? `${name}${pct ? ` (${pct}%)` : ""}` : pct ? `${pct}%` : "No category (old discount)";
+  } else if (type === "exemption") {
+    detail = student.exemptionRemarks || "";
+  } else if (type === "legacy") {
+    const pct = indicativePercent(amount, monthly);
+    detail = pct ? `≈${pct}% of current fee (indicative)` : "";
+  }
+  const typeLabel =
+    type === "concession"
+      ? "Concession"
+      : type === "exemption"
+        ? "Exemption"
+        : type === "legacy"
+          ? "Legacy discount"
+          : "";
+  return { type, typeLabel, detail, amount };
 }
 
 export const defaultRegisterForm = () => ({
@@ -74,7 +123,7 @@ export const defaultRegisterForm = () => ({
   /** What parent pays for admission (discount = list − this). */
   admissionPayable: "",
   /** Tuition relief: a concession (category %) OR an exemption (amount + reason) — never both. */
-  feeReliefType: "" as FeeReliefType,
+  feeReliefType: "" as FeeReliefKind,
   /** PKR / month off tuition for the chosen relief (becomes monthlyFeeDiscount). */
   reliefAmount: "0",
   concessionCategory: "",
@@ -177,7 +226,8 @@ export function buildStudentPayload(form: ReturnType<typeof defaultRegisterForm>
     isFullPackage: form.isFullPackage,
     monthlyFeeDiscount: Number(form.monthlyFeeDiscount) || 0,
     admissionFeeDiscount: Number(form.admissionFeeDiscount) || 0,
-    ...(form.reliefDirty
+    // A legacy discount is never sent as a relief type — only its amount (monthlyFeeDiscount).
+    ...(form.reliefDirty && form.feeReliefType !== "legacy"
       ? {
           feeReliefType: form.feeReliefType,
           concessionCategory: form.feeReliefType === "concession" ? form.concessionCategory : "",
