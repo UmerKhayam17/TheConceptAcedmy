@@ -52,6 +52,7 @@ function matchesFilters(row, query) {
   if (!q) return true;
   const hay = [
     row.name,
+    row.accountName,
     row.email,
     row.phone,
     row.isActive ? 'active' : 'inactive',
@@ -105,14 +106,24 @@ async function loadParentRows(query = {}) {
   return users
     .map((u) => {
       const email = String(u.email || '').trim().toLowerCase();
+      const linked = byEmail.get(email) || [];
+      const accountName = String(u.name || '').trim();
+      // Each portal email is built from the student. The account name is the
+      // father/guardian, which repeats across unrelated students in this data.
+      const name =
+        linked
+          .map((s) => String(s.studentName || '').trim())
+          .filter(Boolean)
+          .join(', ') || accountName;
       return {
-        name: String(u.name || '').trim(),
+        name,
+        accountName,
         email,
         phone: String(u.phone || '').trim(),
         password: String(u.issuedPassword || '').trim() || DEFAULT_PARENT_PASSWORD,
         isActive: u.isActive !== false,
         modules: moduleKeys(u.modulePermissions),
-        linked: byEmail.get(email) || [],
+        linked,
       };
     })
     .filter((row) => matchesFilters(row, query))
@@ -120,7 +131,8 @@ async function loadParentRows(query = {}) {
       name: row.name,
       email: row.email,
       password: row.password,
-    }));
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.email.localeCompare(b.email));
 }
 
 function buildCols(tableW) {
