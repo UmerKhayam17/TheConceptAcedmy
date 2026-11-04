@@ -11,6 +11,7 @@ const router = Router();
 router.use(protect);
 
 router.get('/modules-registry', requireAnyAccountModule('view'), ctrl.listModuleRegistry);
+router.get('/parents/credentials', requireAnyAccountModule('view'), ctrl.exportParentCredentialsFile);
 router.post('/bulk', requireAnyAccountModule('view'), validate(schemas.bulkUsers), ctrl.bulkUsers);
 router.post('/:id/profile-photo', requireAnyAccountModule('edit'), uploadImage.single('photo'), ctrl.uploadProfilePhoto);
 router.get('/', requireAnyAccountModule('view'), ctrl.listUsers);

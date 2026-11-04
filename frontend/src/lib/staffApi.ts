@@ -414,6 +414,35 @@ export async function uploadStaffProfilePhoto(userId: string, file: File): Promi
 
 export type StaffReportFormat = "xlsx" | "pdf";
 
+export async function exportParentCredentials(params?: {
+  search?: string;
+  status?: string;
+  classId?: string;
+  sectionId?: string;
+  module?: string;
+  format?: "pdf" | "xlsx";
+}) {
+  const q = new URLSearchParams();
+  q.set("format", params?.format === "xlsx" ? "xlsx" : "pdf");
+  if (params?.search) q.set("search", params.search);
+  if (params?.status) q.set("status", params.status);
+  if (params?.classId) q.set("classId", params.classId);
+  if (params?.sectionId) q.set("sectionId", params.sectionId);
+  if (params?.module) q.set("module", params.module);
+  const res = await authedFetch(`/users/parents/credentials?${q}`, { method: "GET" });
+  if (!res.ok) {
+    let message = "Export failed";
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      /* ignore non-JSON error bodies */
+    }
+    throw new Error(message);
+  }
+  return res.blob();
+}
+
 export async function exportStaffReport(
   staffId: string,
   params: { format?: StaffReportFormat; month?: number; year?: number; sessionId?: string } = {},

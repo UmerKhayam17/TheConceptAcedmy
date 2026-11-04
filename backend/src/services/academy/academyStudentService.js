@@ -97,6 +97,7 @@ async function ensureParentPortalUser({
       email: parentEmail,
       phone: phone || '',
       password: await bcrypt.hash(parentPassword, 12),
+      issuedPassword: parentPassword,
       role: parentRole._id,
       isActive: true,
       modulePermissions: parentModulePermissionsMap(),
@@ -106,6 +107,7 @@ async function ensureParentPortalUser({
     let dirty = false;
     if (resetPassword) {
       parentUser.password = await bcrypt.hash(parentPassword, 12);
+      parentUser.issuedPassword = parentPassword;
       dirty = true;
     }
     // Drop fee from parent accounts; ensure exam (test results) view remains.

@@ -40,6 +40,7 @@ import {
   deleteStaffUser,
   updateStaffUser,
   bulkUsersAction,
+  exportParentCredentials,
   roleDisplayLabel,
   isNoLoginEmail,
   STAFF_DESIGNATIONS,
@@ -63,6 +64,8 @@ import { resolveUploadUrl } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SquareCheckbox } from "@/components/ui/square-checkbox";
 import ListPagination from "@/components/modules/student-management/ListPagination";
+import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
+import { deliverReportBlob, openReportPreviewTab, type ReportFileFormat } from "@/lib/reportDownload";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import {
   userCreateHref,
@@ -380,6 +383,7 @@ const UsersModule = ({
     },
   });
 
+  const [credentialExporting, setCredentialExporting] = useState<ReportFileFormat | null>(null);
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "active" | "inactive">("");
   const [payTypeFilter, setPayTypeFilter] = useState<"" | "fixed" | "percentage">("");
@@ -527,6 +531,38 @@ const UsersModule = ({
     setSectionFilter("");
     setSearch("");
     setPage(1);
+  };
+
+  const handleCredentialExport = async (format: ReportFileFormat) => {
+    setCredentialExporting(format);
+    const preview = openReportPreviewTab(format);
+    try {
+      const blob = await exportParentCredentials({
+        format,
+        search: search.trim() || undefined,
+        status: statusFilter || undefined,
+        classId: classFilter || undefined,
+        sectionId: sectionFilter || undefined,
+        module: moduleFilter || undefined,
+      });
+      const mode = deliverReportBlob(blob, `Parent-Logins.${format}`, format, preview);
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description:
+          mode === "preview"
+            ? "Use Print or Download from the preview window."
+            : "Full name, email, and password.",
+      });
+    } catch (e) {
+      preview?.close();
+      toast({
+        title: "Export failed",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setCredentialExporting(null);
+    }
   };
 
   // Switching Parents ↔ Staff ↔ Admins reuses this component — reset filters.
@@ -1038,6 +1074,15 @@ const UsersModule = ({
                 <X className="h-4 w-4" />
                 Clear
               </Button>
+            ) : null}
+            {isParentsScope ? (
+              <DefaulterListDownload
+                size="default"
+                label="Print / Export"
+                exporting={credentialExporting}
+                disabled={staffFiltered.length === 0}
+                onDownload={(format) => void handleCredentialExport(format)}
+              />
             ) : null}
             {caps.canCreate && isParentsScope && (
               <Button

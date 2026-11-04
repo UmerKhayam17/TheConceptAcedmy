@@ -5,6 +5,11 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true, minlength: 8, select: false },
+    /**
+     * Last password assigned to a parent portal, kept so staff can reprint login sheets.
+     * Never selected on normal account lists.
+     */
+    issuedPassword: { type: String, select: false },
     phone: { type: String, required: true, trim: true },
     role: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', required: true },
     permissions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Permission' }],

@@ -1,6 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgePercent, HandCoins, Printer, ReceiptText, ShieldCheck, X } from "lucide-react";
+import {
+  BadgePercent,
+  BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  FileText,
+  GraduationCap,
+  Info,
+  Printer,
+  ReceiptText,
+  Search,
+  ShieldCheck,
+  Star,
+  UserRound,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,7 +49,7 @@ type ChallanType = "" | AcademyFeeRecord["feeType"];
 
 const CHALLAN_TYPES: { value: ChallanType; label: string }[] = [
   { value: "", label: "All" },
-  { value: "monthly", label: "Tuition (Monthly)" },
+  { value: "monthly", label: "Tuition" },
   { value: "admission", label: "Admission" },
   { value: "stationery", label: "Stationery" },
 ];
@@ -51,13 +66,24 @@ function challanNo(r: AcademyFeeRecord) {
   return r.paymentSlipNumber || r.receiptNumber || r._id.slice(-8).toUpperCase();
 }
 
-function InfoPill({ label, value }: { label: string; value?: string }) {
+function IdentityCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof FileText;
+  label: string;
+  value?: string;
+}) {
   return (
-    <div className="flex flex-col items-center gap-1.5 text-center min-w-0">
-      <span className="text-sm font-semibold text-foreground">{label}</span>
-      <span className="max-w-full truncate rounded-full bg-primary/15 px-3 py-1 text-sm font-medium text-primary">
-        {value || "—"}
+    <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-card px-3 py-3 shadow-sm">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+        <Icon className="h-5 w-5" />
       </span>
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="truncate text-sm font-semibold text-foreground">{value || "—"}</p>
+      </div>
     </div>
   );
 }
@@ -74,7 +100,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const selectCls =
   "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-70";
 
-const theadCls = "bg-muted/60 text-muted-foreground";
+const theadCls = "bg-primary text-primary-foreground";
+
+function FilterControl({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: typeof FileText;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex h-11 min-w-0 items-center gap-2 rounded-lg border bg-card px-3 shadow-sm">
+      <Icon className="h-4 w-4 shrink-0 text-primary" />
+      <span className="sr-only">{label}</span>
+      {children}
+    </label>
+  );
+}
 
 type FeeHeadRow = { head: string; amount: number; remarks: string; payable: number };
 
@@ -143,37 +187,72 @@ function feeHeadsFor(record: AcademyFeeRecord | undefined, student: AcademyStude
   });
 }
 
+function SummaryCard({
+  icon: Icon,
+  title,
+  rows,
+  total,
+}: {
+  icon: typeof FileText;
+  title: string;
+  rows: { key: string; label: string; value?: string }[];
+  total?: { label: string; value?: string };
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="flex items-center gap-2 border-b px-3 py-2.5 text-sm font-semibold text-foreground">
+        <span className="grid h-7 w-7 place-items-center rounded-md bg-primary/10 text-primary">
+          <Icon className="h-4 w-4" />
+        </span>
+        {title}
+      </div>
+      <div className="text-sm">
+        {rows.map((row) => (
+          <div key={row.key} className="flex items-center justify-between gap-3 border-b px-3 py-2 last:border-b-0">
+            <span className="min-w-0 truncate">{row.label || "—"}</span>
+            {row.value != null && <span className="shrink-0 tabular-nums">{row.value}</span>}
+          </div>
+        ))}
+        {total && (
+          <div className="flex items-center justify-between gap-3 bg-muted/40 px-3 py-2 font-semibold">
+            <span>{total.label}</span>
+            {total.value != null && <span className="tabular-nums">{total.value}</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FeeHeadTable({ rows }: { rows: FeeHeadRow[] }) {
   const total = rows.reduce((s, r) => s + r.amount, 0);
   const payable = rows.reduce((s, r) => s + r.payable, 0);
+  const remarks = rows.map((r) => r.remarks).filter(Boolean);
   return (
-    <div className="overflow-x-auto rounded-md border">
-      <table className="w-full text-sm">
-        <thead className={theadCls}>
-          <tr>
-            <th className="p-3 text-center font-medium">Fee Head</th>
-            <th className="p-3 text-center font-medium">Fee Amount</th>
-            <th className="p-3 text-center font-medium">Remarks</th>
-            <th className="p-3 text-center font-medium">Payable Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={`${r.head}-${i}`} className="border-t">
-              <td className="p-3 text-center">{r.head}</td>
-              <td className="p-3 text-center tabular-nums">{num(r.amount)}</td>
-              <td className="p-3 text-center text-muted-foreground">{r.remarks || ""}</td>
-              <td className="p-3 text-center tabular-nums">{num(r.payable)}</td>
-            </tr>
-          ))}
-          <tr className="border-t font-semibold">
-            <td className="p-3 text-center">Total Amount</td>
-            <td className="p-3 text-center tabular-nums">{num(total)}</td>
-            <td className="p-3" />
-            <td className="p-3 text-center tabular-nums">{num(payable)}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryCard
+        icon={Wallet}
+        title="Fee Head"
+        rows={rows.map((r, i) => ({ key: `${r.head}-${i}`, label: r.head, value: num(r.amount) }))}
+        total={{ label: "Total Amount" }}
+      />
+      <SummaryCard
+        icon={Info}
+        title="Fee Amount"
+        rows={rows.map((r, i) => ({ key: `amt-${i}`, label: num(r.amount) }))}
+        total={{ label: num(total) }}
+      />
+      <SummaryCard
+        icon={Star}
+        title="Remarks"
+        rows={[{ key: "remarks", label: remarks.join(" · ") || "—" }]}
+      />
+      <SummaryCard
+        icon={Wallet}
+        title="Payable Amount"
+        rows={rows.map((r, i) => ({ key: `pay-${i}`, label: num(r.payable) }))}
+        total={{ label: num(payable) }}
+      />
     </div>
   );
 }
@@ -189,6 +268,7 @@ function StudentChallanTab({ student, records }: { student: AcademyStudent; reco
   const { toast } = useToast();
   const [challanType, setChallanType] = useState<ChallanType>("");
   const [selectedId, setSelectedId] = useState<string>("");
+  const summaryRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(
     () =>
@@ -220,17 +300,20 @@ function StudentChallanTab({ student, records }: { student: AcademyStudent; reco
       toast({ title: "Could not print", description: e.message, variant: "destructive" }),
   });
 
+  const feeTypeLabel = (feeType: AcademyFeeRecord["feeType"]) =>
+    feeType === "monthly" ? "Tuition" : feeType === "admission" ? "Admission" : "Stationery";
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Field label="Class">
-          <select className={selectCls} disabled value="cls">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_1.3fr_auto] lg:items-center">
+        <FilterControl icon={GraduationCap} label="Class">
+          <select className="w-full bg-transparent text-sm font-medium outline-none" disabled value="cls">
             <option value="cls">{classLabel(student.classId)}</option>
           </select>
-        </Field>
-        <Field label="Challan Type">
+        </FilterControl>
+        <FilterControl icon={ReceiptText} label="Challan Type">
           <select
-            className={selectCls}
+            className="w-full bg-transparent text-sm font-medium outline-none"
             value={challanType}
             onChange={(e) => setChallanType(e.target.value as ChallanType)}
           >
@@ -240,10 +323,10 @@ function StudentChallanTab({ student, records }: { student: AcademyStudent; reco
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="Month">
+        </FilterControl>
+        <FilterControl icon={CalendarDays} label="Month">
           <select
-            className={selectCls}
+            className="w-full bg-transparent text-sm font-medium outline-none"
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
             disabled={filtered.length === 0}
@@ -251,61 +334,74 @@ function StudentChallanTab({ student, records }: { student: AcademyStudent; reco
             {filtered.length === 0 && <option value="">—</option>}
             {filtered.map((r) => (
               <option key={r._id} value={r._id}>
-                {fullMonthLabel(r)}
-                {!challanType ? ` (${r.feeType === "monthly" ? "Tuition" : r.feeType === "admission" ? "Admission" : "Stationery"})` : ""}
+                {fullMonthLabel(r)} ({feeTypeLabel(r.feeType)})
               </option>
             ))}
           </select>
-        </Field>
+        </FilterControl>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 gap-2 border-primary text-primary hover:bg-primary/5 hover:text-primary"
+          onClick={() => summaryRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+        >
+          <Search className="h-4 w-4" />
+          View Details
+        </Button>
       </div>
 
-      <FeeHeadTable rows={feeHeadsFor(selected, student)} />
+      <div ref={summaryRef}>
+        <FeeHeadTable rows={feeHeadsFor(selected, student)} />
+      </div>
 
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-xl border">
         <table className="w-full text-sm">
           <thead className={theadCls}>
             <tr>
-              <th className="p-3 text-center font-medium">Challan No.</th>
-              <th className="p-3 text-center font-medium">Month</th>
-              <th className="p-3 text-center font-medium">Due Date</th>
-              <th className="p-3 text-center font-medium">Challan Amount</th>
-              <th className="p-3 text-center font-medium">Status</th>
-              <th className="p-3 text-center font-medium">Paid Date</th>
-              <th className="p-3 text-center font-medium">Print Challan</th>
+              <th className="px-3 py-2.5 text-center font-medium">#</th>
+              <th className="px-3 py-2.5 text-left font-medium">Challan No.</th>
+              <th className="px-3 py-2.5 text-center font-medium">Month</th>
+              <th className="px-3 py-2.5 text-center font-medium">Due Date</th>
+              <th className="px-3 py-2.5 text-right font-medium">Challan Amount</th>
+              <th className="px-3 py-2.5 text-center font-medium">Status</th>
+              <th className="px-3 py-2.5 text-center font-medium">Paid Date</th>
+              <th className="px-3 py-2.5 text-center font-medium">Print Challan</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr className="border-t">
-                <td colSpan={7} className="p-6 text-center text-muted-foreground">
+              <tr>
+                <td colSpan={8} className="p-6 text-center text-muted-foreground">
                   No challans generated yet.
                 </td>
               </tr>
             ) : (
-              filtered.map((r) => (
+              filtered.map((r, index) => (
                 <tr
                   key={r._id}
                   onClick={() => setSelectedId(r._id)}
                   className={cn(
-                    "border-t cursor-pointer hover:bg-muted/40",
+                    "cursor-pointer border-t hover:bg-muted/40",
                     r._id === selectedId && "bg-primary/5",
                   )}
                 >
-                  <td className="p-3 text-center font-mono text-xs">{challanNo(r)}</td>
-                  <td className="p-3 text-center whitespace-nowrap">{monthLabel(r)}</td>
-                  <td className="p-3 text-center whitespace-nowrap">{formatDate(r.dueDate)}</td>
-                  <td className="p-3 text-center tabular-nums">{num(r.amount)}</td>
-                  <td className="p-3 text-center">
-                    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium capitalize", STATUS_TONE[r.status])}>
+                  <td className="px-3 py-2.5 text-center text-muted-foreground">{index + 1}</td>
+                  <td className="px-3 py-2.5 text-left font-medium">{challanNo(r)}</td>
+                  <td className="px-3 py-2.5 text-center whitespace-nowrap">{monthLabel(r)}</td>
+                  <td className="px-3 py-2.5 text-center whitespace-nowrap">{formatDate(r.dueDate)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{num(r.amount)}</td>
+                  <td className="px-3 py-2.5 text-center">
+                    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium capitalize", STATUS_TONE[r.status])}>
+                      {r.status === "paid" && <CheckCircle2 className="h-3.5 w-3.5" />}
                       {r.status}
                     </span>
                   </td>
-                  <td className="p-3 text-center whitespace-nowrap">{r.paidAt ? formatDate(r.paidAt) : "—"}</td>
-                  <td className="p-3 text-center">
+                  <td className="px-3 py-2.5 text-center whitespace-nowrap">{r.paidAt ? formatDate(r.paidAt) : "—"}</td>
+                  <td className="px-3 py-2.5 text-center">
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="icon"
-                      className="h-8 w-8 text-primary"
+                      className="h-8 w-8 border-primary/30 text-primary hover:bg-primary/5 hover:text-primary"
                       aria-label={r.status === "paid" ? "Print receipt" : "Print challan"}
                       title={r.status === "paid" ? "Print receipt" : "Print challan"}
                       disabled={printMut.isPending}
@@ -665,7 +761,7 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
 }
 
 const tabTriggerCls =
-  "rounded-none border-b-2 border-transparent bg-transparent px-1 pb-2 pt-1 text-sm font-medium text-muted-foreground shadow-none gap-1.5 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none";
+  "h-10 gap-2 rounded-lg border border-primary/30 bg-background px-4 text-sm font-medium text-primary shadow-none data-[state=active]:border-primary data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none";
 
 export default function StudentFeeDetailsDialog({
   open,
@@ -693,15 +789,20 @@ export default function StudentFeeDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] sm:w-[95vw] sm:max-w-[1400px] max-h-[94dvh] overflow-y-auto p-0 sm:p-0 gap-0">
-        <DialogHeader className="px-6 pt-5 pb-3 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent text-left">
-          <DialogTitle className="flex items-center gap-2 text-xl font-display">
-            <HandCoins className="h-5 w-5 text-violet-600 dark:text-violet-400" /> Student Fee
+      <DialogContent className="flex w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:w-[95vw] sm:max-w-[1400px] sm:p-0 max-h-[94dvh] [&>button]:right-5 [&>button]:top-5 [&>button]:text-primary-foreground [&>button]:opacity-100 [&>button]:hover:text-primary-foreground">
+        <DialogHeader className="shrink-0 space-y-1 bg-primary px-6 py-4 text-left text-primary-foreground">
+          <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-primary-foreground">
+            <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary-foreground/15">
+              <GraduationCap className="h-5 w-5" />
+            </span>
+            Student Fee Details
           </DialogTitle>
-          <DialogDescription>Fee details</DialogDescription>
+          <DialogDescription className="pl-12 text-primary-foreground/80">
+            Fee information and payment summary
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="px-6 py-5 space-y-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/30 px-5 py-4">
           {isLoading || !studentId ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Loading fee details…</p>
           ) : isError || !record || !student ? (
@@ -710,15 +811,15 @@ export default function StudentFeeDetailsDialog({
             </p>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <InfoPill label="Reference No." value={student.registrationNumber || student.studentId} />
-                <InfoPill label="Roll No." value={student.rollNumber} />
-                <InfoPill label="Name" value={student.studentName?.toUpperCase()} />
-                <InfoPill label="Program" value={classLabel(student.classId)} />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <IdentityCard icon={FileText} label="Reference No." value={student.registrationNumber || student.studentId} />
+                <IdentityCard icon={CalendarDays} label="Roll No." value={student.rollNumber} />
+                <IdentityCard icon={UserRound} label="Name" value={student.studentName?.toUpperCase()} />
+                <IdentityCard icon={BookOpen} label="Program" value={classLabel(student.classId)} />
               </div>
 
               <Tabs defaultValue="challan" className="w-full">
-                <TabsList className="h-auto w-full justify-start gap-6 rounded-none border-b bg-transparent p-0 overflow-x-auto">
+                <TabsList className="h-auto w-full justify-start gap-2 overflow-x-auto bg-transparent p-0">
                   <TabsTrigger value="challan" className={tabTriggerCls}>
                     <ReceiptText className="h-3.5 w-3.5" /> Student Challan
                   </TabsTrigger>
@@ -742,12 +843,6 @@ export default function StudentFeeDetailsDialog({
               </Tabs>
             </>
           )}
-        </div>
-
-        <div className="flex justify-end border-t px-6 py-3">
-          <Button variant="outline" className="gap-2" onClick={() => onOpenChange(false)}>
-            <X className="h-4 w-4" /> Close
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

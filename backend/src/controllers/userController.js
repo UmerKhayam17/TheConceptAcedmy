@@ -23,6 +23,7 @@ const {
   isStaffRoleName,
   isNoLoginEmail,
 } = require('../config/staffRoles');
+const { exportParentCredentials } = require('../services/academy/academyParentCredentialsExportService');
 
 /** Unique placeholder + unguessable password for record-only staff (no portal login). */
 async function noLoginCredentials() {
@@ -80,6 +81,10 @@ function serializeUser(user) {
   } else if (!o.modulePermissions) {
     o.modulePermissions = {};
   }
+  delete o.password;
+  delete o.issuedPassword;
+  delete o.refreshToken;
+  delete o.refreshTokenPrev;
   return o;
 }
 
@@ -142,6 +147,16 @@ async function attachLinkedStudentsToUsers(users) {
     return { ...u, linkedStudents: linksByEmail.get(email) || [] };
   });
 }
+
+const exportParentCredentialsFile = catchAsync(async (req, res) => {
+  assertAccountAction(req.user, 'parentUsers', 'view', 'exporting parent accounts');
+  const format = String(req.query.format || 'pdf').toLowerCase() === 'xlsx' ? 'xlsx' : 'pdf';
+  const file = await exportParentCredentials(format, req.query);
+  const disposition = format === 'pdf' ? 'inline' : 'attachment';
+  res.setHeader('Content-Type', file.contentType);
+  res.setHeader('Content-Disposition', `${disposition}; filename="${file.filename}"`);
+  res.send(file.buffer);
+});
 
 const listModuleRegistry = catchAsync(async (req, res) => {
   // Hide coming-soon modules from Permissions / Users grant UI
@@ -378,6 +393,9 @@ const createUser = catchAsync(async (req, res) => {
     name,
     email: finalEmail,
     password: hash,
+    ...(roleName === 'parent' && resolvedCanLogin && password
+      ? { issuedPassword: String(password) }
+      : {}),
     phone,
     role,
     permissions: resolvedCanLogin ? permissionIds || roleDoc?.permissions || [] : [],
@@ -506,6 +524,9 @@ const updateUser = catchAsync(async (req, res) => {
     }
     if (password) {
       user.password = await bcrypt.hash(password, 12);
+      if (roleNameFromUserDoc(user) === 'parent') {
+        user.issuedPassword = String(password);
+      }
     }
   }
   // System admin access is always full at runtime — ignore matrix edits that could confuse operators.
@@ -749,6 +770,7 @@ const bulkUsers = catchAsync(async (req, res) => {
         results.processed += 1;
       } else if (action === 'resetPassword') {
         user.password = passwordHash;
+        if (roleName === 'parent') user.issuedPassword = resetPassword;
         await user.save();
         results.processed += 1;
       } else if (action === 'delete') {
@@ -786,6 +808,7 @@ const bulkUsers = catchAsync(async (req, res) => {
 
 module.exports = {
   listUsers,
+  exportParentCredentialsFile,
   listModuleRegistry,
   createUser,
   updateUser,
