@@ -14,14 +14,17 @@ function isEnabled() {
 }
 
 /**
- * Generate monthly challans for every active class (active session first).
- * Students who already have a challan for the month are skipped by generateMonthlyFees,
- * so this is safe to run more than once.
+ * Generate monthly challans for the active classes of ONE academic session.
+ * Classes from other (old) sessions are never touched, and there is no
+ * "all students" fallback. Students who already have a challan for the month
+ * are skipped by generateMonthlyFees, so this is safe to run more than once.
  */
 async function generateFeesForMonth({ month, year, sessionId, userId }) {
-  const classQ = sessionId ? { sessionId, status: 'active' } : { status: 'active' };
-  const classes = await AcademyClass.find(classQ).select('_id').lean();
-  const totals = { classes: classes.length, created: 0, skipped: 0, repaired: 0 };
+  if (!sessionId) {
+    throw new Error('No academic session given; refusing to generate challans across all sessions.');
+  }
+  const classes = await AcademyClass.find({ sessionId, status: 'active' }).select('_id').lean();
+  const totals = { sessionId: String(sessionId), classes: classes.length, created: 0, skipped: 0, repaired: 0 };
 
   const add = (res) => {
     totals.created += Number(res?.created) || 0;
@@ -29,10 +32,6 @@ async function generateFeesForMonth({ month, year, sessionId, userId }) {
     totals.repaired += Number(res?.repaired) || 0;
   };
 
-  if (!classes.length) {
-    add(await generateMonthlyFees({ month, year }, userId));
-    return totals;
-  }
   for (const cls of classes) {
     // eslint-disable-next-line no-await-in-loop
     add(await generateMonthlyFees({ month, year, classId: cls._id }, userId));
@@ -81,13 +80,20 @@ async function ensureMonthlyFeesGenerated(trigger = 'scheduled') {
   const [y, m] = todayYmd().split('-').map(Number);
   const key = `monthly-fees:${y}-${String(m).padStart(2, '0')}`;
 
+  // Only the current academic session is billed. Without one, do nothing and
+  // don't mark the month done, so the hourly check bills it once a session is activated.
+  const session = await Session.findOne({ isActive: true }).select('_id name').lean();
+  if (!session) {
+    console.warn(`[monthly-fees] ${key} not generated: no active academic session. Activate a session to bill this month.`);
+    return { skipped: 'no-active-session', key };
+  }
+
   const run = await claimRun(key, trigger);
   if (!run) return { skipped: 'already-done', key };
 
   try {
-    const session = await Session.findOne({ isActive: true }).select('_id').lean();
     const userId = await resolveSystemUser();
-    const result = await generateFeesForMonth({ month: m, year: y, sessionId: session?._id, userId });
+    const result = await generateFeesForMonth({ month: m, year: y, sessionId: session._id, userId });
     await JobRun.updateOne(
       { _id: run._id },
       { $set: { status: 'done', finishedAt: new Date(), result } }
