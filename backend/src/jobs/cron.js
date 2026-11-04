@@ -1,8 +1,8 @@
 const cron = require('node-cron');
-const Session = require('../models/Session');
-const User = require('../models/User');
-const Role = require('../models/Role');
-const { addFeeVoucherGenerationJob } = require('./queues');
+const {
+  ensureMonthlyFeesGenerated,
+  isEnabled: isMonthlyFeeJobEnabled,
+} = require('./monthlyFeeJob');
 const { DEFAULT_TZ, todayYmd, minutesSinceMidnight } = require('../utils/schoolDay');
 const { markAbsentForDay, autoAbsentTime } = require('../services/academy/autoAbsentService');
 
@@ -40,19 +40,25 @@ function startAutoAbsentJob() {
 function startCronJobs() {
   startAutoAbsentJob();
 
-  cron.schedule('0 0 1 * *', async () => {
-    const session = await Session.findOne({ isActive: true });
-    if (!session) return;
-    const adminRole = await Role.findOne({ name: 'admin' });
-    const adminUser = adminRole ? await User.findOne({ role: adminRole._id }) : await User.findOne();
-    const now = new Date();
-    await addFeeVoucherGenerationJob({
-      month: now.getMonth() + 1,
-      year: now.getFullYear(),
-      sessionId: session._id,
-      userId: adminUser?._id,
-    });
-  });
+  startMonthlyFeeJob();
+}
+
+/**
+ * Monthly challans are generated automatically, once per month:
+ *  - 00:05 on the 1st (school timezone) if the server is running;
+ *  - otherwise ~20s after the next startup, or on the hourly check.
+ * A JobRun row per month prevents running twice; students who already
+ * have a challan are skipped, so a manual "Generate" click is harmless.
+ */
+function startMonthlyFeeJob() {
+  if (!isMonthlyFeeJobEnabled()) return;
+  const run = (trigger) =>
+    ensureMonthlyFeesGenerated(trigger).catch((err) =>
+      console.error('[monthly-fees] check failed:', err?.message || err)
+    );
+  cron.schedule('5 0 1 * *', () => run('scheduled 1st'), { timezone: DEFAULT_TZ });
+  cron.schedule('15 * * * *', () => run('hourly catch-up'), { timezone: DEFAULT_TZ });
+  setTimeout(() => run('startup catch-up'), 20000);
 }
 
 module.exports = { startCronJobs };

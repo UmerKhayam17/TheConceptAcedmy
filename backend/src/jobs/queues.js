@@ -1,7 +1,6 @@
 const Bull = require('bull');
 const { sendAttendanceAbsentNotification } = require('../services/notificationService');
-const { generateMonthlyFees } = require('../services/academy/academyFeeService');
-const AcademyClass = require('../models/academy/AcademyClass');
+const { generateFeesForMonth } = require('./monthlyFeeJob');
 
 const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 
@@ -17,17 +16,7 @@ const feeVoucherQueue = new Bull('fee-voucher-generation', redisUrl, {
   defaultJobOptions: { removeOnComplete: 20, removeOnFail: 20 },
 });
 
-feeVoucherQueue.process(async (job) => {
-  const { month, year, sessionId, userId } = job.data;
-  const classQ = sessionId ? { sessionId, status: 'active' } : { status: 'active' };
-  const classes = await AcademyClass.find(classQ).select('_id').lean();
-  for (const cls of classes) {
-    await generateMonthlyFees({ month, year, classId: cls._id }, userId);
-  }
-  if (!classes.length) {
-    await generateMonthlyFees({ month, year }, userId);
-  }
-});
+feeVoucherQueue.process(async (job) => generateFeesForMonth(job.data));
 
 function addAttendanceNotificationJob(data) {
   return attendanceNotifQueue.add(data, {
