@@ -442,7 +442,12 @@ export default function ConcessionCategoriesTab({ caps }: { caps: ModuleActionCa
                             variant="ghost"
                             size="icon"
                             className="text-rose-500 hover:text-rose-600"
-                            disabled={delMut.isPending}
+                            disabled={delMut.isPending || usage > 0}
+                            title={
+                              usage > 0
+                                ? `${usage} student${usage === 1 ? " uses" : "s use"} this category — deactivate it instead`
+                                : "Delete category"
+                            }
                             onClick={() => {
                               if (!confirm(`Delete “${c.name}”?`)) return;
                               delMut.mutate(c._id);

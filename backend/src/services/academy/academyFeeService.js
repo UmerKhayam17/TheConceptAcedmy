@@ -247,27 +247,6 @@ function isStudentFullFeeWaiver(student) {
   return monthlyDue <= 0 && admissionAmount <= 0;
 }
 
-/**
- * When a student is switched to full waiver, every unpaid challan
- * (monthly / admission / stationery / etc.) is auto-settled as Paid at ₨ 0.
- */
-async function settleAllUnpaidForFullWaiver(student) {
-  const unpaid = await AcademyFeeRecord.find({
-    studentId: student._id,
-    status: { $in: ['pending', 'overdue'] },
-  });
-  if (!unpaid.length) return { updated: 0, skipped: 0 };
-
-  const userId = student.updatedBy || student.createdBy;
-  let updated = 0;
-  for (const record of unpaid) {
-    applyFullWaiverSettlement(record, userId);
-    await record.save();
-    updated += 1;
-  }
-  return { updated, skipped: 0 };
-}
-
 function roundMoney(n) {
   return Math.round(Number(n) * 100) / 100;
 }
@@ -407,12 +386,10 @@ function splitEnrollmentAmounts(fees) {
 async function syncUnpaidChallansForStudent(student, { chargeIds } = {}) {
   if (!student?._id) return { updated: 0, skipped: 0 };
 
-  // Editing a student onto full waiver must clear every open challan, including
-  // ones that still carry additional/stationery charges from before the waiver.
-  if (isStudentFullFeeWaiver(student)) {
-    return settleAllUnpaidForFullWaiver(student);
-  }
-
+  // A full waiver / full tuition exemption only zeroes tuition and admission. Each open
+  // monthly / admission challan is rebuilt below: one with nothing left is settled as Paid
+  // at ₨0, one that still carries additional or stationery charges keeps those due.
+  // Stationery and other non-tuition challans are never touched here.
   const unpaid = await AcademyFeeRecord.find({
     studentId: student._id,
     status: { $in: ['pending', 'overdue'] },

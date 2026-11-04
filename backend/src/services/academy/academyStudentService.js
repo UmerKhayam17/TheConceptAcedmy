@@ -335,7 +335,7 @@ async function registerStudent(payload, userId) {
  * The amount itself is `monthlyFeeDiscount`; this only records which kind it is and why.
  * Used by registration, activation and the Student Fee modal.
  */
-async function resolveFeeRelief(payload = {}) {
+async function resolveFeeRelief(payload = {}, { currentCategory } = {}) {
   if (payload.feeReliefType === undefined) return {};
   const type = String(payload.feeReliefType || '');
   if (type === 'concession') {
@@ -343,7 +343,8 @@ async function resolveFeeRelief(payload = {}) {
     if (!raw) throw new ApiError(400, 'Choose a concession category');
     return {
       feeReliefType: type,
-      concessionCategory: await assertActiveConcessionCategory(raw),
+      // Keeping the student's existing category is fine even if it was deactivated since.
+      concessionCategory: await assertActiveConcessionCategory(raw, { currentKey: currentCategory }),
       concessionPercent: Math.min(100, Math.max(0, Number(payload.concessionPercent) || 0)),
       exemptionRemarks: '',
     };
@@ -357,7 +358,10 @@ async function resolveFeeRelief(payload = {}) {
 }
 
 async function applyFeeRelief(student, payload = {}) {
-  Object.assign(student, await resolveFeeRelief(payload));
+  Object.assign(
+    student,
+    await resolveFeeRelief(payload, { currentCategory: student.concessionCategory })
+  );
 }
 
 async function updateStudent(id, payload) {
@@ -479,7 +483,8 @@ async function updateStudent(id, payload) {
 
   // Keep Fee Management challans aligned with the recalculated student fee profile.
   // Do not force defaultChargeIds onto existing vouchers — charges stay opt-in at pay/print.
-  // Full waiver always settles open challans to Paid (even if only discounts changed).
+  // Relief applies to every open challan, past months included. A full waiver settles
+  // tuition/admission-only challans as Paid; other charges on them stay due.
   if (
     student.status === 'active' &&
     (needsFeeRecalc || isStudentFullFeeWaiver(student))

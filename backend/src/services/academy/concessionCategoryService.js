@@ -94,9 +94,15 @@ async function describeStudentFeeRelief(studentId) {
   return { ...describeFeeRelief(student, names), monthlyFee: Number(student.monthlyFee) || 0 };
 }
 
-async function assertActiveCategory(category) {
+/**
+ * @param {string} category key to validate
+ * @param {{ currentKey?: string }} [opts] the student's current category — keeping it is
+ *   allowed even when it has since been deactivated or removed (only a new choice must be active).
+ */
+async function assertActiveCategory(category, { currentKey } = {}) {
   const key = String(category || '').trim().toLowerCase();
   if (!key) throw new ApiError(400, 'Concession discount category is required');
+  if (currentKey && key === String(currentKey).trim().toLowerCase()) return key;
   const row = await AcademyConcessionCategory.findOne({ key }).select('key isActive').lean();
   if (!row) {
     throw new ApiError(
@@ -177,6 +183,15 @@ async function updateCategory(id, body) {
 async function deleteCategory(id) {
   const row = await AcademyConcessionCategory.findById(id);
   if (!row) throw new ApiError(404, 'Category not found');
+  // Students keep the category key; deleting it would leave them on an unknown category.
+  const inUse = await AcademyStudent.countDocuments({ concessionCategory: row.key });
+  if (inUse > 0) {
+    throw new ApiError(
+      400,
+      `${inUse} student${inUse === 1 ? ' uses' : 's use'} this category. Deactivate it instead, ` +
+        'or move those students to another category first.'
+    );
+  }
   await row.deleteOne();
   return { deleted: true };
 }
