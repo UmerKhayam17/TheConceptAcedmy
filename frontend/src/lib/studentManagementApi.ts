@@ -1257,6 +1257,16 @@ export type BalanceSheet = {
 export const fetchBalanceSheet = (from: string, to: string) =>
   api<BalanceSheet>(`/finance/balance-sheet?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
 
+export async function fetchBalanceSheetPdf(from: string, to: string) {
+  const q = new URLSearchParams({ from, to });
+  const res = await authedFetch(`/student-management/finance/balance-sheet.pdf?${q}`);
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res);
+    throw new Error(body.message || "Failed to load balance sheet");
+  }
+  return res.blob();
+}
+
 export interface DiscountReportStaffSummary {
   staffId: string | null;
   staffName: string;

@@ -23,7 +23,7 @@ export type AiAttendanceStatus = {
 };
 
 export type AiPerson = {
-  kind: "student" | "staff";
+  kind: "student" | "teacher" | "staff";
   id: string;
   name: string;
   /** Present for students — used to disambiguate same names. */
@@ -31,6 +31,8 @@ export type AiPerson = {
   /** Student gender. Females are shown as D/O; others as S/O. */
   gender?: string;
   label: string;
+  /** Friendly role for teachers and staff (Teacher, Accountant, Non-teaching staff). */
+  roleLabel?: string;
   aiEmployeeId: string;
   hasPhoto: boolean;
   /** Profile / student photo path when present in the roster. */
@@ -73,10 +75,11 @@ export type StaffAttendanceRecord = {
 export const fetchAiAttendanceStatus = () => api<AiAttendanceStatus>("/status");
 
 export const syncAiRoster = () =>
-  api<{ students: { linked: number; updated: number }; staff: { linked: number; updated: number } }>(
-    "/sync-roster",
-    { method: "POST", body: "{}" },
-  );
+  api<{
+    students: { linked: number; updated: number };
+    teachers?: { linked: number; updated: number };
+    staff: { linked: number; updated: number };
+  }>("/sync-roster", { method: "POST", body: "{}" });
 
 export const syncAiAttendance = (date?: string) =>
   api<{ date: string; students: number; staff: number; totalRecords: number }>("/sync-attendance", {
@@ -85,7 +88,7 @@ export const syncAiAttendance = (date?: string) =>
   });
 
 export const fetchAiPeople = () =>
-  api<{ students: AiPerson[]; staff: AiPerson[] }>("/people");
+  api<{ students: AiPerson[]; teachers: AiPerson[]; staff: AiPerson[] }>("/people");
 
 export const fetchEnrollmentStatus = (employeeId: string) =>
   api<AiEnrollmentStatus>(`/enroll/${encodeURIComponent(employeeId)}`);
@@ -126,7 +129,7 @@ export type AiIdentifyPerson = {
   employee_id: string;
   employee_name?: string;
   confidence: number;
-  kind?: "student" | "staff";
+  kind?: "student" | "teacher" | "staff";
   status?: string | null;
   attendance_action?: "check_in" | "check_out" | "check_out_update" | "already_marked" | "cooldown";
   announce?: boolean;
@@ -161,6 +164,7 @@ export type AiCameraRuntime = {
     at?: string;
     personKey?: string;
     name?: string;
+    kind?: string;
     confidence?: number;
     attendance?: string;
   } | null;

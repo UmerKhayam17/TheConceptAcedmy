@@ -29,6 +29,7 @@ import {
   FileBarChart2,
   Filter,
   Loader2,
+  Printer,
   Receipt,
   Search,
   TrendingUp,
@@ -38,6 +39,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DateRangePickerField } from "@/components/ui/date-range-picker";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -50,7 +52,8 @@ import type { Role } from "@/lib/auth";
 import { moduleHref } from "@/lib/panelMenus";
 import { cn } from "@/lib/utils";
 import ListPagination from "@/components/modules/student-management/ListPagination";
-import BalanceSheetCard from "@/components/modules/BalanceSheetCard";
+import { useToast } from "@/hooks/use-toast";
+import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import {
   FINANCE_COLORS,
   type FinanceTransaction,
@@ -64,11 +67,13 @@ import {
 } from "@/lib/financeDashboardData";
 import {
   EXPENSE_CATEGORY_LABELS,
+  fetchBalanceSheetPdf,
   fetchDashboardOverview,
   fetchFeeDefaulters,
 } from "@/lib/studentManagementApi";
 
 type PeriodView = "monthly" | "quarterly" | "yearly";
+type DashboardTx = FinanceTransaction & { ymd: string };
 
 const cardClass =
   "rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(16,38,77,0.06)]";
@@ -125,6 +130,39 @@ function formatShortDate(value?: string | Date | null): string {
 
 function monthLabel(month: number, year: number): string {
   return new Date(year, month - 1, 1).toLocaleString("en", { month: "short" });
+}
+
+function toYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function monthOverlapsRange(year: number, month: number, from: string, to: string): boolean {
+  if (!from || !to || from > to) return true;
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const last = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+  return end >= from && start <= to;
+}
+
+function toYmdFromUnknown(value?: string | Date | null): string {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return toYmd(d);
+}
+
+function yearToDateRange(): { from: string; to: string } {
+  const today = new Date();
+  return { from: toYmd(new Date(today.getFullYear(), 0, 1)), to: toYmd(today) };
+}
+
+function longDate(value: string): string {
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function Sparkline({ data, color }: { data: readonly number[]; color: string }) {
@@ -267,9 +305,9 @@ const FinanceDashboard = () => {
   const { role } = useParams<{ role: Role }>();
   const r = (role || "admin") as Role;
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const [periodView, setPeriodView] = useState<PeriodView>("monthly");
-  const [monthFilter, setMonthFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("all");
   const [methodFilter, setMethodFilter] = useState<"all" | PaymentMethod>("all");
   const [txStatusFilter, setTxStatusFilter] = useState<"all" | TxStatus>("all");
@@ -279,6 +317,9 @@ const FinanceDashboard = () => {
   const [txPage, setTxPage] = useState(1);
   const [duePage, setDuePage] = useState(1);
   const [selectedTx, setSelectedTx] = useState<FinanceTransaction | null>(null);
+  const [printingSheet, setPrintingSheet] = useState(false);
+  const [sheetFrom, setSheetFrom] = useState(() => toYmd(new Date(new Date().getFullYear(), 0, 1)));
+  const [sheetTo, setSheetTo] = useState(() => toYmd(new Date()));
   const pageSize = 5;
 
   const {
@@ -287,7 +328,6 @@ const FinanceDashboard = () => {
     isError,
     error,
     refetch,
-    isFetching,
   } = useQuery({
     queryKey: ["finance-dashboard-overview"],
     queryFn: () => fetchDashboardOverview(12),
@@ -300,12 +340,22 @@ const FinanceDashboard = () => {
     staleTime: 60_000,
   });
 
-  const trends = overview?.charts.monthlyTrends || [];
+  const trends = (overview?.charts.monthlyTrends || []).filter((m) =>
+    monthOverlapsRange(m.year, m.month, sheetFrom, sheetTo),
+  );
   const last = trends[trends.length - 1];
   const prev = trends[trends.length - 2];
 
-  const feesCollected = overview?.kpis.feesCollectedAll || 0;
-  const outstandingFees = overview?.kpis.feesOutstandingAll || 0;
+  const classCollections = (overview?.charts.feesByClass || []).map((c, i) => ({
+    ...c,
+    color: CHART_COLORS[i % CHART_COLORS.length],
+  }));
+  const selectedClass =
+    classFilter === "all" ? null : classCollections.find((c) => c.className === classFilter) ?? null;
+  const periodCollected = trends.reduce((n, m) => n + (m.feesCollected || 0), 0);
+  const periodPending = trends.reduce((n, m) => n + (m.feesPending || 0), 0);
+  const feesCollected = selectedClass ? selectedClass.collected : periodCollected;
+  const outstandingFees = selectedClass ? selectedClass.outstanding : periodPending;
   const assessedFees = feesCollected + outstandingFees;
   const expensesMonth = overview?.kpis.expensesMonth || 0;
   const salaryPaidMonth = overview?.kpis.salaryPaidMonth || 0;
@@ -342,6 +392,39 @@ const FinanceDashboard = () => {
     [trends],
   );
 
+  const sheetRangeError = Boolean(sheetFrom && sheetTo && sheetFrom > sheetTo);
+
+  const printBalanceSheet = async () => {
+    if (!sheetFrom || !sheetTo || sheetRangeError) return;
+    const preview = openReportPreviewTab("pdf");
+    setPrintingSheet(true);
+    try {
+      const blob = await fetchBalanceSheetPdf(sheetFrom, sheetTo);
+      const mode = deliverReportBlob(
+        blob,
+        `Balance-Sheet_${sheetFrom}_to_${sheetTo}.pdf`,
+        "pdf",
+        preview,
+      );
+      toast({
+        title: mode === "preview" ? "Balance sheet preview opened" : "Balance sheet downloaded",
+        description:
+          mode === "preview"
+            ? `${longDate(sheetFrom)} to ${longDate(sheetTo)}. Use Print or Download from the preview window.`
+            : `${longDate(sheetFrom)} to ${longDate(sheetTo)}.`,
+      });
+    } catch (e) {
+      preview?.close();
+      toast({
+        title: "Could not open balance sheet",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setPrintingSheet(false);
+    }
+  };
+
   const sparklines = useMemo(
     () => ({
       revenue: monthlyTrend.map((m) => m.income),
@@ -373,35 +456,30 @@ const FinanceDashboard = () => {
   const expenseTotal = expenseBreakdown.reduce((n, c) => n + c.amount, 0) || totalExpensesPeriod;
 
   const paymentMethods = useMemo(() => {
-    const rows = overview?.charts.paymentMethods || [];
-    return rows.map((m) => ({
-      name: m.name === "Online" ? "Mobile Wallet" : m.name,
-      amount: m.amount,
-      count: m.count,
-      color: METHOD_COLORS[m.name] || METHOD_COLORS.Other,
-    }));
-  }, [overview]);
-
-  const classCollections = useMemo(
-    () =>
-      (overview?.charts.feesByClass || []).map((c, i) => ({
-        ...c,
-        color: CHART_COLORS[i % CHART_COLORS.length],
-      })),
-    [overview],
-  );
+    const rows = (overview?.charts.paymentMethods || [])
+      .map((m) => ({
+        name: m.name === "Online" ? "Mobile Wallet" : m.name,
+        amount: m.amount,
+        count: m.count,
+        color: METHOD_COLORS[m.name] || METHOD_COLORS.Other,
+      }))
+      .filter((m) => methodFilter === "all" || m.name === methodFilter);
+    return rows;
+  }, [overview, methodFilter]);
 
   const revenueSources = useMemo(
     () =>
-      (overview?.charts.revenueByFeeType || []).map((m) => ({
-        month: m.label,
-        tuition: m.monthly,
-        admission: m.admission,
-        examination: 0,
-        transport: 0,
-        other: m.stationery,
-      })),
-    [overview],
+      (overview?.charts.revenueByFeeType || [])
+        .filter((m) => monthOverlapsRange(m.year, m.month, sheetFrom, sheetTo))
+        .map((m) => ({
+          month: m.label,
+          tuition: m.monthly,
+          admission: m.admission,
+          examination: 0,
+          transport: 0,
+          other: m.stationery,
+        })),
+    [overview, sheetFrom, sheetTo],
   );
 
   const agingAnalysis = useMemo(
@@ -413,17 +491,19 @@ const FinanceDashboard = () => {
     [overview],
   );
 
-  const studentPaymentStatus = useMemo(
-    () =>
-      (overview?.charts.studentPaymentStatus || []).map((s) => ({
-        ...s,
-        color: STATUS_COLORS[s.name] || FINANCE_COLORS.slate,
-      })),
-    [overview],
-  );
+  const studentPaymentStatus = useMemo(() => {
+    const rows = (overview?.charts.studentPaymentStatus || []).map((s) => ({
+      ...s,
+      color: STATUS_COLORS[s.name] || FINANCE_COLORS.slate,
+    }));
+    if (txStatusFilter === "Paid") return rows.filter((s) => s.name === "Fully Paid");
+    if (txStatusFilter === "Pending") return rows.filter((s) => s.name !== "Fully Paid");
+    if (txStatusFilter === "Failed") return [];
+    return rows;
+  }, [overview, txStatusFilter]);
 
   const transactions = useMemo(() => {
-    const fees: FinanceTransaction[] = (overview?.widgets.recentPayments || []).map((p) => ({
+    const fees: DashboardTx[] = (overview?.widgets.recentPayments || []).map((p) => ({
       id: `FEE-${p.id.slice(-6).toUpperCase()}`,
       date: formatShortDate(p.paidAt),
       type: "Fee Payment",
@@ -431,9 +511,10 @@ const FinanceDashboard = () => {
       description: `${p.feeType} · ${monthLabel(p.month, p.year)}${p.voucherNumber ? ` · ${p.voucherNumber}` : ""}`,
       method: mapPaymentMethod(p.paymentMethod),
       amount: p.amount,
-      status: "Paid",
+      status: "Paid" as const,
+      ymd: toYmdFromUnknown(p.paidAt),
     }));
-    const expenses: FinanceTransaction[] = (overview?.widgets.recentExpenses || []).map((e) => ({
+    const expenses: DashboardTx[] = (overview?.widgets.recentExpenses || []).map((e) => ({
       id: `EXP-${e.id.slice(-6).toUpperCase()}`,
       date: formatShortDate(e.expenseDate),
       type: "Expense",
@@ -441,9 +522,10 @@ const FinanceDashboard = () => {
       description: e.categoryName || EXPENSE_CATEGORY_LABELS[e.category] || e.category,
       method: mapPaymentMethod(e.paymentMethod),
       amount: e.amount,
-      status: e.status === "paid" ? "Paid" : "Pending",
+      status: (e.status === "paid" ? "Paid" : "Pending") as "Paid" | "Pending",
+      ymd: toYmdFromUnknown(e.expenseDate),
     }));
-    const salaries: FinanceTransaction[] = (overview?.widgets.recentSalaries || []).map((s) => ({
+    const salaries: DashboardTx[] = (overview?.widgets.recentSalaries || []).map((s) => ({
       id: `SAL-${s.id.slice(-6).toUpperCase()}`,
       date: formatShortDate(s.paidAt) !== "—" ? formatShortDate(s.paidAt) : `${monthLabel(s.month, s.year)} ${s.year}`,
       type: "Salary",
@@ -451,13 +533,10 @@ const FinanceDashboard = () => {
       description: `Salary · ${monthLabel(s.month, s.year)} ${s.year}`,
       method: mapPaymentMethod(s.paymentMethod),
       amount: s.amount,
-      status: s.status === "paid" ? "Paid" : s.status === "cancelled" ? "Failed" : "Pending",
+      status: (s.status === "paid" ? "Paid" : s.status === "cancelled" ? "Failed" : "Pending") as TxStatus,
+      ymd: toYmdFromUnknown(s.paidAt) || `${s.year}-${String(s.month).padStart(2, "0")}-01`,
     }));
-    return [...fees, ...expenses, ...salaries].sort((a, b) => {
-      const da = new Date(a.date).getTime();
-      const db = new Date(b.date).getTime();
-      return (Number.isNaN(db) ? 0 : db) - (Number.isNaN(da) ? 0 : da);
-    });
+    return [...fees, ...expenses, ...salaries].sort((a, b) => b.ymd.localeCompare(a.ymd));
   }, [overview]);
 
   const pendingDues = useMemo(
@@ -573,11 +652,8 @@ const FinanceDashboard = () => {
           net: q.months.reduce((n, m) => n + m.net, 0),
         }));
     }
-    if (monthFilter !== "all") {
-      return monthlyTrend.filter((m) => m.month === monthFilter || m.monthKey === monthFilter);
-    }
     return monthlyTrend;
-  }, [periodView, monthFilter, monthlyTrend, periodLabel, feesCollected, outstandingFees]);
+  }, [periodView, monthlyTrend, periodLabel, feesCollected, outstandingFees]);
 
   const classRows = useMemo(() => {
     if (classFilter === "all") return classCollections;
@@ -587,6 +663,7 @@ const FinanceDashboard = () => {
   const filteredTx = useMemo(() => {
     const q = txSearch.trim().toLowerCase();
     return transactions.filter((t) => {
+      if (sheetFrom && sheetTo && sheetFrom <= sheetTo && t.ymd && (t.ymd < sheetFrom || t.ymd > sheetTo)) return false;
       if (methodFilter !== "all" && t.method !== methodFilter) return false;
       if (txStatusFilter !== "all" && t.status !== txStatusFilter) return false;
       if (txTypeFilter !== "all" && t.type !== txTypeFilter) return false;
@@ -598,10 +675,10 @@ const FinanceDashboard = () => {
         t.type.toLowerCase().includes(q)
       );
     });
-  }, [transactions, txSearch, methodFilter, txStatusFilter, txTypeFilter]);
+  }, [transactions, txSearch, methodFilter, txStatusFilter, txTypeFilter, sheetFrom, sheetTo]);
 
   const filteredDues = useMemo(() => {
-    const q = dueSearch.trim().toLowerCase();
+    const q = (txSearch || dueSearch).trim().toLowerCase();
     return pendingDues
       .filter((d) => {
         if (classFilter !== "all" && d.className !== classFilter) return false;
@@ -613,7 +690,7 @@ const FinanceDashboard = () => {
         );
       })
       .sort((a, b) => b.dueAmount - a.dueAmount);
-  }, [pendingDues, dueSearch, classFilter]);
+  }, [pendingDues, dueSearch, txSearch, classFilter]);
 
   const txPages = Math.max(1, Math.ceil(filteredTx.length / pageSize));
   const duePages = Math.max(1, Math.ceil(filteredDues.length / pageSize));
@@ -623,7 +700,6 @@ const FinanceDashboard = () => {
 
   const clearFilters = () => {
     setPeriodView("monthly");
-    setMonthFilter("all");
     setClassFilter("all");
     setMethodFilter("all");
     setTxStatusFilter("all");
@@ -632,6 +708,9 @@ const FinanceDashboard = () => {
     setDueSearch("");
     setTxPage(1);
     setDuePage(1);
+    const reset = yearToDateRange();
+    setSheetFrom(reset.from);
+    setSheetTo(reset.to);
   };
 
   const feesHref = moduleHref(r, "fees");
@@ -671,117 +750,110 @@ const FinanceDashboard = () => {
     <div className="min-h-full" style={{ backgroundColor: FINANCE_COLORS.pageBg }}>
       <div className="px-4 sm:px-6 lg:px-8 py-5 space-y-5">
         <div className={cn(cardClass, "p-3 sm:p-4")}>
-          <div className="flex w-full min-w-0 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
-            <Filter className="hidden h-4 w-4 text-slate-400 lg:block" />
-            <div className="relative w-full min-w-0 lg:max-w-[220px] lg:flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              <Input
-                value={txSearch}
-                onChange={(e) => {
-                  setTxSearch(e.target.value);
+          <div className="flex w-full flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <Filter className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
+              <div className="relative min-w-[180px] flex-1">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={txSearch}
+                  onChange={(e) => {
+                    setTxSearch(e.target.value);
+                    setTxPage(1);
+                  }}
+                  placeholder="Search transactions..."
+                  className="h-8 border-slate-200 bg-slate-50 pl-8 text-xs"
+                />
+              </div>
+              <DateRangePickerField
+                className="h-8 min-w-[14rem] text-xs"
+                from={sheetFrom}
+                to={sheetTo}
+                onChange={(nextFrom, nextTo) => {
+                  setSheetFrom(nextFrom);
+                  setSheetTo(nextTo);
                   setTxPage(1);
                 }}
-                placeholder="Search transactions..."
-                className="h-8 pl-8 text-xs bg-slate-50 border-slate-200"
               />
+              <Select
+                value={classFilter}
+                onValueChange={(v) => {
+                  setClassFilter(v);
+                  setDuePage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[140px] text-xs">
+                  <SelectValue placeholder="Class" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All classes</SelectItem>
+                  {classCollections.map((c) => (
+                    <SelectItem key={c.className} value={c.className}>
+                      {c.className}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={methodFilter}
+                onValueChange={(v) => {
+                  setMethodFilter(v as "all" | PaymentMethod);
+                  setTxPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[140px] text-xs">
+                  <SelectValue placeholder="Payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All methods</SelectItem>
+                  {(["Cash", "Bank Transfer", "Mobile Wallet", "Cheque", "Other"] as PaymentMethod[]).map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={txStatusFilter}
+                onValueChange={(v) => {
+                  setTxStatusFilter(v as "all" | TxStatus);
+                  setTxPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[130px] text-xs">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="Paid">Paid</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={periodView} onValueChange={(v) => setPeriodView(v as PeriodView)}>
-              <SelectTrigger className="h-8 w-full text-xs lg:w-[120px]">
-                <SelectValue placeholder="Period" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="monthly">Monthly</SelectItem>
-                <SelectItem value="quarterly">Quarterly</SelectItem>
-                <SelectItem value="yearly">Yearly</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={monthFilter}
-              onValueChange={(v) => {
-                setMonthFilter(v);
-                setPeriodView("monthly");
-              }}
-            >
-              <SelectTrigger className="h-8 w-full text-xs lg:w-[110px]">
-                <SelectValue placeholder="Month" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All months</SelectItem>
-                {monthlyTrend.map((m) => (
-                  <SelectItem key={m.monthKey} value={m.month}>
-                    {m.month}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={classFilter}
-              onValueChange={(v) => {
-                setClassFilter(v);
-                setDuePage(1);
-              }}
-            >
-              <SelectTrigger className="h-8 w-full text-xs lg:w-[120px]">
-                <SelectValue placeholder="Class" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All classes (School + College)</SelectItem>
-                {classCollections.map((c) => (
-                  <SelectItem key={c.className} value={c.className}>
-                    {c.className}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={methodFilter}
-              onValueChange={(v) => {
-                setMethodFilter(v as "all" | PaymentMethod);
-                setTxPage(1);
-              }}
-            >
-              <SelectTrigger className="h-8 w-full text-xs lg:w-[140px]">
-                <SelectValue placeholder="Payment method" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All methods</SelectItem>
-                {(["Cash", "Bank Transfer", "Mobile Wallet", "Cheque", "Other"] as PaymentMethod[]).map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={txStatusFilter}
-              onValueChange={(v) => {
-                setTxStatusFilter(v as "all" | TxStatus);
-                setTxPage(1);
-              }}
-            >
-              <SelectTrigger className="h-8 w-full text-xs lg:w-[120px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="Paid">Paid</SelectItem>
-                <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="Failed">Failed</SelectItem>
-              </SelectContent>
-            </Select>
-            <Badge
-              variant="outline"
-              className="h-8 border-emerald-200 bg-emerald-50 text-emerald-800 font-normal text-xs"
-            >
-              Live data{isFetching ? "…" : ""}
-            </Badge>
-            <Button type="button" variant="ghost" size="sm" className="h-8 w-full text-xs lg:w-auto" onClick={() => refetch()}>
-              Refresh
-            </Button>
-            <Button type="button" variant="ghost" size="sm" className="h-8 w-full text-xs lg:w-auto" onClick={clearFilters}>
-              <X className="h-3.5 w-3.5 mr-1" />
-              Clear
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={printingSheet || !sheetFrom || !sheetTo || sheetRangeError}
+                onClick={() => void printBalanceSheet()}
+              >
+                {printingSheet ? (
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Printer className="mr-1 h-3.5 w-3.5" />
+                )}
+                Print Balance Sheet
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={() => refetch()}>
+                Refresh
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={clearFilters}>
+                <X className="mr-1 h-3.5 w-3.5" />
+                Clear
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -818,7 +890,7 @@ const FinanceDashboard = () => {
           />
           <KpiCard
             label="Collected Fees"
-            value={formatPkr(overview?.kpis.feesCollectedMonth || last?.feesCollected || 0)}
+            value={formatPkr(last?.feesCollected || 0)}
             changePct={collectedGrowthPct}
             icon={Receipt}
             iconBg="rgba(13,148,136,0.12)"
@@ -1180,8 +1252,6 @@ const FinanceDashboard = () => {
             </div>
           </ChartCard>
         </div>
-
-        <BalanceSheetCard />
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <ChartCard title="Student Payment Status" className="xl:col-span-4">

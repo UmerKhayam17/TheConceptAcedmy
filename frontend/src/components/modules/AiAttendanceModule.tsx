@@ -70,12 +70,111 @@ type Tab = "enrolled" | "enrollment" | "monitor" | "cameras";
 /** Enrollment only — CCTV is for live attendance, not face registration. */
 type EnrollMethod = "webcam" | "mobile";
 type EnrollStatusFilter = "all" | "enrolled" | "not_enrolled";
+type PersonGroup = "all" | "student" | "teacher" | "staff";
 
 const webcamSupported =
   typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
 
 function parentOfLabel(person: Pick<AiPerson, "gender">) {
   return String(person.gender || "").toLowerCase() === "female" ? "D/O" : "S/O";
+}
+
+function personKindWord(kind?: string) {
+  if (kind === "teacher") return "Teacher";
+  if (kind === "student") return "Student";
+  if (kind === "staff") return "Staff";
+  return "";
+}
+
+function personGroupTitle(kind: AiPerson["kind"]) {
+  if (kind === "teacher") return "Teachers";
+  if (kind === "staff") return "Staff";
+  return "Students";
+}
+
+const KIND_BADGE: Record<AiPerson["kind"], string> = {
+  student: "bg-sky-100 text-sky-800 border-sky-200",
+  teacher: "bg-violet-100 text-violet-800 border-violet-200",
+  staff: "bg-amber-100 text-amber-900 border-amber-200",
+};
+
+function PersonKindBadge({ person, selected }: { person: AiPerson; selected?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold leading-4",
+        selected
+          ? "border-primary-foreground/40 bg-primary-foreground/15 text-primary-foreground"
+          : KIND_BADGE[person.kind] || KIND_BADGE.staff,
+      )}
+    >
+      {personKindWord(person.kind)}
+    </span>
+  );
+}
+
+function personSubtitle(person: AiPerson) {
+  if (person.kind === "student") return person.label;
+  if (person.kind === "staff") return person.roleLabel || person.label || "Staff";
+  return "";
+}
+
+function sectionsFor(list: AiPerson[], group: PersonGroup) {
+  if (group !== "all") return [{ key: group, title: "", people: list }];
+  const order: AiPerson["kind"][] = ["student", "teacher", "staff"];
+  return order
+    .map((kind) => ({
+      key: kind,
+      title: personGroupTitle(kind),
+      people: list.filter((p) => p.kind === kind),
+    }))
+    .filter((section) => section.people.length > 0);
+}
+
+function PersonGroupFilter({
+  value,
+  onChange,
+  counts,
+}: {
+  value: PersonGroup;
+  onChange: (next: PersonGroup) => void;
+  counts: Record<PersonGroup, number>;
+}) {
+  const options: { key: PersonGroup; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "student", label: "Students" },
+    { key: "teacher", label: "Teachers" },
+    { key: "staff", label: "Staff" },
+  ];
+  return (
+    <div
+      className="grid grid-cols-4 gap-1 rounded-lg border bg-muted/30 p-1"
+      role="group"
+      aria-label="Filter students, teachers, and staff"
+    >
+      {options.map((option) => {
+        const active = value === option.key;
+        return (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => onChange(option.key)}
+            className={cn(
+              "rounded-md px-1 py-1.5 text-[11px] sm:text-xs font-semibold transition-colors",
+              active
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-background hover:text-foreground",
+            )}
+          >
+            {option.label}
+            <span className={cn("ml-1 tabular-nums", active ? "text-primary-foreground/80" : "text-muted-foreground")}>
+              ({counts[option.key]})
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 async function fileToJpegBase64(file: File, maxSide = 1280): Promise<string> {
@@ -120,7 +219,15 @@ function monitorActionLabel(action?: string, status?: string | null) {
 type MonitorTone = "present" | "late" | "out" | "already" | "error";
 
 /** One recently marked person shown as a big card on the live monitor. */
-type MonitorHit = { key: string; name: string; label: string; pct: string; tone: MonitorTone; at: number };
+type MonitorHit = {
+  key: string;
+  name: string;
+  role: string;
+  label: string;
+  pct: string;
+  tone: MonitorTone;
+  at: number;
+};
 
 function monitorTone(action?: string, status?: string | null, error?: string): MonitorTone {
   if (error) return "error";
@@ -466,6 +573,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   const [selected, setSelected] = useState<AiPerson | null>(null);
   const [search, setSearch] = useState("");
   const [enrollStatusFilter, setEnrollStatusFilter] = useState<EnrollStatusFilter>("all");
+  const [personGroup, setPersonGroup] = useState<PersonGroup>("all");
   const [enrollMethod, setEnrollMethod] = useState<EnrollMethod>(() => {
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches) {
       return "mobile";
@@ -495,6 +603,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
     lastError?: string;
     lastMatch?: {
       name?: string;
+      kind?: string;
       confidence?: number;
       attendance?: string;
       at?: string;
@@ -660,14 +769,14 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
       qc.invalidateQueries({ queryKey: ["ai-attendance-people"] });
       toast({
         title: "IDs linked in MongoDB",
-        description: `Students ${data.students?.linked ?? 0} · Staff ${data.staff?.linked ?? 0}`,
+        description: `Students ${data.students?.linked ?? 0} · Teachers ${data.teachers?.linked ?? 0} · Staff ${data.staff?.linked ?? 0}`,
       });
     },
     onError: (e: Error) => toast({ title: "Link failed", description: e.message, variant: "destructive" }),
   });
 
   const rosterPeople = useMemo(
-    () => [...(people?.students || []), ...(people?.staff || [])],
+    () => [...(people?.students || []), ...(people?.teachers || []), ...(people?.staff || [])],
     [people],
   );
 
@@ -684,6 +793,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   const filteredPeople = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rosterPeople.filter((p) => {
+      if (personGroup !== "all" && p.kind !== personGroup) return false;
       if (enrollStatusFilter === "enrolled" && !p.isTrained) return false;
       if (enrollStatusFilter === "not_enrolled" && p.isTrained) return false;
       if (!q) return true;
@@ -691,10 +801,12 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
         p.name.toLowerCase().includes(q) ||
         (p.fatherName || "").toLowerCase().includes(q) ||
         p.label.toLowerCase().includes(q) ||
-        p.aiEmployeeId.toLowerCase().includes(q)
+        (p.roleLabel || "").toLowerCase().includes(q) ||
+        p.aiEmployeeId.toLowerCase().includes(q) ||
+        personKindWord(p.kind).toLowerCase().includes(q)
       );
     });
-  }, [rosterPeople, search, enrollStatusFilter]);
+  }, [rosterPeople, search, enrollStatusFilter, personGroup]);
 
   const startWebcam = async (
     videoEl: HTMLVideoElement | null,
@@ -842,6 +954,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                   result.unknownFaces === 1
                     ? "Face not recognised"
                     : `${result.unknownFaces} faces not recognised`,
+                role: "",
                 label: "Attendance not marked",
                 pct: "",
                 tone: "error",
@@ -864,6 +977,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
           return {
             key: p.employee_id || name,
             name,
+            role: personKindWord(p.kind),
             label: p.error ? `Not saved: ${p.error}` : monitorActionLabel(p.attendance_action, p.status),
             pct: `${Math.round((p.confidence || 0) * 100)}%`,
             tone: monitorTone(p.attendance_action, p.status, p.error),
@@ -944,21 +1058,43 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const enrolledPeople = useMemo(() => {
-    const all = [...(people?.students || []), ...(people?.staff || [])];
+    const all = [...(people?.students || []), ...(people?.teachers || []), ...(people?.staff || [])];
     return all.filter((p) => p.isTrained);
   }, [people]);
 
+  const enrolledCounts = useMemo(() => {
+    const counts: Record<PersonGroup, number> = { all: enrolledPeople.length, student: 0, teacher: 0, staff: 0 };
+    for (const person of enrolledPeople) counts[person.kind] += 1;
+    return counts;
+  }, [enrolledPeople]);
+
+  const enrollGroupCounts = useMemo(() => {
+    const source =
+      enrollStatusFilter === "enrolled"
+        ? rosterPeople.filter((p) => p.isTrained)
+        : enrollStatusFilter === "not_enrolled"
+          ? rosterPeople.filter((p) => !p.isTrained)
+          : rosterPeople;
+    const counts: Record<PersonGroup, number> = { all: source.length, student: 0, teacher: 0, staff: 0 };
+    for (const person of source) counts[person.kind] += 1;
+    return counts;
+  }, [rosterPeople, enrollStatusFilter]);
+
   const enrolledFiltered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return enrolledPeople;
-    return enrolledPeople.filter(
-      (p) =>
+    return enrolledPeople.filter((p) => {
+      if (personGroup !== "all" && p.kind !== personGroup) return false;
+      if (!q) return true;
+      return (
         p.name.toLowerCase().includes(q) ||
         (p.fatherName || "").toLowerCase().includes(q) ||
         p.label.toLowerCase().includes(q) ||
-        p.aiEmployeeId.toLowerCase().includes(q),
-    );
-  }, [enrolledPeople, search]);
+        (p.roleLabel || "").toLowerCase().includes(q) ||
+        p.aiEmployeeId.toLowerCase().includes(q) ||
+        personKindWord(p.kind).toLowerCase().includes(q)
+      );
+    });
+  }, [enrolledPeople, search, personGroup]);
 
   const tabs: { id: Tab; label: string; short: string; Icon: LucideIcon }[] = [
     { id: "enrolled", label: "Enrolled", short: "Enrolled", Icon: BadgeCheck },
@@ -1083,16 +1219,27 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
             <span className="text-sm font-medium shrink-0">{enrolledPeople.length} enrolled</span>
           </div>
 
+          <PersonGroupFilter value={personGroup} onChange={setPersonGroup} counts={enrolledCounts} />
+
           <Input
-            placeholder="Search name, father, ID…"
+            placeholder="Search name, father, teacher, staff, ID…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
 
           <div className="max-h-[min(70vh,560px)] overflow-y-auto space-y-2">
-            {enrolledFiltered.map((p) => {
+            {sectionsFor(enrolledFiltered, personGroup).map((section) => (
+              <div key={section.key} className="space-y-2">
+                {section.title ? (
+                  <p className="sticky top-0 z-10 bg-card px-1 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {section.title}
+                    <span className="ml-1 font-medium normal-case tracking-normal">({section.people.length})</span>
+                  </p>
+                ) : null}
+                {section.people.map((p) => {
               const rowKey = `${p.kind}-${p.id}`;
               const open = expandedId === rowKey;
+              const subtitle = personSubtitle(p);
               return (
                 <div key={rowKey} className="rounded-lg border overflow-hidden">
                   <button
@@ -1102,14 +1249,18 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                   >
                     <PersonAvatar person={p} />
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-sm truncate">{p.name}</div>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-medium text-sm truncate">{p.name}</span>
+                        <PersonKindBadge person={p} />
+                      </div>
                       {p.kind === "student" && p.fatherName ? (
                         <div className="text-xs font-medium text-foreground/80 truncate">
                           {parentOfLabel(p)} {p.fatherName}
                         </div>
                       ) : null}
                       <div className="text-xs text-muted-foreground truncate">
-                        {p.kind} · {p.label} · {p.totalImages ?? 0} photos
+                        {subtitle ? `${subtitle} · ` : ""}
+                        {p.totalImages ?? 0} photos
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
@@ -1140,10 +1291,14 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                   )}
                 </div>
               );
-            })}
+                })}
+              </div>
+            ))}
             {!enrolledFiltered.length && (
               <p className="text-sm text-muted-foreground p-2">
-                No one is enrolled yet. Go to the Enrollment tab to capture faces.
+                {enrolledPeople.length === 0
+                  ? "No one is enrolled yet. Go to the Enrollment tab to capture faces."
+                  : "No enrolled people in this group."}
               </p>
             )}
           </div>
@@ -1156,7 +1311,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                 disabled={rosterMut.isPending}
                 onClick={() => rosterMut.mutate()}
               >
-                {rosterMut.isPending ? "Linking IDs…" : "Link student/staff IDs"}
+                {rosterMut.isPending ? "Linking IDs…" : "Link student, teacher, and staff IDs"}
               </Button>
             )}
             <Button
@@ -1175,7 +1330,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
         <div className="grid lg:grid-cols-2 gap-4">
           <Card className="p-3 sm:p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label>Students & staff</Label>
+              <Label>Students, teachers, and staff</Label>
               <span className="text-xs text-muted-foreground">
                 {filteredPeople.length} shown
               </span>
@@ -1226,8 +1381,9 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                 );
               })}
             </div>
+            <PersonGroupFilter value={personGroup} onChange={setPersonGroup} counts={enrollGroupCounts} />
             <Input
-              placeholder="Search name, father, ID…"
+              placeholder="Search name, father, teacher, staff, ID…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -1237,9 +1393,18 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                 selected ? "max-h-44 lg:max-h-[480px]" : "max-h-[50vh] lg:max-h-[480px]",
               )}
             >
-              {filteredPeople.map((p) => {
+              {sectionsFor(filteredPeople, personGroup).map((section) => (
+                <div key={section.key} className="space-y-1">
+                  {section.title ? (
+                    <p className="sticky top-0 z-10 bg-card px-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {section.title}
+                      <span className="ml-1 font-medium normal-case tracking-normal">({section.people.length})</span>
+                    </p>
+                  ) : null}
+                  {section.people.map((p) => {
                 const isSelected = selected?.id === p.id && selected.kind === p.kind;
                 const enrolled = Boolean(p.isTrained);
+                const subtitle = personSubtitle(p);
                 return (
                   <button
                     key={`${p.kind}-${p.id}`}
@@ -1254,20 +1419,26 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                   >
                     <PersonAvatar person={p} selected={isSelected} />
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate">{p.name}</div>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-medium truncate">{p.name}</span>
+                        <PersonKindBadge person={p} selected={isSelected} />
+                      </div>
                       {p.kind === "student" && p.fatherName ? (
                         <div className="text-xs opacity-80 truncate">
                           {parentOfLabel(p)} {p.fatherName}
                         </div>
                       ) : null}
                       <div className="text-xs opacity-80 truncate">
-                        {p.kind} · {p.label} · {p.totalImages ?? 0}/5
+                        {subtitle ? `${subtitle} · ` : ""}
+                        {p.totalImages ?? 0}/5
                       </div>
                     </div>
                     <EnrollmentStatusBadge enrolled={enrolled} selected={isSelected} />
                   </button>
                 );
-              })}
+                  })}
+                </div>
+              ))}
               {!filteredPeople.length && (
                 <p className="text-sm text-muted-foreground p-2">
                   {rosterPeople.length === 0
@@ -1291,7 +1462,7 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                         ? ` (${parentOfLabel(selected)} ${selected.fatherName})`
                         : ""
                     }`
-                  : "Select a student or staff member"}
+                  : "Select a student, teacher, or staff member"}
               </p>
               {selected && (
                 <div className="mt-2 space-y-1.5">
@@ -1567,7 +1738,14 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                   >
                     <tone.Icon className="h-10 w-10 shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xl sm:text-2xl font-bold leading-tight">{hit.name}</p>
+                      <p className="truncate text-xl sm:text-2xl font-bold leading-tight">
+                        {hit.name}
+                        {hit.role ? (
+                          <span className="ml-2 align-middle text-xs font-semibold uppercase tracking-wide opacity-90">
+                            {hit.role}
+                          </span>
+                        ) : null}
+                      </p>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <span
                           className={cn(
@@ -1763,6 +1941,9 @@ export default function AiAttendanceModule({ caps }: { caps: ModuleActionCaps })
                   Last match:{" "}
                   <strong className="text-foreground">
                     {liveMeta.lastMatch.name}
+                    {personKindWord(liveMeta.lastMatch.kind)
+                      ? ` · ${personKindWord(liveMeta.lastMatch.kind)}`
+                      : ""}
                     {liveMeta.lastMatch.confidence != null
                       ? ` (${Math.round(liveMeta.lastMatch.confidence * 100)}%)`
                       : ""}

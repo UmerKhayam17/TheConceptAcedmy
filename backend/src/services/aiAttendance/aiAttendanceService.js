@@ -20,6 +20,19 @@ const {
 const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
 
 const MATCH_THRESHOLD = 0.75;
+
+/** Teachers stay their own group; accountants and non-teaching accounts are staff. */
+function displayKindFromRole(roleName) {
+  return String(roleName || '').toLowerCase() === 'teacher' ? 'teacher' : 'staff';
+}
+
+function roleDisplayLabel(roleName) {
+  const name = String(roleName || '').toLowerCase();
+  if (name === 'teacher') return 'Teacher';
+  if (name === 'accountant') return 'Accountant';
+  if (name === 'non_teaching_staff') return 'Non-teaching staff';
+  return name ? name.replace(/_/g, ' ') : 'Staff';
+}
 /**
  * A second sighting only counts as check-out after this long (default 30 minutes), so a
  * teacher who scans out on the gate phone soon after arriving still gets a departure time.
@@ -169,9 +182,9 @@ async function markFromPersonKey(personKey, { confidence, notes, source = 'ai' }
   }
 
   if (parsed.kind === 'staff') {
-    let user = await User.findById(parsed.mongoId).select('_id').lean();
+    let user = await User.findById(parsed.mongoId).select('_id role').populate('role', 'name').lean();
     if (!user) {
-      user = await User.findOne({ aiEmployeeId: personKey }).select('_id').lean();
+      user = await User.findOne({ aiEmployeeId: personKey }).select('_id role').populate('role', 'name').lean();
     }
     if (!user) throw new ApiError(404, 'Staff not found');
     // Present / late from the teacher's earliest period today + grace (9:30 AM when none)
@@ -183,7 +196,8 @@ async function markFromPersonKey(personKey, { confidence, notes, source = 'ai' }
       notes,
       source,
     });
-    return { kind: 'staff', doc, action: sightingAction(doc) };
+    const roleName = user.role && typeof user.role === 'object' ? user.role.name : '';
+    return { kind: displayKindFromRole(roleName), doc, action: sightingAction(doc) };
   }
 
   throw new ApiError(400, 'Unknown person key');
@@ -298,26 +312,37 @@ async function syncRoster() {
     }
   }
 
-  const staffRoles = await Role.find({ name: { $in: STAFF_ROLE_NAMES } }).select('_id').lean();
+  const staffRoles = await Role.find({ name: { $in: STAFF_ROLE_NAMES } }).select('_id name').lean();
+  const teacherRoleIds = new Set(
+    staffRoles.filter((r) => String(r.name).toLowerCase() === 'teacher').map((r) => String(r._id))
+  );
   const users = await User.find({
     isActive: true,
     role: { $in: staffRoles.map((r) => r._id) },
   })
-    .select('_id aiEmployeeId')
+    .select('_id aiEmployeeId role')
     .lean();
+  let teachersLinked = 0;
+  let staffLinked = 0;
+  let teachersUpdated = 0;
   let staffUpdated = 0;
   for (const u of users) {
+    const isTeacher = teacherRoleIds.has(String(u.role));
+    if (isTeacher) teachersLinked += 1;
+    else staffLinked += 1;
     const id = staffAiEmployeeId(u);
     if (u.aiEmployeeId !== id) {
       // eslint-disable-next-line no-await-in-loop
       await User.updateOne({ _id: u._id }, { $set: { aiEmployeeId: id } });
-      staffUpdated += 1;
+      if (isTeacher) teachersUpdated += 1;
+      else staffUpdated += 1;
     }
   }
 
   return {
     students: { linked: students.length, updated: studentsUpdated },
-    staff: { linked: users.length, updated: staffUpdated },
+    teachers: { linked: teachersLinked, updated: teachersUpdated },
+    staff: { linked: staffLinked, updated: staffUpdated },
   };
 }
 
@@ -346,6 +371,25 @@ async function listPeopleForEnrollment() {
     .lean();
   const enrollByKey = new Map(enrollDocs.map((e) => [e.personKey, e]));
 
+  const adults = staff.map((u) => {
+    const roleName = u.role?.name || '';
+    const kind = displayKindFromRole(roleName);
+    const aiEmployeeId = u.aiEmployeeId || staffAiEmployeeId(u);
+    const en = enrollByKey.get(aiEmployeeId);
+    return {
+      kind,
+      id: String(u._id),
+      name: u.name,
+      label: roleDisplayLabel(roleName),
+      roleLabel: roleDisplayLabel(roleName),
+      aiEmployeeId,
+      hasPhoto: Boolean(u.profileImage),
+      photoUrl: u.profileImage || '',
+      isTrained: Boolean(en?.isTrained),
+      totalImages: en?.totalImages || 0,
+    };
+  });
+
   return {
     students: students.map((s) => {
       const aiEmployeeId = s.aiEmployeeId || studentAiEmployeeId(s);
@@ -364,21 +408,8 @@ async function listPeopleForEnrollment() {
         totalImages: en?.totalImages || 0,
       };
     }),
-    staff: staff.map((u) => {
-      const aiEmployeeId = u.aiEmployeeId || staffAiEmployeeId(u);
-      const en = enrollByKey.get(aiEmployeeId);
-      return {
-        kind: 'staff',
-        id: String(u._id),
-        name: u.name,
-        label: u.role?.name || '',
-        aiEmployeeId,
-        hasPhoto: Boolean(u.profileImage),
-        photoUrl: u.profileImage || '',
-        isTrained: Boolean(en?.isTrained),
-        totalImages: en?.totalImages || 0,
-      };
-    }),
+    teachers: adults.filter((p) => p.kind === 'teacher'),
+    staff: adults.filter((p) => p.kind === 'staff'),
     stats: enrollments,
   };
 }

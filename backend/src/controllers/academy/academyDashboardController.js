@@ -1,6 +1,7 @@
 const catchAsync = require('../../utils/catchAsync');
 const dashboardService = require('../../services/academy/academyDashboardService');
 const balanceSheetService = require('../../services/academy/academyBalanceSheetService');
+const balanceSheetPdfService = require('../../services/academy/academyBalanceSheetPdfService');
 
 const overview = catchAsync(async (req, res) => {
   const months = req.query.months ? Number(req.query.months) : 6;
@@ -18,4 +19,15 @@ const balanceSheet = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
-module.exports = { overview, balanceSheet };
+const balanceSheetPdf = catchAsync(async (req, res) => {
+  const { buffer, range } = await balanceSheetPdfService.getBalanceSheetPdf({
+    from: req.query.from,
+    to: req.query.to,
+  });
+  const filename = `Balance-Sheet_${range.from}_to_${range.to}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.send(buffer);
+});
+
+module.exports = { overview, balanceSheet, balanceSheetPdf };

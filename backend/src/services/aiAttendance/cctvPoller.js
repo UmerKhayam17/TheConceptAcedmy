@@ -140,6 +140,7 @@ async function tick(cameraId) {
           at: new Date().toISOString(),
           personKey: person.employee_id,
           name: person.employee_name,
+          kind: person.kind || '',
           confidence: person.confidence,
           attendance: person.attendance_action || person.status,
         };
