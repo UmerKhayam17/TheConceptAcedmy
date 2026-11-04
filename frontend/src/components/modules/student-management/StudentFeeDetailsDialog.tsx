@@ -101,6 +101,8 @@ const selectCls =
   "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-70";
 
 const theadCls = "bg-primary text-primary-foreground";
+const gridTableCls =
+  "w-full border-separate border-spacing-0 text-sm [&_td]:border-b [&_td]:border-r [&_td]:border-border [&_td:first-child]:border-l [&_th]:border-b [&_th]:border-r [&_th]:border-primary-foreground/40 [&_th:first-child]:border-l";
 
 function FilterControl({
   icon: Icon,
@@ -128,6 +130,26 @@ type FeeHeadRow = { head: string; amount: number; remarks: string; payable: numb
  */
 function activeRelief(student: AcademyStudent): FeeReliefKind {
   return studentFeeRelief(student);
+}
+
+/** Staff-facing relief line, including the exemption reason. */
+function studentReliefRemark(student: AcademyStudent): string {
+  const relief = activeRelief(student);
+  const monthly = Number(student.monthlyFee) || 0;
+  const amt = relief ? Math.min(Number(student.monthlyFeeDiscount) || 0, monthly || Number(student.monthlyFeeDiscount) || 0) : 0;
+  if (relief === "exemption") {
+    const text = String(student.exemptionRemarks || "").trim();
+    if (!text && amt <= 0) return "";
+    return text ? `Exemption${amt > 0 ? ` ${num(amt)}` : ""} — ${text}` : `Exemption ${num(amt)}`;
+  }
+  if (relief === "concession") {
+    const pct = Number(student.concessionPercent) || 0;
+    const cat = String(student.concessionCategory || "").trim();
+    const detail = [cat, pct ? `${pct}%` : "", amt > 0 ? num(amt) : ""].filter(Boolean).join(" · ");
+    return detail ? `Concession — ${detail}` : "";
+  }
+  if (relief === "legacy" && amt > 0) return `Legacy discount ${num(amt)}`;
+  return "";
 }
 
 /** The whole monthly tuition discount is the active concession / exemption. */
@@ -182,6 +204,16 @@ function feeHeadsFor(record: AcademyFeeRecord | undefined, student: AcademyStude
       actual = admission;
       parts.push(remark(admission - payable, "Discount"));
     }
+    if (c.kind === "tuition") {
+      const reliefText = studentReliefRemark(student);
+      if (reliefText) {
+        const idx = parts.findIndex(
+          (p) => p.startsWith("Exemption") || p.startsWith("Concession") || p.startsWith("Legacy"),
+        );
+        if (idx >= 0) parts[idx] = reliefText;
+        else parts.push(reliefText);
+      }
+    }
     if (fullyExempt && payable === 0 && parts.length === 0) parts.push("Waived");
     return { head: c.name, amount: actual, remarks: parts.join(" · "), payable };
   });
@@ -192,11 +224,13 @@ function SummaryCard({
   title,
   rows,
   total,
+  wrap = false,
 }: {
   icon: typeof FileText;
   title: string;
   rows: { key: string; label: string; value?: string }[];
   total?: { label: string; value?: string };
+  wrap?: boolean;
 }) {
   return (
     <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
@@ -209,7 +243,7 @@ function SummaryCard({
       <div className="text-sm">
         {rows.map((row) => (
           <div key={row.key} className="flex items-center justify-between gap-3 border-b px-3 py-2 last:border-b-0">
-            <span className="min-w-0 truncate">{row.label || "—"}</span>
+            <span className={cn("min-w-0", wrap ? "whitespace-normal break-words" : "truncate")}>{row.label || "—"}</span>
             {row.value != null && <span className="shrink-0 tabular-nums">{row.value}</span>}
           </div>
         ))}
@@ -224,10 +258,12 @@ function SummaryCard({
   );
 }
 
-function FeeHeadTable({ rows }: { rows: FeeHeadRow[] }) {
+function FeeHeadTable({ rows, notes }: { rows: FeeHeadRow[]; notes?: string }) {
   const total = rows.reduce((s, r) => s + r.amount, 0);
   const payable = rows.reduce((s, r) => s + r.payable, 0);
   const remarks = rows.map((r) => r.remarks).filter(Boolean);
+  const note = String(notes || "").trim();
+  if (note && !remarks.includes(note)) remarks.push(note);
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryCard
@@ -245,7 +281,12 @@ function FeeHeadTable({ rows }: { rows: FeeHeadRow[] }) {
       <SummaryCard
         icon={Star}
         title="Remarks"
-        rows={[{ key: "remarks", label: remarks.join(" · ") || "—" }]}
+        wrap
+        rows={
+          remarks.length
+            ? remarks.map((line, i) => ({ key: `rm-${i}`, label: line }))
+            : [{ key: "none", label: "—" }]
+        }
       />
       <SummaryCard
         icon={Wallet}
@@ -351,11 +392,11 @@ function StudentChallanTab({ student, records }: { student: AcademyStudent; reco
       </div>
 
       <div ref={summaryRef}>
-        <FeeHeadTable rows={feeHeadsFor(selected, student)} />
+        <FeeHeadTable rows={feeHeadsFor(selected, student)} notes={selected?.notes} />
       </div>
 
-      <div className="overflow-x-auto rounded-xl border">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className={gridTableCls}>
           <thead className={theadCls}>
             <tr>
               <th className="px-3 py-2.5 text-center font-medium">#</th>
@@ -381,7 +422,7 @@ function StudentChallanTab({ student, records }: { student: AcademyStudent; reco
                   key={r._id}
                   onClick={() => setSelectedId(r._id)}
                   className={cn(
-                    "cursor-pointer border-t hover:bg-muted/40",
+                    "cursor-pointer hover:bg-muted/40",
                     r._id === selectedId && "bg-primary/5",
                   )}
                 >
@@ -559,8 +600,8 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className={gridTableCls}>
           <thead className={theadCls}>
             <tr>
               <th className="p-3 text-center font-medium">Fee Head</th>
@@ -571,7 +612,7 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
             </tr>
           </thead>
           <tbody>
-            <tr className="border-t">
+            <tr>
               <td className="p-3 text-center">Tuition Fee (monthly)</td>
               <td className="p-3 text-center tabular-nums">{num(monthly)}</td>
               <td className="p-3 text-center tabular-nums text-sky-700 dark:text-sky-300">
