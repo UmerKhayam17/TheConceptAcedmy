@@ -33,7 +33,7 @@ export default function AcademyDiscountReport() {
 
   const { data: classes = [] } = useQuery({
     queryKey: ["academy-classes-discount-report"],
-    queryFn: fetchAcademyClasses,
+    queryFn: () => fetchAcademyClasses(),
     retry: false,
   });
 

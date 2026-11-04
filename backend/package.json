@@ -9,7 +9,8 @@
     "prod": "node scripts/dev.js --prod",
     "dev:api": "node --watch src/server.js",
     "dev:worker": "node scripts/dev.js --worker-only",
-    "backfill:reg-numbers": "node scripts/backfillRegistrationNumbers.js"
+    "backfill:reg-numbers": "node scripts/backfillRegistrationNumbers.js",
+    "lint": "eslint src scripts"
   },
   "engines": {
     "node": ">=18"
@@ -38,5 +39,10 @@
     "socket.io": "^4.8.1",
     "twilio": "^5.4.0",
     "uuid": "^11.0.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^15.15.0"
   }
 }

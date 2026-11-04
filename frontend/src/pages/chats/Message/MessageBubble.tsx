@@ -143,7 +143,7 @@ function MessageTick({ status, isFile }) {
 ───────────────────────────────────────────────────────────────────────────── */
 function FloatingReactionPicker({ anchorRef, isOwn, onSelect, onClose }) {
   const wrapRef = useRef(null);
-  const [style, setStyle] = useState({ visibility: "hidden" });
+  const [style, setStyle] = useState<React.CSSProperties>({ visibility: "hidden" });
 
   useEffect(() => {
     if (!anchorRef.current || !wrapRef.current) return;

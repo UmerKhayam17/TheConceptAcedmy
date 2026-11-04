@@ -33,7 +33,6 @@ async function generateFeesForMonth({ month, year, sessionId, userId }) {
   };
 
   for (const cls of classes) {
-    // eslint-disable-next-line no-await-in-loop
     add(await generateMonthlyFees({ month, year, classId: cls._id }, userId));
   }
   return totals;

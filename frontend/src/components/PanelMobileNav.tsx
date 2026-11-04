@@ -26,7 +26,7 @@ type MobileTab = {
   id: string;
   label: string;
   href: string;
-  Icon: ComponentType<{ className?: string }>;
+  Icon: ComponentType<{ className?: string; strokeWidth?: string | number }>;
   active: boolean;
   end?: boolean;
 };

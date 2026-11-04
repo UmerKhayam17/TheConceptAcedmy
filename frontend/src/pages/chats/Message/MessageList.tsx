@@ -12,7 +12,7 @@ import React, {
   useCallback,
   useState,
 } from "react";
-import { useChatUi, useIntersection } from "@/services/socket/chat.api";
+import { useChatUi, useIntersection, type ChatMessage } from "@/services/socket/chat.api";
 import MessageBubble from "./MessageBubble";
 import DateDivider from "./DateDivider";
 import { Loader2 } from "lucide-react";
@@ -46,7 +46,22 @@ function getDateLabel(dateStr) {
   return format(d, "MMMM d, yyyy").toUpperCase();
 }
 
-const MessageList = forwardRef(function MessageList(
+type MessageListProps = {
+  conversationId: string;
+  messages: ChatMessage[];
+  loading?: boolean;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  onReply?: (message: ChatMessage) => void;
+  onForward?: (message: ChatMessage) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  conversationSetting?: any;
+  onMentionClick?: (userId: string) => void;
+  pinnedMessages?: ChatMessage[];
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const MessageList = forwardRef<any, MessageListProps>(function MessageList(
   {
     conversationId,
     messages,
@@ -67,7 +82,7 @@ const MessageList = forwardRef(function MessageList(
   const bottomRef    = useRef(null);
   const prevLenRef   = useRef(0);
   const prevConvRef  = useRef(null);
-  const msgRefsMap   = useRef({});
+  const msgRefsMap   = useRef<Record<string, HTMLElement | null>>({});
   const glowTimer    = useRef(null);
   const isNearBottom = useRef(true);
 

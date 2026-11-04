@@ -81,14 +81,15 @@ async function loadExpenseData(filters) {
     paidAmount,
     plannedAmount,
     count: rows.length,
+    names,
   };
 }
 
-function filterLine({ month, year, category, status, search }) {
+function filterLine({ month, year, category, status, search }, names = {}) {
   const parts = [];
   if (month && year) parts.push(`${MONTHS[Number(month) - 1] || month} ${year}`);
   else if (year) parts.push(`Year ${year}`);
-  if (category) parts.push(CATEGORY_LABELS[category] || category);
+  if (category) parts.push(names[category] || category);
   else parts.push('All categories');
   if (status) parts.push(String(status).replace(/^\w/, (c) => c.toUpperCase()));
   else parts.push('All statuses');
@@ -118,7 +119,7 @@ const COLUMNS = [
 
 async function exportExpenseReport(filters = {}) {
   const format = String(filters.format || 'xlsx').toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
-  const { rows, totalAmount, paidAmount, plannedAmount, count } = await loadExpenseData(filters);
+  const { rows, totalAmount, paidAmount, plannedAmount, count, names } = await loadExpenseData(filters);
 
   const periodBits = [];
   if (filters.month && filters.year) {
@@ -127,7 +128,7 @@ async function exportExpenseReport(filters = {}) {
     periodBits.push(`Year ${filters.year}`);
   }
   if (filters.category) {
-    periodBits.push(CATEGORY_LABELS[filters.category] || filters.category);
+    periodBits.push(names[filters.category] || filters.category);
   } else {
     periodBits.push('All categories');
   }
@@ -140,11 +141,11 @@ async function exportExpenseReport(filters = {}) {
 
   const meta = {
     leftFilter: filters.category
-      ? CATEGORY_LABELS[filters.category] || filters.category
+      ? names[filters.category] || filters.category
       : 'All categories',
     centerFilter: `Total entries: ${count}`,
     rightFilter: periodBits.join(' · '),
-    filterLine: filterLine(filters),
+    filterLine: filterLine(filters, names),
     countLabel: `Total entries: ${count}`,
     extraLine: `Total ${totalAmount.toLocaleString('en-PK')} · Paid ${paidAmount.toLocaleString(
       'en-PK'

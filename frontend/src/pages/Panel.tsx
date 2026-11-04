@@ -430,7 +430,8 @@ const Panel = () => {
   }
 
   const renderModule = () => {
-    switch (mod.key) {
+    // Cast: "users" is a legacy key no longer in ModuleKey but old URLs may still use it.
+    switch (mod.key as string) {
       case "users":
         // Legacy URL — Administration now uses Parents / Staff / Admins.
         return <Navigate to={moduleHref(r, "parents")} replace />;

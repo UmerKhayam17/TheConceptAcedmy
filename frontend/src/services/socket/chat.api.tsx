@@ -13,16 +13,49 @@ export const chatKeys = {
   messages: (conversationId) => ["chat", "messages", conversationId],
 };
 
+/* ── Types ──────────────────────────────────────────────────────────────────
+ * Chat documents come straight from the backend and gain fields over time,
+ * so they're typed loosely: a required `_id` plus any other fields.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ChatDoc = { _id: string; [key: string]: any };
+export type Conversation = ChatDoc;
+export type ChatMessage = ChatDoc;
+export type ChatUser = ChatDoc;
+
+export type MessagesBucket = { messages: ChatMessage[]; hasMore: boolean; loading?: boolean };
+
+/** Shape of every chat REST response (each endpoint fills in the fields it uses). */
+export type ChatResponse = {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  conversation?: Conversation;
+  conversations?: Conversation[];
+  messages?: ChatMessage[];
+  hasMore?: boolean;
+  users?: ChatUser[];
+  media?: ChatDoc[];
+  file?: ChatDoc;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
+};
+
+export class ChatApiError extends Error {
+  status?: number;
+  data?: unknown;
+}
+
 export function userIdStr(id) {
   if (!id) return "";
   return String(id._id || id);
 }
 
-async function chatFetch(path, options = {}) {
+async function chatFetch(path: string, options: RequestInit = {}): Promise<ChatResponse> {
   const res = await authedFetch(path, options);
-  const data = await parseJson(res);
+  const data = (await parseJson(res)) as ChatResponse;
   if (!res.ok) {
-    const err = new Error(data?.error || data?.message || "Request failed");
+    const err = new ChatApiError(data?.error || data?.message || "Request failed");
     err.status = res.status;
     err.data = data;
     throw err;
@@ -35,7 +68,7 @@ const api = {
   getConversations: () => chatFetch("/chat/conversations"),
   getConversation: (id) => chatFetch(`/chat/conversations/${id}`),
   getOrCreateDirect: (targetUserId) => chatFetch(`/chat/conversations/direct/${targetUserId}`),
-  createGroup: (body) =>
+  createGroup: (body: { title: string; participantIds: string[]; [key: string]: unknown }) =>
     chatFetch("/chat/conversations/group", { method: "POST", body: JSON.stringify(body) }),
   updateGroup: (id, body) =>
     chatFetch(`/chat/conversations/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
@@ -62,7 +95,7 @@ const api = {
       body: JSON.stringify(newAdminId ? { newAdminId } : {}),
     }),
   deleteGroup: (convId) => chatFetch(`/chat/conversations/${convId}`, { method: "DELETE" }),
-  getMessages: (conversationId, params = {}) => {
+  getMessages: (conversationId, params: { before?: string; limit?: number } = {}) => {
     const qs = new URLSearchParams();
     if (params.before) qs.set("before", params.before);
     if (params.limit) qs.set("limit", String(params.limit));
@@ -81,12 +114,12 @@ const api = {
     chatFetch(`/chat/conversations/${conversationId}/messages/${messageId}/pin`, {
       method: "POST",
     }),
-  uploadFile: async (file, conversationId, onProgress) => {
+  uploadFile: async (file, conversationId, onProgress): Promise<ChatResponse> => {
     const form = new FormData();
     form.append("chat_file", file);
     form.append("conversationId", conversationId);
     const token = await ensureAccessToken();
-    return new Promise((resolve, reject) => {
+    return new Promise<ChatResponse>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${getApiRoot()}/chat/upload`);
       if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -179,7 +212,7 @@ export function useMessages(conversationId) {
   return useQuery({
     queryKey: chatKeys.messages(conversationId),
     enabled: !!conversationId,
-    queryFn: async () => {
+    queryFn: async (): Promise<MessagesBucket> => {
       const res = await api.getMessages(conversationId);
       return { messages: res.messages || [], hasMore: !!res.hasMore };
     },
@@ -285,7 +318,7 @@ export function useCreateGroup() {
   const qc = useQueryClient();
   const { setActiveId } = useChatUi();
   return useMutation({
-    mutationFn: (body) => api.createGroup(body),
+    mutationFn: (body: Parameters<typeof api.createGroup>[0]) => api.createGroup(body),
     onSuccess: (res) => {
       const conv = res.conversation;
       if (conv) {
@@ -304,21 +337,29 @@ export function useChatMutations() {
 
   return {
     addParticipants: useMutation({
-      mutationFn: ({ conversationId, userIds }) => api.addParticipants(conversationId, userIds),
+      mutationFn: ({ conversationId, userIds }: { conversationId: string; userIds: string[] }) =>
+        api.addParticipants(conversationId, userIds),
       onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.conversations }),
     }),
     removeParticipant: useMutation({
-      mutationFn: ({ conversationId, targetUserId }) =>
+      mutationFn: ({ conversationId, targetUserId }: { conversationId: string; targetUserId: string }) =>
         api.removeParticipant(conversationId, targetUserId),
       onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.conversations }),
     }),
     changeParticipantRole: useMutation({
-      mutationFn: ({ conversationId, targetUserId, role }) =>
-        api.changeParticipantRole(conversationId, targetUserId, role),
+      mutationFn: ({
+        conversationId,
+        targetUserId,
+        role,
+      }: {
+        conversationId: string;
+        targetUserId: string;
+        role: string;
+      }) => api.changeParticipantRole(conversationId, targetUserId, role),
       onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.conversations }),
     }),
     leaveGroup: useMutation({
-      mutationFn: ({ conversationId, newAdminId }) =>
+      mutationFn: ({ conversationId, newAdminId }: { conversationId: string; newAdminId?: string | null }) =>
         api.leaveGroup(conversationId, newAdminId),
       onSuccess: (_res, { conversationId }) => {
         patchConversations(qc, (list) => list.filter((c) => String(c._id) !== String(conversationId)));
@@ -343,7 +384,7 @@ export function useChatSocket() {
 
   useEffect(() => {
     let cancelled = false;
-    let chat: ReturnType<typeof socketService.chat> | null = null;
+    let chat: typeof socketService.chat | null = null;
 
     const cleanup = () => {
       if (!chat) return;
@@ -391,7 +432,7 @@ export function useChatSocket() {
       const cid = payload.conversationId?._id || payload.conversationId;
       const mid = payload.messageId || payload._id;
       if (!cid || !mid) return;
-      const updates = { isEdited: true };
+      const updates: Record<string, unknown> = { isEdited: true };
       if (payload.newText !== undefined) updates.text = payload.newText;
       if (payload.editedAt) updates.editedAt = payload.editedAt;
       updateMessageInCache(qc, cid, mid, updates);

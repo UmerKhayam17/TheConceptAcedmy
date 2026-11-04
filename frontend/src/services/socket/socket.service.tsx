@@ -9,6 +9,10 @@ import { io, type Socket } from "socket.io-client";
 import { getSocketUrl } from "@/lib/api";
 import { ensureAccessToken } from "@/lib/auth";
 
+/** Server acknowledgement passed to emit callbacks. */
+export type SocketAck = { ok?: boolean; error?: string; [key: string]: unknown };
+export type SocketAckCallback = (ack: SocketAck) => void;
+
 class SocketService {
   chat: Socket | null = null;
   notifications: Socket | null = null;
@@ -110,23 +114,23 @@ class SocketService {
     this.chat?.emit("conversation:join", { conversationId });
   }
 
-  sendMessage(payload: unknown, cb?: (...args: unknown[]) => void) {
+  sendMessage(payload: unknown, cb?: SocketAckCallback) {
     this.chat?.emit("message:send", payload, cb);
   }
 
-  editMessage(payload: unknown, cb?: (...args: unknown[]) => void) {
+  editMessage(payload: unknown, cb?: SocketAckCallback) {
     this.chat?.emit("message:edit", payload, cb);
   }
 
-  deleteMessage(payload: unknown, cb?: (...args: unknown[]) => void) {
+  deleteMessage(payload: unknown, cb?: SocketAckCallback) {
     this.chat?.emit("message:delete", payload, cb);
   }
 
-  forwardMessage(payload: unknown, cb?: (...args: unknown[]) => void) {
+  forwardMessage(payload: unknown, cb?: SocketAckCallback) {
     this.chat?.emit("message:forward", payload, cb);
   }
 
-  markRead(conversationId: string, cb?: (...args: unknown[]) => void) {
+  markRead(conversationId: string, cb?: SocketAckCallback) {
     this.chat?.emit("message:read", { conversationId }, cb);
   }
 
@@ -138,7 +142,7 @@ class SocketService {
     this.chat?.emit("typing:stop", { conversationId });
   }
 
-  toggleReaction(payload: unknown, cb?: (...args: unknown[]) => void) {
+  toggleReaction(payload: unknown, cb?: SocketAckCallback) {
     this.chat?.emit("reaction:toggle", payload, cb);
   }
 

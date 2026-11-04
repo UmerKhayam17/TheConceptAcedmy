@@ -56,7 +56,7 @@ async function sendEmail(to, subject, text) {
     // Prefer nodemailer when installed; otherwise skip silently
     let nodemailer;
     try {
-      // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+      // eslint-disable-next-line global-require
       nodemailer = require('nodemailer');
     } catch {
       return { sent: false, channel: 'email', reason: 'nodemailer not installed' };
@@ -84,10 +84,10 @@ async function sendFcm(fcmToken, title, body) {
     return { sent: false, channel: 'fcm', reason: 'FIREBASE_SERVICE_ACCOUNT_PATH not set' };
   }
   try {
-    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+    // eslint-disable-next-line global-require
     const admin = require('firebase-admin');
     if (!admin.apps.length) {
-      // eslint-disable-next-line import/no-dynamic-require, global-require
+      // eslint-disable-next-line global-require
       const serviceAccount = require(require('path').resolve(saPath));
       admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     }

@@ -61,10 +61,10 @@ function formatCreated(iso?: string) {
   return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function disciplineClassId(d: AcademyDiscipline) {
+function disciplineClassId(d: AcademyDiscipline): string {
   const c = d.classId;
-  if (typeof c === "object" && c) return c._id;
-  return c || "";
+  if (typeof c === "string") return c;
+  return c?._id || "";
 }
 
 function disciplineClassName(d: AcademyDiscipline, fallback = "—") {

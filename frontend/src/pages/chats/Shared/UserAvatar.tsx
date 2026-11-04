@@ -39,7 +39,11 @@ export default function UserAvatar({ name, avatarUrl, size = 40, isGroup = false
         alt={name}
         style={style}
         className="rounded-full object-cover"
-        onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
+        onError={(e) => {
+          const img = e.currentTarget;
+          img.onerror = null;
+          img.style.display = "none";
+        }}
       />
     );
   }

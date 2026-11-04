@@ -1790,6 +1790,7 @@ export const exportClassAccountsReport = async (
 export interface AcademySalaryStudentLine {
   studentId?: string;
   studentName?: string;
+  rollNumber?: string;
   registrationNumber?: string;
   tuition?: number;
   isFullPackage?: boolean;

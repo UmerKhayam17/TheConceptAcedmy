@@ -5,8 +5,10 @@
 
 import React from "react";
 
+type ReactionGroup = { emoji: string; count: number; users: string[]; isMine: boolean };
+
 export default function ReactionBar({ reactions, myId, onToggle }) {
-  const grouped = reactions.reduce((acc, r) => {
+  const grouped: Record<string, ReactionGroup> = reactions.reduce((acc: Record<string, ReactionGroup>, r) => {
     const key = r.emoji;
     if (!acc[key]) acc[key] = { emoji: key, count: 0, users: [], isMine: false };
     acc[key].count++;

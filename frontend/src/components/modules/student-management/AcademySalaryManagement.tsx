@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ComponentType } from "react";
+import { Fragment, useEffect, useMemo, useState, type ComponentType, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -186,7 +186,7 @@ function MetricCard({
   title: string;
   value: string;
   description: string;
-  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  icon: ComponentType<{ className?: string; strokeWidth?: string | number; style?: CSSProperties }>;
   iconBg: string;
   iconColor: string;
   valueClass: string;

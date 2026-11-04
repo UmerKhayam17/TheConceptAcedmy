@@ -107,7 +107,7 @@ const PanelSidebar = ({ user }: { user: SessionUser }) => {
   });
 
   const visibleGroups = useMemo(() => {
-    let groups = sidebarNavForRole(user.role)
+    let groups: SidebarNavGroup[] = sidebarNavForRole(user.role)
       .map((group) => ({
         ...group,
         items: group.items.filter(canView).map((item) => ({
