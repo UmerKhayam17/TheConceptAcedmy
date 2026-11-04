@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  DoorOpen,
+  LogOut,
   Palmtree,
   UserX,
   CircleDashed,
@@ -67,10 +69,17 @@ const PERIOD_STATUSES: { value: StaffPeriodStatus; label: string }[] = [
   { value: "absent", label: "Absent" },
   { value: "late", label: "Late" },
   { value: "leave", label: "Leave" },
+  { value: "left_early", label: "Left early" },
 ];
 
 function defaultPeriodStatus(status?: string | null): StaffPeriodStatus {
-  if (status === "present" || status === "late" || status === "absent" || status === "leave") {
+  if (
+    status === "present" ||
+    status === "late" ||
+    status === "absent" ||
+    status === "leave" ||
+    status === "left_early"
+  ) {
     return status;
   }
   // No saved mark and no camera check-in → absent.
@@ -85,6 +94,8 @@ const STATUS_SELECT_CLASS: Record<string, string> = {
     "border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950/40 dark:text-red-300",
   leave:
     "border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
+  left_early:
+    "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
 };
 
 const STATUS_PILL_CLASS: Record<string, string> = {
@@ -92,7 +103,21 @@ const STATUS_PILL_CLASS: Record<string, string> = {
   late: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
   absent: "bg-red-500/15 text-red-700 dark:text-red-400",
   leave: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+  left_early: "bg-orange-500/15 text-orange-800 dark:text-orange-300",
 };
+
+/** Amber "check this" chip for a class that ran after the teacher's last check-out scan. */
+function ReviewBadge({ note }: { note?: string }) {
+  return (
+    <span
+      className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+      title={note || "Left early? Confirm the status."}
+    >
+      <LogOut className="h-3 w-3 shrink-0" />
+      <span className="truncate">Needs review — left early?</span>
+    </span>
+  );
+}
 
 function StatusPill({ status }: { status?: string | null }) {
   const resolved = defaultPeriodStatus(status);
@@ -159,6 +184,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   const [monthTeacherFilter, setMonthTeacherFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
+  const [reviewOnly, setReviewOnly] = useState(false);
   const [reportStaffId, setReportStaffId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, PeriodDraft>>({});
   const [savingAll, setSavingAll] = useState(false);
@@ -306,6 +332,12 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     return dailyTeachers;
   }, [dailyTeachers, isAdmin, reportStaffId]);
 
+  // Classes that ran after the teacher's last check-out, or no check-out scan at all.
+  const reviewCount = useMemo(
+    () => markingTeachers.reduce((n, t) => n + (t.needsReview || 0), 0),
+    [markingTeachers]
+  );
+
   const saveableCount = useMemo(
     () => markingTeachers.reduce((n, teacher) => n + teacher.periods.length, 0),
     [markingTeachers]
@@ -364,12 +396,15 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   };
 
   const classTeachers = useMemo(
-    () => markingTeachers.filter((t) => t.attendanceType !== "daily"),
-    [markingTeachers]
+    () =>
+      markingTeachers.filter(
+        (t) => t.attendanceType !== "daily" && (!reviewOnly || (t.needsReview || 0) > 0)
+      ),
+    [markingTeachers, reviewOnly]
   );
   const dailyStaff = useMemo(
-    () => markingTeachers.filter((t) => t.attendanceType === "daily"),
-    [markingTeachers]
+    () => (reviewOnly ? [] : markingTeachers.filter((t) => t.attendanceType === "daily")),
+    [markingTeachers, reviewOnly]
   );
   const monthClassTeachers = useMemo(
     () => monthTeachers.filter((t) => t.attendanceType !== "daily"),
@@ -412,7 +447,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   }, [boardClasses, boardSubjects]);
 
   const stats = useMemo(() => {
-    const counts = { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0 };
+    const counts = { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0, left_early: 0 };
     if (view === "daily") {
       markingTeachers.forEach((teacher) =>
         teacher.periods.forEach((period) => {
@@ -430,6 +465,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
         counts.late += t.late;
         counts.absent += t.absent;
         counts.leave += t.leave;
+        counts.left_early += t.left_early || 0;
       });
     }
     const marked = counts.present + counts.late;
@@ -447,6 +483,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     { label: "Late", value: stats.late, valueClass: "text-amber-700" },
     { label: "Absent", value: stats.absent, valueClass: "text-rose-700" },
     { label: "Leave", value: stats.leave, valueClass: "text-blue-700" },
+    { label: "Left early", value: stats.left_early, valueClass: "text-orange-700" },
   ];
 
   return (
@@ -463,8 +500,8 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                 Staff Attendance
               </h1>
               <p className="mt-0.5 max-w-xl text-xs leading-snug text-slate-500 sm:text-sm">
-                Period time and class come from the published timetable. Each period starts as
-                present — change it to absent, late, or leave when needed.
+                Period time and class come from the published timetable. Status follows the
+                gate check-in; classes after a teacher&apos;s last check-out are flagged for review.
               </p>
             </div>
           </div>
@@ -495,7 +532,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
             </div>
           ))}
         </div>
-        <div className="hidden gap-3 sm:grid sm:grid-cols-3 sm:gap-4 xl:grid-cols-5">
+        <div className="hidden gap-3 sm:grid sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
           <PanelStatCard
             label="Total classes"
             value={stats.totalClasses}
@@ -535,6 +572,14 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
             icon={Palmtree}
             iconWrapClass="bg-[#dbeafe]"
             iconClass="text-[#2563eb]"
+          />
+          <PanelStatCard
+            label="Left early"
+            value={stats.left_early}
+            hint={view === "daily" ? `${reviewCount} need review` : statsHint}
+            icon={DoorOpen}
+            iconWrapClass="bg-[#ffedd5]"
+            iconClass="text-[#ea580c]"
           />
         </div>
         </>
@@ -623,6 +668,22 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
           )}
 
           <FilterToolbarActions>
+            {view === "daily" && (
+              <button
+                type="button"
+                onClick={() => setReviewOnly((v) => !v)}
+                aria-pressed={reviewOnly}
+                className={cn(
+                  "inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-medium transition-colors",
+                  reviewOnly
+                    ? "bg-amber-500 text-white shadow-sm"
+                    : "border border-amber-400/60 bg-background text-amber-800 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                )}
+              >
+                <LogOut className="h-4 w-4" />
+                Needs review ({reviewCount})
+              </button>
+            )}
             <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
               <button
                 type="button"
@@ -842,6 +903,11 @@ const DAY_STATUS_STYLE: Record<string, { className: string; icon: LucideIcon }> 
       "border-violet-100 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300",
     icon: PlaneTakeoff,
   },
+  left_early: {
+    className:
+      "border-orange-100 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300",
+    icon: LogOut,
+  },
   "": {
     className:
       "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300",
@@ -1054,7 +1120,16 @@ function DayClassGrid({
       { key: "present", label: "Mark all present", icon: UserCheck, onClick: () => markAll("present") },
       { key: "absent", label: "Mark all absent", icon: CircleX, onClick: () => markAll("absent") },
       { key: "leave", label: "Mark all leave", icon: PlaneTakeoff, onClick: () => markAll("leave") },
-    ];
+      {
+        key: "left_early",
+        label: "Confirm flagged as left early",
+        icon: LogOut,
+        onClick: () =>
+          teacher.periods
+            .filter((period) => period.review)
+            .forEach((period) => onChange(teacher.userId, period.periodKey, "left_early")),
+      },
+    ].filter((item) => item.key !== "left_early" || teacher.periods.some((p) => p.review));
     return { teacher, statuses, total, present, hasLate, items };
   });
 
@@ -1107,6 +1182,7 @@ function DayClassGrid({
               <tr key={teacher.userId} className="group">
                 <td className={cn(cellClass, "align-middle")} style={{ width: teacherWidth, minWidth: teacherWidth }}>
                   <StaffIdentity person={teacher} />
+                  <ScanTimes teacher={teacher} />
                 </td>
                 {Array.from({ length: classCount }, (_, index) => {
                   const period = teacher.periods[index];
@@ -1141,6 +1217,10 @@ function DayClassGrid({
                         label={`${teacher.name} class ${index + 1} status`}
                         onChange={(status) => onChange(teacher.userId, period.periodKey, status)}
                       />
+                      {period.review &&
+                      !drafts[periodDraftKey(teacher.userId, period.periodKey)]?.dirty ? (
+                        <ReviewBadge note={period.reviewNote} />
+                      ) : null}
                     </td>
                   );
                 })}
@@ -1159,6 +1239,23 @@ function DayClassGrid({
             ))}
           </tbody>
         </table>
+    </div>
+  );
+}
+
+/** Gate phone scans for the day: check-in, last check-out, or a missing check-out warning. */
+function ScanTimes({ teacher }: { teacher: StaffPeriodTeacher }) {
+  if (!teacher.checkInTime) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-[3.25rem] text-[11px] text-slate-500">
+      <span>In {teacher.checkInTime}</span>
+      {teacher.checkOutTime ? (
+        <span>· Out {teacher.checkOutTime}</span>
+      ) : teacher.reviewReason === "no_checkout" ? (
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+          No check-out scan
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -1197,6 +1294,7 @@ const DAY_STATUS_SUMMARY: Record<string, { text: string; dot: string }> = {
   late: { text: "Arrived late", dot: "bg-blue-500" },
   absent: { text: "Absent today", dot: "bg-red-500" },
   leave: { text: "On leave", dot: "bg-violet-500" },
+  left_early: { text: "Left early", dot: "bg-orange-500" },
 };
 
 const STAFF_MARK_ACTIONS: { status: StaffPeriodStatus; label: string; icon: LucideIcon }[] = [
@@ -1204,6 +1302,7 @@ const STAFF_MARK_ACTIONS: { status: StaffPeriodStatus; label: string; icon: Luci
   { status: "late", label: "Mark late", icon: Timer },
   { status: "absent", label: "Mark absent", icon: CircleX },
   { status: "leave", label: "Mark leave", icon: PlaneTakeoff },
+  { status: "left_early", label: "Mark left early", icon: LogOut },
 ];
 
 /** Non-teaching staff (admin, accountant, …): one full-day mark each. */
@@ -1361,7 +1460,7 @@ function TeacherSummaryTable({
 
   return (
     <div className="w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-lg border border-slate-200/80 dark:border-slate-700">
-      <table className="w-full min-w-[64rem] border-collapse text-sm">
+      <table className="w-full min-w-[70rem] border-collapse text-sm">
         <thead className="bg-[#eef4fc] border-b border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700">
           <tr>
             <th className={cn(headClass, "min-w-[14rem] text-left")}>{isDailyTable ? "Staff" : "Teacher"}</th>
@@ -1375,13 +1474,14 @@ function TeacherSummaryTable({
             <th className={numHead}>Late</th>
             <th className={numHead}>Absent</th>
             <th className={numHead}>Leave</th>
+            <th className={numHead}>Left early</th>
             <th className={cn(headClass, "min-w-[9rem] text-left")}>Attendance</th>
           </tr>
         </thead>
         <tbody>
           {teachers.length === 0 && (
             <tr>
-              <td colSpan={8} className="p-8 text-center text-muted-foreground">
+              <td colSpan={9} className="p-8 text-center text-muted-foreground">
                 {emptyLabel}
               </td>
             </tr>
@@ -1425,6 +1525,7 @@ function TeacherSummaryTable({
                 <td className={cn(numClass, "text-blue-700 dark:text-blue-400")}>{t.late}</td>
                 <td className={cn(numClass, "text-red-700 dark:text-red-400")}>{t.absent}</td>
                 <td className={cn(numClass, "text-violet-700 dark:text-violet-400")}>{t.leave}</td>
+                <td className={cn(numClass, "text-orange-700 dark:text-orange-400")}>{t.left_early || 0}</td>
                 <td className={cellClass}>
                   <p className="text-xs font-semibold text-[#1a2b4b] mb-1.5 dark:text-slate-200">
                     {t.attendancePercent}%
@@ -1589,7 +1690,10 @@ function PeriodMarkTable({
                             <span>{period.classLabel || "—"}</span>
                             <span>{period.sectionLabel || "—"}</span>
                             <span>{period.subjectLabel || "—"}</span>
-                            <span>{renderStatus(period.periodKey, period.label || "class", status)}</span>
+                            <span>
+                              {renderStatus(period.periodKey, period.label || "class", status)}
+                              {period.review ? <ReviewBadge note={period.reviewNote} /> : null}
+                            </span>
                           </div>
                         );
                       })}

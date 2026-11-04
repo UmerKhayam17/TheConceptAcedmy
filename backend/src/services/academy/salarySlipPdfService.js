@@ -439,19 +439,20 @@ function drawSlip(doc, ctx) {
     const s = cls.summary;
     const isDaily = cls.attendanceType === 'daily';
     const rows = isDaily
-      ? [{ cls: 'Full day', subject: '—', total: s.totalClasses, present: s.present, late: s.late, absent: s.absent, leave: s.leave, pctv: `${s.attendancePercent}%` }]
+      ? [{ cls: 'Full day', subject: '—', total: s.totalClasses, present: s.present, late: s.late, absent: s.absent + (s.left_early || 0), leave: s.leave, pctv: `${s.attendancePercent}%` }]
       : cls.byClass.map((r) => ({
           cls: classLabel(r.className, r.sectionName),
           subject: r.subjectName || '—',
           total: r.totalClasses,
           present: r.present,
           late: r.late,
-          absent: r.absent,
+          // Absent column includes classes the teacher left before (confirmed left early).
+          absent: r.absent + (r.left_early || 0),
           leave: r.leave,
           pctv: `${r.attendancePercent}%`,
         }));
     if (!isDaily && rows.length > 1) {
-      rows.push({ _isTotal: true, total: s.totalClasses, present: s.present, late: s.late, absent: s.absent, leave: s.leave, pctv: `${s.attendancePercent}%` });
+      rows.push({ _isTotal: true, total: s.totalClasses, present: s.present, late: s.late, absent: s.absent + (s.left_early || 0), leave: s.leave, pctv: `${s.attendancePercent}%` });
     }
     table(
       [
@@ -467,14 +468,19 @@ function drawSlip(doc, ctx) {
       rows
     );
     const off = (cls.exceptions || []).map((e) => {
-      const kinds = [...new Set(e.items.map((i) => (i.status === 'leave' ? 'leave' : 'absent')))];
+      const kinds = [
+        ...new Set(
+          e.items.map((i) => (i.status === 'leave' ? 'leave' : i.status === 'left_early' ? 'left early' : 'absent'))
+        ),
+      ];
       return `${shortDate(e.day)} (${kinds.join('/')})`;
     });
     note(
       `Present in ${s.present + s.late} of ${s.totalClasses} ${isDaily ? 'working days' : 'classes'}` +
         (s.late ? `, late ${s.late} time${s.late === 1 ? '' : 's'}` : '') +
-        '. ' +
-        (off.length ? `Absent / leave on: ${off.join(', ')}.` : 'No absences this month.') +
+        '.' +
+        (s.left_early ? ` Left early from ${s.left_early} class${s.left_early === 1 ? '' : 'es'} (counted as absent).` : '') +
+        (off.length ? ` Absent / leave on: ${off.join(', ')}.` : ' No absences this month.') +
         ' Classes count as absent until the teacher checks in on camera or is marked.' +
         (daily && daily.totalDays > 0
           ? ` Daily check-in: ${daily.totalDays} day${daily.totalDays === 1 ? '' : 's'} recorded (${daily.present} present, ${daily.late} late, ${daily.absent} absent, ${daily.leave} leave).`

@@ -60,6 +60,12 @@ router.get(
   dashboardCtrl.overview
 );
 
+router.get(
+  '/finance/balance-sheet',
+  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  dashboardCtrl.balanceSheet
+);
+
 // Classes
 router.get(
   '/classes',

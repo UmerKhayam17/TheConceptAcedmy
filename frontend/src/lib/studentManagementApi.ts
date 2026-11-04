@@ -1211,6 +1211,52 @@ export type DashboardOverview = {
 export const fetchDashboardOverview = (months = 6) =>
   api<DashboardOverview>(`/dashboard/overview?months=${months}`);
 
+export type BalanceSheetLine = {
+  key?: string;
+  label: string;
+  amount: number;
+  children?: { label: string; amount: number }[];
+};
+
+export type BalanceSheet = {
+  generatedAt: string;
+  brand: {
+    name: string;
+    legalName: string;
+    tagline: string;
+    address: string;
+    phones: string[];
+    email: string;
+  };
+  range: { from: string; to: string };
+  assets: { current: BalanceSheetLine[]; total: number };
+  liabilities: { current: BalanceSheetLine[]; total: number };
+  fund: { opening: number; surplus: number; closing: number };
+  totalLiabilitiesAndFund: number;
+  balanced: boolean;
+  incomeStatement: {
+    income: BalanceSheetLine[];
+    totalIncome: number;
+    expenditure: BalanceSheetLine[];
+    totalExpenditure: number;
+    surplus: number;
+  };
+  cashFlow: {
+    opening: number;
+    receipts: number;
+    salaryPayments: number;
+    expensePayments: number;
+    closing: number;
+  };
+  notes: {
+    plannedExpenses: { amount: number; count: number };
+    waivedFees: { amount: number; count: number };
+  };
+};
+
+export const fetchBalanceSheet = (from: string, to: string) =>
+  api<BalanceSheet>(`/finance/balance-sheet?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+
 export interface DiscountReportStaffSummary {
   staffId: string | null;
   staffName: string;

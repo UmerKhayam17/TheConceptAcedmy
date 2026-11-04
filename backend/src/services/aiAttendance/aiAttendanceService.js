@@ -20,8 +20,11 @@ const {
 const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
 
 const MATCH_THRESHOLD = 0.75;
-/** A second sighting only counts as check-out after this long (default 2 hours). */
-const CHECKOUT_MIN_MS = (Number(process.env.AI_CHECKOUT_MIN_MINUTES) || 120) * 60 * 1000;
+/**
+ * A second sighting only counts as check-out after this long (default 30 minutes), so a
+ * teacher who scans out on the gate phone soon after arriving still gets a departure time.
+ */
+const CHECKOUT_MIN_MS = (Number(process.env.AI_CHECKOUT_MIN_MINUTES) || 30) * 60 * 1000;
 /** Same person is not re-processed within this window, across webcam and all cameras. */
 const MARK_COOLDOWN_MS =
   Number(process.env.AI_MARK_COOLDOWN_MS) ||

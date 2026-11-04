@@ -27,6 +27,7 @@ const SUMMARY_COLUMNS = [
   { key: 'late', header: 'Late', excelWidth: 8, pdfWidth: 40, align: 'center' },
   { key: 'absent', header: 'Absent', excelWidth: 10, pdfWidth: 46, align: 'center' },
   { key: 'leave', header: 'Leave', excelWidth: 8, pdfWidth: 40, align: 'center' },
+  { key: 'leftEarly', header: 'Left early', excelWidth: 11, pdfWidth: 44, align: 'center' },
   { key: 'attendance', header: 'Attendance %', excelWidth: 14, pdfWidth: 58, align: 'center' },
 ];
 
@@ -57,7 +58,7 @@ function statusLabel(status) {
 function summaryLine(summary) {
   if (!summary) return '';
   const total = summary.totalClasses ?? summary.present ?? 0;
-  return `Total classes ${total}  ·  Present ${summary.present ?? 0}  ·  Late ${summary.late ?? 0}  ·  Absent ${summary.absent ?? 0}  ·  Leave ${summary.leave ?? 0}`;
+  return `Total classes ${total}  ·  Present ${summary.present ?? 0}  ·  Late ${summary.late ?? 0}  ·  Absent ${summary.absent ?? 0}  ·  Leave ${summary.leave ?? 0}  ·  Left early ${summary.left_early ?? 0}`;
 }
 
 function buildReportMeta(meta, summary, countLabel) {
@@ -85,6 +86,7 @@ function mapSummaryRows(teachers) {
       late: t.late ?? 0,
       absent: t.absent ?? 0,
       leave: t.leave ?? 0,
+      leftEarly: t.left_early ?? 0,
       attendance: `${t.attendancePercent ?? 0}%`,
     }));
 }
@@ -206,7 +208,7 @@ function primarySubject(teacher) {
 
 function dayMark(periods) {
   if (!periods.length) return { text: '', fill: null, attended: 0, total: 0 };
-  const counts = { present: 0, late: 0, absent: 0, leave: 0 };
+  const counts = { present: 0, late: 0, absent: 0, leave: 0, left_early: 0 };
   periods.forEach((period) => {
     // Statuses arrive resolved (saved mark → camera check-in → absent).
     const status = String(period.status || '').toLowerCase();
@@ -214,10 +216,10 @@ function dayMark(periods) {
   });
   const total = periods.length;
   const attended = counts.present + counts.late;
-  const kinds = ['present', 'late', 'absent', 'leave'].filter((kind) => counts[kind] > 0);
+  const kinds = ['present', 'late', 'absent', 'leave', 'left_early'].filter((kind) => counts[kind] > 0);
   if (kinds.length === 1) {
     const kind = kinds[0];
-    const text = kind === 'present' ? 'P' : kind === 'late' ? 'T' : kind === 'absent' ? 'A' : 'L';
+    const text = { present: 'P', late: 'T', absent: 'A', leave: 'L', left_early: 'E' }[kind];
     return { text, fill: text === 'P' ? null : MARK_YELLOW, attended, total };
   }
   return {
@@ -252,6 +254,7 @@ function buildMonthlyRegister({ teachers, days, workingDays }) {
         late,
         absent: teacher.absent || 0,
         leave: teacher.leave || 0,
+        leftEarly: teacher.left_early || 0,
       };
     })
     .sort((a, b) => {
@@ -284,9 +287,10 @@ function buildMonthlyRegister({ teachers, days, workingDays }) {
       sum.late += row.late;
       sum.absent += row.absent;
       sum.leave += row.leave;
+      sum.leftEarly += row.leftEarly;
       return sum;
     },
-    { total: 0, delivered: 0, late: 0, absent: 0, leave: 0 }
+    { total: 0, delivered: 0, late: 0, absent: 0, leave: 0, leftEarly: 0 }
   );
 
   return { dayCols, rows, dayTotals, totals };
@@ -308,6 +312,7 @@ const MONTHLY_REGISTER_SPEC = {
     { key: 'late', title: 'Late', width: 24, excelWidth: 8 },
     { key: 'absent', title: 'Absent', width: 32, excelWidth: 10 },
     { key: 'leave', title: 'Leave', width: 28, excelWidth: 10 },
+    { key: 'leftEarly', title: 'Left early', width: 34, excelWidth: 11 },
   ],
   footerLabelKey: 'name',
   footerLabel: 'Attended / classes',

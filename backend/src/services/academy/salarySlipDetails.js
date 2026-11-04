@@ -23,8 +23,11 @@ function classKey(className, sectionName, subjectName) {
 }
 
 function emptyCounts() {
-  return { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0 };
+  return { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0, left_early: 0 };
 }
+
+/** Classes the teacher did not take (left_early = admin confirmed they left before it). */
+const MISSED_STATUSES = new Set(['absent', 'leave', 'left_early']);
 
 function percentOf(counts) {
   if (!counts.totalClasses) return 0;
@@ -78,7 +81,7 @@ async function periodAttendance(staffId, month, year) {
     daysWithClasses.add(p.day);
     const dayCount = perDay.get(p.day) || { total: 0, missed: 0 };
     dayCount.total += 1;
-    if (status === 'absent' || status === 'leave') dayCount.missed += 1;
+    if (MISSED_STATUSES.has(status)) dayCount.missed += 1;
     perDay.set(p.day, dayCount);
 
     const entries = p.classes?.length
@@ -100,7 +103,7 @@ async function periodAttendance(staffId, month, year) {
       if (row[status] != null) row[status] += 1;
     }
 
-    if (status === 'absent' || status === 'leave') {
+    if (MISSED_STATUSES.has(status)) {
       const list = daysAbsent.get(p.day) || [];
       list.push({ status, label: p.label || '', classLabel: p.classLabel || '' });
       daysAbsent.set(p.day, list);
@@ -111,7 +114,7 @@ async function periodAttendance(staffId, month, year) {
     sessionName: data.sessionName || session.name || '',
     attendanceType: teacher?.attendanceType || 'class',
     workingDaysCount: daysWithClasses.size,
-    // Full leave = every scheduled period that day was absent / leave.
+    // Full leave = every scheduled period that day was absent / leave / left early.
     fullLeaveDays: [...perDay.values()].filter((d) => d.total > 0 && d.missed === d.total).length,
     summary: { ...summary, attendancePercent: percentOf(summary) },
     byClass: [...byClass.values()].map((row) => ({ ...row, attendancePercent: percentOf(row) })),

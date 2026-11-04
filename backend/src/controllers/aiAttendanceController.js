@@ -276,6 +276,7 @@ const exportStaffAttendance = catchAsync(async (req, res) => {
             late: one.late,
             absent: one.absent,
             leave: one.leave,
+            left_early: one.left_early,
           }
         : dayData.summary,
     };
@@ -340,6 +341,7 @@ const exportStaffAttendance = catchAsync(async (req, res) => {
           late: one.late,
           absent: one.absent,
           leave: one.leave,
+          left_early: one.left_early,
         }
       : monthData.summary,
   };

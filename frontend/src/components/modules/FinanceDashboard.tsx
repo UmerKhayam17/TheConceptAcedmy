@@ -50,6 +50,7 @@ import type { Role } from "@/lib/auth";
 import { moduleHref } from "@/lib/panelMenus";
 import { cn } from "@/lib/utils";
 import ListPagination from "@/components/modules/student-management/ListPagination";
+import BalanceSheetCard from "@/components/modules/BalanceSheetCard";
 import {
   FINANCE_COLORS,
   type FinanceTransaction,
@@ -1179,6 +1180,8 @@ const FinanceDashboard = () => {
             </div>
           </ChartCard>
         </div>
+
+        <BalanceSheetCard />
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <ChartCard title="Student Payment Status" className="xl:col-span-4">

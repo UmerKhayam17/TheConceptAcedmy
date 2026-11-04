@@ -20,7 +20,8 @@ const {
 const { publicEmail } = require('../config/staffRoles');
 const { graceMinutes, hhmmToMinutes } = require('./aiAttendance/attendanceStatusFromTimetable');
 
-const PERIOD_STATUSES = new Set(['present', 'late', 'absent', 'leave']);
+/** left_early is only ever set by an admin (it counts as missed, like absent). */
+const PERIOD_STATUSES = new Set(['present', 'late', 'absent', 'leave', 'left_early']);
 /** Non-teaching staff are marked once per day instead of per class. */
 const DAY_PERIOD_KEY = 'day';
 const NON_DAILY_ROLES = ['teacher', 'parent', 'student'];
@@ -31,7 +32,7 @@ function pad2(n) {
 }
 
 function emptyCounts() {
-  return { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0 };
+  return { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0, left_early: 0 };
 }
 
 function addStatus(counts, status) {
@@ -267,6 +268,41 @@ function autoDayStatus(daily) {
   return 'absent';
 }
 
+function minutesToHhmm(mins) {
+  if (mins == null) return '';
+  return `${pad2(Math.floor(mins / 60))}:${pad2(mins % 60)}`;
+}
+
+/** Check-in / last check-out as HH:MM in the school timezone (for the review screen). */
+function scanTimes(daily, timeZone) {
+  const inMin = daily?.checkIn ? minutesSinceMidnight(new Date(daily.checkIn), timeZone) : null;
+  const outMin = daily?.checkOut ? minutesSinceMidnight(new Date(daily.checkOut), timeZone) : null;
+  return { inMin, outMin, checkInTime: minutesToHhmm(inMin), checkOutTime: minutesToHhmm(outMin) };
+}
+
+/** Minutes since midnight now, or null when `day` is a past day (everything has ended). */
+function nowMinutesFor(day, timeZone) {
+  return day === todayYmd(timeZone) ? minutesSinceMidnight(new Date(), timeZone) : null;
+}
+
+/**
+ * One gate phone can't prove when a teacher left — only when it last saw them. So a class
+ * that ran after the last check-out scan is never changed automatically: it keeps its
+ * check-in status and is flagged for the admin to confirm (left early / absent / present).
+ * Only classes that have already ended are flagged, so today's later classes stay quiet.
+ */
+function reviewFor(row, daily, times, nowMin) {
+  if (!daily?.checkIn || times.outMin == null) return null;
+  const end = hhmmToMinutes(row.endTime);
+  if (end == null) return null;
+  if (nowMin != null && nowMin < end) return null;
+  if (times.outMin >= end - graceMinutes()) return null;
+  return {
+    review: 'left_early',
+    reviewNote: `Last check-out ${times.checkOutTime}, before this class ended`,
+  };
+}
+
 /**
  * Class period with no saved mark: absent by default. Once the teacher has checked in
  * (camera or manual time): present if in by period start + grace, late if in before the
@@ -317,8 +353,10 @@ function sortPeriods(rows) {
   });
 }
 
-function publicPeriod(row, status) {
+function publicPeriod(row, status, review = null) {
   return {
+    review: review?.review || null,
+    reviewNote: review?.reviewNote || '',
     periodKey: row.periodKey,
     label: row.label,
     startTime: row.startTime,
@@ -335,10 +373,15 @@ function publicPeriod(row, status) {
   };
 }
 
-function teacherShape(user, periods, attendanceType = 'class') {
+function teacherShape(user, periods, attendanceType = 'class', scan = {}) {
   const counts = emptyCounts();
   periods.forEach((p) => addStatus(counts, p.status));
   return {
+    checkInTime: scan.checkInTime || '',
+    checkOutTime: scan.checkOutTime || '',
+    /** 'no_checkout' = checked in but never scanned out on a finished school day. */
+    reviewReason: scan.reviewReason || '',
+    needsReview: periods.filter((p) => p.review).length + (scan.reviewReason ? 1 : 0),
     attendanceType,
     userId: String(user._id),
     name: user.name || '',
@@ -367,12 +410,32 @@ function periodsForTeacher(byWeekday, weekday, teacherId, day, markMap, dailyMap
   const byPeriod = byWeekday.get(weekday)?.get(teacherId);
   if (!byPeriod) return [];
   const daily = dailyMap.get(`${teacherId}|${day}`);
-  return sortPeriods([...byPeriod.values()]).map((row) =>
-    publicPeriod(
-      row,
-      markMap.get(`${teacherId}|${day}|${row.periodKey}`) || autoPeriodStatus(row, daily, timeZone)
-    )
-  );
+  const times = scanTimes(daily, timeZone);
+  const nowMin = nowMinutesFor(day, timeZone);
+  return sortPeriods([...byPeriod.values()]).map((row) => {
+    const saved = markMap.get(`${teacherId}|${day}|${row.periodKey}`);
+    // A saved mark is the admin's decision — nothing left to review.
+    if (saved) return publicPeriod(row, saved);
+    const status = autoPeriodStatus(row, daily, timeZone);
+    const review = status === 'present' || status === 'late' ? reviewFor(row, daily, times, nowMin) : null;
+    return publicPeriod(row, status, review);
+  });
+}
+
+/**
+ * Check-in / check-out times for one teacher's day, plus 'no_checkout' when they checked in
+ * but never scanned out and their last class of the day is over.
+ */
+function teacherScan(teacherId, day, periods, dailyMap, timeZone) {
+  const daily = dailyMap.get(`${teacherId}|${day}`);
+  const times = scanTimes(daily, timeZone);
+  let reviewReason = '';
+  if (daily?.checkIn && times.outMin == null && periods.length) {
+    const lastEnd = Math.max(...periods.map((p) => hhmmToMinutes(p.endTime) ?? 0));
+    const nowMin = nowMinutesFor(day, timeZone);
+    if (nowMin == null || nowMin >= lastEnd) reviewReason = 'no_checkout';
+  }
+  return { checkInTime: times.checkInTime, checkOutTime: times.checkOutTime, reviewReason };
 }
 
 /** Full-day row status: saved mark, else from the daily check-in, else absent. */
@@ -401,12 +464,11 @@ async function listDay({ sessionId, date, userId }) {
   const classTeachers = teacherIds
     .map((id) => users.get(id))
     .filter(Boolean)
-    .map((user) =>
-      teacherShape(
-        user,
-        periodsForTeacher(byWeekday, weekday, String(user._id), ymd, markMap, dailyMap, session.timezone)
-      )
-    );
+    .map((user) => {
+      const id = String(user._id);
+      const periods = periodsForTeacher(byWeekday, weekday, id, ymd, markMap, dailyMap, session.timezone);
+      return teacherShape(user, periods, 'class', teacherScan(id, ymd, periods, dailyMap, session.timezone));
+    });
 
   let dailyStaff = [];
   if (isWorkingDay(session, weekday)) {
@@ -416,7 +478,8 @@ async function listDay({ sessionId, date, userId }) {
         teacherShape(
           user,
           [dayPeriod(dayStatusFor(user._id, ymd, markMap, dailyMap))],
-          'daily'
+          'daily',
+          scanTimes(dailyMap.get(`${user._id}|${ymd}`), session.timezone)
         )
       );
   }
@@ -425,13 +488,15 @@ async function listDay({ sessionId, date, userId }) {
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   );
 
-  const summary = emptyCounts();
+  const summary = { ...emptyCounts(), needsReview: 0 };
   teachers.forEach((t) => {
     summary.totalClasses += t.totalClasses;
     summary.present += t.present;
     summary.late += t.late;
     summary.absent += t.absent;
     summary.leave += t.leave;
+    summary.left_early += t.left_early;
+    summary.needsReview += t.needsReview;
   });
 
   return {
@@ -517,13 +582,15 @@ async function listMonth({ sessionId, month, year, userId }) {
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   );
 
-  const summary = emptyCounts();
+  const summary = { ...emptyCounts(), needsReview: 0 };
   teachers.forEach((t) => {
     summary.totalClasses += t.totalClasses;
     summary.present += t.present;
     summary.late += t.late;
     summary.absent += t.absent;
     summary.leave += t.leave;
+    summary.left_early += t.left_early;
+    summary.needsReview += t.needsReview;
   });
 
   return {
@@ -556,7 +623,7 @@ async function saveMarks({ sessionId, date, marks, markedBy }) {
     const periodKey = String(mark.periodKey || '');
     const status = String(mark.status || '');
     if (status && !PERIOD_STATUSES.has(status)) {
-      throw new ApiError(400, 'Status must be present, absent, late, or leave');
+      throw new ApiError(400, 'Status must be present, absent, late, leave, or left early');
     }
     if (!allowed.has(`${userId}|${periodKey}`)) {
       throw new ApiError(400, 'That period is not on this teacher’s timetable');

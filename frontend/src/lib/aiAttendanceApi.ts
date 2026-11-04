@@ -274,7 +274,8 @@ export const markStaffAttendanceManual = (payload: MarkStaffAttendancePayload) =
     body: JSON.stringify(payload),
   });
 
-export type StaffPeriodStatus = "present" | "late" | "absent" | "leave" | "";
+/** left_early = admin confirmed the teacher left before this class (counts as missed). */
+export type StaffPeriodStatus = "present" | "late" | "absent" | "leave" | "left_early" | "";
 
 export type StaffPeriodRow = {
   periodKey: string;
@@ -285,6 +286,9 @@ export type StaffPeriodRow = {
   sectionLabel: string;
   subjectLabel: string;
   status: StaffPeriodStatus | string;
+  /** "left_early" = class ran after the teacher's last check-out scan; admin should confirm. */
+  review?: "left_early" | null;
+  reviewNote?: string;
   day?: string;
   weekday?: string;
 };
@@ -303,6 +307,14 @@ export type StaffPeriodTeacher = {
   late: number;
   absent: number;
   leave: number;
+  left_early: number;
+  /** Periods flagged for review, plus 1 when the teacher never scanned out. */
+  needsReview?: number;
+  /** "no_checkout" = checked in but never scanned out on a finished school day (daily view). */
+  reviewReason?: "no_checkout" | "";
+  /** HH:MM in the school timezone (daily view only). */
+  checkInTime?: string;
+  checkOutTime?: string;
   attendancePercent: number;
   periods: StaffPeriodRow[];
 };
@@ -320,6 +332,8 @@ export type StaffPeriodReport = {
     late: number;
     absent: number;
     leave: number;
+    left_early?: number;
+    needsReview?: number;
     attendancePercent: number;
   };
 };

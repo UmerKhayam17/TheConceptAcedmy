@@ -25,7 +25,8 @@ const staffPeriodAttendanceSchema = new mongoose.Schema(
     periodKey: { type: String, required: true, trim: true },
     status: {
       type: String,
-      enum: ['present', 'late', 'absent', 'leave'],
+      /** left_early = admin confirmed the teacher left before this class (counts as missed). */
+      enum: ['present', 'late', 'absent', 'leave', 'left_early'],
       required: true,
     },
     markedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
