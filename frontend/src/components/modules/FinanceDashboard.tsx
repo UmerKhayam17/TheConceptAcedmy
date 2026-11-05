@@ -312,7 +312,6 @@ const FinanceDashboard = () => {
   const [methodFilter, setMethodFilter] = useState<"all" | PaymentMethod>("all");
   const [txStatusFilter, setTxStatusFilter] = useState<"all" | TxStatus>("all");
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TxType>("all");
-  const [txSearch, setTxSearch] = useState("");
   const [dueSearch, setDueSearch] = useState("");
   const [txPage, setTxPage] = useState(1);
   const [duePage, setDuePage] = useState(1);
@@ -661,24 +660,17 @@ const FinanceDashboard = () => {
   }, [classFilter, classCollections]);
 
   const filteredTx = useMemo(() => {
-    const q = txSearch.trim().toLowerCase();
     return transactions.filter((t) => {
       if (sheetFrom && sheetTo && sheetFrom <= sheetTo && t.ymd && (t.ymd < sheetFrom || t.ymd > sheetTo)) return false;
       if (methodFilter !== "all" && t.method !== methodFilter) return false;
       if (txStatusFilter !== "all" && t.status !== txStatusFilter) return false;
       if (txTypeFilter !== "all" && t.type !== txTypeFilter) return false;
-      if (!q) return true;
-      return (
-        t.id.toLowerCase().includes(q) ||
-        t.studentOrPayee.toLowerCase().includes(q) ||
-        t.description.toLowerCase().includes(q) ||
-        t.type.toLowerCase().includes(q)
-      );
+      return true;
     });
-  }, [transactions, txSearch, methodFilter, txStatusFilter, txTypeFilter, sheetFrom, sheetTo]);
+  }, [transactions, methodFilter, txStatusFilter, txTypeFilter, sheetFrom, sheetTo]);
 
   const filteredDues = useMemo(() => {
-    const q = (txSearch || dueSearch).trim().toLowerCase();
+    const q = dueSearch.trim().toLowerCase();
     return pendingDues
       .filter((d) => {
         if (classFilter !== "all" && d.className !== classFilter) return false;
@@ -690,7 +682,7 @@ const FinanceDashboard = () => {
         );
       })
       .sort((a, b) => b.dueAmount - a.dueAmount);
-  }, [pendingDues, dueSearch, txSearch, classFilter]);
+  }, [pendingDues, dueSearch, classFilter]);
 
   const txPages = Math.max(1, Math.ceil(filteredTx.length / pageSize));
   const duePages = Math.max(1, Math.ceil(filteredDues.length / pageSize));
@@ -704,7 +696,6 @@ const FinanceDashboard = () => {
     setMethodFilter("all");
     setTxStatusFilter("all");
     setTxTypeFilter("all");
-    setTxSearch("");
     setDueSearch("");
     setTxPage(1);
     setDuePage(1);
@@ -753,18 +744,6 @@ const FinanceDashboard = () => {
           <div className="flex w-full flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <Filter className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
-              <div className="relative min-w-[180px] flex-1">
-                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <Input
-                  value={txSearch}
-                  onChange={(e) => {
-                    setTxSearch(e.target.value);
-                    setTxPage(1);
-                  }}
-                  placeholder="Search transactions..."
-                  className="h-8 border-slate-200 bg-slate-50 pl-8 text-xs"
-                />
-              </div>
               <DateRangePickerField
                 className="h-8 text-xs"
                 from={sheetFrom}

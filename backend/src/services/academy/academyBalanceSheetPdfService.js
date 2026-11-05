@@ -10,14 +10,17 @@ const {
   resolveLogoPath,
 } = require('./academyReportDocument');
 
-const GRAY = '#C8C8C8';
-const LINE = '#000000';
-const MARGIN = 28;
-const GAP = 8;
+const NAVY = '#0E2A4E';
+const GOLD = '#E8A317';
+const GRAY = '#E8EEF5';
+const LINE = '#1A2A3A';
+const MUTED = '#5A6A7A';
+const MARGIN = 30;
+const GAP = 10;
 const ROW_H = 15;
-const HEADER_H = 16;
+const HEADER_H = 17;
 const FOOTER_RESERVE = 36;
-const AMOUNT_W = 78;
+const AMOUNT_W = 82;
 
 function money(n) {
   const value = Number(n) || 0;
@@ -34,26 +37,10 @@ function shortDate(value) {
 
 function linesToRows(lines, emptyLabel) {
   if (!lines?.length) return [{ label: emptyLabel, amount: 0, kind: 'item' }];
-  const rows = [];
-  lines.forEach((line) => {
-    if (line.children?.length) {
-      rows.push({ label: line.label, kind: 'group' });
-      line.children.forEach((child) => {
-        rows.push({ label: child.label, amount: child.amount, kind: 'sub' });
-      });
-      rows.push({
-        label: `Total ${String(line.label).toLowerCase()}`,
-        amount: line.amount,
-        kind: 'subtotal',
-      });
-    } else {
-      rows.push({ label: line.label, amount: line.amount, kind: 'item' });
-    }
-  });
-  return rows;
+  return lines.map((line) => ({ label: line.label, amount: line.amount, kind: 'item' }));
 }
 
-/** Keep the closing totals on the same row by padding the shorter column. */
+/** Keep closing totals on the same row by padding the shorter column. */
 function alignClosingTotals(leftRows, rightRows) {
   const leftBody = leftRows.slice(0, -1);
   const rightBody = rightRows.slice(0, -1);
@@ -69,8 +56,8 @@ function renderBalanceSheetPdf(sheet) {
   const reportMeta = {
     generatedAt: sheet.generatedAt || new Date(),
     leftFilter: `From: ${shortDate(sheet.range.from)}`,
-    centerFilter: `As at ${shortDate(sheet.range.to)}`,
-    rightFilter: 'PKR',
+    centerFilter: `To: ${shortDate(sheet.range.to)}`,
+    rightFilter: 'All figures in PKR',
   };
 
   return new Promise((resolve, reject) => {
@@ -81,9 +68,9 @@ function renderBalanceSheetPdf(sheet) {
         margin: MARGIN,
         bufferPages: true,
         info: {
-          Title: `Balance Sheet — ${brand.name}`,
+          Title: `Income & Expenditure — ${brand.name}`,
           Author: brand.name,
-          Subject: `Statement of financial position as at ${sheet.range.to}`,
+          Subject: `Income and expenditure for ${sheet.range.from} to ${sheet.range.to}`,
           Creator: brand.legalName,
         },
       });
@@ -101,59 +88,60 @@ function renderBalanceSheetPdf(sheet) {
         y = drawPdfTitlePlain(
           doc,
           {
-            title: 'Balance Sheet',
+            title: 'Income & Expenditure',
             leftFilter: reportMeta.leftFilter,
             centerFilter: reportMeta.centerFilter,
             rightFilter: reportMeta.rightFilter,
-            extraLine: 'Statement of Financial Position',
           },
           y
         );
-        return y + 4;
+        return y + 8;
       };
 
       const paintCell = (x, y, width, row, { header = false, continued = false } = {}) => {
         const fill = header
-          ? GRAY
+          ? NAVY
           : row.kind === 'grand' || row.kind === 'total'
-            ? '#E8E8E8'
-            : row.kind === 'group' || row.kind === 'subtotal'
-              ? '#F4F4F4'
-              : null;
+            ? GRAY
+            : null;
         if (fill) {
           doc.save();
           doc.rect(x, y, width, header ? HEADER_H : ROW_H).fill(fill);
           doc.restore();
         }
         const rowH = header ? HEADER_H : ROW_H;
-        doc.rect(x, y, width, rowH).strokeColor(LINE).lineWidth(header || row.kind === 'grand' ? 0.8 : 0.45).stroke();
+        doc
+          .rect(x, y, width, rowH)
+          .strokeColor(LINE)
+          .lineWidth(header || row.kind === 'grand' ? 0.85 : 0.4)
+          .stroke();
         const amountX = x + width - AMOUNT_W;
         doc
           .moveTo(amountX, y)
           .lineTo(amountX, y + rowH)
           .strokeColor(LINE)
-          .lineWidth(0.45)
+          .lineWidth(0.4)
           .stroke();
 
         if (header) {
           const title = continued ? `${row} (cont.)` : row;
-          doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000');
-          pdfLine(doc, fitText(doc, title, width - AMOUNT_W - 8), x + 4, y + 4, {
+          doc.font('Helvetica-Bold').fontSize(8).fillColor('#FFFFFF');
+          pdfLine(doc, fitText(doc, title, width - AMOUNT_W - 8), x + 4, y + 4.5, {
             width: width - AMOUNT_W - 8,
           });
-          pdfLine(doc, 'PKR', amountX, y + 4, { width: AMOUNT_W - 4, align: 'center' });
+          pdfLine(doc, 'PKR', amountX, y + 4.5, { width: AMOUNT_W - 4, align: 'center' });
           return;
         }
 
         if (row.kind === 'blank') return;
 
-        const bold = row.kind === 'group' || row.kind === 'subtotal' || row.kind === 'total' || row.kind === 'grand';
-        const indent = row.kind === 'sub' ? 14 : row.kind === 'item' || row.kind === 'subtotal' ? 8 : 4;
+        const bold = row.kind === 'grand' || row.kind === 'total';
+        const indent = 6;
         const labelWidth = width - AMOUNT_W - indent - 6;
-        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7).fillColor('#000');
+        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.5).fillColor('#111111');
         pdfLine(doc, fitText(doc, row.label, labelWidth), x + indent, y + 4, { width: labelWidth });
         if (row.amount !== undefined && row.amount !== null) {
-          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7).fillColor('#000');
+          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.5).fillColor('#111111');
           pdfLine(doc, money(row.amount), amountX + 3, y + 4, { width: AMOUNT_W - 8, align: 'right' });
         }
       };
@@ -195,12 +183,12 @@ function renderBalanceSheetPdf(sheet) {
           y = startBodyY();
         }
         doc.save();
-        doc.rect(MARGIN, y, contentW, ROW_H).fill('#E8E8E8');
+        doc.rect(MARGIN, y, contentW, ROW_H).fill(NAVY);
         doc.restore();
-        doc.rect(MARGIN, y, contentW, ROW_H).strokeColor(LINE).lineWidth(0.8).stroke();
+        doc.rect(MARGIN, y, contentW, ROW_H).strokeColor(LINE).lineWidth(0.85).stroke();
         const amountX = MARGIN + contentW - AMOUNT_W;
-        doc.moveTo(amountX, y).lineTo(amountX, y + ROW_H).strokeColor(LINE).lineWidth(0.45).stroke();
-        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000');
+        doc.moveTo(amountX, y).lineTo(amountX, y + ROW_H).strokeColor(LINE).lineWidth(0.4).stroke();
+        doc.font('Helvetica-Bold').fontSize(8).fillColor('#FFFFFF');
         pdfLine(doc, label, MARGIN + 4, y + 4, { width: contentW - AMOUNT_W - 10 });
         pdfLine(doc, money(amount), amountX + 3, y + 4, { width: AMOUNT_W - 8, align: 'right' });
         return y + ROW_H;
@@ -213,74 +201,43 @@ function renderBalanceSheetPdf(sheet) {
           y = startBodyY();
         }
         doc.save();
-        doc.rect(MARGIN, y, contentW, HEADER_H).fill(GRAY);
+        doc.rect(MARGIN, y, contentW, HEADER_H).fill(NAVY);
         doc.restore();
-        doc.rect(MARGIN, y, contentW, HEADER_H).strokeColor(LINE).lineWidth(0.8).stroke();
+        doc.rect(MARGIN, y, contentW, HEADER_H).strokeColor(LINE).lineWidth(0.85).stroke();
         const amountX = MARGIN + contentW - AMOUNT_W;
-        doc.moveTo(amountX, y).lineTo(amountX, y + HEADER_H).strokeColor(LINE).lineWidth(0.45).stroke();
-        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000');
-        pdfLine(doc, title, MARGIN + 4, y + 4, { width: contentW - AMOUNT_W - 10 });
-        pdfLine(doc, 'PKR', amountX, y + 4, { width: AMOUNT_W - 4, align: 'center' });
+        doc.moveTo(amountX, y).lineTo(amountX, y + HEADER_H).strokeColor(LINE).lineWidth(0.4).stroke();
+        doc.font('Helvetica-Bold').fontSize(8).fillColor('#FFFFFF');
+        pdfLine(doc, title, MARGIN + 4, y + 4.5, { width: contentW - AMOUNT_W - 10 });
+        pdfLine(doc, 'PKR', amountX, y + 4.5, { width: AMOUNT_W - 4, align: 'center' });
         rows.forEach((row, index) => {
           const rowY = y + HEADER_H + index * ROW_H;
           if (row.kind === 'grand') {
             doc.save();
-            doc.rect(MARGIN, rowY, contentW, ROW_H).fill('#E8E8E8');
+            doc.rect(MARGIN, rowY, contentW, ROW_H).fill(GRAY);
             doc.restore();
           }
           doc
             .rect(MARGIN, rowY, contentW, ROW_H)
             .strokeColor(LINE)
-            .lineWidth(row.kind === 'grand' ? 0.8 : 0.45)
+            .lineWidth(row.kind === 'grand' ? 0.85 : 0.4)
             .stroke();
-          doc.moveTo(amountX, rowY).lineTo(amountX, rowY + ROW_H).strokeColor(LINE).lineWidth(0.45).stroke();
+          doc.moveTo(amountX, rowY).lineTo(amountX, rowY + ROW_H).strokeColor(LINE).lineWidth(0.4).stroke();
           const bold = row.kind === 'grand';
-          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7).fillColor('#000');
-          pdfLine(doc, row.label, MARGIN + 4, rowY + 4, { width: contentW - AMOUNT_W - 10 });
-          pdfLine(doc, money(row.amount), amountX + 3, rowY + 4, { width: AMOUNT_W - 8, align: 'right' });
+          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.5).fillColor('#111111');
+          pdfLine(doc, row.label, MARGIN + 6, rowY + 4, {
+            width: contentW - AMOUNT_W - 14,
+          });
+          pdfLine(doc, money(row.amount), amountX + 3, rowY + 4, {
+            width: AMOUNT_W - 8,
+            align: 'right',
+          });
         });
         return y + height;
       };
 
       let y = startBodyY();
 
-      const assets = [
-        { label: 'Current assets', kind: 'group' },
-        ...linesToRows(sheet.assets.current, 'No assets recorded'),
-        { label: 'Total assets', amount: sheet.assets.total, kind: 'grand' },
-      ];
-      const liabilities = [
-        { label: 'Current liabilities', kind: 'group' },
-        ...linesToRows(sheet.liabilities.current, 'No liabilities recorded'),
-        { label: 'Total liabilities', amount: sheet.liabilities.total, kind: 'total' },
-        { label: 'Accumulated fund', kind: 'group' },
-        {
-          label: `Opening ${shortDate(sheet.range.from)}`,
-          amount: sheet.fund.opening,
-          kind: 'item',
-        },
-        {
-          label: `${sheet.fund.surplus >= 0 ? 'Surplus' : 'Deficit'} for the period`,
-          amount: sheet.fund.surplus,
-          kind: 'item',
-        },
-        { label: 'Closing fund', amount: sheet.fund.closing, kind: 'total' },
-        { label: 'Total liabilities & fund', amount: sheet.totalLiabilitiesAndFund, kind: 'grand' },
-      ];
-      y = drawPair(y, 'Assets', 'Liabilities & Fund', assets, liabilities);
-
-      y += 6;
-      const balanceText = sheet.balanced
-        ? 'Balanced — total assets equal total liabilities and accumulated fund.'
-        : 'Not balanced — please review the underlying records.';
-      if (y + 12 > pageBottom()) {
-        doc.addPage();
-        y = startBodyY();
-      }
-      doc.font('Helvetica').fontSize(7).fillColor('#333');
-      pdfLine(doc, balanceText, MARGIN, y, { width: contentW });
-      y += 14;
-
+      // Left = Income · Right = Expenditure
       const income = [
         ...linesToRows(sheet.incomeStatement.income, 'No income recorded'),
         { label: 'Total income', amount: sheet.incomeStatement.totalIncome, kind: 'grand' },
@@ -296,68 +253,67 @@ function renderBalanceSheetPdf(sheet) {
         sheet.incomeStatement.surplus
       );
 
-      y += 10;
-      y = drawSingleTable(y, 'Cash summary', [
-        { label: `Opening balance (${shortDate(sheet.range.from)})`, amount: sheet.cashFlow.opening, kind: 'item' },
-        { label: 'Add: fees received', amount: sheet.cashFlow.receipts, kind: 'item' },
-        { label: 'Less: salaries paid', amount: -sheet.cashFlow.salaryPayments, kind: 'item' },
-        { label: 'Less: expenses paid', amount: -sheet.cashFlow.expensePayments, kind: 'item' },
-        { label: `Closing balance (${shortDate(sheet.range.to)})`, amount: sheet.cashFlow.closing, kind: 'grand' },
-      ]);
-
-      const notes = [
-        'Prepared on an accrual basis from fee, payroll and expense records.',
-        'Unpaid fees are shown as receivables. Unpaid salaries are shown as payables.',
-        `Fee waivers in the period: ${sheet.notes.waivedFees.count} record(s), PKR ${money(sheet.notes.waivedFees.amount)}. Excluded from income.`,
-        `Planned expenses not yet incurred: ${sheet.notes.plannedExpenses.count} record(s), PKR ${money(sheet.notes.plannedExpenses.amount)}. Not recognised.`,
-        'Fixed assets, long-term liabilities and bank reconciliations are not included.',
-      ];
-
-      y += 12;
-      doc.font('Helvetica').fontSize(7);
-      const notesHeight = notes.reduce(
-        (sum, note) => sum + doc.heightOfString(note, { width: contentW - 12 }) + 2,
-        28
-      );
-      if (y + notesHeight + 40 > pageBottom()) {
+      // Cash on hand at the end
+      y += 14;
+      if (y + 20 > pageBottom()) {
         doc.addPage();
         y = startBodyY();
       }
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('#000');
-      pdfLine(doc, 'Basis of preparation', MARGIN, y);
-      y += 12;
-      notes.forEach((note, index) => {
-        const text = `${index + 1}.  ${note}`;
-        doc.font('Helvetica').fontSize(7).fillColor('#222');
-        const height = doc.heightOfString(text, { width: contentW });
-        doc.text(text, MARGIN, y, { width: contentW });
-        y += height + 2;
-      });
+      doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9);
+      pdfLine(doc, 'Cash on Hand', MARGIN, y);
+      doc.save();
+      doc.rect(MARGIN, y + 12, contentW, 1.5).fill(GOLD);
+      doc.restore();
+      y += 18;
 
-      y += 26;
-      if (y + 28 > pageBottom()) {
+      const totalPayments =
+        (Number(sheet.cashFlow.salaryPayments) || 0) + (Number(sheet.cashFlow.expensePayments) || 0);
+      y = drawSingleTable(y, 'Cash on Hand', [
+        {
+          label: `Opening cash (${shortDate(sheet.range.from)})`,
+          amount: sheet.cashFlow.opening,
+          kind: 'item',
+        },
+        { label: 'Add: fees / receipts collected', amount: sheet.cashFlow.receipts, kind: 'item' },
+        { label: 'Less: salaries paid', amount: -sheet.cashFlow.salaryPayments, kind: 'item' },
+        { label: 'Less: expenses paid', amount: -sheet.cashFlow.expensePayments, kind: 'item' },
+        { label: 'Total payments', amount: -totalPayments, kind: 'item' },
+        {
+          label: `Cash on hand as at ${shortDate(sheet.range.to)}`,
+          amount: sheet.cashFlow.closing,
+          kind: 'grand',
+        },
+      ]);
+
+      // Signature block pinned to the bottom of the last page (above the footer).
+      const SIGN_BLOCK_H = 52;
+      const signTop = pageBottom() - SIGN_BLOCK_H;
+      if (y > signTop - 8) {
         doc.addPage();
-        y = startBodyY() + 20;
+        y = startBodyY();
       }
       const colW = contentW / 3;
+      const signY = signTop;
       [
         ['Prepared by', 'Accountant'],
         ['Reviewed by', 'Finance Officer'],
         ['Approved by', 'Principal / Director'],
       ].forEach(([label, role], index) => {
         const x = MARGIN + index * colW;
-        doc.strokeColor(LINE).lineWidth(0.6);
-        doc.moveTo(x + 8, y).lineTo(x + colW - 16, y).stroke();
-        doc.fillColor('#000').font('Helvetica').fontSize(7.5);
-        pdfLine(doc, label, x, y + 4, { width: colW - 8, align: 'center' });
-        doc.fillColor('#444').fontSize(6.5);
-        pdfLine(doc, role, x, y + 14, { width: colW - 8, align: 'center' });
+        doc.strokeColor(LINE).lineWidth(0.7);
+        doc.moveTo(x + 10, signY).lineTo(x + colW - 18, signY).stroke();
+        doc.fillColor('#111111').font('Helvetica-Bold').fontSize(7.5);
+        pdfLine(doc, label, x, signY + 5, { width: colW - 8, align: 'center' });
+        doc.fillColor(MUTED).font('Helvetica').fontSize(6.5);
+        pdfLine(doc, role, x, signY + 15, { width: colW - 8, align: 'center' });
+        doc.fillColor(MUTED).fontSize(6);
+        pdfLine(doc, 'Date: _______________', x, signY + 28, { width: colW - 8, align: 'center' });
       });
 
       const range = doc.bufferedPageRange();
       for (let i = 0; i < range.count; i += 1) {
         doc.switchToPage(range.start + i);
-        drawPdfFooterTextPlain(doc, brand, 'Balance Sheet', reportMeta, i + 1, range.count);
+        drawPdfFooterTextPlain(doc, brand, 'Income & Expenditure', reportMeta, i + 1, range.count);
       }
       doc.end();
     } catch (err) {
