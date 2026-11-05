@@ -89,10 +89,10 @@ const AdmissionForm = () => {
           onChange={update("program")}
           className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${field("program")}`}
         >
-          <option value="">Select a program…</option>
+          <option value="">Select A Program…</option>
           <optgroup label="School">
-            <option>Pre-Nursery to Class 5</option>
-            <option>Class 6 to 8</option>
+            <option>Pre-Nursery To Class 5</option>
+            <option>Class 6 To 8</option>
             <option>Matric (9–10)</option>
           </optgroup>
           <optgroup label="College">

@@ -107,7 +107,7 @@ const formSelectClass =
 
 const PAYMENT_METHODS = [
   { value: "cash", label: "Cash" },
-  { value: "bank_transfer", label: "Bank transfer" },
+  { value: "bank_transfer", label: "Bank Transfer" },
   { value: "online", label: "Online" },
   { value: "cheque", label: "Cheque" },
   { value: "other", label: "Other" },
@@ -503,7 +503,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
               value={categoryFilter}
               onChange={setCategoryFilter}
             >
-              <option value="">All categories</option>
+              <option value="">All Categories</option>
               {categories.map((c) => (
                 <option key={c._id} value={c.key}>
                   {c.name}
@@ -512,7 +512,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
               ))}
             </ExpenseFilterSelect>
             <ExpenseFilterSelect label="Status" value={statusFilter} onChange={setStatusFilter}>
-              <option value="">All status</option>
+              <option value="">All Status</option>
               <option value="paid">Paid</option>
               <option value="planned">Planned</option>
             </ExpenseFilterSelect>
@@ -705,7 +705,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                         }))
                       }
                     >
-                      {formCategories.length === 0 && <option value="">No categories</option>}
+                      {formCategories.length === 0 && <option value="">No Categories</option>}
                       {formCategories.map((c) => (
                         <option key={c._id} value={c.key}>
                           {c.name}

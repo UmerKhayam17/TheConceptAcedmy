@@ -961,7 +961,7 @@ export default function GridTab({
                   autoDraftForSectionRef.current = null;
                 }}
               >
-                <option value="">Select class</option>
+                <option value="">Select Class</option>
                 {classGroups.map((g) => (
                   <optgroup key={g.key} label={g.label}>
                     {g.classes.map((c) => (
@@ -987,7 +987,7 @@ export default function GridTab({
                 }}
                 disabled={!classId}
               >
-                <option value="">Select section</option>
+                <option value="">Select Section</option>
                 {sections.map((s) => (
                   <option key={s._id} value={s._id}>
                     {s.name}
@@ -1568,7 +1568,7 @@ export default function GridTab({
                     }));
                   }}
                 >
-                  <option value="">Select subject</option>
+                  <option value="">Select Subject</option>
                   {subjectOptions.map((o) => (
                     <option key={o.key} value={o.key}>
                       {o.label}
@@ -1605,7 +1605,7 @@ export default function GridTab({
                       }))
                     }
                   >
-                    <option value="">Select teacher</option>
+                    <option value="">Select Teacher</option>
                     {teachersForSubject(subjectId).map((t) => (
                       <option key={t._id} value={t._id}>
                         {t.name}

@@ -217,7 +217,7 @@ export default function RoomsTab({ sessionId, caps }: { sessionId: string; caps:
                 <option value="classroom">Classroom</option>
                 <option value="lab">Lab</option>
                 <option value="hall">Hall</option>
-                <option value="computer">Computer lab</option>
+                <option value="computer">Computer Lab</option>
               </select>
             </div>
             <div>
@@ -227,7 +227,7 @@ export default function RoomsTab({ sessionId, caps }: { sessionId: string; caps:
                 value={form.assignedClass}
                 onChange={(e) => setForm((f) => ({ ...f, assignedClass: e.target.value }))}
               >
-                <option value="">Not assigned</option>
+                <option value="">Not Assigned</option>
                 {classes.map((c) => {
                   const taken = assignedClassIds.has(c._id) && form.assignedClass !== c._id;
                   return (

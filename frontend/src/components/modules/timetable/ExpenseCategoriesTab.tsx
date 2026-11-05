@@ -329,10 +329,10 @@ export default function ExpenseCategoriesTab({ caps }: { caps: ModuleActionCaps 
             onChange={(e) => setSort(e.target.value as SortKey)}
             aria-label="Sort categories"
           >
-            <option value="name-asc">Sort by: Name (A-Z)</option>
-            <option value="name-desc">Sort by: Name (Z-A)</option>
-            <option value="newest">Sort by: Newest</option>
-            <option value="usage">Sort by: Usage</option>
+            <option value="name-asc">Sort By: Name (A-Z)</option>
+            <option value="name-desc">Sort By: Name (Z-A)</option>
+            <option value="newest">Sort By: Newest</option>
+            <option value="usage">Sort By: Usage</option>
           </select>
           {caps.canCreate && (
             <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">

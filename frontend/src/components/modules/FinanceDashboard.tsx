@@ -786,7 +786,7 @@ const FinanceDashboard = () => {
                   <SelectValue placeholder="Class" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All classes</SelectItem>
+                  <SelectItem value="all">All Classes</SelectItem>
                   {classCollections.map((c) => (
                     <SelectItem key={c.className} value={c.className}>
                       {c.className}
@@ -805,7 +805,7 @@ const FinanceDashboard = () => {
                   <SelectValue placeholder="Payment method" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All methods</SelectItem>
+                  <SelectItem value="all">All Methods</SelectItem>
                   {(["Cash", "Bank Transfer", "Mobile Wallet", "Cheque", "Other"] as PaymentMethod[]).map((m) => (
                     <SelectItem key={m} value={m}>
                       {m}
@@ -824,7 +824,7 @@ const FinanceDashboard = () => {
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="Paid">Paid</SelectItem>
                   <SelectItem value="Pending">Pending</SelectItem>
                   <SelectItem value="Failed">Failed</SelectItem>
@@ -1374,7 +1374,7 @@ const FinanceDashboard = () => {
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="Fee Payment">Fee Payment</SelectItem>
                   <SelectItem value="Expense">Expense</SelectItem>
                   <SelectItem value="Salary">Salary</SelectItem>

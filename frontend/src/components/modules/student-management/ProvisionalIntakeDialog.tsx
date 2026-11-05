@@ -248,7 +248,7 @@ export default function ProvisionalIntakeDialog({
               value={form.gender}
               onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
             >
-              <option value="">Select gender…</option>
+              <option value="">Select Gender…</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
               <option value="other">Other</option>

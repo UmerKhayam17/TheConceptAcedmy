@@ -185,7 +185,7 @@ export function SubjectEnrollmentConfig({
                   }
                 }}
               >
-                <option value="__new__">Create new group with multiple subjects…</option>
+                <option value="__new__">Create New Group With Multiple Subjects…</option>
                 {choiceGroups.map((g) => (
                   <option key={g._id} value={g._id}>
                     Add one subject to: {g.groupName}
@@ -238,7 +238,7 @@ export function SubjectEnrollmentConfig({
                   }
                 }}
               >
-                <option value="__new__">Create new group…</option>
+                <option value="__new__">Create New Group…</option>
                 {choiceGroups.map((g) => (
                   <option key={g._id} value={g._id}>
                     {g.groupName}

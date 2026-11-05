@@ -104,7 +104,7 @@ export default function ViewScheduleTab({ sessionId }: { sessionId: string }) {
               setSectionId("");
             }}
           >
-            <option value="">Select class</option>
+            <option value="">Select Class</option>
             {classGroups.map((g) => (
               <optgroup key={g.key} label={g.label}>
                 {g.classes.map((c) => (
@@ -124,7 +124,7 @@ export default function ViewScheduleTab({ sessionId }: { sessionId: string }) {
             onChange={(e) => setSectionId(e.target.value)}
             disabled={!classId}
           >
-            <option value="">Select section</option>
+            <option value="">Select Section</option>
             {sections.map((s) => (
               <option key={s._id} value={s._id}>
                 {s.name || s.sectionName}

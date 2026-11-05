@@ -592,8 +592,8 @@ export default function RegistrationTab({
             }}
             aria-label="Status filter"
           >
-            <option value="">All statuses</option>
-            <option value="pending_fee">Pending fee</option>
+            <option value="">All Statuses</option>
+            <option value="pending_fee">Pending Fee</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
             <option value="suspended">Suspended</option>

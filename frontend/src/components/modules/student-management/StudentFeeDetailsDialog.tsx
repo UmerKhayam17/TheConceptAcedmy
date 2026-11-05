@@ -757,7 +757,7 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
             </Field>
             <Field label="Fee Head">
               <select className={selectCls} disabled value="tuition">
-                <option value="tuition">Tuition Fee (every month)</option>
+                <option value="tuition">Tuition Fee (Every Month)</option>
               </select>
             </Field>
             <Field label="Exemption Amount (PKR / month)">

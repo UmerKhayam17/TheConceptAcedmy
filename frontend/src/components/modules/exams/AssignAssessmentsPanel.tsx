@@ -452,7 +452,7 @@ export default function AssignAssessmentsPanel({
                 value={classFilter}
                 onChange={(e) => setClassFilter(e.target.value)}
               >
-                <option value="">All classes (School + College)</option>
+                <option value="">All Classes (School + College)</option>
                 {filterClasses.map((c) => (
                   <option key={c._id} value={c._id}>
                     {c.className}
@@ -1128,7 +1128,7 @@ function AssignDialog({
                 <SelectValue placeholder="Select class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_">Select class</SelectItem>
+                <SelectItem value="_">Select Class</SelectItem>
                 {classes.map((c) => (
                   <SelectItem key={c._id} value={c._id}>
                     {"className" in c ? c.className : (c as AcademyClass).className}
@@ -1148,8 +1148,8 @@ function AssignDialog({
                 <SelectValue placeholder={isTeacher ? "Select section" : "All sections"} />
               </SelectTrigger>
               <SelectContent>
-                {!isTeacher && <SelectItem value="_">All sections</SelectItem>}
-                {isTeacher && <SelectItem value="_">Select section</SelectItem>}
+                {!isTeacher && <SelectItem value="_">All Sections</SelectItem>}
+                {isTeacher && <SelectItem value="_">Select Section</SelectItem>}
                 {sections.map((s) => (
                   <SelectItem key={s._id} value={s._id}>
                     {"sectionName" in s ? s.sectionName : (s as AcademySection).sectionName}
@@ -1170,7 +1170,7 @@ function AssignDialog({
                   <SelectValue placeholder="All disciplines" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_">All disciplines</SelectItem>
+                  <SelectItem value="_">All Disciplines</SelectItem>
                   {(disciplines as AcademyDiscipline[]).map((d) => (
                     <SelectItem key={d._id} value={d._id}>
                       {d.name}
@@ -1361,7 +1361,7 @@ function ConfigureAssignmentDialog({
                   <SelectValue placeholder={isTeacher ? "Section" : "All sections"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {!isTeacher && <SelectItem value="_">All sections</SelectItem>}
+                  {!isTeacher && <SelectItem value="_">All Sections</SelectItem>}
                   {sections.map((s) => (
                     <SelectItem key={s._id} value={s._id}>
                       {"sectionName" in s ? s.sectionName : (s as AcademySection).sectionName}
@@ -1382,7 +1382,7 @@ function ConfigureAssignmentDialog({
                     <SelectValue placeholder="All disciplines" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="_">All disciplines</SelectItem>
+                    <SelectItem value="_">All Disciplines</SelectItem>
                     {(disciplines as AcademyDiscipline[]).map((d) => (
                       <SelectItem key={d._id} value={d._id}>
                         {d.name}

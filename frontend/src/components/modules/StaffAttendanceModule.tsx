@@ -69,7 +69,7 @@ const PERIOD_STATUSES: { value: StaffPeriodStatus; label: string }[] = [
   { value: "absent", label: "Absent" },
   { value: "late", label: "Late" },
   { value: "leave", label: "Leave" },
-  { value: "left_early", label: "Left early" },
+  { value: "left_early", label: "Left Early" },
 ];
 
 function defaultPeriodStatus(status?: string | null): StaffPeriodStatus {
@@ -149,7 +149,7 @@ const MONTH_NAMES = [
 ];
 
 const STAFF_ROLES = [
-  { value: "", label: "All roles" },
+  { value: "", label: "All Roles" },
   { value: "teacher", label: "Teacher" },
   { value: "accountant", label: "Accountant" },
   { value: "admin", label: "Admin" },
@@ -649,7 +649,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               }}
               aria-label="Teacher"
             >
-              <option value="">All teachers</option>
+              <option value="">All Teachers</option>
               {(view === "daily" ? dayData?.teachers || [] : monthData?.teachers || []).map((t) => (
                 <option key={t.userId} value={t.userId}>
                   {t.name}

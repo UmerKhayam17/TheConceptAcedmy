@@ -128,7 +128,7 @@ export default function SessionBar({
           >
             <option value="">{isLoading ? "Loading…" : "Select session"}</option>
             {allowAllSessions && (
-              <option value={ALL_SESSIONS_ID}>All sessions</option>
+              <option value={ALL_SESSIONS_ID}>All Sessions</option>
             )}
             {sessions.map((s: AcademicSession) => {
               const st = sessionStatus(s);

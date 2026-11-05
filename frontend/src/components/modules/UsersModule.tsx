@@ -995,7 +995,7 @@ const UsersModule = ({
               onChange={(e) => setRoleFilter(e.target.value)}
               aria-label="Role filter"
             >
-              <option value="">All roles</option>
+              <option value="">All Roles</option>
               {roleOptions.map((name) => (
                 <option key={name} value={name}>
                   {roleDisplayLabel(name)}
@@ -1009,7 +1009,7 @@ const UsersModule = ({
             onChange={(e) => setStatusFilter(e.target.value as "" | "active" | "inactive")}
             aria-label="Status filter"
           >
-            <option value="">All statuses</option>
+            <option value="">All Statuses</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
@@ -1020,7 +1020,7 @@ const UsersModule = ({
               onChange={(e) => setPayTypeFilter(e.target.value as "" | "fixed" | "percentage")}
               aria-label="Pay type filter"
             >
-              <option value="">All pay types</option>
+              <option value="">All Pay Types</option>
               <option value="fixed">Fixed</option>
               <option value="percentage">Percentage</option>
             </select>
@@ -1035,7 +1035,7 @@ const UsersModule = ({
               }}
               aria-label="Designation filter"
             >
-              <option value="">All designations</option>
+              <option value="">All Designations</option>
               {STAFF_DESIGNATIONS.map((d) => (
                 <option key={d} value={d}>
                   {d}s
@@ -1050,7 +1050,7 @@ const UsersModule = ({
             onChange={(e) => setModuleFilter(e.target.value)}
             aria-label="Module filter"
           >
-            <option value="">All modules</option>
+            <option value="">All Modules</option>
             {moduleOptions.map((key) => (
               <option key={key} value={key}>
                 {humanizeModuleKey(key)}

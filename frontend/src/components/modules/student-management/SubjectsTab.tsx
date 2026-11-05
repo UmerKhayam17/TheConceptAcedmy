@@ -629,7 +629,7 @@ export default function SubjectsTab({ caps, sessionId }: { caps: ModuleActionCap
             onChange={(e) => setStatusFilter(e.target.value as "" | "active" | "inactive")}
             aria-label="Status filter"
           >
-            <option value="">All statuses</option>
+            <option value="">All Statuses</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>

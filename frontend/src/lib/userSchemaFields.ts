@@ -116,7 +116,7 @@ export const USER_SCHEMA_FIELDS: UserSchemaField[] = [
     colSpan: 1,
     showInTable: true,
     options: [
-      { value: "fixed", label: "Fixed salary" },
+      { value: "fixed", label: "Fixed Salary" },
       { value: "percentage", label: "Percentage" },
     ],
   },

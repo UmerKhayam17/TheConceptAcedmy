@@ -640,9 +640,9 @@ Add someone under Teachers if they are missing from the list.`}
                     value={sortMode}
                     onChange={(e) => setSortMode(e.target.value as SortMode)}
                   >
-                    <option value="subject">Sort by</option>
-                    <option value="status">Sort by status</option>
-                    <option value="teacher">Sort by teacher</option>
+                    <option value="subject">Sort By</option>
+                    <option value="status">Sort By Status</option>
+                    <option value="teacher">Sort By Teacher</option>
                   </select>
                 </div>
               </div>
@@ -720,7 +720,7 @@ Add someone under Teachers if they are missing from the list.`}
                               disabled={!canEdit}
                               onChange={(e) => setTeacher(sub._id, e.target.value)}
                             >
-                              <option value="">Select teacher…</option>
+                              <option value="">Select Teacher…</option>
                               {teacherOptions.map((t) => (
                                 <option key={t._id} value={t._id}>
                                   {t.name}

@@ -332,7 +332,7 @@ function LinkStudentDialog({
                   setSelectedId(null);
                 }}
               >
-                <option value="">All classes (School + College)</option>
+                <option value="">All Classes (School + College)</option>
                 {classes.map((c) => (
                   <option key={c._id} value={c._id}>
                     {c.className}

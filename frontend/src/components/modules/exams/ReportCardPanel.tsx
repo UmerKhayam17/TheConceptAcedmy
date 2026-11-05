@@ -462,9 +462,9 @@ export default function ReportCardPanel({ caps: _caps }: { caps: ModuleActionCap
                 onChange={(e) => setKind(e.target.value as ReportKind)}
                 aria-label="Type filter"
               >
-                <option value="all">All types</option>
-                <option value="test">Class tests</option>
-                <option value="exam">Term exams</option>
+                <option value="all">All Types</option>
+                <option value="test">Class Tests</option>
+                <option value="exam">Term Exams</option>
               </select>
               <PanelSearchBar
                 value={search}

@@ -245,7 +245,7 @@ export default function AssessmentsConfigTab({
             onChange={(e) => setTypeFilter(e.target.value)}
             aria-label="Type filter"
           >
-            <option value="">All types</option>
+            <option value="">All Types</option>
             {typeOptions.map((key) => (
               <option key={key} value={key}>
                 {ASSESSMENT_TYPES[key].label}

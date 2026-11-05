@@ -244,9 +244,9 @@ export default function DateSheetPanel() {
             onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
             aria-label="Type filter"
           >
-            <option value="">All types</option>
-            <option value="test">Class tests</option>
-            <option value="exam">Term exams</option>
+            <option value="">All Types</option>
+            <option value="test">Class Tests</option>
+            <option value="exam">Term Exams</option>
           </select>
           <PanelSearchBar
             value={search}

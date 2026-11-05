@@ -732,7 +732,7 @@ export default function ParentDateSheetPanel() {
                 onChange={(e) => setTypeFilter(e.target.value)}
                 aria-label="Filter by assessment type"
               >
-                <option value="all">All types</option>
+                <option value="all">All Types</option>
                 {typeOptions.map((t) => (
                   <option key={t.key} value={t.key}>
                     {t.label}

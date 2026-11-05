@@ -625,7 +625,7 @@ export function EnrollmentVoucherWizard({
                             );
                           }}
                         >
-                          <option value="">-- Select category --</option>
+                          <option value="">-- Select Category --</option>
                           {activeConcessionCategories.map((c) => (
                             <option key={c._id} value={c.key}>
                               {c.name} ({Number(c.discountPercent) || 0}%){c.isActive ? "" : " (inactive)"}
@@ -843,7 +843,7 @@ export function EnrollmentVoucherWizard({
                 onChange={(e) => setPaymentMethod(e.target.value)}
               >
                 <option value="cash">Cash</option>
-                <option value="bank_transfer">Bank transfer</option>
+                <option value="bank_transfer">Bank Transfer</option>
                 <option value="online">Online</option>
                 <option value="other">Other</option>
               </select>
@@ -888,7 +888,7 @@ export function EnrollmentVoucherWizard({
                   value={sectionId}
                   onChange={(e) => setSectionId(e.target.value)}
                 >
-                  <option value="">Select section…</option>
+                  <option value="">Select Section…</option>
                   {sections.map((s) => (
                     <option key={s._id} value={s._id}>
                       {s.sectionName}
@@ -1044,7 +1044,7 @@ export function AssignSectionDialog({
                 value={sectionId}
                 onChange={(e) => setSectionId(e.target.value)}
               >
-                <option value="">Select section…</option>
+                <option value="">Select Section…</option>
                 {sections.map((s) => (
                   <option key={s._id} value={s._id}>
                     {s.sectionName}

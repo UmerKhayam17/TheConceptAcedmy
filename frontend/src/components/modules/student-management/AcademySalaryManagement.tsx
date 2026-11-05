@@ -585,10 +585,10 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
             onChange={(e) => setRoleFilter(e.target.value as "" | "teacher" | "accountant" | "non_teaching_staff")}
             aria-label="Role"
           >
-            <option value="">All staff</option>
+            <option value="">All Staff</option>
             <option value="teacher">Teachers</option>
             <option value="accountant">Accountants</option>
-            <option value="non_teaching_staff">Non-teaching staff</option>
+            <option value="non_teaching_staff">Non-Teaching Staff</option>
           </select>
           <select
             className={selectClass}
@@ -1066,7 +1066,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
                 >
-                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="bank_transfer">Bank Transfer</option>
                   <option value="cash">Cash</option>
                   <option value="online">Online</option>
                   <option value="other">Other</option>
@@ -1140,7 +1140,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
               >
-                <option value="bank_transfer">Bank transfer</option>
+                <option value="bank_transfer">Bank Transfer</option>
                 <option value="cash">Cash</option>
                 <option value="online">Online</option>
                 <option value="other">Other</option>

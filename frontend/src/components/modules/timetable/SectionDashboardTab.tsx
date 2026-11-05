@@ -172,7 +172,7 @@ export default function SectionDashboardTab({ sessionId }: { sessionId: string }
               setInspectSectionId(null);
             }}
           >
-            <option value="all">All programs</option>
+            <option value="all">All Programs</option>
             <option value="school">School</option>
             <option value="college">College / Intermediate</option>
             <option value="other">Other</option>
@@ -188,7 +188,7 @@ export default function SectionDashboardTab({ sessionId }: { sessionId: string }
               setInspectSectionId(null);
             }}
           >
-            <option value="">All classes (School + College)</option>
+            <option value="">All Classes (School + College)</option>
             {classGroups.map((g) => (
               <optgroup key={g.key} label={g.label}>
                 {g.classes.map((c) => (

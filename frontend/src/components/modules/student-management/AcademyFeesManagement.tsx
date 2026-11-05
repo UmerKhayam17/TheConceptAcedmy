@@ -1293,7 +1293,7 @@ export default function AcademyFeesManagement({
                     value={selectedParentStudentId}
                     onChange={setSelectedParentStudentId}
                   >
-                    <option value="">Select child…</option>
+                    <option value="">Select Child…</option>
                     {parentStudents.map((s) => (
                       <option key={s._id} value={s._id}>
                         {s.studentName} ({s.studentId})
@@ -1355,7 +1355,7 @@ export default function AcademyFeesManagement({
                       onChange={onMonthChange}
                       leadingIcon={<CalendarDays className="h-3.5 w-3.5" />}
                     >
-                      {paidOnlyView ? <option value="">All months</option> : null}
+                      {paidOnlyView ? <option value="">All Months</option> : null}
                       {monthOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
                           {opt.label}
@@ -1374,7 +1374,7 @@ export default function AcademyFeesManagement({
                   </FeeFilterField>
                   <FeeFilterField label="Section">
                     <FeeFilterSelect value={sectionFilter} onChange={setSectionFilter}>
-                      <option value="">All sections</option>
+                      <option value="">All Sections</option>
                       {sections.map((s) => (
                         <option key={s._id} value={s._id}>
                           {s.sectionName}
@@ -2069,7 +2069,7 @@ export default function AcademyFeesManagement({
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   >
                     <option value="cash">Cash</option>
-                    <option value="bank_transfer">Bank transfer</option>
+                    <option value="bank_transfer">Bank Transfer</option>
                     <option value="online">Online</option>
                     <option value="other">Other</option>
                   </select>
@@ -2321,7 +2321,7 @@ export default function AcademyFeesManagement({
                           onChange={(e) => setTransferTargetFeeId(e.target.value)}
                         >
                           {matchingTransferFees.length > 1 && (
-                            <option value="">Select voucher</option>
+                            <option value="">Select Voucher</option>
                           )}
                           {matchingTransferFees.map((f) => (
                             <option key={f._id} value={f._id}>

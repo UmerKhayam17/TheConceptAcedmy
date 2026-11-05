@@ -111,7 +111,7 @@ export function TimetableFilters({
                 <SelectValue placeholder="Class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All classes (School + College)</SelectItem>
+                <SelectItem value="all">All Classes (School + College)</SelectItem>
                 {classOptions.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}
@@ -127,7 +127,7 @@ export function TimetableFilters({
                 <SelectValue placeholder="Subject" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All subjects</SelectItem>
+                <SelectItem value="all">All Subjects</SelectItem>
                 {subjectOptions.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}

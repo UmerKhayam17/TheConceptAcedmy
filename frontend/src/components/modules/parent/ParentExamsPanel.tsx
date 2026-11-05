@@ -1347,7 +1347,7 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                       onChange={(e) => setTermFilter(e.target.value)}
                       aria-label="Filter by term"
                     >
-                      <option value="all">All results</option>
+                      <option value="all">All Results</option>
                       {termOptions.map((t) => (
                         <option key={t} value={t}>
                           {t}

@@ -106,11 +106,11 @@ export default function AcademyDiscountReport() {
               setPage(1);
             }}
           >
-            <option value="">All relief types</option>
+            <option value="">All Relief Types</option>
             <option value="concession">Concession</option>
             <option value="exemption">Exemption</option>
-            <option value="legacy">Legacy discount</option>
-            <option value="none">No tuition relief</option>
+            <option value="legacy">Legacy Discount</option>
+            <option value="none">No Tuition Relief</option>
           </select>
         </div>
         {reliefType === "concession" ? (
@@ -127,7 +127,7 @@ export default function AcademyDiscountReport() {
                 setPage(1);
               }}
             >
-              <option value="">All categories</option>
+              <option value="">All Categories</option>
               {categories.map((c) => (
                 <option key={c._id} value={c.key}>
                   {c.name} ({Number(c.discountPercent) || 0}%){c.isActive ? "" : " — inactive"}

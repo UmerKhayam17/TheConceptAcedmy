@@ -105,7 +105,7 @@ export default function SessionEnrollmentImportFields({
               <SelectContent>
                 {sourceOptions.length === 0 ? (
                   <SelectItem value="__none" disabled>
-                    No other sessions available
+                    No Other Sessions Available
                   </SelectItem>
                 ) : (
                   sourceOptions.map((s) => (

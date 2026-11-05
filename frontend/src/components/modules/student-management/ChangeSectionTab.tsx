@@ -471,7 +471,7 @@ Discipline and subjects stay as already saved — review only; no re-selection.`
                     value={sectionId}
                     onChange={(e) => setSectionId(e.target.value)}
                   >
-                    <option value="">Select new section…</option>
+                    <option value="">Select New Section…</option>
                     {targetSections.map((s) => (
                       <option key={s._id} value={s._id}>
                         {s.sectionName}

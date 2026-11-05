@@ -155,7 +155,7 @@ function SchemaFieldControl({
           onChange={(e) => onChange(e.target.value)}
           required={field.required && !(mode === "edit" && field.key === "password")}
         >
-          {field.optionsFrom === "roles" && <option value="">Select role…</option>}
+          {field.optionsFrom === "roles" && <option value="">Select Role…</option>}
           {selectOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {field.optionsFrom === "roles" ? roleDisplayLabel(o.label) : o.label}
@@ -804,7 +804,7 @@ export default function UserFormPage({
                     }}
                     required
                   >
-                    <option value="">Select role…</option>
+                    <option value="">Select Role…</option>
                     {roleOptions.map((r) => (
                       <option key={r._id} value={r._id}>
                         {roleDisplayLabel(r.name)}
@@ -884,7 +884,7 @@ export default function UserFormPage({
                           }
                         }}
                       >
-                        <option value="">Select job…</option>
+                        <option value="">Select Job…</option>
                         {STAFF_DESIGNATIONS.map((d) => (
                           <option key={d} value={d}>
                             {d}

@@ -290,7 +290,7 @@ export default function FeeDefaultersTab({
               value={monthValue}
               onChange={(e) => onMonthChange(e.target.value)}
             >
-              <option value="">All months</option>
+              <option value="">All Months</option>
               {monthOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}

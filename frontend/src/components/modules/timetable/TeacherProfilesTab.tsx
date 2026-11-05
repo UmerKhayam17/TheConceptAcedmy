@@ -309,7 +309,7 @@ export default function TeacherProfilesTab({ sessionId, caps }: { sessionId: str
                   value={userId}
                   onChange={(e) => setUserId(e.target.value)}
                 >
-                  <option value="">Select teaching staff to add</option>
+                  <option value="">Select Teaching Staff To Add</option>
                   {teachersPendingProfile.map((t) => (
                     <option key={t._id} value={t._id}>{t.name} ({t.email})</option>
                   ))}

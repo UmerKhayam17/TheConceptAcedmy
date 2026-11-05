@@ -926,7 +926,7 @@ export default function ClassBoardTab({
                 value={classId}
                 onChange={(e) => setClassId(e.target.value)}
               >
-                <option value="">All classes (School + College)</option>
+                <option value="">All Classes (School + College)</option>
                 {classGroups.map((g) => (
                   <optgroup key={g.key} label={g.label}>
                     {g.classes.map((c) => (
@@ -1587,7 +1587,7 @@ export default function ClassBoardTab({
                       setForm((f) => ({ ...f, optionKey: e.target.value, teachersBySubject: {} }))
                     }
                   >
-                    <option value="">Select subject</option>
+                    <option value="">Select Subject</option>
                     {subjectOptions.map((o) => (
                       <option key={o.key} value={o.key}>
                         {o.label}
@@ -1620,7 +1620,7 @@ export default function ClassBoardTab({
                         }))
                       }
                     >
-                      <option value="">Select teacher</option>
+                      <option value="">Select Teacher</option>
                       {teachersForSubject(sid).map((t) => (
                         <option key={t._id} value={t._id}>
                           {t.name}
@@ -1643,7 +1643,7 @@ export default function ClassBoardTab({
                   value={form.roomId}
                   onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
                 >
-                  <option value="">No room</option>
+                  <option value="">No Room</option>
                   {rooms.map((r) => (
                     <option key={r._id} value={r._id}>
                       {r.code || r.name}
