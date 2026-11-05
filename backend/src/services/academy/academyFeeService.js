@@ -2561,8 +2561,13 @@ async function loadPaidFees({ classId, month, year, search, sessionId, feeType, 
   const records = await AcademyFeeRecord.find(q)
     .populate({
       path: 'studentId',
-      select: 'studentId rollNumber registrationNumber studentName fatherName phone classId status',
-      populate: { path: 'classId', select: 'className' },
+      // Section + relief fields are needed by the Fee Summary (Section / Concession columns).
+      select:
+        'studentId rollNumber registrationNumber studentName fatherName phone classId sectionId status feeReliefType concessionCategory concessionPercent exemptionRemarks monthlyFee monthlyFeeDiscount',
+      populate: [
+        { path: 'classId', select: 'className' },
+        { path: 'sectionId', select: 'sectionName' },
+      ],
     })
     .sort({ paidAt: -1, year: -1, month: -1 })
     .lean();
@@ -2772,22 +2777,19 @@ function paidFeeHeadLines(record) {
   return lines;
 }
 
-/** Concession text for the summary sheet, e.g. "15% on tuition fee". */
-function summaryConcessionLabel(student) {
+/**
+ * Concession text for the summary sheet — same wording as Student Management
+ * (shared describeFeeRelief label), plus the monthly amount.
+ * e.g. "Legacy discount (≈43%) · PKR 6,500 / month", "Concession — Sibling (15%) · PKR 1,324 / month"
+ */
+function summaryConcessionLabel(student, categoryNames = {}) {
   if (!student) return '';
   const { describeFeeRelief } = require('../../utils/feeRelief');
-  const relief = describeFeeRelief(student);
-  if (relief.feeReliefType === 'concession') {
-    if (relief.concessionPercent) return `${relief.concessionPercent}% on tuition fee`;
-    return relief.reliefAmount ? `PKR ${relief.reliefAmount.toLocaleString('en-US')} off tuition fee` : 'Concession';
-  }
-  if (relief.feeReliefType === 'exemption') {
-    return relief.reliefAmount ? `PKR ${relief.reliefAmount.toLocaleString('en-US')} off tuition fee` : 'Exemption';
-  }
-  if (relief.feeReliefType === 'legacy') {
-    return relief.reliefAmount ? `PKR ${relief.reliefAmount.toLocaleString('en-US')} discount` : 'Discount';
-  }
-  return '';
+  const relief = describeFeeRelief(student, categoryNames);
+  if (!relief.reliefLabel) return '';
+  return relief.reliefAmount > 0
+    ? `${relief.reliefLabel} · PKR ${Number(relief.reliefAmount).toLocaleString('en-US')} / month`
+    : relief.reliefLabel;
 }
 
 function formatPaidDate(value) {
@@ -2802,7 +2804,7 @@ function formatPaidDate(value) {
  * S.No | Challan No. | Roll # | Student | Class | Section | Concession |
  * [Admission] | Tuition | Stationery | <each additional charge> | Receipt # | Paid Date | Total Received
  */
-function buildPaidFeeSummaryReport(records) {
+function buildPaidFeeSummaryReport(records, categoryNames = {}) {
   const sorted = sortByPaymentSlip(records);
   const chargeCols = new Map(); // key -> header
   let hasAdmission = false;
@@ -2825,7 +2827,7 @@ function buildPaidFeeSummaryReport(records) {
       studentName: student?.studentName || '',
       className: student?.classId?.className || '',
       sectionName: student?.sectionId?.sectionName || '',
-      concession: summaryConcessionLabel(student),
+      concession: summaryConcessionLabel(student, categoryNames),
       admission: 0,
       tuition: 0,
       stationery: 0,
@@ -2916,7 +2918,7 @@ async function exportPaidFeesReport({
   const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo });
   const isSummary = variant === 'summary';
   const { columns, rows } = isSummary
-    ? buildPaidFeeSummaryReport(records)
+    ? buildPaidFeeSummaryReport(records, await require('./concessionCategoryService').categoryNameMap())
     : buildPaidCollectionReport(records);
   const { sessionLabel, classLabel } = await resolveFeeReportContext({ sessionId, classId });
   const periodBits = [
