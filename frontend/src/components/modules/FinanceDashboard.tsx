@@ -766,7 +766,7 @@ const FinanceDashboard = () => {
                 />
               </div>
               <DateRangePickerField
-                className="h-8 min-w-[14rem] text-xs"
+                className="h-8 text-xs"
                 from={sheetFrom}
                 to={sheetTo}
                 onChange={(nextFrom, nextTo) => {

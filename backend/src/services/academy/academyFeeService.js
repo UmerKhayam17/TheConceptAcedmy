@@ -519,27 +519,33 @@ async function createEnrollmentFeeVouchers(
   const year = asOf.getFullYear();
   const dueDate = resolveMonthlyDueDate(month, year);
   const { admissionAmount, monthlyAmount } = splitEnrollmentAmounts(fees);
-  // Enrollment vouchers stay tuition + admission only unless chargeIds are passed explicitly
-  // (e.g. staff opt-in at pay/print). Registration defaults must not rewrite voucher amounts.
-  const selectedIds =
-    chargeIds !== undefined
-      ? [...new Set((Array.isArray(chargeIds) ? chargeIds : []).map(String).filter(Boolean))]
-      : [];
+  // Use explicitly passed chargeIds; otherwise fall back to the additional charges
+  // selected for this student at registration (student.defaultChargeIds).
+  const sourceIds = chargeIds !== undefined ? chargeIds : student?.defaultChargeIds;
+  const selectedIds = [
+    ...new Set(
+      (Array.isArray(sourceIds) ? sourceIds : [])
+        .map((id) => String(id?._id ?? id ?? ''))
+        .filter(Boolean)
+    ),
+  ];
   const charges = selectedIds.length ? await listActiveCharges() : [];
   const tuitionBill = composeMonthlyComponents(student, month, charges, monthlyAmount, {
     chargeIds: selectedIds,
   });
-  const components = [...tuitionBill.components];
+  // Order: Admission → Tuition → additional charges.
+  const components = [];
   if (admissionAmount > 0) {
     components.push({ name: 'Admission', amount: roundMoney(admissionAmount), kind: 'admission' });
   }
+  components.push(...tuitionBill.components);
   const totalDue = roundMoney(components.reduce((sum, line) => sum + line.amount, 0));
   const isFree = totalDue <= 0;
   // Full waiver: still show Tuition + Admission as ₨ 0 lines on one enrollment voucher.
   const enrollmentComponents = isFree
     ? [
-        { name: 'Tuition', amount: 0, kind: 'tuition' },
         { name: 'Admission', amount: 0, kind: 'admission' },
+        { name: 'Tuition', amount: 0, kind: 'tuition' },
       ]
     : components;
 
@@ -2600,8 +2606,23 @@ function splitPaidFeeAmounts(record) {
   return { tuition, additionalCharges };
 }
 
+/** Ascending by payment slip number (numeric-aware); records without a slip go last. */
+const slipCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+function sortByPaymentSlip(records) {
+  return [...records].sort((a, b) => {
+    const sa = String(a.paymentSlipNumber || '').trim();
+    const sb = String(b.paymentSlipNumber || '').trim();
+    if (sa && !sb) return -1;
+    if (!sa && sb) return 1;
+    return (
+      (sa && sb ? slipCollator.compare(sa, sb) : 0) ||
+      new Date(a.paidAt || 0).getTime() - new Date(b.paidAt || 0).getTime()
+    );
+  });
+}
+
 function buildPaidCollectionReport(records) {
-  const rows = records.map((record, index) => {
+  const rows = sortByPaymentSlip(records).map((record, index) => {
     const student = record.studentId;
     const { tuition, additionalCharges } = splitPaidFeeAmounts(record);
     return {
@@ -2713,9 +2734,190 @@ function formatReportMonthLabel({ month, year, records = [], allLabel = 'All mon
   return `${allLabel} (${labels.length})`;
 }
 
-async function exportPaidFeesReport({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo, format }) {
+/** Paid fee lines for one voucher, scaled so they add up to the voucher amount. */
+function paidFeeHeadLines(record) {
+  const total = roundMoney(Number(record.amount) || 0);
+  const comps = (Array.isArray(record.components) ? record.components : []).filter(
+    (line) => roundMoney(Number(line?.amount) || 0) > 0
+  );
+  const fallbackHead =
+    record.feeType === 'stationery'
+      ? 'Stationery'
+      : record.feeType === 'admission' && !comps.length
+        ? 'Admission fee'
+        : 'Tuition fee';
+  if (!comps.length) return total > 0 ? [{ head: fallbackHead, amount: total }] : [];
+
+  const lines = comps.map((line) => {
+    let head;
+    if (line.kind === 'admission') head = 'Admission fee';
+    else if (line.kind === 'tuition') head = 'Tuition fee';
+    else if (isStationeryLine(line)) head = 'Stationery';
+    else head = String(line.name || 'Additional charge').trim() || 'Additional charge';
+    return { head, amount: roundMoney(Number(line.amount) || 0) };
+  });
+  const sum = roundMoney(lines.reduce((s, l) => s + l.amount, 0));
+  // Remaining-balance credits can make the paid amount differ from the line total.
+  if (sum > 0 && Math.abs(sum - total) > 0.009) {
+    const ratio = total / sum;
+    let allocated = 0;
+    lines.forEach((line, i) => {
+      if (i === lines.length - 1) line.amount = roundMoney(total - allocated);
+      else {
+        line.amount = roundMoney(line.amount * ratio);
+        allocated += line.amount;
+      }
+    });
+  }
+  return lines;
+}
+
+/** Concession text for the summary sheet, e.g. "15% on tuition fee". */
+function summaryConcessionLabel(student) {
+  if (!student) return '';
+  const { describeFeeRelief } = require('../../utils/feeRelief');
+  const relief = describeFeeRelief(student);
+  if (relief.feeReliefType === 'concession') {
+    if (relief.concessionPercent) return `${relief.concessionPercent}% on tuition fee`;
+    return relief.reliefAmount ? `PKR ${relief.reliefAmount.toLocaleString('en-US')} off tuition fee` : 'Concession';
+  }
+  if (relief.feeReliefType === 'exemption') {
+    return relief.reliefAmount ? `PKR ${relief.reliefAmount.toLocaleString('en-US')} off tuition fee` : 'Exemption';
+  }
+  if (relief.feeReliefType === 'legacy') {
+    return relief.reliefAmount ? `PKR ${relief.reliefAmount.toLocaleString('en-US')} discount` : 'Discount';
+  }
+  return '';
+}
+
+function formatPaidDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+/**
+ * Fee summary — one row per paid challan:
+ * S.No | Challan No. | Roll # | Student | Class | Section | Concession |
+ * [Admission] | Tuition | Stationery | <each additional charge> | Receipt # | Paid Date | Total Received
+ */
+function buildPaidFeeSummaryReport(records) {
+  const sorted = sortByPaymentSlip(records);
+  const chargeCols = new Map(); // key -> header
+  let hasAdmission = false;
+
+  const headKey = (head) => {
+    if (/^Admission/i.test(head)) return 'admission';
+    if (/^Tuition/i.test(head)) return 'tuition';
+    if (/^station[ae]r/i.test(head)) return 'stationery';
+    const key = `charge_${head.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+    if (!chargeCols.has(key)) chargeCols.set(key, head);
+    return key;
+  };
+
+  const rows = sorted.map((record, index) => {
+    const student = record.studentId;
+    const row = {
+      serial: index + 1,
+      challanNo: record.receiptNumber || '',
+      rollNo: student?.rollNumber || student?.studentId || student?.registrationNumber || '',
+      studentName: student?.studentName || '',
+      className: student?.classId?.className || '',
+      sectionName: student?.sectionId?.sectionName || '',
+      concession: summaryConcessionLabel(student),
+      admission: 0,
+      tuition: 0,
+      stationery: 0,
+      receiptNo: record.paymentSlipNumber || '',
+      paidAt: formatPaidDate(record.paidAt),
+      totalReceived: roundMoney(Number(record.amount) || 0),
+    };
+    for (const { head, amount } of paidFeeHeadLines(record)) {
+      const key = headKey(head);
+      if (key === 'admission' && amount > 0) hasAdmission = true;
+      row[key] = roundMoney((Number(row[key]) || 0) + amount);
+    }
+    return row;
+  });
+
+  const chargeKeys = [...chargeCols.keys()].sort((a, b) =>
+    chargeCols.get(a).localeCompare(chargeCols.get(b))
+  );
+  const amountKeys = [
+    ...(hasAdmission ? ['admission'] : []),
+    'tuition',
+    'stationery',
+    ...chargeKeys,
+  ];
+  for (const row of rows) for (const key of amountKeys) row[key] = Number(row[key]) || 0;
+
+  if (rows.length) {
+    const total = {
+      _isTotal: true,
+      serial: '',
+      challanNo: '',
+      rollNo: '',
+      studentName: 'Total',
+      className: '',
+      sectionName: '',
+      concession: '',
+      receiptNo: '',
+      paidAt: '',
+      totalReceived: roundMoney(rows.reduce((s, r) => s + r.totalReceived, 0)),
+    };
+    for (const key of amountKeys) total[key] = roundMoney(rows.reduce((s, r) => s + (Number(r[key]) || 0), 0));
+    rows.push(total);
+  }
+
+  // Keep total pdfWidth ≤ ~770 (A4 landscape inner width).
+  const fixedPdf = 26 + 56 + 56 + 92 + 36 + 38 + 84 + 52 + 52 + 62;
+  const amountPdf = Math.max(40, Math.min(62, Math.floor((770 - fixedPdf) / amountKeys.length)));
+  const money = (key, header) => ({
+    key,
+    header,
+    excelWidth: 12,
+    pdfWidth: amountPdf,
+    align: 'right',
+    numFmt: '#,##0',
+    wrap: true,
+  });
+  const columns = [
+    { key: 'serial', header: 'S.No.', excelWidth: 6, pdfWidth: 26, align: 'center' },
+    { key: 'challanNo', header: 'Challan No.', excelWidth: 13, pdfWidth: 56, align: 'center', wrap: true },
+    { key: 'rollNo', header: 'Student Roll #', excelWidth: 13, pdfWidth: 56, align: 'center', wrap: true },
+    { key: 'studentName', header: 'Student Name', excelWidth: 22, pdfWidth: 92, wrap: true },
+    { key: 'className', header: 'Class', excelWidth: 8, pdfWidth: 36, align: 'center' },
+    { key: 'sectionName', header: 'Section', excelWidth: 9, pdfWidth: 38, align: 'center' },
+    { key: 'concession', header: 'Concession', excelWidth: 22, pdfWidth: 84, wrap: true },
+    ...(hasAdmission ? [money('admission', 'Admission Fee')] : []),
+    money('tuition', 'Tuition Fee'),
+    money('stationery', 'Stationery'),
+    ...chargeKeys.map((key) => money(key, chargeCols.get(key))),
+    { key: 'receiptNo', header: 'Receipt #', excelWidth: 11, pdfWidth: 52, align: 'center', wrap: true },
+    { key: 'paidAt', header: 'Paid Date', excelWidth: 12, pdfWidth: 52, align: 'center' },
+    { key: 'totalReceived', header: 'Total Received', excelWidth: 15, pdfWidth: 62, align: 'right', numFmt: '#,##0' },
+  ];
+  return { columns, rows };
+}
+
+async function exportPaidFeesReport({
+  classId,
+  month,
+  year,
+  search,
+  sessionId,
+  feeType,
+  dateFrom,
+  dateTo,
+  format,
+  variant,
+}) {
   const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo });
-  const { columns, rows } = buildPaidCollectionReport(records);
+  const isSummary = variant === 'summary';
+  const { columns, rows } = isSummary
+    ? buildPaidFeeSummaryReport(records)
+    : buildPaidCollectionReport(records);
   const { sessionLabel, classLabel } = await resolveFeeReportContext({ sessionId, classId });
   const periodBits = [
     dateFrom && dateTo
@@ -2726,7 +2928,7 @@ async function exportPaidFeesReport({ classId, month, year, search, sessionId, f
     formatReportMonthLabel({ month, year, records, allLabel: 'All paid months' }),
   ].filter(Boolean);
   if (feeType) periodBits.push(paidFeeTypeLabel(feeType));
-  const voucherCount = rows.length ? rows.length - 1 : 0;
+  const voucherCount = records.length;
   const meta = {
     sessionLabel,
     leftFilter: classLabel || 'All classes',
@@ -2737,10 +2939,10 @@ async function exportPaidFeesReport({ classId, month, year, search, sessionId, f
     generatedAt: new Date(),
   };
   const payload = {
-    title: 'Paid Fee Collection Report',
-    sheetName: 'Paid fees',
-    confidentialLabel: 'Paid fee collection',
-    subject: 'Paid student fees',
+    title: isSummary ? 'Paid Fee Summary' : 'Paid Fee Collection Report',
+    sheetName: isSummary ? 'Fee summary' : 'Paid fees',
+    confidentialLabel: isSummary ? 'Paid fee summary' : 'Paid fee collection',
+    subject: isSummary ? 'Paid fee summary by head' : 'Paid student fees',
     columns,
     rows,
     meta,

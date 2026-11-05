@@ -358,11 +358,13 @@ const exportPaidFees = catchAsync(async (req, res) => {
 const exportPaidFeesReport = catchAsync(async (req, res) => {
   const format = String(req.query.format || 'xlsx').toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
   const q = paidExportQuery(req);
+  const variant = req.query.variant === 'summary' ? 'summary' : 'details';
   const buffer = await feeService.exportPaidFeesReport({
     ...q,
     format,
+    variant,
   });
-  const base = feeReportFileBase('Paid-Fees', q);
+  const base = feeReportFileBase(variant === 'summary' ? 'Paid-Fee-Summary' : 'Paid-Fees', q);
   if (format === 'pdf') {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${base}.pdf"`);

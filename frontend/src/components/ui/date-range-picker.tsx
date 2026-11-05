@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { format, isValid, parseISO } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
-import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -14,12 +13,67 @@ function ymdToDate(ymd?: string): Date | undefined {
   return isValid(d) ? d : undefined;
 }
 
-function formatRangeLabel(from?: string, to?: string) {
-  const fromDate = ymdToDate(from);
-  const toDate = ymdToDate(to);
-  if (!fromDate) return "Select date range";
-  if (!toDate || from === to) return format(fromDate, "dd/MM/yyyy");
-  return `${format(fromDate, "dd/MM/yyyy")} – ${format(toDate, "dd/MM/yyyy")}`;
+type SingleDatePickerProps = {
+  label: string;
+  value: string;
+  onChange: (ymd: string) => void;
+  minDate?: Date;
+  maxDate?: Date;
+  className?: string;
+  disabled?: boolean;
+};
+
+function SingleDatePicker({
+  label,
+  value,
+  onChange,
+  minDate,
+  maxDate,
+  className,
+  disabled,
+}: SingleDatePickerProps) {
+  const [open, setOpen] = useState(false);
+  const selected = ymdToDate(value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled}
+          className={cn(
+            "h-10 min-w-0 flex-1 justify-start gap-2 px-3 font-normal",
+            !selected && "text-muted-foreground",
+            className,
+          )}
+          aria-label={`${label} date`}
+        >
+          <CalendarIcon className="h-4 w-4 shrink-0 opacity-60" aria-hidden />
+          <span className="truncate tabular-nums">
+            <span className="text-muted-foreground">{label}: </span>
+            {selected ? format(selected, "dd/MM/yyyy") : "Select"}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          initialFocus
+          mode="single"
+          defaultMonth={selected || minDate || maxDate || new Date()}
+          selected={selected}
+          disabled={(date) =>
+            (minDate ? date < minDate : false) || (maxDate ? date > maxDate : false)
+          }
+          onSelect={(date) => {
+            if (!date) return;
+            onChange(localDateYmd(date));
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 type DateRangePickerFieldProps = {
@@ -30,7 +84,7 @@ type DateRangePickerFieldProps = {
   disabled?: boolean;
 };
 
-/** One field: click → pick From & To on the calendar → filter updates. */
+/** Two separate fields: "From" and "To" date pickers. */
 export function DateRangePickerField({
   from,
   to,
@@ -38,85 +92,34 @@ export function DateRangePickerField({
   className,
   disabled,
 }: DateRangePickerFieldProps) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<DateRange | undefined>({
-    from: ymdToDate(from),
-    to: ymdToDate(to),
-  });
-
-  useEffect(() => {
-    if (!open) {
-      setDraft({ from: ymdToDate(from), to: ymdToDate(to) });
-    }
-  }, [from, to, open]);
-
-  const applyRange = (range?: DateRange) => {
-    if (!range?.from) return;
-    const nextFrom = localDateYmd(range.from);
-    const nextTo = localDateYmd(range.to ?? range.from);
-    onChange(nextFrom, nextTo);
-  };
+  const fromDate = ymdToDate(from);
+  const toDate = ymdToDate(to);
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        if (!next && draft?.from) {
-          applyRange(draft);
-        }
-        setOpen(next);
-      }}
-    >
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={disabled}
-          className={cn(
-            "h-10 min-w-[14rem] justify-start gap-2 px-3 font-normal shrink-0",
-            !from && "text-muted-foreground",
-            className,
-          )}
-          aria-label="Date range"
-        >
-          <CalendarIcon className="h-4 w-4 shrink-0 opacity-60" aria-hidden />
-          <span className="truncate tabular-nums">{formatRangeLabel(from, to)}</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          initialFocus
-          mode="range"
-          numberOfMonths={2}
-          defaultMonth={ymdToDate(from) || new Date()}
-          selected={draft}
-          onSelect={(range) => {
-            setDraft(range);
-            if (range?.from && range?.to) {
-              applyRange(range);
-              setOpen(false);
-            }
-          }}
-        />
-        <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
-          <p className="text-[11px] text-muted-foreground">
-            {draft?.from && !draft?.to ? "Pick an end date" : "Click start, then end date"}
-          </p>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="h-8"
-            disabled={!draft?.from}
-            onClick={() => {
-              applyRange(draft);
-              setOpen(false);
-            }}
-          >
-            Apply
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <div className="flex min-w-[18rem] shrink-0 items-center gap-2">
+      <SingleDatePicker
+        label="From"
+        value={from}
+        maxDate={toDate}
+        className={className}
+        disabled={disabled}
+        onChange={(nextFrom) => {
+          // Keep the range valid: if To is empty or before From, align it.
+          const nextTo = !to || to < nextFrom ? nextFrom : to;
+          onChange(nextFrom, nextTo);
+        }}
+      />
+      <SingleDatePicker
+        label="To"
+        value={to}
+        minDate={fromDate}
+        className={className}
+        disabled={disabled}
+        onChange={(nextTo) => {
+          const nextFrom = !from || from > nextTo ? nextTo : from;
+          onChange(nextFrom, nextTo);
+        }}
+      />
+    </div>
   );
 }

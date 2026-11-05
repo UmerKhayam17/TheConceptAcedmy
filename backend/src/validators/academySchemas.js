@@ -446,6 +446,7 @@ const feePaidExportQuery = Joi.object({
   search: Joi.string().trim().max(200).allow(''),
   feeType: Joi.string().valid('admission', 'monthly', 'stationery'),
   format: Joi.string().valid('xlsx', 'pdf'),
+  variant: Joi.string().valid('details', 'summary'),
 });
 
 const feeClassAccountsExportQuery = Joi.object({

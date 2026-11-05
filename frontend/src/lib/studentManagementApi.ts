@@ -1757,10 +1757,12 @@ export const exportPaidFeesCsv = async (params?: PaidFeeExportParams) => {
 
 export const exportPaidFeesReport = async (
   params?: PaidFeeExportParams,
-  format: DefaulterReportFormat = "xlsx"
+  format: DefaulterReportFormat = "xlsx",
+  variant: "details" | "summary" = "details"
 ) => {
   const q = new URLSearchParams();
   q.set("format", format);
+  if (variant === "summary") q.set("variant", "summary");
   if (params?.classId) q.set("classId", params.classId);
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));

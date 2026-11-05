@@ -135,6 +135,14 @@ function particularLabel(line) {
  * Itemized challan lines: Particular | Month | Amount
  * e.g. Tuition fee | October 2026 | 12,000 · Stationery · AC charges
  */
+/** Display order on challans/vouchers: Admission → Tuition → Stationery → other charges. */
+function particularRank(name) {
+  if (/^Admission/i.test(name)) return 0;
+  if (/^Tuition/i.test(name)) return 1;
+  if (/^station[ae]r/i.test(name)) return 2;
+  return 3;
+}
+
 function challanItemLines(records) {
   const list = Array.isArray(records) ? records : [];
   const items = [];
@@ -142,6 +150,7 @@ function challanItemLines(records) {
   for (const record of list) {
     const parts = feeComponents(record);
     const month = monthPeriodLabel(record) || '—';
+    const period = (Number(record.year) || 0) * 12 + (Number(record.month) || 0);
 
     if (!parts.length) {
       const amount = roundMoney(Number(record.amount) || 0);
@@ -150,7 +159,7 @@ function challanItemLines(records) {
       if (record.feeType === 'stationery') name = 'Stationery';
       else if (record.feeType === 'admission') name = 'Admission fee';
       else name = 'Tuition fee';
-      items.push({ name, month, amount });
+      items.push({ name, month, amount, period });
       continue;
     }
 
@@ -161,11 +170,24 @@ function challanItemLines(records) {
         name: particularLabel(line),
         month,
         amount,
+        period,
       });
     }
   }
 
-  return items;
+  // Stable sort: by month, then Admission → Tuition → Stationery → other charges.
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort(
+      (a, b) =>
+        a.item.period - b.item.period ||
+        particularRank(a.item.name) - particularRank(b.item.name) ||
+        a.index - b.index
+    )
+    .map(({ item }) => {
+      const { period, ...rest } = item;
+      return rest;
+    });
 }
 
 /**

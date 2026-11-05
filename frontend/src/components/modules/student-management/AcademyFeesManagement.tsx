@@ -1149,11 +1149,14 @@ export default function AcademyFeesManagement({
     [month, year, classFilter, search, apiSessionId, paidDateFrom, paidDateTo]
   );
 
-  const downloadPaidReport = async (format: DefaulterReportFormat) => {
+  const downloadPaidReport = async (
+    format: DefaulterReportFormat,
+    variant: "details" | "summary" = "details"
+  ) => {
     setExportingPaidReport(format);
     const preview = openReportPreviewTab(format);
     try {
-      const blob = await exportPaidFeesReport(paidExportParams, format);
+      const blob = await exportPaidFeesReport(paidExportParams, format, variant);
       const MONTHS = [
         "January",
         "February",
@@ -1178,7 +1181,8 @@ export default function AcademyFeesManagement({
             : year
               ? String(year)
               : "All";
-      const mode = deliverReportBlob(blob, `Paid-Fees_${period}.${format}`, format, preview);
+      const fileBase = variant === "summary" ? "Paid-Fee-Summary" : "Paid-Fees";
+      const mode = deliverReportBlob(blob, `${fileBase}_${period}.${format}`, format, preview);
       toast({
         title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
         description:
@@ -1326,14 +1330,14 @@ export default function AcademyFeesManagement({
                   className={cn(
                     "grid items-end gap-3 grid-cols-1 min-[480px]:grid-cols-2",
                     paidOnlyView
-                      ? "xl:grid-cols-[minmax(14rem,1.15fr)_repeat(3,minmax(0,1fr))_minmax(0,1.3fr)]"
+                      ? "xl:grid-cols-[minmax(18rem,1.15fr)_repeat(3,minmax(0,1fr))_minmax(0,1.3fr)]"
                       : lockedStatus
                         ? "lg:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.6fr)]"
                         : "lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.6fr)]",
                   )}
                 >
                   {paidOnlyView && (
-                    <FeeFilterField label="Date range">
+                    <FeeFilterField label="From / To">
                       <DateRangePickerField
                         from={paidDateFrom}
                         to={paidDateTo}
@@ -1341,7 +1345,7 @@ export default function AcademyFeesManagement({
                           setPaidDateFrom(nextFrom);
                           setPaidDateTo(nextTo);
                         }}
-                        className="h-9 w-full min-w-0"
+                        className="h-9"
                       />
                     </FeeFilterField>
                   )}
@@ -1431,7 +1435,16 @@ export default function AcademyFeesManagement({
                       className="w-full justify-center sm:w-auto"
                       label="Paid report"
                       exporting={exportingPaidReport}
-                      onDownload={(format) => void downloadPaidReport(format)}
+                      reportKinds={[
+                        { id: "details", label: "Paid Fee Report" },
+                        { id: "summary", label: "Fee Summary" },
+                      ]}
+                      onDownload={(format, reportKind) =>
+                        void downloadPaidReport(
+                          format,
+                          reportKind === "summary" ? "summary" : "details"
+                        )
+                      }
                     />
                   </div>
                 )}

@@ -326,7 +326,7 @@ async function registerStudent(payload, userId) {
   });
 
   const now = new Date();
-  // Voucher stays tuition + admission only; defaultChargeIds are preferences for pay/print opt-in.
+  // First voucher includes the additional charges selected at registration (defaultChargeIds).
   await createEnrollmentFeeVouchers(student, fees, userId, { asOf: now });
 
   return student.populate([

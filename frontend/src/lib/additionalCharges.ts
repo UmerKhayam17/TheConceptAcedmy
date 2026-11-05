@@ -185,5 +185,15 @@ export function feePreviewLines(
     });
   }
 
-  return lines;
+  // Display order: Admission → Tuition → Stationery → other charges (stable).
+  const rank = (line: FeePreviewLine) => {
+    if (line.kind === "admission") return 0;
+    if (line.kind === "tuition") return 1;
+    if (/^station[ae]r/i.test(line.name)) return 2;
+    return 3;
+  };
+  return lines
+    .map((line, index) => ({ line, index }))
+    .sort((a, b) => rank(a.line) - rank(b.line) || a.index - b.index)
+    .map(({ line }) => line);
 }
