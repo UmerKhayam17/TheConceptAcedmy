@@ -581,7 +581,7 @@ export function EnrollmentVoucherWizard({
                     if (mode === "waiver" && preview) {
                       // Full waiver = full tuition exemption (same as Register Student).
                       setReliefType("exemption");
-                      setExemptionRemarks("Full fee waiver");
+                      setExemptionRemarks("Full Fee Waiver");
                       setMonthlyDiscount(String(preview.monthlyFee || 0));
                       setAdmissionDiscount(String(preview.admissionFee || 0));
                     } else if (mode === "normal") {

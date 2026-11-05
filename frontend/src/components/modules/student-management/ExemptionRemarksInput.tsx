@@ -4,7 +4,10 @@ import { EXEMPTION_REMARKS } from "./registerStudentForm";
 
 const OTHER = "__other__";
 
-const isPreset = (v: string) => EXEMPTION_REMARKS.includes(v);
+/** Matches presets case-insensitively so older saved values ("Principal approval") still match. */
+const findPreset = (v: string) =>
+  EXEMPTION_REMARKS.find((r) => r.toLowerCase() === v.trim().toLowerCase());
+const isPreset = (v: string) => !!findPreset(v);
 
 /**
  * Exemption reason: choose a standard reason from the dropdown, or pick
@@ -39,7 +42,7 @@ export function ExemptionRemarksInput({
       <select
         className={cn(fieldCls, custom && "flex-1")}
         disabled={disabled}
-        value={custom ? OTHER : value}
+        value={custom ? OTHER : findPreset(value) ?? value}
         onChange={(e) => {
           const v = e.target.value;
           if (v === OTHER) {
@@ -51,13 +54,13 @@ export function ExemptionRemarksInput({
           }
         }}
       >
-        <option value="">Select a reason</option>
+        <option value="">Select A Reason</option>
         {EXEMPTION_REMARKS.map((r) => (
           <option key={r} value={r}>
             {r}
           </option>
         ))}
-        <option value={OTHER}>Other (custom)</option>
+        <option value={OTHER}>Other (Custom)</option>
       </select>
       {custom && (
         <textarea

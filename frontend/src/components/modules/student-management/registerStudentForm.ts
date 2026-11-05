@@ -37,14 +37,14 @@ export function indicativePercent(amount: number, monthlyFee: number): number {
 
 /** Suggested exemption reasons (registration form + Student Fee modal); custom text is also allowed. */
 export const EXEMPTION_REMARKS = [
-  "Full fee waiver",
-  "Financial hardship",
+  "Full Fee Waiver",
+  "Financial Hardship",
   "Orphan",
-  "Staff child",
+  "Staff Child",
   "Sibling",
-  "Merit / position holder",
-  "Management approval",
-  "Principal approval",
+  "Merit / Position Holder",
+  "Management Approval",
+  "Principal Approval",
 ];
 
 /** Active relief; a monthly discount with no type and no category is a legacy discount. */

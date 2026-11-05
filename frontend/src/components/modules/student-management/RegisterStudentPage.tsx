@@ -574,7 +574,7 @@ export default function RegisterStudentPage({
         ? {
             feeReliefType: "exemption" as FeeReliefType,
             reliefAmount: String(listMonthly),
-            exemptionRemarks: "Full fee waiver",
+            exemptionRemarks: "Full Fee Waiver",
             concessionCategory: "",
             concessionPercent: "0",
           }
