@@ -539,6 +539,7 @@ async function listStudents({
   studentIds = null,
   sessionId,
   sort = 'rollNumber studentName',
+  pendingFirst = false,
   forExport = false,
   /** Extra Mongo filter (e.g. teacher class/section scope). */
   scopeFilter = null,
@@ -585,8 +586,8 @@ async function listStudents({
   const perPage = Math.min(cap, Math.max(1, limit));
   const skip = (Math.max(1, page) - 1) * perPage;
 
-  const [items, total] = await Promise.all([
-    AcademyStudent.find(filter)
+  const queryPage = (match, skipN, limitN) =>
+    AcademyStudent.find(match)
       .populate({
         path: 'classId',
         select: 'className sessionId',
@@ -597,8 +598,48 @@ async function listStudents({
       .populate('selectedSubjects', 'subjectName')
       .populate('createdBy', 'name email')
       .sort(sort)
-      .skip(skip)
-      .limit(perPage),
+      .skip(skipN)
+      .limit(limitN);
+
+  // Students and Register students: every pending_fee row before the rest,
+  // still paginated, with the usual roll/name order inside each group.
+  if (pendingFirst && !q.status) {
+    const withStatus = (status) =>
+      filter.$and
+        ? { $and: [...filter.$and, { status }] }
+        : Object.keys(filter).length
+          ? { $and: [filter, { status }] }
+          : { status };
+    const pendingFilter = withStatus('pending_fee');
+    const restFilter = withStatus({ $ne: 'pending_fee' });
+    const [pendingTotal, restTotal] = await Promise.all([
+      AcademyStudent.countDocuments(pendingFilter),
+      AcademyStudent.countDocuments(restFilter),
+    ]);
+    const total = pendingTotal + restTotal;
+    let items = [];
+    if (skip < pendingTotal) {
+      const pendingTake = Math.min(perPage, pendingTotal - skip);
+      const pendingItems = await queryPage(pendingFilter, skip, pendingTake);
+      const remain = perPage - pendingItems.length;
+      const restItems = remain > 0 ? await queryPage(restFilter, 0, remain) : [];
+      items = pendingItems.concat(restItems);
+    } else {
+      items = await queryPage(restFilter, skip - pendingTotal, perPage);
+    }
+    return {
+      items,
+      pagination: {
+        page: Math.max(1, page),
+        limit: perPage,
+        total,
+        pages: Math.ceil(total / perPage) || 1,
+      },
+    };
+  }
+
+  const [items, total] = await Promise.all([
+    queryPage(filter, skip, perPage),
     AcademyStudent.countDocuments(filter),
   ]);
 

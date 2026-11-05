@@ -11,6 +11,8 @@ const list = catchAsync(async (req, res) => {
     status: req.query.status,
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
+    from: req.query.from,
+    to: req.query.to,
     search: req.query.search,
   });
   res.json({ success: true, data: result.items, pagination: result.pagination });
@@ -20,6 +22,8 @@ const summary = catchAsync(async (req, res) => {
   const data = await expenseService.getExpenseSummary({
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
+    from: req.query.from,
+    to: req.query.to,
     category: req.query.category,
   });
   res.json({ success: true, data });
@@ -46,6 +50,8 @@ const exportReport = catchAsync(async (req, res) => {
     format,
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
+    from: req.query.from,
+    to: req.query.to,
     category: req.query.category || undefined,
     status: req.query.status || undefined,
     search: req.query.search || undefined,
@@ -64,11 +70,15 @@ const exportReport = catchAsync(async (req, res) => {
     'November',
     'December',
   ];
+  const fromLabel = String(req.query.from || '').slice(0, 10);
+  const toLabel = String(req.query.to || '').slice(0, 10);
   const monthLabel = req.query.month
     ? monthNames[Number(req.query.month) - 1] || String(req.query.month)
     : 'All';
   const yearLabel = req.query.year || 'All';
-  const fileName = `Academy-Expenses_${monthLabel}-${yearLabel}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+  const periodLabel =
+    fromLabel && toLabel ? `${fromLabel}_to_${toLabel}` : `${monthLabel}-${yearLabel}`;
+  const fileName = `Academy-Expenses_${periodLabel}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
   if (format === 'pdf') {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);

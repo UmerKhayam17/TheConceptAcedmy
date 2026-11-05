@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { format, isValid, parseISO } from "date-fns";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,6 +17,8 @@ import {
 import { Card } from "@/components/ui/card";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import { Button } from "@/components/ui/button";
+import { DateRangePickerField } from "@/components/ui/date-range-picker";
+import { SquareCheckbox } from "@/components/ui/square-checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,8 +37,6 @@ import { systemConfigHref } from "@/lib/systemConfigMenus";
 import {
   createAcademyExpense,
   deleteAcademyExpense,
-  EXPENSE_CATEGORY_LABELS,
-  expenseCategoryLabel,
   exportAcademyExpenseReport,
   fetchAcademyExpenses,
   fetchAcademyExpenseSummary,
@@ -45,6 +46,7 @@ import {
   type ExpenseCategoryConfig,
   type ExpenseReportFormat,
 } from "@/lib/studentManagementApi";
+import { categoryVisual } from "@/lib/expenseCategoryVisual";
 import { cn, localYmd } from "@/lib/utils";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import { formatPkr } from "./studentDisplayUtils";
@@ -52,20 +54,23 @@ import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
 import { DefaulterListDownload } from "./DefaulterListDownload";
 
-const FULL_MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
+function currentMonthRange() {
+  const now = new Date();
+  return {
+    from: localYmd(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: localYmd(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+  };
+}
+
+function expenseRangeLabel(from: string, to: string) {
+  const label = (ymd: string) => {
+    const d = parseISO(ymd);
+    return isValid(d) ? format(d, "d MMM yyyy") : ymd;
+  };
+  const start = label(from);
+  const end = label(to);
+  return start === end ? start : `${start} – ${end}`;
+}
 
 const filterControlClass =
   "h-10 w-full cursor-pointer appearance-none truncate rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-800 shadow-none outline-none transition-[border-color,box-shadow] hover:border-slate-300 focus:border-[#1a2b4b]/40 focus:ring-2 focus:ring-[#1a2b4b]/10";
@@ -156,10 +161,21 @@ function FormSelect({
   );
 }
 
-const emptyForm = (category = "rent") => ({
+/** Original built-in keys. Expense Categories the academy adds are kept. */
+const BUILTIN_EXPENSE_CATEGORY_KEYS = new Set([
+  "rent",
+  "utilities",
+  "supplies",
+  "maintenance",
+  "marketing",
+  "transport",
+  "staff_other",
+  "other",
+]);
+
+const emptyForm = (category = "") => ({
   title: "",
   category,
-  categoryOther: "",
   amount: "",
   expenseDate: localYmd(),
   vendor: "",
@@ -168,6 +184,13 @@ const emptyForm = (category = "rent") => ({
   referenceNumber: "",
   status: "paid" as "paid" | "planned",
 });
+
+function dynamicCategoryName(
+  row: { category: string; categoryOther?: string },
+  categories: Pick<ExpenseCategoryConfig, "key" | "name">[],
+) {
+  return categories.find((c) => c.key === row.category)?.name || row.category;
+}
 
 function StatusPill({ status }: { status: string }) {
   const colors: Record<string, string> = {
@@ -185,33 +208,32 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+function byCategoryNameAsc(a: { name: string }, b: { name: string }) {
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
 function categoryChoices(
   categories: ExpenseCategoryConfig[],
   selectedKey: string,
 ): ExpenseCategoryConfig[] {
   const active = categories.filter((c) => c.isActive);
-  if (!selectedKey || active.some((c) => c.key === selectedKey)) return active;
-  const current = categories.find((c) => c.key === selectedKey);
-  if (current) return [current, ...active];
-  return [
-    {
-      _id: selectedKey,
-      key: selectedKey,
-      name: EXPENSE_CATEGORY_LABELS[selectedKey] || selectedKey,
-      isActive: false,
-      sortOrder: 0,
-    },
-    ...active,
-  ];
+  const list =
+    !selectedKey || active.some((c) => c.key === selectedKey)
+      ? active
+      : (() => {
+          const current = categories.find((c) => c.key === selectedKey);
+          return current ? [current, ...active] : active;
+        })();
+  return [...list].sort(byCategoryNameAsc);
 }
 
 export default function AcademyExpensesManagement({ caps }: { caps: ModuleActionCaps }) {
   const { toast } = useToast();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const now = new Date();
-  const [month, setMonth] = useState(String(now.getMonth() + 1));
-  const [year, setYear] = useState(String(now.getFullYear()));
+  const initialRange = useMemo(() => currentMonthRange(), []);
+  const [dateFrom, setDateFrom] = useState(initialRange.from);
+  const [dateTo, setDateTo] = useState(initialRange.to);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
@@ -221,12 +243,21 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
   const [editing, setEditing] = useState<AcademyExpense | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<AcademyExpense | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [exporting, setExporting] = useState<ExpenseReportFormat | null>(null);
 
-  const { data: categories = [] } = useQuery({
+  const { data: allCategories = [] } = useQuery({
     queryKey: ["expense-categories"],
     queryFn: fetchExpenseCategories,
   });
+  const categories = useMemo(
+    () =>
+      allCategories
+        .filter((c) => !BUILTIN_EXPENSE_CATEGORY_KEYS.has(c.key))
+        .sort(byCategoryNameAsc),
+    [allCategories],
+  );
   const activeCategories = useMemo(() => categories.filter((c) => c.isActive), [categories]);
   const formCategories = useMemo(
     () => categoryChoices(categories, form.category),
@@ -235,16 +266,21 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
 
   const filterParams = useMemo(
     () => ({
-      month: Number(month),
-      year: Number(year),
+      from: dateFrom,
+      to: dateTo,
       category: categoryFilter || undefined,
     }),
-    [month, year, categoryFilter]
+    [dateFrom, dateTo, categoryFilter]
   );
+  const rangeLabel = expenseRangeLabel(dateFrom, dateTo);
 
   useEffect(() => {
     setPage(1);
-  }, [month, year, categoryFilter, statusFilter, search]);
+  }, [dateFrom, dateTo, categoryFilter, statusFilter, search]);
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [dateFrom, dateTo, categoryFilter, statusFilter, search, page, pageSize]);
 
   useEffect(() => {
     if (!dialogOpen || editing || activeCategories.length === 0) return;
@@ -279,8 +315,6 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
       const body = {
         title: form.title.trim(),
         category: form.category,
-        categoryOther:
-          form.category === "other" ? form.categoryOther.trim() || undefined : undefined,
         amount,
         expenseDate: form.expenseDate,
         vendor: form.vendor.trim() || undefined,
@@ -314,23 +348,77 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const bulkStatusMut = useMutation({
+    mutationFn: async ({ status, ids }: { status: "paid" | "planned"; ids: string[] }) => {
+      await Promise.all(ids.map((id) => updateAcademyExpense(id, { status })));
+      return { status, count: ids.length };
+    },
+    onSuccess: ({ status, count }) => {
+      qc.invalidateQueries({ queryKey: ["academy-expenses"] });
+      qc.invalidateQueries({ queryKey: ["academy-expenses-summary"] });
+      setSelectedIds([]);
+      toast({
+        title: status === "paid" ? "Marked as paid" : "Marked as planned",
+        description: `${count} expense${count === 1 ? "" : "s"} updated.`,
+      });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => deleteAcademyExpense(id)));
+      return ids.length;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ["academy-expenses"] });
+      qc.invalidateQueries({ queryKey: ["academy-expenses-summary"] });
+      setSelectedIds([]);
+      setBulkDeleteOpen(false);
+      toast({
+        title: "Expenses deleted",
+        description: `${count} expense${count === 1 ? "" : "s"} removed.`,
+      });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const records = data?.records ?? [];
   const pagination = data?.pagination;
   const canManage = caps.canCreate || caps.canEdit;
   const canDelete = caps.canDelete;
+  const canBulk = caps.canEdit || canDelete;
+  const colSpan = canBulk ? 7 : 6;
+  const pageIds = records.map((row) => row._id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+  const somePageSelected = pageIds.some((id) => selectedIds.includes(id));
+
+  const toggleSelectAllPage = () => {
+    setSelectedIds((prev) =>
+      allPageSelected
+        ? prev.filter((id) => !pageIds.includes(id))
+        : [...new Set([...prev, ...pageIds])],
+    );
+  };
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  };
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyForm(activeCategories[0]?.key || "rent"));
+    setForm(emptyForm(activeCategories[0]?.key || ""));
     setDialogOpen(true);
   };
 
   const openEdit = (row: AcademyExpense) => {
     setEditing(row);
+    const known = categories.some((c) => c.key === row.category);
     setForm({
       title: row.title,
-      category: row.category,
-      categoryOther: row.categoryOther || "",
+      category: known ? row.category : activeCategories[0]?.key || "",
       amount: String(row.amount),
       expenseDate: row.expenseDate.slice(0, 10),
       vendor: row.vendor || "",
@@ -342,32 +430,23 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
     setDialogOpen(true);
   };
 
-  const topCategories = useMemo(() => {
-    if (!summary?.byCategory) return [];
-    return Object.entries(summary.byCategory)
-      .filter(([, v]) => v > 0)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3);
-  }, [summary]);
-
   const handleExport = async (format: ExpenseReportFormat) => {
     setExporting(format);
     const preview = openReportPreviewTab(format);
     try {
       const blob = await exportAcademyExpenseReport(
         {
-          month: Number(month),
-          year: Number(year),
+          from: dateFrom,
+          to: dateTo,
           category: categoryFilter || undefined,
           status: statusFilter || undefined,
           search: search.trim() || undefined,
         },
         format,
       );
-      const monthLabel = FULL_MONTH_NAMES[Number(month) - 1] || month;
       const mode = deliverReportBlob(
         blob,
-        `Academy-Expenses_${monthLabel}-${year}.${format}`,
+        `Academy-Expenses_${dateFrom}_to_${dateTo}.${format}`,
         format,
         preview,
       );
@@ -404,7 +483,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                 Academy Expenses
               </h2>
               <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-md">
-                Track rent, utilities, supplies, and other operating costs for the academy.
+                Track operating costs recorded under your expense categories.
               </p>
             </div>
           </div>
@@ -426,7 +505,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
         <PanelStatCard
           label="Total"
           value={summaryLoading ? "…" : formatPkr(summary?.totalAmount)}
-          hint={`${FULL_MONTH_NAMES[Number(month) - 1]} ${year}`}
+          hint={rangeLabel}
           icon={Wallet}
           iconWrapClass="bg-[#dbeafe]"
           iconClass="text-[#2563eb]"
@@ -465,39 +544,19 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
         />
       </div>
 
-      {topCategories.length > 0 && (
-        <Card className="p-3">
-          <p className="text-xs text-muted-foreground mb-1">Top categories this period</p>
-          <div className="flex flex-wrap gap-2">
-            {topCategories.map(([cat, amt]) => (
-              <span
-                key={cat}
-                className="text-xs rounded-full bg-muted px-2.5 py-1"
-              >
-                {expenseCategoryLabel({ category: cat }, categories)}: {formatPkr(amt)}
-              </span>
-            ))}
-          </div>
-        </Card>
-      )}
-
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-          <div className="grid min-w-0 flex-1 grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <ExpenseFilterSelect label="Month" value={month} onChange={setMonth}>
-              {FULL_MONTH_NAMES.map((name, i) => (
-                <option key={name} value={String(i + 1)}>
-                  {name}
-                </option>
-              ))}
-            </ExpenseFilterSelect>
-            <ExpenseFilterSelect label="Year" value={year} onChange={setYear}>
-              {Array.from({ length: 6 }, (_, i) => now.getFullYear() - 2 + i).map((y) => (
-                <option key={y} value={String(y)}>
-                  {y}
-                </option>
-              ))}
-            </ExpenseFilterSelect>
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+          <div className="flex min-w-0 flex-1 flex-col gap-2.5 lg:flex-row lg:items-center">
+            <DateRangePickerField
+              from={dateFrom}
+              to={dateTo}
+              onChange={(from, to) => {
+                setDateFrom(from);
+                setDateTo(to);
+              }}
+              className="h-10 rounded-lg border-slate-200 bg-white text-sm shadow-none"
+            />
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-2.5">
             <ExpenseFilterSelect
               label="Category"
               value={categoryFilter}
@@ -516,6 +575,7 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
               <option value="paid">Paid</option>
               <option value="planned">Planned</option>
             </ExpenseFilterSelect>
+            </div>
           </div>
 
           <label className="block min-w-0 xl:w-72 xl:shrink-0">
@@ -541,7 +601,41 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
             </span>
           </label>
 
-          <div className="flex min-w-0 flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:justify-end xl:shrink-0 xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0">
+          <div className="flex min-w-0 flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:flex-wrap sm:justify-end xl:shrink-0 xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0">
+            {caps.canEdit && selectedIds.length > 0 && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 rounded-lg border-slate-200"
+                  disabled={bulkStatusMut.isPending}
+                  onClick={() => bulkStatusMut.mutate({ status: "paid", ids: selectedIds })}
+                >
+                  Mark paid ({selectedIds.length})
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 rounded-lg border-slate-200"
+                  disabled={bulkStatusMut.isPending}
+                  onClick={() => bulkStatusMut.mutate({ status: "planned", ids: selectedIds })}
+                >
+                  Mark planned ({selectedIds.length})
+                </Button>
+              </>
+            )}
+            {canDelete && selectedIds.length > 0 && (
+              <Button
+                type="button"
+                variant="destructive"
+                className="h-10 rounded-lg"
+                disabled={bulkDeleteMut.isPending}
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete ({selectedIds.length})
+              </Button>
+            )}
             {canManage && (
               <Button
                 className="h-10 gap-2 rounded-lg bg-[#1a2b4b] px-4 text-white shadow-sm hover:bg-[#15233d]"
@@ -568,47 +662,85 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
           <table className="w-full text-sm">
             <thead className="bg-muted/50 border-b">
               <tr>
-                <th className="text-left p-2.5 font-medium">Date</th>
+                {canBulk && (
+                  <th className="w-10 p-2.5 text-center">
+                    <SquareCheckbox
+                      checked={allPageSelected}
+                      indeterminate={!allPageSelected && somePageSelected}
+                      onChange={toggleSelectAllPage}
+                      aria-label="Select all expenses on this page"
+                    />
+                  </th>
+                )}
                 <th className="text-left p-2.5 font-medium">Title</th>
-                <th className="text-left p-2.5 font-medium hidden md:table-cell">Category</th>
+                <th className="text-left p-2.5 font-medium">Category</th>
                 <th className="text-left p-2.5 font-medium">Amount</th>
                 <th className="text-left p-2.5 font-medium">Status</th>
+                <th className="text-left p-2.5 font-medium">Paid date</th>
                 <th className="text-right p-2.5 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={colSpan} className="p-6 text-center text-muted-foreground">
                     Loading expenses…
                   </td>
                 </tr>
               )}
               {!isLoading && records.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-muted-foreground">
-                    No expenses for this period. Add rent, utilities, supplies, and other operating
-                    costs.
+                  <td colSpan={colSpan} className="p-6 text-center text-muted-foreground">
+                    No expenses for this period.
                   </td>
                 </tr>
               )}
-              {records.map((row) => (
-                <tr key={row._id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="p-2.5 whitespace-nowrap">
-                    {new Date(row.expenseDate).toLocaleDateString()}
-                  </td>
+              {records.map((row) => {
+                const categoryName = dynamicCategoryName(row, categories);
+                const visual = categoryVisual({ key: row.category, name: categoryName });
+                const isSelected = selectedIds.includes(row._id);
+                return (
+                <tr
+                  key={row._id}
+                  className={cn(
+                    "border-b last:border-0 hover:bg-muted/30",
+                    isSelected && "bg-muted/50",
+                  )}
+                >
+                  {canBulk && (
+                    <td className="w-10 p-2.5 text-center">
+                      <SquareCheckbox
+                        checked={isSelected}
+                        onChange={() => toggleSelectOne(row._id)}
+                        aria-label={`Select ${row.title}`}
+                      />
+                    </td>
+                  )}
                   <td className="p-2.5">
-                    <div className="font-medium">{row.title}</div>
-                    {row.vendor && (
-                      <div className="text-xs text-muted-foreground">{row.vendor}</div>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                          visual.wrap,
+                        )}
+                      >
+                        <visual.Icon className={cn("h-4 w-4", visual.color)} />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-medium">{row.title}</div>
+                        {row.vendor && (
+                          <div className="text-xs text-muted-foreground">{row.vendor}</div>
+                        )}
+                      </div>
+                    </div>
                   </td>
-                  <td className="p-2.5 hidden md:table-cell">
-                    {expenseCategoryLabel(row, categories)}
-                  </td>
+                  <td className="p-2.5">{categoryName}</td>
                   <td className="p-2.5">{formatPkr(row.amount)}</td>
                   <td className="p-2.5">
                     <StatusPill status={row.status} />
+                  </td>
+                  <td className="p-2.5 whitespace-nowrap">
+                    {new Date(row.expenseDate).toLocaleDateString()}
                   </td>
                   <td className="p-2.5 text-right space-x-1 whitespace-nowrap">
                     {canManage && (
@@ -635,7 +767,8 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -687,23 +820,14 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                       className={formControlClass}
                       value={form.title}
                       onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                      placeholder="e.g. Office rent — May"
+                      placeholder="e.g. Monthly academy rent"
                     />
                   </FormField>
-                  <FormField
-                    label="Category"
-                    className={form.category === "other" ? "" : "min-[480px]:col-span-2"}
-                  >
+                  <FormField label="Category" className="min-[480px]:col-span-2">
                     <FormSelect
                       ariaLabel="Category"
                       value={form.category}
-                      onChange={(category) =>
-                        setForm((f) => ({
-                          ...f,
-                          category,
-                          categoryOther: category === "other" ? f.categoryOther : "",
-                        }))
-                      }
+                      onChange={(category) => setForm((f) => ({ ...f, category }))}
                     >
                       {formCategories.length === 0 && <option value="">No Categories</option>}
                       {formCategories.map((c) => (
@@ -726,16 +850,6 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                       </p>
                     )}
                   </FormField>
-                  {form.category === "other" && (
-                    <FormField label="Specify category">
-                      <Input
-                        className={formControlClass}
-                        value={form.categoryOther}
-                        onChange={(e) => setForm((f) => ({ ...f, categoryOther: e.target.value }))}
-                        placeholder="e.g. Legal fees"
-                      />
-                    </FormField>
-                  )}
                   <FormField label="Amount">
                     <div className="relative min-w-0">
                       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold tracking-wide text-slate-400">
@@ -856,6 +970,30 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
             >
               <Plus className="h-4 w-4" />
               {saveMut.isPending ? "Saving…" : editing ? "Save changes" : "Add expense"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={(o) => !o && setBulkDeleteOpen(false)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete selected expenses?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Remove {selectedIds.length} selected expense{selectedIds.length === 1 ? "" : "s"}? This
+            cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={bulkDeleteMut.isPending}
+              onClick={() => bulkDeleteMut.mutate(selectedIds)}
+            >
+              {bulkDeleteMut.isPending ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

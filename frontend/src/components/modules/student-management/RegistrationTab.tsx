@@ -327,6 +327,7 @@ export default function RegistrationTab({
         sectionId: sectionFilter || undefined,
         status: statusFilter || undefined,
         sessionId: apiSessionId,
+        pendingFirst: !statusFilter,
       }),
     enabled: hasScope,
   });

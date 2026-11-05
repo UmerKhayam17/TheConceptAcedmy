@@ -717,6 +717,8 @@ export const fetchAcademyStudents = async (params?: {
   sectionId?: string;
   status?: string;
   sessionId?: string;
+  /** List every pending-fee student before the rest (Students and Register students). */
+  pendingFirst?: boolean;
 }) => {
   const q = new URLSearchParams();
   if (params?.page) q.set("page", String(params.page));
@@ -726,6 +728,7 @@ export const fetchAcademyStudents = async (params?: {
   if (params?.sectionId) q.set("sectionId", params.sectionId);
   if (params?.status) q.set("status", params.status);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.pendingFirst) q.set("pendingFirst", "1");
   const res = await authedFetch(`/student-management/students?${q}`);
   const body = await parseJson<{
     success?: boolean;
@@ -2214,6 +2217,8 @@ export const fetchAcademyExpenses = async (params?: {
   status?: string;
   month?: number;
   year?: number;
+  from?: string;
+  to?: string;
   search?: string;
 }) => {
   const q = new URLSearchParams();
@@ -2223,6 +2228,8 @@ export const fetchAcademyExpenses = async (params?: {
   if (params?.status) q.set("status", params.status);
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
+  if (params?.from) q.set("from", params.from);
+  if (params?.to) q.set("to", params.to);
   if (params?.search) q.set("search", params.search);
   const res = await authedFetch(`/student-management/expenses?${q}`);
   const body = await parseJson<{
@@ -2238,11 +2245,15 @@ export const fetchAcademyExpenses = async (params?: {
 export const fetchAcademyExpenseSummary = (params?: {
   month?: number;
   year?: number;
+  from?: string;
+  to?: string;
   category?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
+  if (params?.from) q.set("from", params.from);
+  if (params?.to) q.set("to", params.to);
   if (params?.category) q.set("category", params.category);
   const qs = q.toString();
   return api<AcademyExpenseSummary>(`/expenses/summary${qs ? `?${qs}` : ""}`);
@@ -2274,6 +2285,8 @@ export const exportAcademyExpenseReport = async (
   params?: {
     month?: number;
     year?: number;
+    from?: string;
+    to?: string;
     category?: string;
     status?: string;
     search?: string;
@@ -2284,6 +2297,8 @@ export const exportAcademyExpenseReport = async (
   q.set("format", format);
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
+  if (params?.from) q.set("from", params.from);
+  if (params?.to) q.set("to", params.to);
   if (params?.category) q.set("category", params.category);
   if (params?.status) q.set("status", params.status);
   if (params?.search) q.set("search", params.search);

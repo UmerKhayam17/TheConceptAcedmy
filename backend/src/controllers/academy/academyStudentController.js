@@ -130,6 +130,7 @@ const list = catchAsync(async (req, res) => {
     status: req.query.status,
     sessionId: isParent ? undefined : req.query.sessionId,
     sort: req.query.sort,
+    pendingFirst: req.query.pendingFirst === '1' || req.query.pendingFirst === 'true',
     studentIds,
     scopeFilter: teacherScope?.scopeFilter || null,
     hidePhoneSearch: Boolean(teacherScope) || isParent,

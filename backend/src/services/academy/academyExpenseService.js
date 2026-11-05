@@ -3,11 +3,38 @@ const AcademyExpense = require('../../models/academy/AcademyExpense');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { assertActiveCategory } = require('./expenseCategoryService');
 
-async function buildExpenseQuery({ category, status, month, year, search }) {
+function parseYmdStart(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(d.getTime()) || d.getMonth() !== Number(m[2]) - 1) return null;
+  return d;
+}
+
+function endOfYmd(value) {
+  const d = parseYmdStart(value);
+  if (!d) return null;
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+/** Inclusive local calendar range. Swapped dates are ordered automatically. */
+function expenseDateRange(from, to) {
+  const start = parseYmdStart(from);
+  const end = parseYmdStart(to);
+  if (!start || !end) return null;
+  if (start <= end) return { $gte: start, $lte: endOfYmd(to) };
+  return { $gte: end, $lte: endOfYmd(from) };
+}
+
+async function buildExpenseQuery({ category, status, month, year, search, from, to }) {
   const q = {};
   if (category) q.category = category;
   if (status) q.status = status;
-  if (month && year) {
+  const range = expenseDateRange(from, to);
+  if (range) {
+    q.expenseDate = range;
+  } else if (month && year) {
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month, 0, 23, 59, 59, 999);
     q.expenseDate = { $gte: start, $lte: end };
@@ -38,8 +65,10 @@ async function listExpenses({
   month,
   year,
   search,
+  from,
+  to,
 }) {
-  const q = await buildExpenseQuery({ category, status, month, year, search });
+  const q = await buildExpenseQuery({ category, status, month, year, search, from, to });
   const skip = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
   const perPage = Math.min(100, Math.max(1, limit));
 
@@ -110,8 +139,8 @@ async function deleteExpense(id) {
   return { deleted: true };
 }
 
-async function getExpenseSummary({ month, year, category }) {
-  const q = await buildExpenseQuery({ month, year, category });
+async function getExpenseSummary({ month, year, category, from, to }) {
+  const q = await buildExpenseQuery({ month, year, category, from, to });
   const records = await AcademyExpense.find(q).lean();
 
   let totalAmount = 0;

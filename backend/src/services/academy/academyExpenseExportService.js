@@ -17,11 +17,39 @@ const MONTHS = [
   'December',
 ];
 
-function buildExpenseQuery({ category, status, month, year, search }) {
+function parseYmdStart(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(d.getTime()) || d.getMonth() !== Number(m[2]) - 1) return null;
+  return d;
+}
+
+function endOfYmd(value) {
+  const d = parseYmdStart(value);
+  if (!d) return null;
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function displayYmd(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+  if (!m) return '';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function buildExpenseQuery({ category, status, month, year, search, from, to }) {
   const q = {};
   if (category) q.category = category;
   if (status) q.status = status;
-  if (month && year) {
+  const start = parseYmdStart(from);
+  const end = parseYmdStart(to);
+  if (start && end) {
+    q.expenseDate =
+      start <= end
+        ? { $gte: start, $lte: endOfYmd(to) }
+        : { $gte: end, $lte: endOfYmd(from) };
+  } else if (month && year) {
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month, 0, 23, 59, 59, 999);
     q.expenseDate = { $gte: start, $lte: end };
@@ -85,9 +113,10 @@ async function loadExpenseData(filters) {
   };
 }
 
-function filterLine({ month, year, category, status, search }, names = {}) {
+function filterLine({ month, year, category, status, search, from, to }, names = {}) {
   const parts = [];
-  if (month && year) parts.push(`${MONTHS[Number(month) - 1] || month} ${year}`);
+  if (from && to) parts.push(`${displayYmd(from)} to ${displayYmd(to)}`);
+  else if (month && year) parts.push(`${MONTHS[Number(month) - 1] || month} ${year}`);
   else if (year) parts.push(`Year ${year}`);
   if (category) parts.push(names[category] || category);
   else parts.push('All categories');
@@ -122,7 +151,9 @@ async function exportExpenseReport(filters = {}) {
   const { rows, totalAmount, paidAmount, plannedAmount, count, names } = await loadExpenseData(filters);
 
   const periodBits = [];
-  if (filters.month && filters.year) {
+  if (filters.from && filters.to) {
+    periodBits.push(`${displayYmd(filters.from)} to ${displayYmd(filters.to)}`);
+  } else if (filters.month && filters.year) {
     periodBits.push(`${MONTHS[Number(filters.month) - 1] || filters.month} ${filters.year}`);
   } else if (filters.year) {
     periodBits.push(`Year ${filters.year}`);

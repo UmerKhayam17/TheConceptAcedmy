@@ -1,16 +1,14 @@
 const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const AcademyExpense = require('../../models/academy/AcademyExpense');
-const AcademySalaryRecord = require('../../models/academy/AcademySalaryRecord');
 const { categoryNameMap } = require('./expenseCategoryService');
 const { ACADEMY_BRAND } = require('../../config/academyBrand');
 const ApiError = require('../../utils/ApiError');
 
 /**
- * Balance sheet (statement of financial position) built from fee, expense and
- * salary records on an accrual basis:
+ * Balance sheet (statement of financial position) built from fee records and
+ * academy expenses only. Staff salaries and other modules are not included.
  *  - Fee income is recognised in the fee's billing month; unpaid fees are receivables.
- *  - Salaries are recognised in their payroll month; unpaid salaries are payables.
- *  - Paid expenses are recognised on their expense date ("planned" ones are only disclosed).
+ *  - Paid academy expenses are recognised on their expense date ("planned" ones are only disclosed).
  *  - Cash moves on the paid date (falls back to the billing month when missing).
  * Because every figure comes from the same record set, Assets = Liabilities + Fund always holds.
  */
@@ -64,12 +62,9 @@ async function getBalanceSheet({ from, to } = {}) {
   const periodUpToTo = { $or: [{ year: { $lt: toY } }, { year: toY, month: { $lte: toM } }] };
   const paidByTo = { status: 'paid', paidAt: { $lte: toEnd } };
 
-  const [fees, salaries, expenses, planned, waived, categoryNames] = await Promise.all([
+  const [fees, expenses, planned, waived, categoryNames] = await Promise.all([
     AcademyFeeRecord.find({ status: { $ne: 'waived' }, $or: [periodUpToTo, paidByTo] })
       .select('amount status paidAt paymentMethod feeType month year dueDate')
-      .lean(),
-    AcademySalaryRecord.find({ status: { $ne: 'cancelled' }, $or: [periodUpToTo, paidByTo] })
-      .select('amount status paidAt paymentMethod month year')
       .lean(),
     AcademyExpense.find({ status: 'paid', expenseDate: { $lte: toEnd } })
       .select('amount expenseDate category categoryOther paymentMethod')
@@ -100,13 +95,10 @@ async function getBalanceSheet({ from, to } = {}) {
   let openingFund = 0;
   let openingCash = 0;
   let receipts = 0;
-  let salaryPayments = 0;
   let expensePayments = 0;
   let receivableOverdue = 0;
   let receivableCurrent = 0;
   let feesInAdvance = 0;
-  let salariesPayable = 0;
-  let salaryAdvances = 0;
 
   const trackCash = (when, amount, method) => {
     // amount > 0 is a receipt, < 0 a payment
@@ -133,25 +125,6 @@ async function getBalanceSheet({ from, to } = {}) {
       const overdue = f.status === 'overdue' || (f.dueDate && new Date(f.dueDate) < toEnd);
       if (overdue) receivableOverdue += amount;
       else receivableCurrent += amount;
-    }
-  }
-
-  for (const s of salaries) {
-    const amount = Number(s.amount) || 0;
-    const pd = periodDate(s);
-    const recognised = pd <= toEnd;
-    const paidDate = s.status === 'paid' ? s.paidAt || pd : null;
-    const paidByEnd = paidDate && paidDate <= toEnd;
-
-    if (recognised) {
-      if (pd < fromDate) openingFund -= amount;
-      else addTo(expenditure, 'Staff salaries', amount);
-    }
-    if (paidByEnd) {
-      if (trackCash(paidDate, -amount, s.paymentMethod)) salaryPayments += amount;
-      if (!recognised) salaryAdvances += amount;
-    } else if (recognised) {
-      salariesPayable += amount;
     }
   }
 
@@ -186,13 +159,9 @@ async function getBalanceSheet({ from, to } = {}) {
       ],
     },
   ];
-  if (salaryAdvances) {
-    currentAssets.push({ key: 'advances', label: 'Salary advances', amount: round(salaryAdvances) });
-  }
   const totalAssets = round(currentAssets.reduce((n, l) => n + l.amount, 0));
 
   const currentLiabilities = [
-    { key: 'salaries', label: 'Salaries payable', amount: round(salariesPayable) },
     { key: 'advanceFees', label: 'Fees received in advance', amount: round(feesInAdvance) },
   ];
   const totalLiabilities = round(currentLiabilities.reduce((n, l) => n + l.amount, 0));
@@ -239,7 +208,7 @@ async function getBalanceSheet({ from, to } = {}) {
     cashFlow: {
       opening: round(openingCash),
       receipts: round(receipts),
-      salaryPayments: round(salaryPayments),
+      salaryPayments: 0,
       expensePayments: round(expensePayments),
       closing: totalCash,
     },

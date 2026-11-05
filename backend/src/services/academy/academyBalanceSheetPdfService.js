@@ -266,8 +266,7 @@ function renderBalanceSheetPdf(sheet) {
       doc.restore();
       y += 18;
 
-      const totalPayments =
-        (Number(sheet.cashFlow.salaryPayments) || 0) + (Number(sheet.cashFlow.expensePayments) || 0);
+      const totalPayments = Number(sheet.cashFlow.expensePayments) || 0;
       y = drawSingleTable(y, 'Cash on Hand', [
         {
           label: `Opening cash (${shortDate(sheet.range.from)})`,
@@ -275,8 +274,7 @@ function renderBalanceSheetPdf(sheet) {
           kind: 'item',
         },
         { label: 'Add: fees / receipts collected', amount: sheet.cashFlow.receipts, kind: 'item' },
-        { label: 'Less: salaries paid', amount: -sheet.cashFlow.salaryPayments, kind: 'item' },
-        { label: 'Less: expenses paid', amount: -sheet.cashFlow.expensePayments, kind: 'item' },
+        { label: 'Less: academy expenses paid', amount: -sheet.cashFlow.expensePayments, kind: 'item' },
         { label: 'Total payments', amount: -totalPayments, kind: 'item' },
         {
           label: `Cash on hand as at ${shortDate(sheet.range.to)}`,
