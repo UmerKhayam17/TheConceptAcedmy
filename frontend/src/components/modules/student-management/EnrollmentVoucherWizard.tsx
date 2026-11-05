@@ -645,7 +645,7 @@ export function EnrollmentVoucherWizard({
                         <p className="font-medium">
                           Legacy discount: {formatPkr(Number(monthlyDiscount) || 0)} / month
                           {preview && indicativePercent(Number(monthlyDiscount) || 0, preview.monthlyFee)
-                            ? ` (≈${indicativePercent(Number(monthlyDiscount) || 0, preview.monthlyFee)}% of this fee)`
+                            ? ` (\u2248${indicativePercent(Number(monthlyDiscount) || 0, preview.monthlyFee)}% of this fee)`
                             : ""}
                         </p>
                         <p className="text-xs text-muted-foreground">

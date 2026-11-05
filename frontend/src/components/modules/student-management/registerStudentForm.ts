@@ -77,7 +77,7 @@ export function feeReliefSummary(
     detail = student.exemptionRemarks || "";
   } else if (type === "legacy") {
     const pct = indicativePercent(amount, monthly);
-    detail = pct ? `≈${pct}% of current fee (indicative)` : "";
+    detail = pct ? `\u2248${pct}% of current fee (indicative)` : "";
   }
   const typeLabel =
     type === "concession"

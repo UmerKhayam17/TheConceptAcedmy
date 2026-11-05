@@ -2319,165 +2319,173 @@ function monthKey(record) {
   return `${record.year}-${String(record.month).padStart(2, '0')}`;
 }
 
-function monthHeader(record, sameYear) {
-  const name = MONTH_NAMES[(Number(record.month) || 1) - 1] || '';
-  return sameYear ? name : `${name} ${record.year}`;
-}
+/**
+ * One row per student (all unpaid challans rolled up). Same heads as Paid Fee Summary,
+ * without Receipt # / Paid Date. Month lists every unpaid period for that student.
+ * S.No | Challan No. | Roll # | Student | Class | Section | Month | Concession |
+ * [Admission] | Tuition | Stationery | <each additional charge> | Total Due
+ */
+function buildDefaulterReport(records, categoryNames = {}) {
+  const sorted = sortUnpaidForSummary(records);
+  const chargeCols = new Map();
+  let hasAdmission = false;
 
-function formatExportDate(value) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
-}
-
-function buildDefaulterReport(records) {
-  const monthOrder = [];
-  const seenMonths = new Set();
-  records.forEach((record) => {
-    const key = monthKey(record);
-    if (seenMonths.has(key)) return;
-    seenMonths.add(key);
-    monthOrder.push({ key, month: record.month, year: record.year });
-  });
-  const years = new Set(monthOrder.map((m) => m.year));
-  const sameYear = years.size <= 1;
+  const headKey = (head) => {
+    if (/^Admission/i.test(head)) return 'admission';
+    if (/^Tuition/i.test(head)) return 'tuition';
+    if (/^station[ae]r/i.test(head)) return 'stationery';
+    const key = `charge_${head.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+    if (!chargeCols.has(key)) chargeCols.set(key, head);
+    return key;
+  };
 
   const byStudent = new Map();
-  records.forEach((record) => {
+  for (const record of sorted) {
     const student = record.studentId;
+    if (!student?._id) continue;
     const id = String(student._id);
     if (!byStudent.has(id)) {
       byStudent.set(id, {
-        regNo: student.rollNumber || student.studentId || '',
-        rollNo: student.rollNumber || student.studentId || '',
-        name: student.studentName || '',
-        fatherName: student.fatherName || '',
-        className: student.classId?.className || '',
-        sectionName: student.sectionId?.sectionName || '',
-        contact: student.phone || '',
-        challanNo: record.receiptNumber || '',
-        dueDate: record.dueDate || null,
-        amounts: {},
-        total: 0,
+        student,
+        challans: [],
+        periods: [],
+        periodKeys: new Set(),
+        admission: 0,
+        tuition: 0,
+        stationery: 0,
+        charges: {},
+        totalDue: 0,
       });
     }
-    const row = byStudent.get(id);
-    const key = monthKey(record);
-    row.amounts[key] = (row.amounts[key] || 0) + (Number(record.amount) || 0);
-    row.total += Number(record.amount) || 0;
-    if (record.dueDate && (!row.dueDate || new Date(record.dueDate) < new Date(row.dueDate))) {
-      row.dueDate = record.dueDate;
-      if (record.receiptNumber) row.challanNo = record.receiptNumber;
-    } else if (!row.challanNo && record.receiptNumber) {
-      row.challanNo = record.receiptNumber;
+    const entry = byStudent.get(id);
+    const challan = String(record.receiptNumber || '').trim();
+    if (challan && !entry.challans.includes(challan)) entry.challans.push(challan);
+
+    const periodLabel = paidFeePeriodLabel(record);
+    const periodKey =
+      record.feeType === 'admission'
+        ? 'admission'
+        : `${Number(record.year) || 0}-${String(Number(record.month) || 0).padStart(2, '0')}`;
+    if (periodLabel && !entry.periodKeys.has(periodKey)) {
+      entry.periodKeys.add(periodKey);
+      entry.periods.push({ key: periodKey, label: periodLabel });
     }
-  });
+
+    entry.totalDue = roundMoney(entry.totalDue + (Number(record.amount) || 0));
+    for (const { head, amount } of paidFeeHeadLines(record)) {
+      const key = headKey(head);
+      if (key === 'admission') {
+        hasAdmission = true;
+        entry.admission = roundMoney(entry.admission + amount);
+      } else if (key === 'tuition') {
+        entry.tuition = roundMoney(entry.tuition + amount);
+      } else if (key === 'stationery') {
+        entry.stationery = roundMoney(entry.stationery + amount);
+      } else {
+        entry.charges[key] = roundMoney((entry.charges[key] || 0) + amount);
+      }
+    }
+  }
 
   const students = [...byStudent.values()].sort((a, b) => {
-    const byClass = String(a.className || '').localeCompare(String(b.className || ''));
+    const sa = a.student;
+    const sb = b.student;
+    const byClass = String(sa?.classId?.className || '').localeCompare(
+      String(sb?.classId?.className || '')
+    );
     if (byClass) return byClass;
-    const bySection = String(a.sectionName || '').localeCompare(String(b.sectionName || ''));
+    const bySection = String(sa?.sectionId?.sectionName || '').localeCompare(
+      String(sb?.sectionId?.sectionName || '')
+    );
     if (bySection) return bySection;
     return compareStudentsByRollAsc(
-      { rollNumber: a.rollNo, studentName: a.name },
-      { rollNumber: b.rollNo, studentName: b.name }
+      { rollNumber: sa?.rollNumber || sa?.studentId, studentName: sa?.studentName },
+      { rollNumber: sb?.rollNumber || sb?.studentId, studentName: sb?.studentName }
     );
   });
 
-  const rows = students.map((student, index) => {
+  const chargeKeys = [...chargeCols.keys()].sort((a, b) =>
+    chargeCols.get(a).localeCompare(chargeCols.get(b))
+  );
+  const amountKeys = [
+    ...(hasAdmission ? ['admission'] : []),
+    'tuition',
+    'stationery',
+    ...chargeKeys,
+  ];
+
+  const rows = students.map((entry, index) => {
+    const student = entry.student;
+    entry.periods.sort((a, b) => String(a.key).localeCompare(String(b.key)));
     const row = {
       serial: index + 1,
-      regNo: student.regNo,
-      rollNo: student.rollNo,
-      name: student.name,
-      fatherName: student.fatherName,
-      className: student.className,
-      sectionName: student.sectionName,
-      challanNo: student.challanNo,
-      total: student.total,
-      dueDate: formatExportDate(student.dueDate),
-      contact: student.contact || '',
+      challanNo: entry.challans.join(', '),
+      rollNo: student?.rollNumber || student?.studentId || student?.registrationNumber || '',
+      studentName: student?.studentName || '',
+      className: student?.classId?.className || '',
+      sectionName: student?.sectionId?.sectionName || '',
+      period: entry.periods.map((p) => p.label).join(', '),
+      concession: summaryConcessionLabel(student, categoryNames),
+      admission: entry.admission,
+      tuition: entry.tuition,
+      stationery: entry.stationery,
+      totalDue: entry.totalDue,
     };
-    monthOrder.forEach((m) => {
-      row[m.key] = student.amounts[m.key] ?? null;
-    });
+    for (const key of chargeKeys) row[key] = entry.charges[key] || 0;
+    for (const key of amountKeys) row[key] = Number(row[key]) || 0;
     return row;
   });
 
   if (rows.length) {
-    const totalRow = {
+    const total = {
       _isTotal: true,
       serial: '',
-      regNo: '',
+      challanNo: '',
       rollNo: '',
-      name: '',
-      fatherName: '',
+      studentName: 'Total',
       className: '',
       sectionName: '',
-      challanNo: '',
-      total: 0,
-      dueDate: '',
-      contact: '',
+      period: '',
+      concession: '',
+      totalDue: roundMoney(rows.reduce((s, r) => s + r.totalDue, 0)),
     };
-    monthOrder.forEach((m) => {
-      const sum = rows.reduce((acc, row) => acc + (Number(row[m.key]) || 0), 0);
-      totalRow[m.key] = sum || null;
-      totalRow.total += sum;
-    });
-    rows.push(totalRow);
+    for (const key of amountKeys) {
+      total[key] = roundMoney(rows.reduce((s, r) => s + (Number(r[key]) || 0), 0));
+    }
+    rows.push(total);
   }
 
-  // Base widths for A4 landscape (~770 usable). Renderer scales to exact page width.
-  const usable = 770;
-  const fixed = [
-    { key: 'serial', header: 'Serial', excelWidth: 8, pdfWidth: 32, align: 'center' },
-    { key: 'rollNo', header: 'Roll #', excelWidth: 16, pdfWidth: 72, wrap: true },
-    { key: 'name', header: 'Name', excelWidth: 22, pdfWidth: 110, wrap: true },
-    { key: 'fatherName', header: 'Father Name', excelWidth: 20, pdfWidth: 100, wrap: true },
-    { key: 'contact', header: 'Contact', excelWidth: 14, pdfWidth: 70 },
-    { key: 'className', header: 'Class', excelWidth: 10, pdfWidth: 40, align: 'center' },
-    { key: 'sectionName', header: 'Section', excelWidth: 10, pdfWidth: 42, align: 'center' },
-    { key: 'challanNo', header: 'Challan #', excelWidth: 16, pdfWidth: 72, wrap: true },
-  ];
-  const trail = [
-    { key: 'total', header: 'Total Amount', excelWidth: 13, pdfWidth: 58, align: 'right', numFmt: '#,##0' },
-    { key: 'dueDate', header: 'Due Date', excelWidth: 12, pdfWidth: 55, align: 'center' },
-  ];
-  const fixedW = fixed.reduce((s, c) => s + c.pdfWidth, 0);
-  const trailW = trail.reduce((s, c) => s + c.pdfWidth, 0);
-  const monthBudget = Math.max(40, usable - fixedW - trailW);
-  const monthPdf = Math.max(
-    40,
-    Math.floor(monthBudget / Math.max(monthOrder.length, 1))
-  );
-  const monthColumns = monthOrder.map((m) => ({
-    key: m.key,
-    header: monthHeader(m, sameYear),
-    excelWidth: 11,
-    pdfWidth: monthPdf,
+  // Wider Month column — may list several unpaid periods per student.
+  const fixedPdf = 26 + 56 + 48 + 78 + 32 + 34 + 88 + 72 + 56;
+  const amountPdf = Math.max(38, Math.min(58, Math.floor((770 - fixedPdf) / Math.max(amountKeys.length, 1))));
+  const money = (key, header) => ({
+    key,
+    header,
+    excelWidth: 12,
+    pdfWidth: amountPdf,
     align: 'right',
     numFmt: '#,##0',
-  }));
-  // Distribute any leftover width evenly so the table fills the page.
-  const columns = [...fixed, ...monthColumns, ...trail];
-  const sumW = columns.reduce((s, c) => s + c.pdfWidth, 0);
-  let leftover = usable - sumW;
-  if (leftover !== 0) {
-    const growKeys = new Set(['name', 'fatherName', 'rollNo', 'contact', 'challanNo']);
-    const growCols = columns.filter((c) => growKeys.has(c.key));
-    const targets = growCols.length ? growCols : columns;
-    const each = Math.floor(leftover / targets.length);
-    targets.forEach((c) => {
-      c.pdfWidth += each;
-    });
-    targets[targets.length - 1].pdfWidth += leftover - each * targets.length;
-  }
-
-  return { columns, rows, monthCount: monthOrder.length };
+    wrap: true,
+  });
+  const columns = [
+    { key: 'serial', header: 'S.No.', excelWidth: 6, pdfWidth: 26, align: 'center' },
+    { key: 'challanNo', header: 'Challan No.', excelWidth: 16, pdfWidth: 56, align: 'center', wrap: true },
+    { key: 'rollNo', header: 'Student Roll #', excelWidth: 12, pdfWidth: 48, align: 'center', wrap: true },
+    { key: 'studentName', header: 'Student Name', excelWidth: 18, pdfWidth: 78, wrap: true },
+    { key: 'className', header: 'Class', excelWidth: 8, pdfWidth: 32, align: 'center' },
+    { key: 'sectionName', header: 'Section', excelWidth: 9, pdfWidth: 34, align: 'center' },
+    { key: 'period', header: 'Month', excelWidth: 22, pdfWidth: 88, wrap: true },
+    { key: 'concession', header: 'Concession', excelWidth: 18, pdfWidth: 72, wrap: true },
+    ...(hasAdmission ? [money('admission', 'Admission Fee')] : []),
+    money('tuition', 'Tuition Fee'),
+    money('stationery', 'Stationery'),
+    ...chargeKeys.map((key) => money(key, chargeCols.get(key))),
+    { key: 'totalDue', header: 'Total Due', excelWidth: 13, pdfWidth: 56, align: 'right', numFmt: '#,##0' },
+  ];
+  return { columns, rows };
 }
 
-async function loadUnpaidMonthlyFees({ classId, month, year, search, sessionId }) {
+async function loadUnpaidFees({ classId, month, year, search, sessionId }) {
   await syncOverdueFees({ classId, month, year, sessionId });
 
   let studentIds;
@@ -2486,15 +2494,13 @@ async function loadUnpaidMonthlyFees({ classId, month, year, search, sessionId }
     if (!studentIds.length) return [];
   }
 
-  const feeMatch = {
-    ...buildDefaulterFeeMatch({ classId, month, year, studentIds }),
-    feeType: 'monthly',
-  };
+  const feeMatch = buildDefaulterFeeMatch({ classId, month, year, studentIds });
   let records = await AcademyFeeRecord.find(feeMatch)
     .populate({
       path: 'studentId',
+      // Section + relief fields match the Paid Fee Summary columns.
       select:
-        'studentId registrationNumber rollNumber studentName fatherName phone classId sectionId status',
+        'studentId registrationNumber rollNumber studentName fatherName phone classId sectionId status feeReliefType concessionCategory concessionPercent exemptionRemarks monthlyFee monthlyFeeDiscount',
       populate: [
         { path: 'classId', select: 'className' },
         { path: 'sectionId', select: 'sectionName' },
@@ -2521,6 +2527,32 @@ async function loadUnpaidMonthlyFees({ classId, month, year, search, sessionId }
     });
   }
   return records;
+}
+
+/** Class → section → roll → period — roster order for unpaid challans. */
+function sortUnpaidForSummary(records) {
+  return [...records].sort((a, b) => {
+    const sa = a.studentId;
+    const sb = b.studentId;
+    const byClass = String(sa?.classId?.className || '').localeCompare(
+      String(sb?.classId?.className || '')
+    );
+    if (byClass) return byClass;
+    const bySection = String(sa?.sectionId?.sectionName || '').localeCompare(
+      String(sb?.sectionId?.sectionName || '')
+    );
+    if (bySection) return bySection;
+    const byRoll = compareStudentsByRollAsc(
+      { rollNumber: sa?.rollNumber || sa?.studentId, studentName: sa?.studentName },
+      { rollNumber: sb?.rollNumber || sb?.studentId, studentName: sb?.studentName }
+    );
+    if (byRoll) return byRoll;
+    return (
+      (Number(a.year) || 0) - (Number(b.year) || 0) ||
+      (Number(a.month) || 0) - (Number(b.month) || 0) ||
+      String(a.receiptNumber || '').localeCompare(String(b.receiptNumber || ''))
+    );
+  });
 }
 
 function paidFeePeriodLabel(record) {
@@ -2958,16 +2990,21 @@ async function exportPaidFeesReport({
 }
 
 async function exportFeeDefaultersMonthWise({ classId, month, year, search, sessionId, format }) {
-  const records = await loadUnpaidMonthlyFees({ classId, month, year, search, sessionId });
-  const { columns, rows } = buildDefaulterReport(records);
+  const records = await loadUnpaidFees({ classId, month, year, search, sessionId });
+  const { columns, rows } = buildDefaulterReport(
+    records,
+    await require('./concessionCategoryService').categoryNameMap()
+  );
   const { sessionLabel, classLabel } = await resolveFeeReportContext({ sessionId, classId });
   const periodBits = [
     formatReportMonthLabel({ month, year, records, allLabel: 'All unpaid months' }),
   ];
-  const studentCount = rows.length ? rows.length - 1 : 0;
+  const studentCount = rows.length && rows[rows.length - 1]?._isTotal ? rows.length - 1 : rows.length;
+  const voucherCount = records.length;
   const meta = {
     sessionLabel,
     leftFilter: classLabel || 'All classes',
+    centerFilter: `${studentCount} student${studentCount === 1 ? '' : 's'} · ${voucherCount} unpaid challan${voucherCount === 1 ? '' : 's'}`,
     rightFilter: periodBits.join(' · '),
     filterLine: periodBits.join(' · '),
     countLabel: `${studentCount} student${studentCount === 1 ? '' : 's'}`,
@@ -2977,7 +3014,7 @@ async function exportFeeDefaultersMonthWise({ classId, month, year, search, sess
     title: 'Fee Defaulter Report',
     sheetName: 'Defaulters',
     confidentialLabel: 'Fee defaulter list',
-    subject: 'Fee defaulters by month',
+    subject: 'Fee defaulters by student',
     columns,
     rows,
     meta,

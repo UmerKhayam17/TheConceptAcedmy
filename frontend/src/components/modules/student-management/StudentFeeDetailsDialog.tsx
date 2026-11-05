@@ -658,7 +658,7 @@ function LegacyDiscountNotice({
   return (
     <div className="rounded-md border border-sky-500/40 bg-sky-500/5 p-4 text-sm space-y-2">
       <p className="font-medium text-sky-900 dark:text-sky-200">
-        Legacy discount: PKR {num(reliefAmt)} / month{pct ? ` (≈${pct}% of current fee, indicative)` : ""}
+        Legacy discount: PKR {num(reliefAmt)} / month{pct ? ` (\u2248${pct}% of current fee, indicative)` : ""}
       </p>
       <p className="text-muted-foreground">
         Given before concession categories existed. The fixed amount is kept as is.{" "}

@@ -1709,7 +1709,7 @@ export default function RegisterStudentPage({
                 <p className="font-medium">
                   Legacy discount: ₨ {(Number(form.monthlyFeeDiscount) || 0).toLocaleString()} / month
                   {feePreview && indicativePercent(Number(form.monthlyFeeDiscount) || 0, feePreview.monthlyFee)
-                    ? ` (≈${indicativePercent(Number(form.monthlyFeeDiscount) || 0, feePreview.monthlyFee)}% of current fee)`
+                    ? ` (\u2248${indicativePercent(Number(form.monthlyFeeDiscount) || 0, feePreview.monthlyFee)}% of current fee)`
                     : ""}
                 </p>
                 <p className="text-xs text-muted-foreground">

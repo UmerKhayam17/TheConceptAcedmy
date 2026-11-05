@@ -53,11 +53,12 @@ function describeFeeRelief(student = {}, categoryNames = {}) {
     detail = remarks;
   } else if (type === 'legacy') {
     typeLabel = 'Legacy discount';
-    detail = approxPercent ? `≈${approxPercent}% of current fee` : '';
+    // U+2248 ≈ (approximately equal) — indicative % of current monthly fee
+    detail = approxPercent ? `\u2248${approxPercent}% of current fee` : '';
   }
 
   const label = type === 'legacy'
-    ? approxPercent ? `Legacy discount (≈${approxPercent}%)` : 'Legacy discount'
+    ? approxPercent ? `Legacy discount (\u2248${approxPercent}%)` : 'Legacy discount'
     : typeLabel ? (detail ? `${typeLabel} — ${detail}` : typeLabel) : '';
 
   return {

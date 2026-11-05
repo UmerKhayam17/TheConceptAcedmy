@@ -313,7 +313,7 @@ export default function AcademyDiscountReport() {
                                 ? row.exemptionRemarks || "—"
                                 : row.feeReliefType === "legacy"
                                   ? row.indicativePercent
-                                    ? `≈${row.indicativePercent}% (indicative)`
+                                    ? `\u2248${row.indicativePercent}% (indicative)`
                                     : "Old discount"
                                   : row.concessionCategoryName
                                   ? `${row.concessionCategoryName}${row.concessionPercent ? ` (${row.concessionPercent}%)` : ""}`

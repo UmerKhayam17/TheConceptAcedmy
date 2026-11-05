@@ -1,7 +1,68 @@
+const fs = require('fs');
+const path = require('path');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const { ACADEMY_BRAND, resolveLogoPath } = require('../../config/academyBrand');
 const { formatDisplayDate, formatTimeInTz } = require('../../utils/schoolDay');
+
+/** Helvetica/WinAnsi cannot draw ≈; prefer a system Unicode sans for table body text. */
+let cachedUnicodeFontFiles;
+
+function resolveUnicodeFontFiles() {
+  if (cachedUnicodeFontFiles !== undefined) return cachedUnicodeFontFiles;
+  const windir = process.env.WINDIR || 'C:\\Windows';
+  const candidates = [
+    {
+      regular: path.join(windir, 'Fonts', 'arial.ttf'),
+      bold: path.join(windir, 'Fonts', 'arialbd.ttf'),
+    },
+    {
+      regular: path.join(windir, 'Fonts', 'segoeui.ttf'),
+      bold: path.join(windir, 'Fonts', 'segoeuib.ttf'),
+    },
+    {
+      regular: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+      bold: '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    },
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c.regular)) {
+      cachedUnicodeFontFiles = c;
+      return cachedUnicodeFontFiles;
+    }
+  }
+  cachedUnicodeFontFiles = null;
+  return null;
+}
+
+function pdfBodyFonts(doc) {
+  if (doc._academyBodyFonts) return doc._academyBodyFonts;
+  const files = resolveUnicodeFontFiles();
+  if (files) {
+    try {
+      doc.registerFont('AcademySans', files.regular);
+      doc.registerFont(
+        'AcademySans-Bold',
+        files.bold && fs.existsSync(files.bold) ? files.bold : files.regular
+      );
+      doc._academyBodyFonts = { regular: 'AcademySans', bold: 'AcademySans-Bold' };
+      return doc._academyBodyFonts;
+    } catch {
+      /* fall through to Helvetica */
+    }
+  }
+  doc._academyBodyFonts = { regular: 'Helvetica', bold: 'Helvetica-Bold' };
+  return doc._academyBodyFonts;
+}
+
+/** Fallback when only Helvetica is available (≈ → ~ so it does not render as garbage). */
+function toPdfSafeText(value) {
+  return String(value ?? '')
+    .replace(/\u2248/g, '~')
+    .replace(/\u2026/g, '...')
+    .replace(/\u2014/g, '-')
+    .replace(/\u2013/g, '-');
+}
 
 function formatDate(value) {
   if (!value) return '';
@@ -20,14 +81,16 @@ function fitText(doc, text, width) {
   let t = String(text ?? '');
   if (!t) return '';
   if (doc.widthOfString(t) <= width) return t;
-  while (t.length > 1 && doc.widthOfString(`${t}…`) > width) {
+  while (t.length > 1 && doc.widthOfString(`${t}...`) > width) {
     t = t.slice(0, -1);
   }
-  return `${t}…`;
+  return `${t}...`;
 }
 
 function pdfLine(doc, text, x, y, { width, align = 'left' } = {}) {
-  const t = String(text ?? '');
+  const fonts = pdfBodyFonts(doc);
+  const usingUnicode = fonts.regular !== 'Helvetica';
+  const t = usingUnicode ? String(text ?? '') : toPdfSafeText(text);
   if (!t) return;
   let drawX = x;
   if (width && align !== 'left') {
@@ -118,12 +181,13 @@ function colAlign(col) {
   return col.align || (col.key === 'serial' ? 'center' : 'left');
 }
 
-function formatPdfCellValue(col, value) {
+function formatPdfCellValue(col, value, { unicode = false } = {}) {
   if (value == null || value === '') return '';
   if (col.numFmt && typeof value === 'number') {
     return value.toLocaleString('en-PK');
   }
-  return String(value);
+  const raw = String(value);
+  return unicode ? raw : toPdfSafeText(raw);
 }
 
 function isPdfTotalRow(row) {
@@ -248,10 +312,12 @@ function drawPdfTableHeader(doc, columns, startX, y, brand, { plain = false, lig
 }
 
 function pdfRowHeight(doc, columns, row, { minRowH = 16, pad = 4, fontSize = 7.5 } = {}) {
-  doc.font('Helvetica').fontSize(fontSize);
+  const fonts = pdfBodyFonts(doc);
+  const unicode = fonts.regular !== 'Helvetica';
+  doc.font(fonts.regular).fontSize(fontSize);
   let rowH = minRowH;
   columns.forEach((col) => {
-    const raw = formatPdfCellValue(col, row[col.key]);
+    const raw = formatPdfCellValue(col, row[col.key], { unicode });
     if (!raw) return;
     const innerW = Math.max(8, col.pdfWidth - pad * 2);
     if (col.wrap) {
@@ -291,8 +357,10 @@ function drawPdfRow(
   }
   doc.restore();
 
+  const fonts = pdfBodyFonts(doc);
+  const unicode = fonts.regular !== 'Helvetica';
   const textColor = plain ? '#111111' : '#1A2A3A';
-  doc.fillColor(textColor).font(totalRow ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+  doc.fillColor(textColor).font(totalRow ? fonts.bold : fonts.regular).fontSize(fontSize);
 
   if (plain && totalRow) {
     const firstAmountIdx = firstTotalAmountIdx(columns);
@@ -306,7 +374,7 @@ function drawPdfRow(
     let x = startX;
     columns.forEach((col, idx) => {
       if (idx >= firstAmountIdx) {
-        const raw = formatPdfCellValue(col, row[col.key]);
+        const raw = formatPdfCellValue(col, row[col.key], { unicode });
         const innerW = Math.max(8, col.pdfWidth - pad * 2);
         pdfLine(doc, fitText(doc, raw, innerW), x + pad, y + (rowH - fontSize) / 2, {
           width: innerW,
@@ -320,7 +388,7 @@ function drawPdfRow(
     // Fixed-height (fit-one-page) rows must stay single-line — wrapping overlaps the next row.
     const allowWrap = fixedRowH == null;
     columns.forEach((col) => {
-      const raw = formatPdfCellValue(col, row[col.key]);
+      const raw = formatPdfCellValue(col, row[col.key], { unicode });
       const innerW = Math.max(8, col.pdfWidth - pad * 2);
       const align = plain ? plainCellAlign(col) : colAlign(col);
       if (allowWrap && col.wrap && raw) {
