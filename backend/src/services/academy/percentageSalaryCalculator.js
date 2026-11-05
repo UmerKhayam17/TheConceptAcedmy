@@ -1,9 +1,12 @@
 /**
- * Percentage teacher salary (monthly tuition only — never admission / totalFee):
+ * Percentage teacher salary (monthly tuition only — never admission / additional charges):
  *   Salary = teacherPct × Σ (tuition × w)   over that teacher's subject assignments
  *
  * teacherPct = User.salaryPercentage (set when creating/editing the teacher)
- * tuition    = student.monthlyFee − monthlyFeeDiscount  (admission fee is excluded)
+ * tuition (salary month given) = COLLECTED tuition from that month's PAID fee voucher:
+ *              paid amount − additional charges − admission  (min 0)
+ *              Unpaid / waived voucher → 0 (salary refreshes when the fee is collected).
+ * tuition (no month — preview only) = student.monthlyFee − monthlyFeeDiscount
  * Full-package / listed subjects: w = tuitionSharePercent / 100
  * Part-time (!isFullPackage): w = 1 / n  (n = number of selected subjects)
  *
@@ -16,6 +19,7 @@ const TeacherAssignment = require('../../models/timetable/TeacherAssignment');
 const ScheduleSlot = require('../../models/timetable/ScheduleSlot');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademySubject = require('../../models/academy/AcademySubject');
+const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 function roundMoney(n) {
@@ -32,6 +36,43 @@ function studentMonthlyTuition(student) {
   const gross = Number(student.monthlyFee) || 0;
   const discount = Number(student.monthlyFeeDiscount) || 0;
   return Math.max(0, gross - discount);
+}
+
+/**
+ * Tuition actually collected on one paid fee voucher:
+ * paid amount − additional charge lines − admission line (never below 0).
+ * Example: bill 5,000 tuition + 2,000 charges, collected 6,000 → 4,000.
+ */
+function collectedTuitionFromFeeRecord(record) {
+  if (!record || record.status !== 'paid') return 0;
+  const paid = Math.max(0, Number(record.amount) || 0);
+  const nonTuition = (Array.isArray(record.components) ? record.components : [])
+    .filter((line) => line && line.kind !== 'tuition')
+    .reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+  return roundMoney(Math.max(0, paid - nonTuition));
+}
+
+/**
+ * studentId → collected tuition for one month (monthly + first-month admission vouchers).
+ * Students with no paid voucher for that month are absent (count as 0).
+ */
+async function loadCollectedTuitionByStudent(studentIds, month, year) {
+  const map = new Map();
+  if (!studentIds.length) return map;
+  const records = await AcademyFeeRecord.find({
+    studentId: { $in: studentIds },
+    month: Number(month),
+    year: Number(year),
+    feeType: { $in: ['monthly', 'admission'] },
+    status: 'paid',
+  })
+    .select('studentId amount components status')
+    .lean();
+  for (const r of records) {
+    const key = String(r.studentId);
+    map.set(key, roundMoney((map.get(key) || 0) + collectedTuitionFromFeeRecord(r)));
+  }
+  return map;
 }
 
 function studentTakesSubject(student, subjectId) {
@@ -159,7 +200,8 @@ async function loadTeacherTeachingCombos(teacherId) {
  * Compute percentage salary for one teacher from tuition pools × teacher %.
  * @returns {{ amount: number, breakdown: object[], salaryPercentage: number }}
  */
-async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
+async function calculateTeacherPercentageSalary(teacherId, teacherDoc, { month, year } = {}) {
+  const useCollected = Boolean(Number(month) && Number(year));
   const member =
     teacherDoc ||
     (await User.findById(teacherId).select('salaryPercentage payType').lean());
@@ -211,15 +253,22 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
         .lean()
     );
 
+    const collectedByStudent = useCollected
+      ? await loadCollectedTuitionByStudent(students.map((s) => s._id), month, year)
+      : null;
+
     let pool = 0;
     let studentCount = 0;
     let monthlyTuitionTotal = 0;
     const studentLines = [];
     for (const st of students) {
-      const tuition = studentMonthlyTuition(st);
+      const tuition = collectedByStudent
+        ? collectedByStudent.get(String(st._id)) || 0
+        : studentMonthlyTuition(st);
       const w = subjectWeightForStudent(st, subj);
       if (w <= 0 || tuition <= 0) continue;
       const explain = studentPoolExplain(st, subj, w, tuition);
+      if (collectedByStudent) explain.howCounted = `Collected tuition · ${explain.howCounted}`;
       pool += explain.contribution;
       monthlyTuitionTotal += tuition;
       studentCount += 1;
@@ -289,6 +338,7 @@ async function applyDefaultWeightsToClass(classId, className) {
 module.exports = {
   roundMoney,
   studentMonthlyTuition,
+  collectedTuitionFromFeeRecord,
   subjectWeightForStudent,
   studentPoolExplain,
   loadTeacherTeachingCombos,

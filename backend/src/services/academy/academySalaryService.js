@@ -153,16 +153,16 @@ async function listSalaryRecords({
   };
 }
 
-async function resolvePercentagePayload(member) {
+async function resolvePercentagePayload(member, { month, year } = {}) {
   const staffPct = Number(member.salaryPercentage || 0);
-  const calc = await calculateTeacherPercentageSalary(member._id, member);
+  const calc = await calculateTeacherPercentageSalary(member._id, member, { month, year });
   const notes =
     calc.amount > 0
-      ? `Auto: monthly tuition only × subject share × teacher ${staffPct}% (${calc.breakdown.length} subject pool${
+      ? `Auto: collected tuition (paid fee − additional charges − admission) × subject share × teacher ${staffPct}% (${calc.breakdown.length} subject pool${
           calc.breakdown.length === 1 ? '' : 's'
-        }). Admission fee excluded.`
+        }). Unpaid fees count 0 until collected.`
       : staffPct > 0
-        ? `Percentage pay (${staffPct}%). No monthly tuition pool yet — enter amount before marking paid.`
+        ? `Percentage pay (${staffPct}%). No tuition collected yet for this month — updates automatically as fees are collected.`
         : 'Percentage pay. Set teacher % on the staff profile, then recalculate.';
 
   return {
@@ -208,7 +208,7 @@ async function generateMonthlySalaries({ month, year, roleName }, userId) {
         continue;
       }
     } else {
-      const resolved = await resolvePercentagePayload(member);
+      const resolved = await resolvePercentagePayload(member, { month, year });
       amount = resolved.amount;
       pct = resolved.salaryPercentage;
       notes = resolved.notes;
@@ -270,7 +270,7 @@ async function recalculatePercentageSalaries({ month, year, roleName } = {}, use
       skipped += 1;
       continue;
     }
-    const resolved = await resolvePercentagePayload(member);
+    const resolved = await resolvePercentagePayload(member, { month: record.month, year: record.year });
     record.amount = resolved.amount;
     record.salaryPercentage = resolved.salaryPercentage;
     record.calculationSource = resolved.calculationSource;
@@ -293,9 +293,9 @@ async function recalculateUnpaidPercentageSalariesAfterWeightChange(userId) {
  * Fire-and-forget safe refresh of all unpaid percentage vouchers.
  * Used when student tuition / subjects / package change (any teacher pool may shift).
  */
-async function safeRefreshUnpaidPercentageSalaries(userId, reason = 'tuition') {
+async function safeRefreshUnpaidPercentageSalaries(userId, reason = 'tuition', { month, year } = {}) {
   try {
-    return await recalculatePercentageSalaries({}, userId);
+    return await recalculatePercentageSalaries({ month, year }, userId);
   } catch (err) {
     console.error(`[salary] Failed unpaid percentage refresh (${reason}):`, err);
     return { updated: 0, skipped: 0, error: true };
@@ -321,7 +321,7 @@ async function recalculateUnpaidPercentageSalariesForStaff(staffId, userId) {
       skipped += 1;
       continue;
     }
-    const resolved = await resolvePercentagePayload(member);
+    const resolved = await resolvePercentagePayload(member, { month: record.month, year: record.year });
     record.amount = resolved.amount;
     record.salaryPercentage = resolved.salaryPercentage;
     record.calculationSource = resolved.calculationSource;
@@ -503,7 +503,10 @@ async function getSalaryRecordById(id) {
     staff?.payType === 'percentage';
 
   if (isPercentage && staff?._id) {
-    const live = await calculateTeacherPercentageSalary(staff._id, staff);
+    const live = await calculateTeacherPercentageSalary(staff._id, staff, {
+      month: enriched.month,
+      year: enriched.year,
+    });
     const storedAmount = Number(enriched.amount) || 0;
     const liveAmount = Number(live.amount) || 0;
     enriched.calculationBreakdown = live.breakdown;
@@ -516,7 +519,7 @@ async function getSalaryRecordById(id) {
           ? enriched.salaryPercentage
           : Number(staff.salaryPercentage) || live.salaryPercentage || 0,
       formula:
-        'Salary = teacher% × Σ (tuition × weight). Full package uses subject share%; part-time splits tuition equally across enrolled subjects. Admission fee is never included.',
+        "Salary = teacher% × Σ (collected tuition × weight). Collected tuition = this month's paid fee − additional charges − admission (unpaid = 0). Full package uses subject share%; part-time splits tuition equally across enrolled subjects.",
     };
   } else {
     enriched.detailMeta = {

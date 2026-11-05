@@ -866,14 +866,22 @@ async function updateFeeRecord(id, payload = {}, slipFile) {
     }
     record.amount = amount;
     if (Array.isArray(record.components) && record.components.length > 0) {
-      record.components = [
-        {
-          name: record.feeType === 'admission' ? 'Admission' : record.feeType === 'stationery' ? 'Stationery' : 'Tuition',
-          amount,
-          kind: record.feeType === 'admission' ? 'admission' : 'tuition',
-        },
-      ];
+      // Keep the bill lines (tuition / admission / additional charges) so teacher salary can
+      // subtract the charges from what was collected. A lower amount is a collection discount
+      // (lines total − amount); a higher amount raises the tuition line.
+      const lines = record.components.map((line) =>
+        typeof line?.toObject === 'function' ? line.toObject() : { ...line }
+      );
+      const listTotal = totalFromComponents(lines);
+      if (amount > listTotal + 0.009) {
+        const extra = roundMoney(amount - listTotal);
+        const tuitionLine = lines.find((line) => line.kind === 'tuition');
+        if (tuitionLine) tuitionLine.amount = roundMoney((Number(tuitionLine.amount) || 0) + extra);
+        else lines.unshift({ name: 'Tuition', amount: extra, kind: 'tuition' });
+        record.components = lines;
+      }
     }
+    record.$locals.salaryRefresh = true;
   }
 
   if (payload.notes !== undefined) {
@@ -917,7 +925,31 @@ async function updateFeeRecord(id, payload = {}, slipFile) {
   }
 
   await record.save();
+  if (record.$locals.salaryRefresh && record.status === 'paid') {
+    scheduleTeacherSalaryRefresh(record.month, record.year, record.recordedBy);
+  }
   return getFeeRecordById(record._id);
+}
+
+/**
+ * Percentage teacher salary is based on collected tuition for the voucher month.
+ * After a payment changes, refresh that month's unpaid salary vouchers in the background.
+ * Calls within a few seconds for the same month are merged into one refresh.
+ */
+const pendingSalaryRefresh = new Map();
+function scheduleTeacherSalaryRefresh(month, year, userId) {
+  const m = Number(month);
+  const y = Number(year);
+  if (!m || !y) return;
+  const key = `${y}-${m}`;
+  if (pendingSalaryRefresh.has(key)) return;
+  const timer = setTimeout(async () => {
+    pendingSalaryRefresh.delete(key);
+    const { safeRefreshUnpaidPercentageSalaries } = require('./academySalaryService');
+    await safeRefreshUnpaidPercentageSalaries(userId, 'fee_collection', { month: m, year: y });
+  }, 3000);
+  if (typeof timer.unref === 'function') timer.unref();
+  pendingSalaryRefresh.set(key, timer);
 }
 
 async function listFeeRecords({
@@ -1642,6 +1674,7 @@ async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt, paymen
     if (again?.status === 'paid') throw new ApiError(400, 'Fee already paid');
     throw new ApiError(409, 'Could not record payment — please retry');
   }
+  scheduleTeacherSalaryRefresh(record.month, record.year, userId);
 
   const student = record.studentId;
   const needsSectionAssignment =
@@ -1693,6 +1726,7 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
     }
     paid.push(updated);
   }
+  for (const row of paid) scheduleTeacherSalaryRefresh(row.month, row.year, userId);
 
   const studentId = records[0].studentId;
   const student = await AcademyStudent.findById(studentId).select('status sectionId');
@@ -1763,6 +1797,7 @@ async function reversePayment(id, { reason, kind = 'reverse' } = {}, userId) {
     { new: true }
   );
   if (!updated) throw new ApiError(409, 'Payment changed — please retry');
+  scheduleTeacherSalaryRefresh(updated.month, updated.year, userId);
   return getFeeRecordById(updated._id);
 }
 
@@ -1897,6 +1932,8 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
     });
     throw new ApiError(409, 'Target fee was paid by someone else — please retry');
   }
+  scheduleTeacherSalaryRefresh(source.month, source.year, userId);
+  scheduleTeacherSalaryRefresh(paid.month, paid.year, userId);
 
   const [from, to] = await Promise.all([
     getFeeRecordById(source._id),
