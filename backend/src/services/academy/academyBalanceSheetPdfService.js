@@ -200,15 +200,24 @@ function renderBalanceSheetPdf(sheet) {
           doc.addPage();
           y = startBodyY();
         }
+        const showCount = Boolean(rows.showCount);
+        const countW = showCount ? 52 : 0;
         doc.save();
         doc.rect(MARGIN, y, contentW, HEADER_H).fill(NAVY);
         doc.restore();
         doc.rect(MARGIN, y, contentW, HEADER_H).strokeColor(LINE).lineWidth(0.85).stroke();
         const amountX = MARGIN + contentW - AMOUNT_W;
+        const countX = amountX - countW;
         doc.moveTo(amountX, y).lineTo(amountX, y + HEADER_H).strokeColor(LINE).lineWidth(0.4).stroke();
+        if (showCount) {
+          doc.moveTo(countX, y).lineTo(countX, y + HEADER_H).strokeColor(LINE).lineWidth(0.4).stroke();
+        }
         doc.font('Helvetica-Bold').fontSize(8).fillColor('#FFFFFF');
-        pdfLine(doc, title, MARGIN + 4, y + 4.5, { width: contentW - AMOUNT_W - 10 });
-        pdfLine(doc, 'PKR', amountX, y + 4.5, { width: AMOUNT_W - 4, align: 'center' });
+        pdfLine(doc, title, MARGIN + 4, y + 4.5, { width: contentW - AMOUNT_W - countW - 10 });
+        if (showCount) {
+          pdfLine(doc, 'No.', countX, y + 4.5, { width: countW - 4, align: 'center' });
+        }
+        pdfLine(doc, rows.amountHeader || 'PKR', amountX, y + 4.5, { width: AMOUNT_W - 4, align: 'center' });
         rows.forEach((row, index) => {
           const rowY = y + HEADER_H + index * ROW_H;
           if (row.kind === 'grand') {
@@ -222,12 +231,21 @@ function renderBalanceSheetPdf(sheet) {
             .lineWidth(row.kind === 'grand' ? 0.85 : 0.4)
             .stroke();
           doc.moveTo(amountX, rowY).lineTo(amountX, rowY + ROW_H).strokeColor(LINE).lineWidth(0.4).stroke();
+          if (showCount) {
+            doc.moveTo(countX, rowY).lineTo(countX, rowY + ROW_H).strokeColor(LINE).lineWidth(0.4).stroke();
+          }
           const bold = row.kind === 'grand';
           doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.5).fillColor('#111111');
           pdfLine(doc, row.label, MARGIN + 6, rowY + 4, {
-            width: contentW - AMOUNT_W - 14,
+            width: contentW - AMOUNT_W - countW - 14,
           });
-          pdfLine(doc, money(row.amount), amountX + 3, rowY + 4, {
+          if (showCount) {
+            pdfLine(doc, String(row.count || 0), countX + 3, rowY + 4, {
+              width: countW - 8,
+              align: 'right',
+            });
+          }
+          pdfLine(doc, row.display != null ? String(row.display) : money(row.amount), amountX + 3, rowY + 4, {
             width: AMOUNT_W - 8,
             align: 'right',
           });
@@ -252,6 +270,36 @@ function renderBalanceSheetPdf(sheet) {
         `Net ${sheet.incomeStatement.surplus >= 0 ? 'surplus' : 'deficit'} for the period`,
         sheet.incomeStatement.surplus
       );
+
+      const heads = sheet.headCounts || {};
+      y += 14;
+      if (y + 20 > pageBottom()) {
+        doc.addPage();
+        y = startBodyY();
+      }
+      doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9);
+      pdfLine(doc, 'Students', MARGIN, y);
+      doc.save();
+      doc.rect(MARGIN, y + 12, contentW, 1.5).fill(GOLD);
+      doc.restore();
+      y += 18;
+      const studentRows = [
+        {
+          label: 'Students who paid fees',
+          count: heads.paidStudents || 0,
+          amount: heads.paidCollected || 0,
+          kind: 'item',
+        },
+        {
+          label: 'Students on 100% free / full waiver',
+          count: heads.fullWaiverStudents || 0,
+          amount: heads.waiverCollected || 0,
+          kind: 'item',
+        },
+      ];
+      studentRows.showCount = true;
+      studentRows.amountHeader = 'Collected';
+      y = drawSingleTable(y, 'Students', studentRows);
 
       // Cash on hand at the end
       y += 14;

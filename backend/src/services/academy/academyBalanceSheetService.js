@@ -1,5 +1,6 @@
 const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const AcademyExpense = require('../../models/academy/AcademyExpense');
+const AcademyStudent = require('../../models/academy/AcademyStudent');
 const { categoryNameMap } = require('./expenseCategoryService');
 const { ACADEMY_BRAND } = require('../../config/academyBrand');
 const ApiError = require('../../utils/ApiError');
@@ -50,6 +51,30 @@ function addTo(map, key, amount) {
   map.set(key, (map.get(key) || 0) + amount);
 }
 
+/** Tuition and admission both payable at ₨ 0, or a 100% concession. Unset ₨ 0 fees do not count. */
+function isFullFreeStudent(student) {
+  if (Number(student.concessionPercent) >= 100) return true;
+  const monthlyFee = Math.max(0, Number(student.monthlyFee) || 0);
+  const admissionFee = Math.max(0, Number(student.admissionFee) || 0);
+  if (monthlyFee <= 0 && admissionFee <= 0) return false;
+  const monthlyDisc = Math.max(0, Number(student.monthlyFeeDiscount) || 0);
+  const admissionDisc = Math.max(0, Number(student.admissionFeeDiscount) || 0);
+  const legacyDisc = Math.max(0, Number(student.discountAmount) || 0);
+  let admissionAmount;
+  let monthlyAmount;
+  if (monthlyDisc > 0 || admissionDisc > 0) {
+    admissionAmount = Math.max(0, admissionFee - Math.min(admissionDisc, admissionFee));
+    monthlyAmount = Math.max(0, monthlyFee - Math.min(monthlyDisc, monthlyFee));
+  } else {
+    let remaining = legacyDisc;
+    const admCut = Math.min(remaining, admissionFee);
+    remaining -= admCut;
+    admissionAmount = Math.max(0, admissionFee - admCut);
+    monthlyAmount = Math.max(0, monthlyFee - Math.min(remaining, monthlyFee));
+  }
+  return monthlyAmount <= 0 && admissionAmount <= 0;
+}
+
 async function getBalanceSheet({ from, to } = {}) {
   const now = new Date();
   const fromDate = from ? parseYmd(from, 'start') : new Date(now.getFullYear(), 0, 1);
@@ -62,9 +87,9 @@ async function getBalanceSheet({ from, to } = {}) {
   const periodUpToTo = { $or: [{ year: { $lt: toY } }, { year: toY, month: { $lte: toM } }] };
   const paidByTo = { status: 'paid', paidAt: { $lte: toEnd } };
 
-  const [fees, expenses, planned, waived, categoryNames] = await Promise.all([
+  const [fees, expenses, planned, waived, categoryNames, enrolledStudents] = await Promise.all([
     AcademyFeeRecord.find({ status: { $ne: 'waived' }, $or: [periodUpToTo, paidByTo] })
-      .select('amount status paidAt paymentMethod feeType month year dueDate')
+      .select('studentId amount status paidAt paymentMethod feeType month year dueDate')
       .lean(),
     AcademyExpense.find({ status: 'paid', expenseDate: { $lte: toEnd } })
       .select('amount expenseDate category categoryOther paymentMethod')
@@ -87,6 +112,11 @@ async function getBalanceSheet({ from, to } = {}) {
       { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
     ]),
     categoryNameMap(),
+    AcademyStudent.find({ status: { $in: ['active', 'pending_fee'] } })
+      .select(
+        'monthlyFee monthlyFeeDiscount admissionFee admissionFeeDiscount discountAmount concessionPercent'
+      )
+      .lean(),
   ]);
 
   const cash = new Map();
@@ -99,6 +129,12 @@ async function getBalanceSheet({ from, to } = {}) {
   let receivableOverdue = 0;
   let receivableCurrent = 0;
   let feesInAdvance = 0;
+  const paidStudentIds = new Set();
+  let paidCollected = 0;
+  let waiverCollected = 0;
+  const fullWaiverIds = new Set(
+    enrolledStudents.filter(isFullFreeStudent).map((student) => String(student._id))
+  );
 
   const trackCash = (when, amount, method) => {
     // amount > 0 is a receipt, < 0 a payment
@@ -121,6 +157,12 @@ async function getBalanceSheet({ from, to } = {}) {
     if (paidByEnd) {
       if (trackCash(paidDate, amount, f.paymentMethod)) receipts += amount;
       if (!recognised) feesInAdvance += amount;
+      if (amount > 0 && paidDate >= fromDate && f.studentId) {
+        const sid = String(f.studentId);
+        paidStudentIds.add(sid);
+        paidCollected += amount;
+        if (fullWaiverIds.has(sid)) waiverCollected += amount;
+      }
     } else if (recognised) {
       const overdue = f.status === 'overdue' || (f.dueDate && new Date(f.dueDate) < toEnd);
       if (overdue) receivableOverdue += amount;
@@ -211,6 +253,12 @@ async function getBalanceSheet({ from, to } = {}) {
       salaryPayments: 0,
       expensePayments: round(expensePayments),
       closing: totalCash,
+    },
+    headCounts: {
+      paidStudents: paidStudentIds.size,
+      paidCollected: round(paidCollected),
+      fullWaiverStudents: fullWaiverIds.size,
+      waiverCollected: round(waiverCollected),
     },
     notes: {
       plannedExpenses: { amount: round(planned[0]?.total || 0), count: planned[0]?.count || 0 },
