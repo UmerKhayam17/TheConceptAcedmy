@@ -199,11 +199,29 @@ function isPdfTotalRow(row) {
 /** Prefer salary/amount/total so pool breakdown totals align on Salary, not Tuition. */
 function firstTotalAmountIdx(columns) {
   const preferred = columns.findIndex(
-    (col) => col.key === 'salary' || col.key === 'amount' || col.key === 'total'
+    (col) =>
+      col.key === 'salary' ||
+      col.key === 'amount' ||
+      col.key === 'total' ||
+      col.key === 'totalReceived' ||
+      col.key === 'totalDue'
   );
   if (preferred >= 0) return preferred;
   const fmt = columns.findIndex((col) => col.numFmt);
   return fmt >= 0 ? fmt : Math.max(0, columns.length - 1);
+}
+
+/** Rough wrapped-line height so Concession / Month cells are not clipped in Excel. */
+function estimateExcelRowHeight(row, columns) {
+  let lines = 1;
+  for (const col of columns) {
+    if (!col?.wrap) continue;
+    const text = String(row?.[col.key] ?? '').trim();
+    if (!text) continue;
+    const charsPerLine = Math.max(8, Math.floor((Number(col.excelWidth) || 12) * 1.15));
+    lines = Math.max(lines, Math.ceil(text.length / charsPerLine));
+  }
+  return Math.min(72, Math.max(20, 12 + lines * 13));
 }
 
 function drawPdfColumnLines(doc, columns, startX, y, height, { plain = false, brand, outer = false } = {}) {
@@ -754,7 +772,7 @@ function populateExcelSheet(workbook, {
   fitOnePage = false,
   lightHeader = false,
 }) {
-  const headerRows = plain ? 5 : 6;
+  const headerRows = plain ? 6 : 6;
   const orientation = layout === 'portrait' ? 'portrait' : 'landscape';
   const sheet = workbook.addWorksheet(sheetName || 'Report', {
     pageSetup: {
@@ -763,64 +781,113 @@ function populateExcelSheet(workbook, {
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: fitOnePage ? 1 : 0,
-      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+      margins: { left: 0.45, right: 0.45, top: 0.5, bottom: 0.55, header: 0.2, footer: 0.25 },
     },
-    views: [{ state: 'frozen', ySplit: headerRows }],
+    views: [{ state: 'frozen', ySplit: headerRows, showGridLines: false }],
   });
 
-  sheet.columns = columns.map((c) => ({ key: c.key, width: c.excelWidth }));
+  sheet.columns = columns.map((c) => ({
+    key: c.key,
+    width: Math.max(Number(c.excelWidth) || 10, c.wrap ? 14 : 8),
+  }));
   const lastCol = columns.length;
   const merge = (r1, r2 = r1) => sheet.mergeCells(r1, 1, r2, lastCol);
   const countLabel = meta.countLabel || `${rows.length} record${rows.length === 1 ? '' : 's'}`;
-  const logoPath = resolveLogoPath();
-  const thinBlack = { style: 'thin', color: { argb: 'FF222222' } };
-  const gridBorder = { top: thinBlack, bottom: thinBlack, left: thinBlack, right: thinBlack };
+  const navy = 'FF0E2A4E';
+  const gold = 'FFE8A317';
+  const muted = 'FF5A6A7A';
+  const zebra = 'FFF6F8FB';
+  const thinNavy = { style: 'thin', color: { argb: navy } };
+  const thinLine = { style: 'thin', color: { argb: 'FFD0D7E2' } };
+  const gridBorder = { top: thinLine, bottom: thinLine, left: thinLine, right: thinLine };
+  const headerBorder = {
+    top: thinNavy,
+    left: thinNavy,
+    right: thinNavy,
+    bottom: { style: 'medium', color: { argb: gold } },
+  };
 
   if (plain) {
-    sheet.getRow(1).height = 28;
+    sheet.getRow(1).height = 30;
     sheet.getRow(2).height = 16;
-    sheet.getRow(3).height = 20;
-    sheet.getRow(4).height = 16;
+    sheet.getRow(3).height = 14;
+    sheet.getRow(4).height = 22;
+    sheet.getRow(5).height = 18;
 
     merge(1);
     const heading = sheet.getCell(1, 1);
     heading.value = brand.name;
-    heading.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FF000000' } };
+    heading.font = { name: 'Calibri', size: 18, bold: true, color: { argb: navy } };
     heading.alignment = { vertical: 'middle', horizontal: 'center' };
 
     merge(2);
     const session = sheet.getCell(2, 1);
-    session.value = meta.sessionLabel ? `Session: ${meta.sessionLabel}` : '';
-    session.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF000000' } };
+    session.value = meta.sessionLabel ? `Session: ${meta.sessionLabel}` : brand.tagline || '';
+    session.font = {
+      name: 'Calibri',
+      size: 11,
+      bold: Boolean(meta.sessionLabel),
+      italic: !meta.sessionLabel,
+      color: { argb: meta.sessionLabel ? navy : gold },
+    };
     session.alignment = { vertical: 'middle', horizontal: 'center' };
 
     merge(3);
-    const titleCell = sheet.getCell(3, 1);
-    titleCell.value = title;
-    titleCell.font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF000000' } };
-    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
-    titleCell.border = gridBorder;
+    const contact = sheet.getCell(3, 1);
+    const contactBits = [
+      brand.address,
+      Array.isArray(brand.phones) ? brand.phones.join('  ·  ') : brand.phones,
+      brand.email,
+    ].filter(Boolean);
+    contact.value = contactBits.join('  |  ');
+    contact.font = { name: 'Calibri', size: 8, color: { argb: muted } };
+    contact.alignment = { vertical: 'middle', horizontal: 'center' };
 
     merge(4);
-    const filters = sheet.getCell(4, 1);
-    const leftText = meta.leftFilter || meta.filterLine || '';
+    const titleCell = sheet.getCell(4, 1);
+    titleCell.value = title;
+    titleCell.font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    titleCell.border = {
+      top: thinNavy,
+      left: thinNavy,
+      right: thinNavy,
+      bottom: { style: 'medium', color: { argb: gold } },
+    };
+
+    // Filter strip: left | center | right across the sheet width
+    const leftText = meta.leftFilter || '';
     const centerText = meta.centerFilter || countLabel || '';
-    const rightText = meta.rightFilter || '';
-    filters.value = [leftText, centerText, rightText].filter(Boolean).join('          ');
-    filters.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF696969' } };
-    filters.alignment = { vertical: 'middle', horizontal: 'center' };
-
-    if (logoPath) {
-      try {
-        const imageId = workbook.addImage({ filename: logoPath, extension: 'png' });
-        sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 48, height: 48 } });
-      } catch {
-        /* skip broken logo */
+    const rightText = meta.rightFilter || meta.filterLine || '';
+    const leftEnd = Math.max(1, Math.floor(lastCol / 3));
+    const midEnd = Math.max(leftEnd + 1, Math.floor((2 * lastCol) / 3));
+    const filterFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F6FA' } };
+    const filterFont = { name: 'Calibri', size: 9, bold: true, color: { argb: navy } };
+    const applyFilterBand = (start, end, value, align) => {
+      if (end > start) sheet.mergeCells(5, start, 5, end);
+      const cell = sheet.getCell(5, start);
+      cell.value = value;
+      cell.font = filterFont;
+      cell.fill = filterFill;
+      cell.alignment = { vertical: 'middle', horizontal: align, wrapText: true };
+      for (let c = start; c <= end; c += 1) {
+        const band = sheet.getCell(5, c);
+        band.fill = filterFill;
+        band.border = {
+          top: thinLine,
+          bottom: thinNavy,
+          left: c === 1 ? thinNavy : { style: 'hair', color: { argb: 'FFD0D7E2' } },
+          right: c === lastCol ? thinNavy : { style: 'hair', color: { argb: 'FFD0D7E2' } },
+        };
       }
-    }
+    };
+    applyFilterBand(1, leftEnd, leftText, 'left');
+    applyFilterBand(leftEnd + 1, midEnd, centerText, 'center');
+    applyFilterBand(midEnd + 1, lastCol, rightText, 'right');
 
-    const headerRow = sheet.getRow(5);
-    headerRow.height = 20;
+    const headerRow = sheet.getRow(6);
+    headerRow.height = 24;
     columns.forEach((col, i) => {
       const cell = headerRow.getCell(i + 1);
       cell.value = col.header;
@@ -828,13 +895,13 @@ function populateExcelSheet(workbook, {
         name: 'Calibri',
         size: 10,
         bold: true,
-        color: { argb: lightHeader ? 'FF111111' : 'FFFFFFFF' },
+        color: { argb: lightHeader ? navy : 'FFFFFFFF' },
       };
       cell.fill = lightHeader
         ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }
-        : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF555555' } };
+        : { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } };
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-      cell.border = gridBorder;
+      cell.border = lightHeader ? gridBorder : headerBorder;
     });
   } else {
     sheet.getRow(1).height = 22;
@@ -846,19 +913,19 @@ function populateExcelSheet(workbook, {
     merge(1);
     const heading = sheet.getCell(1, 1);
     heading.value = brand.name.toUpperCase();
-    heading.font = { name: 'Calibri', size: 18, bold: true, color: { argb: 'FF0E2A4E' } };
+    heading.font = { name: 'Calibri', size: 18, bold: true, color: { argb: navy } };
     heading.alignment = { vertical: 'middle', horizontal: 'center' };
 
     merge(2);
     const tag = sheet.getCell(2, 1);
     tag.value = brand.tagline;
-    tag.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FFE8A317' } };
+    tag.font = { name: 'Calibri', size: 10, italic: true, color: { argb: gold } };
     tag.alignment = { vertical: 'middle', horizontal: 'center' };
 
     merge(3);
     const contact = sheet.getCell(3, 1);
     contact.value = `${brand.address}  ·  ${brand.phones.join(' / ')}  ·  ${brand.email}`;
-    contact.font = { name: 'Calibri', size: 9, color: { argb: 'FF5A6A7A' } };
+    contact.font = { name: 'Calibri', size: 9, color: { argb: muted } };
     contact.alignment = { vertical: 'middle', horizontal: 'center' };
 
     merge(4);
@@ -866,17 +933,8 @@ function populateExcelSheet(workbook, {
     subtitle.value = [title, meta.filterLine, `Generated ${formatDateTime(meta.generatedAt)}`, countLabel]
       .filter(Boolean)
       .join('  ·  ');
-    subtitle.font = { name: 'Calibri', size: 9, color: { argb: 'FF0E2A4E' } };
+    subtitle.font = { name: 'Calibri', size: 9, color: { argb: navy } };
     subtitle.alignment = { vertical: 'middle', horizontal: 'center' };
-
-    if (logoPath) {
-      try {
-        const imageId = workbook.addImage({ filename: logoPath, extension: 'png' });
-        sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 52, height: 52 } });
-      } catch {
-        /* skip broken logo */
-      }
-    }
 
     const headerRow = sheet.getRow(6);
     headerRow.height = 20;
@@ -884,15 +942,16 @@ function populateExcelSheet(workbook, {
       const cell = headerRow.getCell(i + 1);
       cell.value = col.header;
       cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E2A4E' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } };
       cell.alignment = { vertical: 'middle', horizontal: colAlign(col) };
       cell.border = {
-        top: { style: 'thin', color: { argb: 'FF0E2A4E' } },
-        bottom: { style: 'thin', color: { argb: 'FFE8A317' } },
+        top: thinNavy,
+        bottom: { style: 'thin', color: { argb: gold } },
       };
     });
   }
 
+  const dataRows = rows.filter((row) => !isPdfTotalRow(row));
   rows.forEach((row, idx) => {
     const totalRow = isPdfTotalRow(row);
     const values = {};
@@ -906,7 +965,7 @@ function populateExcelSheet(workbook, {
       });
     }
     const excelRow = sheet.addRow(values);
-    excelRow.height = 18;
+    excelRow.height = plain ? estimateExcelRowHeight(row, columns) : 18;
     if (plain && totalRow) {
       const firstAmountIdx = firstTotalAmountIdx(columns);
       if (firstAmountIdx > 1) {
@@ -921,9 +980,9 @@ function populateExcelSheet(workbook, {
       const col = columns[colNumber - 1];
       cell.font = {
         name: 'Calibri',
-        size: 10,
+        size: totalRow ? 10 : 9.5,
         bold: totalRow,
-        color: { argb: plain ? 'FF000000' : 'FF1A2A3A' },
+        color: { argb: plain ? (totalRow ? navy : 'FF1A2A3A') : 'FF1A2A3A' },
       };
       cell.alignment = {
         vertical: col?.wrap ? 'top' : 'middle',
@@ -931,13 +990,22 @@ function populateExcelSheet(workbook, {
         wrapText: Boolean(col?.wrap),
       };
       if (plain) {
-        cell.border = gridBorder;
+        cell.border = totalRow
+          ? {
+              top: { style: 'medium', color: { argb: navy } },
+              bottom: { style: 'medium', color: { argb: navy } },
+              left: thinLine,
+              right: thinLine,
+            }
+          : gridBorder;
         if (totalRow) {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EEF5' } };
+        } else if (idx % 2 === 1) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra } };
         }
       } else {
         if (idx % 2 === 1) {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F8FB' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra } };
         }
         cell.border = { bottom: { style: 'hair', color: { argb: 'FFD6DEE8' } } };
       }
@@ -948,25 +1016,28 @@ function populateExcelSheet(workbook, {
   if (!plain && meta.extraLine) {
     const extra = sheet.addRow([]);
     extra.getCell(1).value = meta.extraLine;
-    extra.getCell(1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF5A6A7A' } };
+    extra.getCell(1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: muted } };
     sheet.mergeCells(extra.number, 1, extra.number, lastCol);
   }
 
   if (!plain) {
     const summaryRow = sheet.addRow([]);
     summaryRow.getCell(1).value = countLabel;
-    summaryRow.getCell(1).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0E2A4E' } };
+    summaryRow.getCell(1).font = { name: 'Calibri', size: 10, bold: true, color: { argb: navy } };
     sheet.mergeCells(summaryRow.number, 1, summaryRow.number, lastCol);
   }
 
   sheet.headerFooter.oddFooter = plain
-    ? `&LDated: ${formatDateTime(meta.generatedAt || new Date())}&RPage &P of &N`
+    ? `&L${brand.name}  |  ${confidentialLabel || title}&CDated: ${formatDateTime(
+        meta.generatedAt || new Date()
+      )}&RPage &P of &N`
     : `&L${brand.name}  |  ${confidentialLabel}&C&P / &N&RGenerated ${formatDate(
         meta.generatedAt || new Date()
       )}`;
+  // Keep Grand Total outside the filter range so sorting does not mix it into data.
   sheet.autoFilter = {
     from: { row: headerRows, column: 1 },
-    to: { row: headerRows + Math.max(rows.length, 1), column: lastCol },
+    to: { row: headerRows + Math.max(dataRows.length, 1), column: lastCol },
   };
 }
 
