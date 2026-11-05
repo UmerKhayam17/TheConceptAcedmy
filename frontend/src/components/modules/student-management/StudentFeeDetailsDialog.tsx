@@ -13,9 +13,14 @@ import {
   Search,
   ShieldCheck,
   Star,
+  Trash2,
   UserRound,
   Wallet,
 } from "lucide-react";
+
+/** Outlined red "Delete"-style button used for revoke actions. */
+const revokeBtnCls =
+  "gap-1.5 border-destructive/40 bg-background text-destructive hover:bg-destructive/10 hover:text-destructive";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -477,7 +482,7 @@ function useSaveRelief(student: AcademyStudent, label: "Concession" | "Exemption
       qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
       qc.invalidateQueries({ queryKey: ["concession-categories"] });
       toast({
-        title: body.feeReliefType ? `${label} applied` : `${label} removed`,
+        title: body.feeReliefType ? `${label} applied` : `${label} revoked`,
         description: "Unpaid tuition challans were updated; new months follow the same amount.",
       });
     },
@@ -583,8 +588,15 @@ function ConcessionTab({ student, canEdit }: { student: AcademyStudent; canEdit:
           )}
           <div className="flex flex-wrap justify-end gap-2">
             {curAmt > 0 && (
-              <Button variant="outline" size="sm" disabled={saveMut.isPending} onClick={remove}>
-                Remove concession
+              <Button
+                variant="outline"
+                size="sm"
+                className={revokeBtnCls}
+                disabled={saveMut.isPending}
+                onClick={remove}
+              >
+                <Trash2 className="h-4 w-4" />
+                Revoke concession
               </Button>
             )}
             <Button
@@ -680,7 +692,7 @@ function ReliefLockedNotice({ student, other }: { student: AcademyStudent; other
         {other === "exemption" && student.exemptionRemarks ? ` (${student.exemptionRemarks})` : ""}.
       </p>
       <p className="text-muted-foreground">
-        Only one can be active at a time. Remove it from the{" "}
+        Only one can be active at a time. Revoke it from the{" "}
         <span className="font-medium">{other === "exemption" ? "Apply Exemption" : "Grant Concession"}</span> tab first.
       </p>
     </div>
@@ -778,8 +790,16 @@ function ExemptionTab({ student, canEdit }: { student: AcademyStudent; canEdit: 
               Exempt full tuition
             </Button>
             {curAmt > 0 && (
-              <Button type="button" variant="outline" size="sm" disabled={saveMut.isPending} onClick={remove}>
-                Remove exemption
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={revokeBtnCls}
+                disabled={saveMut.isPending}
+                onClick={remove}
+              >
+                <Trash2 className="h-4 w-4" />
+                Revoke exemption
               </Button>
             )}
             <Button
