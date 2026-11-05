@@ -1,6 +1,8 @@
 const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const AcademyExpense = require('../../models/academy/AcademyExpense');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
+const AcademyOpeningBalance = require('../../models/academy/AcademyOpeningBalance');
+const Session = require('../../models/Session');
 const { categoryNameMap } = require('./expenseCategoryService');
 const { ACADEMY_BRAND } = require('../../config/academyBrand');
 const ApiError = require('../../utils/ApiError');
@@ -51,6 +53,53 @@ function addTo(map, key, amount) {
   map.set(key, (map.get(key) || 0) + amount);
 }
 
+const OPENING_KEY = 'default';
+
+function ymdFromStored(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+async function loadSession(sessionId) {
+  if (!sessionId || !/^[a-f0-9]{24}$/i.test(String(sessionId))) return null;
+  const session = await Session.findById(sessionId).select('name startDate endDate').lean();
+  if (!session?.startDate || !session?.endDate) return null;
+  const from = ymdFromStored(session.startDate);
+  const to = ymdFromStored(session.endDate);
+  if (!from || !to) return null;
+  return { id: String(session._id), name: session.name, from, to };
+}
+
+async function getOpeningBalance(sessionId) {
+  const session = await loadSession(sessionId);
+  if (!session) return null;
+  const row = await AcademyOpeningBalance.findOne({ key: session.id }).lean();
+  if (!row) return null;
+  return {
+    amount: Number(row.amount) || 0,
+    asOf: session.from,
+    sessionId: session.id,
+    sessionName: session.name,
+  };
+}
+
+async function saveOpeningBalance({ amount, sessionId }, userId) {
+  const session = await loadSession(sessionId);
+  if (!session) throw new ApiError(400, 'Choose a session before saving the opening balance.');
+  const row = await AcademyOpeningBalance.findOneAndUpdate(
+    { key: session.id },
+    { key: session.id, amount: Number(amount) || 0, asOf: session.from, updatedBy: userId },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).lean();
+  return {
+    amount: Number(row.amount) || 0,
+    asOf: session.from,
+    sessionId: session.id,
+    sessionName: session.name,
+  };
+}
+
 /** Tuition and admission both payable at ₨ 0, or a 100% concession. Unset ₨ 0 fees do not count. */
 function isFullFreeStudent(student) {
   if (Number(student.concessionPercent) >= 100) return true;
@@ -75,10 +124,19 @@ function isFullFreeStudent(student) {
   return monthlyAmount <= 0 && admissionAmount <= 0;
 }
 
-async function getBalanceSheet({ from, to } = {}) {
+async function getBalanceSheet({ from, to, sessionId } = {}) {
+  const session = await loadSession(sessionId);
   const now = new Date();
-  const fromDate = from ? parseYmd(from, 'start') : new Date(now.getFullYear(), 0, 1);
-  const toDay = to ? parseYmd(to, 'end') : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const fromDate = from
+    ? parseYmd(from, 'start')
+    : session
+      ? parseYmd(session.from, 'start')
+      : new Date(now.getFullYear(), 0, 1);
+  const toDay = to
+    ? parseYmd(to, 'end')
+    : session
+      ? parseYmd(session.to, 'end')
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
   if (fromDate > toDay) throw new ApiError(400, 'Start date must be on or before the end date.');
   const toEnd = new Date(toDay.getFullYear(), toDay.getMonth(), toDay.getDate(), 23, 59, 59, 999);
   const toY = toDay.getFullYear();
@@ -87,7 +145,8 @@ async function getBalanceSheet({ from, to } = {}) {
   const periodUpToTo = { $or: [{ year: { $lt: toY } }, { year: toY, month: { $lte: toM } }] };
   const paidByTo = { status: 'paid', paidAt: { $lte: toEnd } };
 
-  const [fees, expenses, planned, waived, categoryNames, enrolledStudents] = await Promise.all([
+  const [fees, expenses, planned, waived, categoryNames, enrolledStudents, savedOpening] =
+    await Promise.all([
     AcademyFeeRecord.find({ status: { $ne: 'waived' }, $or: [periodUpToTo, paidByTo] })
       .select('studentId amount status paidAt paymentMethod feeType month year dueDate')
       .lean(),
@@ -117,6 +176,7 @@ async function getBalanceSheet({ from, to } = {}) {
         'monthlyFee monthlyFeeDiscount admissionFee admissionFeeDiscount discountAmount concessionPercent'
       )
       .lean(),
+    AcademyOpeningBalance.findOne({ key: session ? session.id : OPENING_KEY }).lean(),
   ]);
 
   const cash = new Map();
@@ -130,6 +190,10 @@ async function getBalanceSheet({ from, to } = {}) {
   let receivableCurrent = 0;
   let feesInAdvance = 0;
   const paidStudentIds = new Set();
+  const savedAsOf = /^\d{4}-\d{2}-\d{2}$/.test(String(savedOpening?.asOf || '')) ? savedOpening.asOf : null;
+  const manualAsOf =
+    savedAsOf && savedAsOf <= ymd(fromDate) ? parseYmd(savedAsOf, 'opening balance') : null;
+  let skippedCash = 0;
   let paidCollected = 0;
   let waiverCollected = 0;
   const fullWaiverIds = new Set(
@@ -137,6 +201,11 @@ async function getBalanceSheet({ from, to } = {}) {
   );
 
   const trackCash = (when, amount, method) => {
+    // Cash before the user opening date is already inside that balance.
+    if (manualAsOf && when < manualAsOf) {
+      skippedCash += amount;
+      return false;
+    }
     // amount > 0 is a receipt, < 0 a payment
     addTo(cash, cashAccount(method), amount);
     if (when < fromDate) openingCash += amount;
@@ -155,8 +224,9 @@ async function getBalanceSheet({ from, to } = {}) {
       else addTo(income, FEE_INCOME_LABELS[f.feeType] || 'Other fees', amount);
     }
     if (paidByEnd) {
-      if (trackCash(paidDate, amount, f.paymentMethod)) receipts += amount;
-      if (!recognised) feesInAdvance += amount;
+      const inBook = trackCash(paidDate, amount, f.paymentMethod);
+      if (inBook) receipts += amount;
+      if (inBook && !recognised) feesInAdvance += amount;
       if (amount > 0 && paidDate >= fromDate && f.studentId) {
         const sid = String(f.studentId);
         paidStudentIds.add(sid);
@@ -180,6 +250,13 @@ async function getBalanceSheet({ from, to } = {}) {
     if (when < fromDate) openingFund -= amount;
     else addTo(expenditure, label, amount);
     if (trackCash(when, -amount, e.paymentMethod)) expensePayments += amount;
+  }
+
+  if (manualAsOf) {
+    const savedAmount = Number(savedOpening.amount) || 0;
+    openingCash += savedAmount;
+    addTo(cash, CASH_ACCOUNTS.cash, savedAmount);
+    openingFund += savedAmount - skippedCash;
   }
 
   const cashLines = CASH_ORDER.filter((k) => cash.has(k)).map((label) => ({
@@ -231,6 +308,7 @@ async function getBalanceSheet({ from, to } = {}) {
       email: ACADEMY_BRAND.email,
     },
     range: { from: ymd(fromDate), to: ymd(toDay) },
+    session: session ? { id: session.id, name: session.name, from: session.from, to: session.to } : null,
     assets: { current: currentAssets, total: totalAssets },
     liabilities: { current: currentLiabilities, total: totalLiabilities },
     fund: {
@@ -249,6 +327,8 @@ async function getBalanceSheet({ from, to } = {}) {
     },
     cashFlow: {
       opening: round(openingCash),
+      manualOpening: Boolean(manualAsOf),
+      openingAsOf: manualAsOf ? savedAsOf : null,
       receipts: round(receipts),
       salaryPayments: 0,
       expensePayments: round(expensePayments),
@@ -267,4 +347,4 @@ async function getBalanceSheet({ from, to } = {}) {
   };
 }
 
-module.exports = { getBalanceSheet };
+module.exports = { getBalanceSheet, getOpeningBalance, saveOpeningBalance };

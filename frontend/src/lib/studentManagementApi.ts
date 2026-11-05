@@ -1257,11 +1257,26 @@ export type BalanceSheet = {
   };
 };
 
-export const fetchBalanceSheet = (from: string, to: string) =>
-  api<BalanceSheet>(`/finance/balance-sheet?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-
-export async function fetchBalanceSheetPdf(from: string, to: string) {
+export const fetchBalanceSheet = (from: string, to: string, sessionId?: string) => {
   const q = new URLSearchParams({ from, to });
+  if (sessionId) q.set("sessionId", sessionId);
+  return api<BalanceSheet>(`/finance/balance-sheet?${q}`);
+};
+
+export type OpeningBalance = { amount: number; asOf: string; sessionId?: string; sessionName?: string };
+
+export const fetchOpeningBalance = (sessionId: string) =>
+  api<OpeningBalance | null>(`/finance/opening-balance?sessionId=${encodeURIComponent(sessionId)}`);
+
+export const saveOpeningBalance = (body: { amount: number; sessionId: string; asOf?: string }) =>
+  api<OpeningBalance>("/finance/opening-balance", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+
+export async function fetchBalanceSheetPdf(from: string, to: string, sessionId?: string) {
+  const q = new URLSearchParams({ from, to });
+  if (sessionId) q.set("sessionId", sessionId);
   const res = await authedFetch(`/student-management/finance/balance-sheet.pdf?${q}`);
   if (!res.ok) {
     const body = await parseJson<{ message?: string }>(res);

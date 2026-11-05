@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CalendarRange, CheckCircle2, Download, Layers, Users, GraduationCap } from "lucide-react";
+import SessionOpeningBalanceButton from "@/components/modules/timetable/SessionOpeningBalanceButton";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -171,6 +172,7 @@ export default function SessionDetailPage({
 
         {caps.canEdit && (
           <div className="flex flex-wrap gap-2">
+            <SessionOpeningBalanceButton session={session} variant="outline" className="h-8 text-xs gap-1" />
             {status === "active" && (
               <Button
                 variant="outline"

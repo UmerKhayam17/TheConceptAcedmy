@@ -72,6 +72,19 @@ router.get(
   dashboardCtrl.balanceSheet
 );
 
+router.get(
+  '/finance/opening-balance',
+  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  dashboardCtrl.openingBalance
+);
+
+router.put(
+  '/finance/opening-balance',
+  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  validate(schemas.openingBalanceBody),
+  dashboardCtrl.saveOpeningBalance
+);
+
 // Classes
 router.get(
   '/classes',

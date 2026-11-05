@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -53,6 +53,7 @@ import { moduleHref } from "@/lib/panelMenus";
 import { cn } from "@/lib/utils";
 import ListPagination from "@/components/modules/student-management/ListPagination";
 import { useToast } from "@/hooks/use-toast";
+import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import {
   FINANCE_COLORS,
@@ -151,9 +152,15 @@ function toYmdFromUnknown(value?: string | Date | null): string {
   return toYmd(d);
 }
 
-function yearToDateRange(): { from: string; to: string } {
-  const today = new Date();
-  return { from: toYmd(new Date(today.getFullYear(), 0, 1)), to: toYmd(today) };
+function sessionYmd(value?: string | Date | null): string {
+  if (!value) return "";
+  if (typeof value === "string") {
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+    if (match) return match[1];
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 function longDate(value: string): string {
@@ -306,6 +313,13 @@ const FinanceDashboard = () => {
   const r = (role || "admin") as Role;
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { selected, sessions, isAll } = usePanelSession();
+  const financeSession =
+    !isAll && selected
+      ? selected
+      : sessions.find((s) => s.isActive) || sessions.find((s) => s.status === "active") || null;
+  const sessionFrom = sessionYmd(financeSession?.startDate);
+  const sessionTo = sessionYmd(financeSession?.endDate);
 
   const [periodView, setPeriodView] = useState<PeriodView>("monthly");
   const [classFilter, setClassFilter] = useState("all");
@@ -317,8 +331,8 @@ const FinanceDashboard = () => {
   const [duePage, setDuePage] = useState(1);
   const [selectedTx, setSelectedTx] = useState<FinanceTransaction | null>(null);
   const [printingSheet, setPrintingSheet] = useState(false);
-  const [sheetFrom, setSheetFrom] = useState(() => toYmd(new Date(new Date().getFullYear(), 0, 1)));
-  const [sheetTo, setSheetTo] = useState(() => toYmd(new Date()));
+  const [sheetFrom, setSheetFrom] = useState("");
+  const [sheetTo, setSheetTo] = useState("");
   const pageSize = 5;
 
   const {
@@ -338,6 +352,13 @@ const FinanceDashboard = () => {
     queryFn: () => fetchFeeDefaulters({ page: 1, limit: 100 }),
     staleTime: 60_000,
   });
+
+  useEffect(() => {
+    if (!sessionFrom || !sessionTo) return;
+    setSheetFrom(sessionFrom);
+    setSheetTo(sessionTo);
+    setTxPage(1);
+  }, [financeSession?._id, sessionFrom, sessionTo]);
 
   const trends = (overview?.charts.monthlyTrends || []).filter((m) =>
     monthOverlapsRange(m.year, m.month, sheetFrom, sheetTo),
@@ -398,7 +419,7 @@ const FinanceDashboard = () => {
     const preview = openReportPreviewTab("pdf");
     setPrintingSheet(true);
     try {
-      const blob = await fetchBalanceSheetPdf(sheetFrom, sheetTo);
+      const blob = await fetchBalanceSheetPdf(sheetFrom, sheetTo, financeSession?._id);
       const mode = deliverReportBlob(
         blob,
         `Balance-Sheet_${sheetFrom}_to_${sheetTo}.pdf`,
@@ -699,9 +720,10 @@ const FinanceDashboard = () => {
     setDueSearch("");
     setTxPage(1);
     setDuePage(1);
-    const reset = yearToDateRange();
-    setSheetFrom(reset.from);
-    setSheetTo(reset.to);
+    if (sessionFrom && sessionTo) {
+      setSheetFrom(sessionFrom);
+      setSheetTo(sessionTo);
+    }
   };
 
   const feesHref = moduleHref(r, "fees");

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarRange, Eye, Plus } from "lucide-react";
+import { formatPkr } from "@/lib/financeDashboardData";
+import { fetchOpeningBalance } from "@/lib/studentManagementApi";
+import { CalendarRange, CheckCircle2, Eye, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,14 +21,26 @@ import {
   type AcademicSession,
 } from "@/lib/configApi";
 import { sessionDetailHref } from "@/lib/systemConfigMenus";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { matchesPanelSearch } from "@/lib/panelSearch";
+import SessionOpeningBalanceButton from "@/components/modules/timetable/SessionOpeningBalanceButton";
 import SessionEnrollmentImportFields, {
   buildSessionImportPayload,
   defaultSessionImportForm,
   type SessionImportFormState,
   validateSessionImportForm,
 } from "@/components/modules/timetable/SessionEnrollmentImportFields";
+
+function SessionOpeningAmount({ sessionId }: { sessionId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["finance-opening-balance", sessionId],
+    queryFn: () => fetchOpeningBalance(sessionId),
+  });
+  if (isLoading) return <span className="text-muted-foreground">…</span>;
+  if (!data) return <span className="text-muted-foreground">—</span>;
+  return <span className="font-medium tabular-nums">{formatPkr(data.amount)}</span>;
+}
 
 function formatDate(value: string) {
   try {
@@ -57,6 +71,7 @@ export default function AcademicSetupTab({
   const [form, setForm] = useState({ name: "", startDate: "", endDate: "" });
   const [importForm, setImportForm] = useState<SessionImportFormState>(defaultSessionImportForm);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | "active" | "completed" | "archived">("");
 
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ["academic-sessions"],
@@ -64,11 +79,13 @@ export default function AcademicSetupTab({
   });
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return sessions;
-    return sessions.filter((s) =>
-      matchesPanelSearch(search, s.name, sessionStatus(s), s.isActive ? "active" : "inactive"),
-    );
-  }, [sessions, search]);
+    return sessions.filter((s) => {
+      const status = sessionStatus(s);
+      if (statusFilter && status !== statusFilter) return false;
+      if (!search.trim()) return true;
+      return matchesPanelSearch(search, s.name, status, s.isActive ? "active" : "inactive");
+    });
+  }, [sessions, search, statusFilter]);
 
   const selected = sessions.find((s) => s._id === sessionId);
 
@@ -150,28 +167,71 @@ export default function AcademicSetupTab({
   const actionPending = closeMut.isPending;
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <PanelSearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="Search sessions…"
-          className="max-w-md"
-        />
-        {caps.canCreate && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setForm({ name: "", startDate: "", endDate: "" });
-              setImportForm(defaultSessionImportForm());
-              setOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4 mr-1" /> New session
-          </Button>
-        )}
+    <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <CalendarRange className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Academic Sessions
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                Create sessions, set their dates, and edit the opening balance for each session.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[15rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              A great school builds great futures.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
+        </div>
       </div>
+
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <FilterToolbar>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "" | "active" | "completed" | "archived")}
+            aria-label="Status filter"
+          >
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="archived">Archived</option>
+          </select>
+          <PanelSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search sessions…"
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+          {caps.canCreate && (
+            <FilterToolbarActions>
+              <Button
+                className="gap-2 h-10"
+                onClick={() => {
+                  setForm({ name: "", startDate: "", endDate: "" });
+                  setImportForm(defaultSessionImportForm());
+                  setOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" /> New session
+              </Button>
+            </FilterToolbarActions>
+          )}
+        </FilterToolbar>
+      </Card>
 
       {selected && (
         <Card className="p-4 border-accent/30 bg-accent/5">
@@ -211,7 +271,8 @@ export default function AcademicSetupTab({
                   <th className="text-left font-medium px-4 py-2.5">Session</th>
                   <th className="text-left font-medium px-4 py-2.5">Period</th>
                   <th className="text-left font-medium px-4 py-2.5">Status</th>
-                  <th className="text-right font-medium px-4 py-2.5 min-w-[12rem]">Actions</th>
+                  <th className="text-left font-medium px-4 py-2.5">Opening balance</th>
+                  <th className="text-right font-medium px-4 py-2.5">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -252,21 +313,33 @@ export default function AcademicSetupTab({
                         </span>
                       </td>
                       <td className="px-4 py-2.5">
-                        <div className="flex flex-wrap justify-end gap-1">
-                          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" asChild>
+                        <SessionOpeningAmount sessionId={s._id} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex justify-end gap-0.5">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            asChild
+                            aria-label="View session"
+                          >
                             <Link to={sessionDetailHref(role, s._id)}>
-                              <Eye className="h-3.5 w-3.5" /> Detail
+                              <Eye className="h-4 w-4" />
                             </Link>
                           </Button>
+                          {caps.canEdit && <SessionOpeningBalanceButton session={s} iconOnly />}
                           {caps.canEdit && status === "active" && (
                             <Button
-                              size="sm"
                               variant="ghost"
-                              className="h-7 text-xs"
+                              size="icon"
+                              className="h-8 w-8"
+                              aria-label="Close session"
+                              title="Close session"
                               disabled={actionPending}
                               onClick={() => handleClose(s._id)}
                             >
-                              Close
+                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                             </Button>
                           )}
                         </div>

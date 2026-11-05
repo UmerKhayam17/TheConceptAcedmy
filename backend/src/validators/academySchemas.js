@@ -479,6 +479,12 @@ const academySalaryGenerate = Joi.object({
   roleName: Joi.string().valid('teacher', 'accountant', 'non_teaching_staff').optional(),
 });
 
+const openingBalanceBody = Joi.object({
+  amount: Joi.number().min(0).max(1_000_000_000).required(),
+  asOf: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
+  sessionId: Joi.string().hex().length(24).required(),
+});
+
 const academyExpenseBody = Joi.object({
   title: Joi.string().trim().required(),
   category: Joi.string().trim().max(60).default('other'),
@@ -720,6 +726,7 @@ module.exports = {
   academySalaryPayBulk,
   academySalaryAmount,
   academySalaryGenerate,
+  openingBalanceBody,
   academyExpenseBody,
   academyExpensePatch,
   expenseCategoryBody,

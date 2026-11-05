@@ -55,9 +55,9 @@ function renderBalanceSheetPdf(sheet) {
   const logoPath = resolveLogoPath();
   const reportMeta = {
     generatedAt: sheet.generatedAt || new Date(),
-    leftFilter: `From: ${shortDate(sheet.range.from)}`,
-    centerFilter: `To: ${shortDate(sheet.range.to)}`,
-    rightFilter: 'All figures in PKR',
+    leftFilter: sheet.session?.name || `From: ${shortDate(sheet.range.from)}`,
+    centerFilter: sheet.session ? `From: ${shortDate(sheet.range.from)}` : `To: ${shortDate(sheet.range.to)}`,
+    rightFilter: sheet.session ? `To: ${shortDate(sheet.range.to)}` : 'All figures in PKR',
   };
 
   return new Promise((resolve, reject) => {
@@ -317,7 +317,9 @@ function renderBalanceSheetPdf(sheet) {
       const totalPayments = Number(sheet.cashFlow.expensePayments) || 0;
       y = drawSingleTable(y, 'Cash on Hand', [
         {
-          label: `Opening cash (${shortDate(sheet.range.from)})`,
+          label: sheet.cashFlow.manualOpening
+            ? `Opening balance (${shortDate(sheet.range.from)})`
+            : `Opening cash (${shortDate(sheet.range.from)})`,
           amount: sheet.cashFlow.opening,
           kind: 'item',
         },
@@ -368,8 +370,8 @@ function renderBalanceSheetPdf(sheet) {
   });
 }
 
-async function getBalanceSheetPdf({ from, to } = {}) {
-  const sheet = await getBalanceSheet({ from, to });
+async function getBalanceSheetPdf({ from, to, sessionId } = {}) {
+  const sheet = await getBalanceSheet({ from, to, sessionId });
   const buffer = await renderBalanceSheetPdf(sheet);
   return { buffer, range: sheet.range };
 }
