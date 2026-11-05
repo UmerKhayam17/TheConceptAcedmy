@@ -78,9 +78,14 @@ async function ensureParentPortalUser({
   phone,
   studentId,
   resetPassword = false,
+  /** Optional: pre-fetched parent Role (bulk callers pass it to avoid N lookups). */
+  parentRole: parentRoleIn = null,
+  /** Optional: pre-computed bcrypt hash of DEFAULT_PARENT_PASSWORD (bulk callers). */
+  passwordHash = null,
 }) {
-  const parentRole = await Role.findOne({ name: 'parent' });
+  const parentRole = parentRoleIn || (await Role.findOne({ name: 'parent' }));
   if (!parentRole) throw new ApiError(500, 'Roles not initialized');
+  const getHash = async () => passwordHash || bcrypt.hash(DEFAULT_PARENT_PASSWORD, 12);
 
   const parentEmail = buildParentPortalEmail(studentName, studentId);
   const parentPassword = DEFAULT_PARENT_PASSWORD;
@@ -96,7 +101,7 @@ async function ensureParentPortalUser({
       name: parentName,
       email: parentEmail,
       phone: phone || '',
-      password: await bcrypt.hash(parentPassword, 12),
+      password: await getHash(),
       issuedPassword: parentPassword,
       role: parentRole._id,
       isActive: true,
@@ -106,7 +111,7 @@ async function ensureParentPortalUser({
   } else {
     let dirty = false;
     if (resetPassword) {
-      parentUser.password = await bcrypt.hash(parentPassword, 12);
+      parentUser.password = await getHash();
       parentUser.issuedPassword = parentPassword;
       dirty = true;
     }
@@ -1524,11 +1529,14 @@ async function provisionParentPortalsForAllActiveStudents() {
     .select('studentId studentName fatherName guardianName phone guardianEmail')
     .sort({ studentName: 1 });
 
-  const rows = [];
-  let createdCount = 0;
-  let updatedCount = 0;
+  // Do the expensive/shared work ONCE instead of per student:
+  // - one Role lookup
+  // - one bcrypt hash (password is identical for every parent; bcryptjs cost 12 ≈ 300ms each)
+  const parentRole = await Role.findOne({ name: 'parent' });
+  if (!parentRole) throw new ApiError(500, 'Roles not initialized');
+  const passwordHash = await bcrypt.hash(DEFAULT_PARENT_PASSWORD, 12);
 
-  for (const student of students) {
+  const processStudent = async (student) => {
     const { parentEmail, parentPassword, created } = await ensureParentPortalUser({
       studentName: student.studentName,
       fatherName: student.fatherName,
@@ -1536,26 +1544,35 @@ async function provisionParentPortalsForAllActiveStudents() {
       phone: student.phone,
       studentId: student.studentId,
       resetPassword: true,
+      parentRole,
+      passwordHash,
     });
 
     if (String(student.guardianEmail || '').toLowerCase() !== parentEmail) {
-      student.guardianEmail = parentEmail;
-      // eslint-disable-next-line no-await-in-loop
-      await student.save();
+      await AcademyStudent.updateOne({ _id: student._id }, { $set: { guardianEmail: parentEmail } });
     }
 
-    if (created) createdCount += 1;
-    else updatedCount += 1;
-
-    rows.push({
+    return {
       studentMongoId: String(student._id),
       studentId: student.studentId,
       studentName: student.studentName,
       parentEmail,
       parentPassword,
       created,
-    });
+    };
+  };
+
+  // Process in parallel batches (emails are unique per studentId, so no collisions).
+  const BATCH_SIZE = 20;
+  const rows = [];
+  for (let i = 0; i < students.length; i += BATCH_SIZE) {
+    // eslint-disable-next-line no-await-in-loop
+    const batch = await Promise.all(students.slice(i, i + BATCH_SIZE).map(processStudent));
+    rows.push(...batch);
   }
+
+  const createdCount = rows.filter((r) => r.created).length;
+  const updatedCount = rows.length - createdCount;
 
   return {
     total: rows.length,
