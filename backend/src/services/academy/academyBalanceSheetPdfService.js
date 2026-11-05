@@ -26,7 +26,7 @@ function money(n) {
   const value = Number(n) || 0;
   if (Math.abs(value) < 0.005) return '–';
   const formatted = Math.abs(value).toLocaleString('en-PK', { maximumFractionDigits: 2 });
-  return value < 0 ? `(${formatted})` : formatted;
+  return value < 0 ? `-${formatted}` : formatted;
 }
 
 function shortDate(value) {
