@@ -74,7 +74,7 @@ const REPORT_OPTS = {
   plain: true,
   layout: 'portrait',
   fitOnePage: false,
-  lightHeader: true,
+  lightHeader: false,
 };
 
 const GRAY = '#C8C8C8';

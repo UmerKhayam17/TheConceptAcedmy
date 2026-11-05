@@ -3247,7 +3247,7 @@ async function exportClassAccountsReport({ classId, sectionId, sessionId, format
     meta,
     plain: true,
     layout: 'portrait',
-    lightHeader: true,
+    lightHeader: false,
   });
 }
 

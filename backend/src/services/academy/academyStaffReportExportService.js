@@ -1,4 +1,3 @@
-const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const {
   formatDate,
@@ -8,6 +7,7 @@ const {
   drawPdfFooterText,
   drawPdfTableHeader,
   drawPdfRow,
+  renderBrandedExcel,
 } = require('./academyReportDocument');
 const { ACADEMY_BRAND, resolveLogoPath } = require('../../config/academyBrand');
 const { publicEmail } = require('../../config/staffRoles');
@@ -272,98 +272,123 @@ async function renderStaffReportPdf(payload) {
 }
 
 async function renderStaffReportExcel(payload) {
-  const brand = ACADEMY_BRAND;
   const user = payload.user;
   const salaries = payload.salaries || [];
   const attendance = payload.attendance || [];
   const slots = payload.slots || [];
   const totals = payrollTotals(salaries);
   const att = attendanceSummary(attendance);
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = brand.name;
-  workbook.company = brand.legalName;
-  workbook.created = new Date();
+  const staffName = user?.name || 'Staff';
+  const roleLabel = cap(roleNameOf(user));
+  const sharedMeta = {
+    leftFilter: staffName,
+    centerFilter: roleLabel,
+    rightFilter: user?.isActive ? 'Active' : 'Inactive',
+    generatedAt: new Date(),
+  };
 
-  const profile = workbook.addWorksheet('Profile');
-  profile.columns = [{ width: 22 }, { width: 40 }];
-  profile.getCell('A1').value = brand.name;
-  profile.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FF0E2A4E' } };
-  profile.mergeCells('A1:B1');
-  profile.getCell('A2').value = 'Staff report';
-  [
-    ['Name', user.name],
-    ['Role', cap(roleNameOf(user))],
-    ['Email', publicEmail(user.email) || 'No login'],
-    ['Phone', user.phone || ''],
-    ['Monthly salary', money(user.salary)],
-    ['Status', user.isActive ? 'Active' : 'Inactive'],
-    ['Total paid', money(totals.paid)],
-    ['Total pending', money(totals.pending)],
-    [
-      'Attendance',
-      `Present ${att.present} · Late ${att.late} · Absent ${att.absent} · Half-day ${att.half_day} · Leave ${att.leave}`,
+  const profileColumns = [
+    { key: 'field', header: 'Field', excelWidth: 22 },
+    { key: 'value', header: 'Details', excelWidth: 52, wrap: true },
+  ];
+  const profileRows = [
+    { field: 'Name', value: staffName },
+    { field: 'Role', value: roleLabel },
+    { field: 'Email', value: publicEmail(user?.email) || 'No login' },
+    { field: 'Phone', value: user?.phone || '' },
+    { field: 'Monthly salary', value: money(user?.salary) },
+    { field: 'Status', value: user?.isActive ? 'Active' : 'Inactive' },
+    { field: 'Total paid', value: money(totals.paid) },
+    { field: 'Total pending', value: money(totals.pending) },
+    {
+      field: 'Attendance',
+      value: `Present ${att.present} · Late ${att.late} · Absent ${att.absent} · Half-day ${att.half_day} · Leave ${att.leave}`,
+    },
+  ];
+
+  const payrollColumns = [
+    { key: 'period', header: 'Period', excelWidth: 14, align: 'center' },
+    { key: 'voucher', header: 'Voucher', excelWidth: 18, wrap: true },
+    { key: 'amount', header: 'Amount', excelWidth: 14, align: 'right', numFmt: '#,##0' },
+    { key: 'status', header: 'Status', excelWidth: 12, align: 'center' },
+    { key: 'paidAt', header: 'Paid on', excelWidth: 14, align: 'center' },
+    { key: 'method', header: 'Method', excelWidth: 16, align: 'center' },
+  ];
+  const payrollRows = salaries.map((r) => ({
+    period: `${MONTHS[(r.month || 1) - 1]} ${r.year}`,
+    voucher: r.voucherNumber || '',
+    amount: Number(r.amount) || 0,
+    status: cap(r.status),
+    paidAt: r.paidAt ? formatDate(r.paidAt) : '',
+    method: r.paymentMethod || '',
+  }));
+
+  const attendanceColumns = [
+    { key: 'date', header: 'Date', excelWidth: 14, align: 'center' },
+    { key: 'status', header: 'Status', excelWidth: 12, align: 'center' },
+    { key: 'checkIn', header: 'Check-in', excelWidth: 12, align: 'center' },
+    { key: 'checkOut', header: 'Check-out', excelWidth: 12, align: 'center' },
+    { key: 'source', header: 'Source', excelWidth: 10, align: 'center' },
+  ];
+  const attendanceRows = attendance.map((r) => ({
+    date: formatDate(r.date),
+    status: cap(r.status).replace('_', ' '),
+    checkIn: fmtTime(r.checkIn),
+    checkOut: fmtTime(r.checkOut),
+    source: String(r.source || '').toUpperCase(),
+  }));
+
+  const timetableColumns = [
+    { key: 'day', header: 'Day', excelWidth: 14 },
+    { key: 'subject', header: 'Subject', excelWidth: 22, wrap: true },
+    { key: 'className', header: 'Class', excelWidth: 14, align: 'center' },
+    { key: 'section', header: 'Section', excelWidth: 12, align: 'center' },
+    { key: 'room', header: 'Room', excelWidth: 14, align: 'center' },
+  ];
+  const timetableRows = slots.map((s) => slotLabel(s));
+
+  return renderBrandedExcel({
+    title: 'Staff Report',
+    sheetName: 'Profile',
+    confidentialLabel: 'Staff report',
+    columns: profileColumns,
+    rows: profileRows,
+    meta: sharedMeta,
+    plain: true,
+    layout: 'portrait',
+    additionalSheets: [
+      {
+        title: 'Staff Report — Payroll',
+        sheetName: 'Payroll',
+        confidentialLabel: 'Staff payroll',
+        columns: payrollColumns,
+        rows: payrollRows,
+        meta: { ...sharedMeta, centerFilter: `${payrollRows.length} voucher${payrollRows.length === 1 ? '' : 's'}` },
+      },
+      {
+        title: 'Staff Report — Attendance',
+        sheetName: 'Attendance',
+        confidentialLabel: 'Staff attendance',
+        columns: attendanceColumns,
+        rows: attendanceRows,
+        meta: {
+          ...sharedMeta,
+          centerFilter: `${attendanceRows.length} day${attendanceRows.length === 1 ? '' : 's'}`,
+        },
+      },
+      {
+        title: 'Staff Report — Timetable',
+        sheetName: 'Timetable',
+        confidentialLabel: 'Staff timetable',
+        columns: timetableColumns,
+        rows: timetableRows,
+        meta: {
+          ...sharedMeta,
+          centerFilter: `${timetableRows.length} slot${timetableRows.length === 1 ? '' : 's'}`,
+        },
+      },
     ],
-  ].forEach((row, i) => {
-    profile.getCell(`A${i + 4}`).value = row[0];
-    profile.getCell(`A${i + 4}`).font = { bold: true, color: { argb: 'FF0E2A4E' } };
-    profile.getCell(`B${i + 4}`).value = row[1];
   });
-
-  const paySheet = workbook.addWorksheet('Payroll');
-  paySheet.columns = [
-    { header: 'Period', key: 'period', width: 14 },
-    { header: 'Voucher', key: 'voucher', width: 18 },
-    { header: 'Amount', key: 'amount', width: 14 },
-    { header: 'Status', key: 'status', width: 12 },
-    { header: 'Paid on', key: 'paidAt', width: 14 },
-    { header: 'Method', key: 'method', width: 16 },
-  ];
-  salaries.forEach((r) => {
-    paySheet.addRow({
-      period: `${MONTHS[(r.month || 1) - 1]} ${r.year}`,
-      voucher: r.voucherNumber || '',
-      amount: Number(r.amount) || 0,
-      status: cap(r.status),
-      paidAt: r.paidAt ? formatDate(r.paidAt) : '',
-      method: r.paymentMethod || '',
-    });
-  });
-  paySheet.getColumn('amount').numFmt = '"PKR "#,##0';
-
-  const attSheet = workbook.addWorksheet('Attendance');
-  attSheet.columns = [
-    { header: 'Date', key: 'date', width: 14 },
-    { header: 'Status', key: 'status', width: 12 },
-    { header: 'Check-in', key: 'checkIn', width: 12 },
-    { header: 'Check-out', key: 'checkOut', width: 12 },
-    { header: 'Source', key: 'source', width: 10 },
-  ];
-  attendance.forEach((r) => {
-    attSheet.addRow({
-      date: formatDate(r.date),
-      status: cap(r.status).replace('_', ' '),
-      checkIn: fmtTime(r.checkIn),
-      checkOut: fmtTime(r.checkOut),
-      source: String(r.source || '').toUpperCase(),
-    });
-  });
-
-  const ttSheet = workbook.addWorksheet('Timetable');
-  ttSheet.columns = [
-    { header: 'Day', key: 'day', width: 14 },
-    { header: 'Subject', key: 'subject', width: 22 },
-    { header: 'Class', key: 'className', width: 14 },
-    { header: 'Section', key: 'section', width: 12 },
-    { header: 'Room', key: 'room', width: 14 },
-  ];
-  slots.forEach((s) => ttSheet.addRow(slotLabel(s)));
-
-  [paySheet, attSheet, ttSheet].forEach((sheet) => {
-    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E2A4E' } };
-  });
-
-  return workbook.xlsx.writeBuffer();
 }
 
 module.exports = {

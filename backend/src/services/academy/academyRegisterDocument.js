@@ -328,8 +328,15 @@ function applyExcelFill(cell, argb) {
 async function renderRegisterExcel(register, spec, meta = {}) {
   const lead = spec.leadColumns;
   const tail = spec.tailColumns;
+  const brand = ACADEMY_BRAND;
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = ACADEMY_BRAND.name;
+  workbook.creator = brand.name;
+  workbook.company = brand.legalName;
+  workbook.created = new Date();
+
+  const headerBandRows = 5; // name, session, contact, title, filters
+  const tableHeaderRows = 2; // weekday + date
+  const freezeAt = headerBandRows + tableHeaderRows;
   const sheet = workbook.addWorksheet(spec.sheetName || 'Attendance', {
     pageSetup: {
       orientation: 'landscape',
@@ -337,8 +344,9 @@ async function renderRegisterExcel(register, spec, meta = {}) {
       fitToWidth: 1,
       fitToHeight: 0,
       paperSize: 9,
+      margins: { left: 0.45, right: 0.45, top: 0.5, bottom: 0.55, header: 0.2, footer: 0.25 },
     },
-    views: [{ state: 'frozen', xSplit: lead.length, ySplit: 5 }],
+    views: [{ state: 'frozen', xSplit: lead.length, ySplit: freezeAt, showGridLines: false }],
   });
 
   const firstDayCol = lead.length + 1;
@@ -349,30 +357,99 @@ async function renderRegisterExcel(register, spec, meta = {}) {
     ...tail.map((column) => ({ width: column.excelWidth || 10 })),
   ];
 
-  const thin = { style: 'thin', color: { argb: 'FF222222' } };
-  const border = { top: thin, left: thin, bottom: thin, right: thin };
-  sheet.mergeCells(1, 1, 1, columnCount);
-  const titleCell = sheet.getCell(1, 1);
+  const navy = 'FF0E2A4E';
+  const gold = 'FFE8A317';
+  const muted = 'FF5A6A7A';
+  const zebra = 'FFF6F8FB';
+  const thinNavy = { style: 'thin', color: { argb: navy } };
+  const thinLine = { style: 'thin', color: { argb: 'FFD0D7E2' } };
+  const border = { top: thinLine, left: thinLine, bottom: thinLine, right: thinLine };
+  const mergeAll = (row) => sheet.mergeCells(row, 1, row, columnCount);
+
+  sheet.getRow(1).height = 28;
+  sheet.getRow(2).height = 16;
+  sheet.getRow(3).height = 14;
+  sheet.getRow(4).height = 22;
+  sheet.getRow(5).height = 18;
+
+  mergeAll(1);
+  const nameCell = sheet.getCell(1, 1);
+  nameCell.value = brand.name;
+  nameCell.font = { name: 'Calibri', size: 18, bold: true, color: { argb: navy } };
+  nameCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+  mergeAll(2);
+  const sessionCell = sheet.getCell(2, 1);
+  sessionCell.value = meta.sessionLabel ? `Session: ${meta.sessionLabel}` : brand.tagline || '';
+  sessionCell.font = {
+    name: 'Calibri',
+    size: 11,
+    bold: Boolean(meta.sessionLabel),
+    italic: !meta.sessionLabel,
+    color: { argb: meta.sessionLabel ? navy : gold },
+  };
+  sessionCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+  mergeAll(3);
+  const contactCell = sheet.getCell(3, 1);
+  const contactBits = [
+    brand.address,
+    Array.isArray(brand.phones) ? brand.phones.join('  ·  ') : brand.phones,
+    brand.email,
+  ].filter(Boolean);
+  contactCell.value = contactBits.join('  |  ');
+  contactCell.font = { name: 'Calibri', size: 8, color: { argb: muted } };
+  contactCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+  mergeAll(4);
+  const titleCell = sheet.getCell(4, 1);
   titleCell.value = spec.title;
-  titleCell.font = { bold: true, size: 16, color: { argb: 'FF1F3A5F' } };
-  titleCell.alignment = { horizontal: 'center' };
+  titleCell.font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } };
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  titleCell.border = {
+    top: thinNavy,
+    left: thinNavy,
+    right: thinNavy,
+    bottom: { style: 'medium', color: { argb: gold } },
+  };
 
-  sheet.mergeCells(2, 1, 2, columnCount);
-  sheet.getCell(2, 1).value = [meta.leftFilter, meta.centerFilter || meta.sessionLabel, meta.rightFilter]
+  const leftText = meta.leftFilter || '';
+  const centerText = [meta.centerFilter || meta.sessionLabel || '', spec.legend]
     .filter(Boolean)
-    .join('    |    ');
-  sheet.getCell(2, 1).alignment = { horizontal: 'center' };
+    .join('  ·  ');
+  const rightText = meta.rightFilter || '';
+  if (spec.legend) sheet.getRow(5).height = 28;
+  const leftEnd = Math.max(1, Math.floor(columnCount / 3));
+  const midEnd = Math.max(leftEnd + 1, Math.floor((2 * columnCount) / 3));
+  const filterFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F6FA' } };
+  const filterFont = { name: 'Calibri', size: 9, bold: true, color: { argb: navy } };
+  const applyFilterBand = (start, end, value, align) => {
+    if (end > start) sheet.mergeCells(5, start, 5, end);
+    const cell = sheet.getCell(5, start);
+    cell.value = value;
+    cell.font = filterFont;
+    cell.fill = filterFill;
+    cell.alignment = { vertical: 'middle', horizontal: align, wrapText: true };
+    for (let c = start; c <= end; c += 1) {
+      const band = sheet.getCell(5, c);
+      band.fill = filterFill;
+      band.border = {
+        top: thinLine,
+        bottom: thinNavy,
+        left: c === 1 ? thinNavy : { style: 'hair', color: { argb: 'FFD0D7E2' } },
+        right: c === columnCount ? thinNavy : { style: 'hair', color: { argb: 'FFD0D7E2' } },
+      };
+    }
+  };
+  applyFilterBand(1, leftEnd, leftText, 'left');
+  applyFilterBand(leftEnd + 1, midEnd, centerText, 'center');
+  applyFilterBand(midEnd + 1, columnCount, rightText, 'right');
 
-  if (spec.legend) {
-    sheet.mergeCells(3, 1, 3, columnCount);
-    const legendCell = sheet.getCell(3, 1);
-    legendCell.value = spec.legend;
-    legendCell.font = { italic: true, size: 9, color: { argb: 'FF444444' } };
-    legendCell.alignment = { horizontal: 'center' };
-  }
-
-  const weekdayRow = sheet.getRow(4);
-  const dateRow = sheet.getRow(5);
+  const weekdayRow = sheet.getRow(6);
+  const dateRow = sheet.getRow(7);
+  weekdayRow.height = 18;
+  dateRow.height = 18;
   const headers = [
     ...lead.map((column) => ({ title: column.title })),
     ...register.dayCols.map((day) => ({
@@ -391,21 +468,37 @@ async function renderRegisterExcel(register, spec, meta = {}) {
       bottomCell.value = header.date;
       [top, bottomCell].forEach((cell) => {
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.font = { bold: true, size: 9, color: { argb: top === cell ? 'FFFFFFFF' : 'FF111111' } };
+        cell.font = {
+          name: 'Calibri',
+          bold: true,
+          size: 9,
+          color: { argb: top === cell ? 'FFFFFFFF' : 'FF111111' },
+        };
         cell.border = border;
       });
-      applyExcelFill(top, 'FF1F3A5F');
-      applyExcelFill(bottomCell, header.muted ? 'FFC9C9C9' : 'FFE4EAF1');
+      applyExcelFill(top, navy);
+      applyExcelFill(bottomCell, header.muted ? 'FFC9C9C9' : 'FFE8EEF5');
+      top.border = {
+        top: thinNavy,
+        left: thinNavy,
+        right: thinNavy,
+        bottom: { style: 'medium', color: { argb: gold } },
+      };
     } else {
-      sheet.mergeCells(4, col, 5, col);
-      const cell = sheet.getCell(4, col);
+      sheet.mergeCells(6, col, 7, col);
+      const cell = sheet.getCell(6, col);
       cell.value = header.title;
-      cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.font = { name: 'Calibri', bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
       cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-      cell.border = border;
-      applyExcelFill(cell, 'FF1F3A5F');
-      sheet.getCell(5, col).border = border;
-      applyExcelFill(sheet.getCell(5, col), 'FF1F3A5F');
+      cell.border = {
+        top: thinNavy,
+        left: thinNavy,
+        right: thinNavy,
+        bottom: { style: 'medium', color: { argb: gold } },
+      };
+      applyExcelFill(cell, navy);
+      sheet.getCell(7, col).border = border;
+      applyExcelFill(sheet.getCell(7, col), navy);
     }
   });
 
@@ -413,7 +506,7 @@ async function renderRegisterExcel(register, spec, meta = {}) {
     column.align || (column.key === 'serial' ? 'center' : 'left')
   );
 
-  const writeRow = (excelRow, source, { footer = false } = {}) => {
+  const writeRow = (excelRow, source, { footer = false, zebraRow = false } = {}) => {
     const values = footer
       ? [
           ...lead.map((column) => (column.key === spec.footerLabelKey ? spec.footerLabel || '' : '')),
@@ -428,31 +521,49 @@ async function renderRegisterExcel(register, spec, meta = {}) {
     values.forEach((value, index) => {
       const cell = excelRow.getCell(index + 1);
       cell.value = value === '' || value == null ? null : value;
-      cell.border = border;
+      cell.border = footer
+        ? {
+            top: { style: 'medium', color: { argb: navy } },
+            bottom: { style: 'medium', color: { argb: navy } },
+            left: thinLine,
+            right: thinLine,
+          }
+        : border;
       cell.alignment = {
         horizontal: index < lead.length ? leadAlign[index] : 'center',
         vertical: 'middle',
       };
-      if (footer) {
-        cell.font = { bold: true, size: 9 };
-        applyExcelFill(cell, 'FFF4F7FB');
-      }
+      cell.font = {
+        name: 'Calibri',
+        bold: footer,
+        size: footer ? 9.5 : 9.5,
+        color: { argb: footer ? navy : 'FF1A2A3A' },
+      };
+      if (footer) applyExcelFill(cell, 'FFE8EEF5');
+      else if (zebraRow) applyExcelFill(cell, zebra);
     });
     const marks = footer ? register.dayTotals : source.cells;
     marks.forEach((mark, index) => {
       if (!mark.fill) return;
       const cell = excelRow.getCell(firstDayCol + index);
       applyExcelFill(cell, argbOf(mark.fill));
-      cell.font = { bold: true, size: footer ? 9 : 10 };
+      cell.font = { name: 'Calibri', bold: true, size: footer ? 9 : 10 };
     });
   };
 
-  register.rows.forEach((row) => writeRow(sheet.addRow([]), row));
+  register.rows.forEach((row, idx) => writeRow(sheet.addRow([]), row, { zebraRow: idx % 2 === 1 }));
   if (register.rows.length) writeRow(sheet.addRow([]), { totals: register.totals }, { footer: true });
   else {
-    sheet.mergeCells(6, 1, 6, columnCount);
-    sheet.getCell(6, 1).value = spec.emptyMessage || 'No records.';
+    const emptyRow = freezeAt + 1;
+    sheet.mergeCells(emptyRow, 1, emptyRow, columnCount);
+    sheet.getCell(emptyRow, 1).value = spec.emptyMessage || 'No records.';
+    sheet.getCell(emptyRow, 1).font = { name: 'Calibri', italic: true, color: { argb: muted } };
+    sheet.getCell(emptyRow, 1).alignment = { horizontal: 'center' };
   }
+
+  sheet.headerFooter.oddFooter = `&L${brand.name}  |  ${spec.title}&CDated: ${new Date().toLocaleString(
+    'en-GB'
+  )}&RPage &P of &N`;
 
   return workbook.xlsx.writeBuffer();
 }

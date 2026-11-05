@@ -1048,7 +1048,8 @@ async function renderBrandedExcel({
   columns,
   rows,
   meta = {},
-  plain = false,
+  // Default to the Paid Fee Summary Excel look for all academy reports.
+  plain = true,
   additionalSheets = [],
   layout = 'landscape',
   fitOnePage = false,

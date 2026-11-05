@@ -164,7 +164,7 @@ async function exportParentCredentials(format, query = {}) {
       rows,
       meta,
       plain: true,
-      lightHeader: true,
+      lightHeader: false,
       layout: 'portrait',
     });
     return { buffer, filename: 'Parent-Logins.xlsx', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
