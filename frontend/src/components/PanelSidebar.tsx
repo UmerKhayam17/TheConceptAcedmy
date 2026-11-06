@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ShieldCheck,
   Calculator,
+  BriefcaseBusiness,
   GraduationCap,
   Users,
   LogOut,
@@ -48,6 +49,7 @@ const roleHeader: Record<Role, { title: string; Icon: React.ComponentType<{ clas
   admin: { title: "Administrator", Icon: ShieldCheck },
   accountant: { title: "Accountant", Icon: Calculator },
   teacher: { title: "Teacher", Icon: GraduationCap },
+  non_teaching_staff: { title: "Staff", Icon: BriefcaseBusiness },
   parent: { title: "Parent", Icon: Users },
   student: { title: "Student", Icon: School },
 };

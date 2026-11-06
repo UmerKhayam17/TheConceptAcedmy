@@ -467,6 +467,10 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     reports: "view",
     settings: "view",
   }),
+  /** Support staff: dashboard only by default — the admin grants more via Roles & Permissions. */
+  non_teaching_staff: modulePermMatrix({
+    dashboard: "view",
+  }),
   parent: modulePermMatrix({
     dashboard: "view",
     students: "view",

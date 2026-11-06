@@ -1,6 +1,6 @@
 import { getApiRoot, parseJson } from "@/lib/api";
 
-export type Role = "admin" | "accountant" | "teacher" | "parent" | "student";
+export type Role = "admin" | "accountant" | "teacher" | "non_teaching_staff" | "parent" | "student";
 
 export interface SessionUser {
   id: string;
@@ -101,7 +101,16 @@ export function invalidateSession() {
 
 export function normalizeRole(role: string | undefined): Role | null {
   const r = String(role || "").toLowerCase();
-  if (r === "admin" || r === "accountant" || r === "teacher" || r === "parent" || r === "student") return r;
+  if (
+    r === "admin" ||
+    r === "accountant" ||
+    r === "teacher" ||
+    r === "non_teaching_staff" ||
+    r === "parent" ||
+    r === "student"
+  ) {
+    return r;
+  }
   return null;
 }
 

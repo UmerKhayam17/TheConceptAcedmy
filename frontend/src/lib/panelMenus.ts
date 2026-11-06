@@ -1,5 +1,5 @@
 import {
-  ShieldCheck, Calculator, GraduationCap, Users, LayoutDashboard,
+  ShieldCheck, Calculator, GraduationCap, Users, LayoutDashboard, BriefcaseBusiness,
   BookOpen, DollarSign, Calendar, Bell, BarChart3, UserCog, ClipboardList,
   Wallet, MessageSquare, Award, Receipt, Settings as SettingsIcon, FileText, School, KeyRound, ListTree,
   SlidersHorizontal, Tags, NotebookPen, FolderOpen, ListChecks, TrendingUp, ShieldAlert, UsersRound,
@@ -41,6 +41,7 @@ export const roleMeta: Record<Role, {
   admin:      { title: "Administrator Panel", accentLabel: "System Overview",   Icon: ShieldCheck },
   accountant: { title: "Accountant Panel",    accentLabel: "Finance Overview",  Icon: Calculator },
   teacher:    { title: "Teacher Panel",       accentLabel: "Today's Classroom", Icon: GraduationCap },
+  non_teaching_staff: { title: "Staff Panel", accentLabel: "My Workplace",     Icon: BriefcaseBusiness },
   parent:     { title: "Parent Panel",        accentLabel: "Child's Progress",  Icon: Users },
   student:    { title: "Student Panel",       accentLabel: "My Learning",       Icon: School },
 };

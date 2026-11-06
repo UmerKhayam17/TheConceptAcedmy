@@ -208,6 +208,10 @@ const Dashboard = ({
       { label: "Term exams", value: String(termExamCount), hint: "Mid / final terms" },
       { label: "Announcements", value: String(announcementCount), hint: "Published notices" },
     ],
+    non_teaching_staff: [
+      { label: "Announcements", value: String(announcementCount), hint: "School notices" },
+      { label: "Modules", value: String(items.length), hint: "Available in your portal" },
+    ],
     parent: [
       {
         label: "My children",

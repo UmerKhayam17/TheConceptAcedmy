@@ -1085,6 +1085,7 @@ export const MOBILE_PRIMARY_NAV_IDS: Record<Role, string[]> = {
   ],
   accountant: ["dashboard", "students", "fee-management", "academy-expenses", "chat"],
   teacher: ["dashboard", "my-classes", "attendance", "chat", "class-tests"],
+  non_teaching_staff: ["dashboard"],
   parent: ["dashboard", "students", "student-attendance", "term-results", "chat"],
   student: ["dashboard", "student-timetable", "exams", "chat", "announcements"],
 };
