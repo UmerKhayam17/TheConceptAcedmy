@@ -9,12 +9,13 @@ const ApiError = require('../../utils/ApiError');
 const { resolveSessionStatus } = require('../session/sessionGuard');
 
 /**
- * Balance sheet (statement of financial position) built from fee records and
- * academy expenses only. Staff salaries and other modules are not included.
- *  - Fee income is recognised in the fee's billing month; unpaid fees are receivables.
+ * Balance sheet built on a CASH basis from PAID fee vouchers and paid academy expenses only.
+ * Staff salaries and other modules are not included.
+ *  - Fee income = paid vouchers, counted on their paid date (falls back to the billing month
+ *    when the paid date is missing). Unpaid vouchers are not included anywhere.
  *  - Paid academy expenses are recognised on their expense date ("planned" ones are only disclosed).
- *  - Cash moves on the paid date (falls back to the billing month when missing).
- * Because every figure comes from the same record set, Assets = Liabilities + Fund always holds.
+ * Income, collected and receipts are therefore the same figure, and it matches the
+ * Paid Fees report for the same date range. Assets (cash) = Fund always holds.
  */
 
 const CASH_ACCOUNTS = {
@@ -155,12 +156,19 @@ async function getBalanceSheet({ from, to, sessionId } = {}) {
   const toM = toDay.getMonth() + 1;
 
   const periodUpToTo = { $or: [{ year: { $lt: toY } }, { year: toY, month: { $lte: toM } }] };
-  const paidByTo = { status: 'paid', paidAt: { $lte: toEnd } };
+  // Paid vouchers only: paid by the end date, or paid with no date and billed by then.
+  const paidByTo = {
+    status: 'paid',
+    $or: [
+      { paidAt: { $lte: toEnd } },
+      { $and: [{ $or: [{ paidAt: null }, { paidAt: { $exists: false } }] }, periodUpToTo] },
+    ],
+  };
 
   const [fees, expenses, planned, waived, categoryNames, enrolledStudents, savedOpening] =
     await Promise.all([
-    AcademyFeeRecord.find({ status: { $ne: 'waived' }, $or: [periodUpToTo, paidByTo] })
-      .select('studentId amount status paidAt paymentMethod feeType month year dueDate')
+    AcademyFeeRecord.find(paidByTo)
+      .select('studentId amount status paidAt paymentMethod feeType month year')
       .lean(),
     AcademyExpense.find({ status: 'paid', expenseDate: { $lte: toEnd } })
       .select('amount expenseDate category categoryOther paymentMethod')
@@ -198,9 +206,6 @@ async function getBalanceSheet({ from, to, sessionId } = {}) {
   let openingCash = 0;
   let receipts = 0;
   let expensePayments = 0;
-  let receivableOverdue = 0;
-  let receivableCurrent = 0;
-  let feesInAdvance = 0;
   const paidStudentIds = new Set();
   // A session's opening always sits on the session's current start date, even if the
   // session dates were edited after the amount was saved.
@@ -227,31 +232,22 @@ async function getBalanceSheet({ from, to, sessionId } = {}) {
     return when >= fromDate;
   };
 
+  // Cash basis: a paid voucher is income on the day it was paid.
   for (const f of fees) {
     const amount = Number(f.amount) || 0;
-    const pd = periodDate(f);
-    const recognised = pd <= toEnd;
-    const paidDate = f.status === 'paid' ? f.paidAt || pd : null;
-    const paidByEnd = paidDate && paidDate <= toEnd;
+    const paidDate = f.paidAt ? new Date(f.paidAt) : periodDate(f);
+    if (paidDate > toEnd) continue;
 
-    if (recognised) {
-      if (pd < fromDate) openingFund += amount;
-      else addTo(income, FEE_INCOME_LABELS[f.feeType] || 'Other fees', amount);
-    }
-    if (paidByEnd) {
-      const inBook = trackCash(paidDate, amount, f.paymentMethod);
-      if (inBook) receipts += amount;
-      if (inBook && !recognised) feesInAdvance += amount;
-      if (amount > 0 && paidDate >= fromDate && f.studentId) {
-        const sid = String(f.studentId);
-        paidStudentIds.add(sid);
-        paidCollected += amount;
-        if (fullWaiverIds.has(sid)) waiverCollected += amount;
-      }
-    } else if (recognised) {
-      const overdue = f.status === 'overdue' || (f.dueDate && new Date(f.dueDate) < toEnd);
-      if (overdue) receivableOverdue += amount;
-      else receivableCurrent += amount;
+    if (paidDate < fromDate) openingFund += amount;
+    else addTo(income, FEE_INCOME_LABELS[f.feeType] || 'Other fees', amount);
+
+    const inBook = trackCash(paidDate, amount, f.paymentMethod);
+    if (inBook) receipts += amount;
+    if (amount > 0 && paidDate >= fromDate && f.studentId) {
+      const sid = String(f.studentId);
+      paidStudentIds.add(sid);
+      paidCollected += amount;
+      if (fullWaiverIds.has(sid)) waiverCollected += amount;
     }
   }
 
@@ -279,29 +275,19 @@ async function getBalanceSheet({ from, to, sessionId } = {}) {
     amount: round(cash.get(label)),
   }));
   const totalCash = round(cashLines.reduce((n, l) => n + l.amount, 0));
-  const totalReceivable = round(receivableOverdue + receivableCurrent);
-
+  // Cash basis: unpaid vouchers are not receivables and early payments are not liabilities.
   const currentAssets = [
     { key: 'cash', label: 'Cash and cash equivalents', amount: totalCash, children: cashLines },
-    {
-      key: 'receivable',
-      label: 'Fees receivable',
-      amount: totalReceivable,
-      children: [
-        { label: 'Not yet due', amount: round(receivableCurrent) },
-        { label: 'Overdue', amount: round(receivableOverdue) },
-      ],
-    },
   ];
   const totalAssets = round(currentAssets.reduce((n, l) => n + l.amount, 0));
 
-  const currentLiabilities = [
-    { key: 'advanceFees', label: 'Fees received in advance', amount: round(feesInAdvance) },
-  ];
-  const totalLiabilities = round(currentLiabilities.reduce((n, l) => n + l.amount, 0));
+  const currentLiabilities = [];
+  const totalLiabilities = 0;
 
   const incomeLines = [...income.entries()]
     .map(([label, amount]) => ({ label, amount: round(amount) }))
+    // Full-waiver vouchers are paid at Rs 0 — no empty income lines.
+    .filter((line) => line.amount !== 0)
     .sort((a, b) => b.amount - a.amount);
   const expenditureLines = [...expenditure.entries()]
     .map(([label, amount]) => ({ label, amount: round(amount) }))
