@@ -329,6 +329,7 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
       <Card className="p-3 sm:p-4 shadow-sm border-border/80">
         <FilterToolbar>
           <ClassProgramSelect
+            label={false}
             className="w-full sm:w-[16.5rem] shrink-0"
             value={classFilter}
             onChange={setClassFilter}

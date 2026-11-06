@@ -68,9 +68,9 @@ function renderBalanceSheetPdf(sheet) {
         margin: MARGIN,
         bufferPages: true,
         info: {
-          Title: `Income & Expenditure — ${brand.name}`,
+          Title: `Balance Sheet — ${brand.name}`,
           Author: brand.name,
-          Subject: `Income and expenditure for ${sheet.range.from} to ${sheet.range.to}`,
+          Subject: `Balance sheet for ${sheet.range.from} to ${sheet.range.to}`,
           Creator: brand.legalName,
         },
       });
@@ -88,7 +88,7 @@ function renderBalanceSheetPdf(sheet) {
         y = drawPdfTitlePlain(
           doc,
           {
-            title: 'Income & Expenditure',
+            title: 'Balance Sheet',
             leftFilter: reportMeta.leftFilter,
             centerFilter: reportMeta.centerFilter,
             rightFilter: reportMeta.rightFilter,
@@ -355,7 +355,7 @@ function renderBalanceSheetPdf(sheet) {
       const range = doc.bufferedPageRange();
       for (let i = 0; i < range.count; i += 1) {
         doc.switchToPage(range.start + i);
-        drawPdfFooterTextPlain(doc, brand, 'Income & Expenditure', reportMeta, i + 1, range.count);
+        drawPdfFooterTextPlain(doc, brand, 'Balance Sheet', reportMeta, i + 1, range.count);
       }
       doc.end();
     } catch (err) {

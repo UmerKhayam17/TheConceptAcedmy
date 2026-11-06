@@ -665,20 +665,15 @@ function inSpan(date, fromDate, toEnd) {
   return date >= fromDate && date <= toEnd;
 }
 
-function monthOverlaps(year, month, fromDate, toEnd) {
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 0, 23, 59, 59, 999);
-  return end >= fromDate && start <= toEnd;
-}
-
 function roundMoney(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
 /**
  * Finance dashboard figures.
- * Paid and unpaid fees count in the voucher billing month, same as Fee records and Paid.
- * Paid expenses count on expenseDate. Paid salaries count on paidAt (salary month when missing).
+ * Paid fees count on the payment date (paidAt), same as Fee records and Paid.
+ * Unpaid fees count on their due date. Expenses count on expenseDate.
+ * Paid salaries count on paidAt (salary month when missing).
  */
 async function getFinanceDashboard({ from, to } = {}) {
   const fromDate = parseYmd(from, 'start');
@@ -694,17 +689,19 @@ async function getFinanceDashboard({ from, to } = {}) {
   const fromYear = fromDate.getFullYear();
   const toYear = toDay.getFullYear();
   const yearSpan = { year: { $gte: fromYear, $lte: toYear } };
+  const paidFrom = dayBounds(from).start;
+  const paidTo = dayBounds(to).end;
 
   const [paidFees, unpaidFees, expenses, salaries, categoryNames] = await Promise.all([
     AcademyFeeRecord.find({
       status: 'paid',
-      ...yearSpan,
+      paidAt: { $gte: paidFrom, $lte: paidTo },
     })
       .select('studentId amount paidAt paymentMethod feeType month year receiptNumber')
       .lean(),
     AcademyFeeRecord.find({
       status: { $in: ['pending', 'overdue'] },
-      ...yearSpan,
+      dueDate: { $gte: paidFrom, $lte: paidTo },
     })
       .select('studentId amount status dueDate feeType month year')
       .lean(),
@@ -723,9 +720,9 @@ async function getFinanceDashboard({ from, to } = {}) {
   ]);
 
   const paidInRange = paidFees.filter((fee) =>
-    monthOverlaps(Number(fee.year), Number(fee.month), fromDate, toEnd)
+    inSpan(cashDate(fee.paidAt, fee.year, fee.month), paidFrom, paidTo)
   );
-  const unpaidInRange = unpaidFees.filter((fee) => monthOverlaps(fee.year, fee.month, fromDate, toEnd));
+  const unpaidInRange = unpaidFees.filter((fee) => fee.dueDate && inSpan(new Date(fee.dueDate), paidFrom, paidTo));
   const salariesInRange = salaries.filter((row) =>
     inSpan(cashDate(row.paidAt, row.year, row.month), fromDate, toEnd)
   );
@@ -756,9 +753,9 @@ async function getFinanceDashboard({ from, to } = {}) {
 
   const feeMap = new Map();
   const addFee = (fee, kind) => {
-    const when = new Date(Number(fee.year), (Number(fee.month) || 1) - 1, 1);
-    const year = when.getFullYear();
-    const month = when.getMonth() + 1;
+    const when = kind === 'collected' ? cashDate(fee.paidAt, fee.year, fee.month) : new Date(fee.dueDate);
+    const ymd = formatDateInTz(when);
+    const [year, month] = ymd.split('-').map(Number);
     const className = classNameOf(fee.studentId);
     const method = kind === 'collected' ? methodLabel(fee.paymentMethod) : '';
     const feeType = fee.feeType || 'monthly';

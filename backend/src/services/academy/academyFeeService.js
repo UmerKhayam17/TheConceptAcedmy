@@ -665,10 +665,22 @@ async function buildFeeQuery({
   const period = billingPeriodExpr(periodFrom, periodTo);
   if (period) q.$expr = period;
   if (dateFrom || dateTo) {
-    const paidAt = {};
-    if (dateFrom) paidAt.$gte = dayBounds(String(dateFrom)).start;
-    if (dateTo) paidAt.$lte = dayBounds(String(dateTo)).end;
-    q.paidAt = paidAt;
+    const bounds = {};
+    if (dateFrom) bounds.$gte = dayBounds(String(dateFrom)).start;
+    if (dateTo) bounds.$lte = dayBounds(String(dateTo)).end;
+    if (status === 'paid') {
+      // Collected on the day the fee was paid.
+      q.paidAt = bounds;
+    } else if (!status) {
+      // Paid rows follow the payment date. Unpaid rows follow the due date
+      // (they have no payment date). Neither uses the billing month.
+      q.$or = [
+        { status: 'paid', paidAt: bounds },
+        { status: { $in: ['pending', 'overdue', 'waived'] }, dueDate: bounds },
+      ];
+    } else {
+      q.dueDate = bounds;
+    }
   }
 
   const toObjectIds = (ids) =>
@@ -1975,7 +1987,7 @@ async function getFeeSummary({
   periodTo,
 }) {
   await syncOverdueFees({ month, year, classId, sectionId, studentId, studentIds, sessionId });
-  // periodFrom/periodTo = billing month on Fee records and Paid. dateFrom/dateTo = payment date.
+  // dateFrom/dateTo = payment date for paid fees (due date for unpaid). periodFrom/periodTo = billing month.
   const q = await buildFeeQuery({
     month,
     year,

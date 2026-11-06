@@ -521,7 +521,7 @@ export default function AcademyFeesManagement({
   /** Generate always bills the current month. */
   const month = String(now.getMonth() + 1);
   const year = String(now.getFullYear());
-  /** From / To on both panels: whole billing months (this month, 1st → last day). */
+  /** From / To on both panels: the date the fee was paid (due date for unpaid). */
   const [rangeFrom, setRangeFrom] = useState(() => localTodayYmd().slice(0, 8) + "01");
   const [rangeTo, setRangeTo] = useState(() => {
     const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -580,9 +580,9 @@ export default function AcademyFeesManagement({
       sectionId: effectiveStudentId || isParent ? undefined : sectionFilter || undefined,
       studentId: effectiveStudentId,
       sessionId: effectiveStudentId || isParent ? undefined : apiSessionId,
-      // Both panels: From / To selects whole billing months (the voucher period).
-      periodFrom: !effectiveStudentId ? rangeFrom || undefined : undefined,
-      periodTo: !effectiveStudentId ? rangeTo || undefined : undefined,
+      // Both panels: From / To is the payment date (see buildFeeQuery).
+      dateFrom: !effectiveStudentId ? rangeFrom || undefined : undefined,
+      dateTo: !effectiveStudentId ? rangeTo || undefined : undefined,
     }),
     [
       classFilter,
@@ -1109,8 +1109,8 @@ export default function AcademyFeesManagement({
       classId: classFilter || undefined,
       search: search.trim() || undefined,
       sessionId: apiSessionId,
-      periodFrom: rangeFrom,
-      periodTo: rangeTo,
+      dateFrom: rangeFrom,
+      dateTo: rangeTo,
     }),
     [classFilter, search, apiSessionId, rangeFrom, rangeTo]
   );
@@ -1248,11 +1248,10 @@ export default function AcademyFeesManagement({
         <p className="text-xs text-muted-foreground">
           {rangeFrom && rangeTo ? (
             <>
-              Showing {paidOnlyView ? "paid vouchers billed" : "vouchers billed"} from{" "}
+              Showing fees paid from{" "}
               <span className="font-semibold text-foreground">{formatDate(rangeFrom)}</span> to{" "}
               <span className="font-semibold text-foreground">{formatDate(rangeTo)}</span>
-              {" "}
-              (whole billing months)
+              {paidOnlyView ? "" : ". Unpaid vouchers due in this range are included"}
             </>
           ) : (
             "Showing all dates"
@@ -1316,7 +1315,7 @@ export default function AcademyFeesManagement({
                       : "xl:grid-cols-[minmax(18rem,1.15fr)_repeat(3,minmax(0,1fr))_minmax(0,1.3fr)]",
                   )}
                 >
-                  <FeeFilterField label="Billing from / to">
+                  <FeeFilterField label="Paid from / to">
                     <DateRangePickerField
                       from={rangeFrom}
                       to={rangeTo}
