@@ -872,7 +872,18 @@ const FinanceDashboard = () => {
 
   const filteredTx = useMemo(() => {
     return transactions.filter((t) => {
-      if (sheetFrom && sheetTo && sheetFrom <= sheetTo && t.ymd && (t.ymd < sheetFrom || t.ymd > sheetTo)) return false;
+      // Fee rows are already limited to vouchers billed in the selected months.
+      // Their payment date can fall outside that range.
+      if (
+        t.type !== "Fee Payment" &&
+        sheetFrom &&
+        sheetTo &&
+        sheetFrom <= sheetTo &&
+        t.ymd &&
+        (t.ymd < sheetFrom || t.ymd > sheetTo)
+      ) {
+        return false;
+      }
       if (classFilter !== "all" && t.type === "Fee Payment" && t.className !== classFilter) return false;
       if (methodFilter !== "all" && t.method !== methodFilter) return false;
       if (txStatusFilter !== "all" && t.status !== txStatusFilter) return false;

@@ -676,10 +676,9 @@ function roundMoney(value) {
 }
 
 /**
- * Cash-basis figures for the finance dashboard.
- * Paid fees count on paidAt (billing month when paidAt is missing), matching the balance sheet.
+ * Finance dashboard figures.
+ * Paid and unpaid fees count in the voucher billing month, same as Fee records and Paid.
  * Paid expenses count on expenseDate. Paid salaries count on paidAt (salary month when missing).
- * Unpaid fees count in the month they were billed.
  */
 async function getFinanceDashboard({ from, to } = {}) {
   const fromDate = parseYmd(from, 'start');
@@ -699,7 +698,7 @@ async function getFinanceDashboard({ from, to } = {}) {
   const [paidFees, unpaidFees, expenses, salaries, categoryNames] = await Promise.all([
     AcademyFeeRecord.find({
       status: 'paid',
-      $or: [{ paidAt: { $gte: fromDate, $lte: toEnd } }, { paidAt: null, ...yearSpan }],
+      ...yearSpan,
     })
       .select('studentId amount paidAt paymentMethod feeType month year receiptNumber')
       .lean(),
@@ -724,7 +723,7 @@ async function getFinanceDashboard({ from, to } = {}) {
   ]);
 
   const paidInRange = paidFees.filter((fee) =>
-    inSpan(cashDate(fee.paidAt, fee.year, fee.month), fromDate, toEnd)
+    monthOverlaps(Number(fee.year), Number(fee.month), fromDate, toEnd)
   );
   const unpaidInRange = unpaidFees.filter((fee) => monthOverlaps(fee.year, fee.month, fromDate, toEnd));
   const salariesInRange = salaries.filter((row) =>
@@ -757,7 +756,7 @@ async function getFinanceDashboard({ from, to } = {}) {
 
   const feeMap = new Map();
   const addFee = (fee, kind) => {
-    const when = kind === 'collected' ? cashDate(fee.paidAt, fee.year, fee.month) : new Date(fee.year, fee.month - 1, 1);
+    const when = new Date(Number(fee.year), (Number(fee.month) || 1) - 1, 1);
     const year = when.getFullYear();
     const month = when.getMonth() + 1;
     const className = classNameOf(fee.studentId);
