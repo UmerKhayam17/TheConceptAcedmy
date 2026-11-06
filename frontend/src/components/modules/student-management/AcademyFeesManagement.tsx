@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
-  CalendarDays,
   ChevronDown,
   Download,
   Eye,
@@ -137,28 +136,17 @@ function FeeFilterSelect({
   value,
   onChange,
   children,
-  leadingIcon,
   className,
 }: {
   value: string;
   onChange: (value: string) => void;
   children: ReactNode;
-  leadingIcon?: ReactNode;
   className?: string;
 }) {
   return (
     <div className={cn("relative min-w-0 overflow-hidden", className)}>
-      {leadingIcon ? (
-        <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-muted-foreground">
-          {leadingIcon}
-        </span>
-      ) : null}
       <select
-        className={cn(
-          feeFilterSelectClass,
-          "max-w-full truncate",
-          leadingIcon ? "pl-8 pr-8" : "pl-3 pr-8",
-        )}
+        className={cn(feeFilterSelectClass, "max-w-full truncate pl-3 pr-8")}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -530,40 +518,15 @@ export default function AcademyFeesManagement({
   const paidOnlyView = lockedStatus === "paid";
 
   const now = new Date();
-  /** Month used only by "Generate" (which bills one month) — not a list filter. */
-  const [month, setMonth] = useState(() => String(now.getMonth() + 1));
-  const [year, setYear] = useState(() => String(now.getFullYear()));
-  /**
-   * From / To filter. Paid tab: paid date (1st of this month → today).
-   * Fee records: billing month (this month: 1st → last day).
-   */
+  /** Generate always bills the current month. */
+  const month = String(now.getMonth() + 1);
+  const year = String(now.getFullYear());
+  /** From / To on both panels: whole billing months (this month, 1st → last day). */
   const [rangeFrom, setRangeFrom] = useState(() => localTodayYmd().slice(0, 8) + "01");
   const [rangeTo, setRangeTo] = useState(() => {
-    if (paidOnlyView) return localTodayYmd();
     const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     return `${localTodayYmd().slice(0, 8)}${String(last).padStart(2, "0")}`;
   });
-  /** Generate month choices: 3 months ahead back to 24 months ago, newest first. */
-  const monthOptions = useMemo(() => {
-    const base = new Date();
-    return Array.from({ length: 28 }, (_, i) => {
-      const d = new Date(base.getFullYear(), base.getMonth() + 3 - i, 1);
-      const m = d.getMonth() + 1;
-      const y = d.getFullYear();
-      return { value: `${y}-${m}`, label: `${MONTH_NAMES[m - 1]} ${y}` };
-    });
-  }, []);
-  const monthValue = month && year ? `${year}-${month}` : "";
-  const onMonthChange = (value: string) => {
-    if (!value) {
-      setMonth("");
-      setYear("");
-      return;
-    }
-    const [y, m] = value.split("-");
-    setYear(y);
-    setMonth(m);
-  };
   const [statusFilter, setStatusFilter] = useState(() =>
     lockedStatus || (user?.role === "parent" ? "paid" : "")
   );
@@ -617,11 +580,9 @@ export default function AcademyFeesManagement({
       sectionId: effectiveStudentId || isParent ? undefined : sectionFilter || undefined,
       studentId: effectiveStudentId,
       sessionId: effectiveStudentId || isParent ? undefined : apiSessionId,
-      // Paid tab: From / To = paid date. Fee records: From / To = billing month.
-      dateFrom: !effectiveStudentId && paidOnlyView ? rangeFrom || undefined : undefined,
-      dateTo: !effectiveStudentId && paidOnlyView ? rangeTo || undefined : undefined,
-      periodFrom: !effectiveStudentId && !paidOnlyView ? rangeFrom || undefined : undefined,
-      periodTo: !effectiveStudentId && !paidOnlyView ? rangeTo || undefined : undefined,
+      // Both panels: From / To selects whole billing months (the voucher period).
+      periodFrom: !effectiveStudentId ? rangeFrom || undefined : undefined,
+      periodTo: !effectiveStudentId ? rangeTo || undefined : undefined,
     }),
     [
       classFilter,
@@ -629,7 +590,6 @@ export default function AcademyFeesManagement({
       effectiveStudentId,
       isParent,
       apiSessionId,
-      paidOnlyView,
       rangeFrom,
       rangeTo,
     ]
@@ -1149,8 +1109,8 @@ export default function AcademyFeesManagement({
       classId: classFilter || undefined,
       search: search.trim() || undefined,
       sessionId: apiSessionId,
-      dateFrom: rangeFrom,
-      dateTo: rangeTo,
+      periodFrom: rangeFrom,
+      periodTo: rangeTo,
     }),
     [classFilter, search, apiSessionId, rangeFrom, rangeTo]
   );
@@ -1288,10 +1248,11 @@ export default function AcademyFeesManagement({
         <p className="text-xs text-muted-foreground">
           {rangeFrom && rangeTo ? (
             <>
-              Showing {paidOnlyView ? "fees paid" : "vouchers billed"} from{" "}
+              Showing {paidOnlyView ? "paid vouchers billed" : "vouchers billed"} from{" "}
               <span className="font-semibold text-foreground">{formatDate(rangeFrom)}</span> to{" "}
               <span className="font-semibold text-foreground">{formatDate(rangeTo)}</span>
-              {paidOnlyView ? "" : " (whole billing months)"}
+              {" "}
+              (whole billing months)
             </>
           ) : (
             "Showing all dates"
@@ -1355,7 +1316,7 @@ export default function AcademyFeesManagement({
                       : "xl:grid-cols-[minmax(18rem,1.15fr)_repeat(3,minmax(0,1fr))_minmax(0,1.3fr)]",
                   )}
                 >
-                  <FeeFilterField label={paidOnlyView ? "Paid from / to" : "Billing from / to"}>
+                  <FeeFilterField label="Billing from / to">
                     <DateRangePickerField
                       from={rangeFrom}
                       to={rangeTo}
@@ -1463,29 +1424,14 @@ export default function AcademyFeesManagement({
                   </Button>
                 )}
                 {showBulkActions && canGenerate && (
-                  <div className="flex w-full items-center gap-2 sm:w-auto">
-                    <div className="min-w-0 flex-1 sm:w-44 sm:flex-none">
-                      <FeeFilterSelect
-                        value={monthValue}
-                        onChange={onMonthChange}
-                        leadingIcon={<CalendarDays className="h-3.5 w-3.5" />}
-                      >
-                        {monthOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </FeeFilterSelect>
-                    </div>
-                    <Button
-                      className="h-10 shrink-0 justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-9 sm:whitespace-nowrap"
-                      disabled={genMut.isPending || !month || !year}
-                      onClick={() => genMut.mutate()}
-                    >
-                      <Download className="h-4 w-4 shrink-0" />
-                      {genMut.isPending ? "Generating…" : "Generate Report"}
-                    </Button>
-                  </div>
+                  <Button
+                    className="h-10 w-full shrink-0 justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-9 sm:w-auto sm:whitespace-nowrap"
+                    disabled={genMut.isPending}
+                    onClick={() => genMut.mutate()}
+                  >
+                    <Download className="h-4 w-4 shrink-0" />
+                    {genMut.isPending ? "Generating…" : "Generate Report"}
+                  </Button>
                 )}
                 {/* {showBulkActions && canGenerate && (
                 <Button

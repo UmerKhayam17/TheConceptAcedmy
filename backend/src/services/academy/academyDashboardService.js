@@ -15,6 +15,7 @@ const feeService = require('./academyFeeService');
 const { categoryNameMap } = require('./expenseCategoryService');
 const { dayBounds, todayYmd, formatDateInTz } = require('../../utils/schoolDay');
 const { STAFF_ROLE_NAMES } = require('../../config/staffRoles');
+const ApiError = require('../../utils/ApiError');
 
 function monthWindow(monthsBack = 5) {
   const out = [];
@@ -633,4 +634,339 @@ async function getDashboardOverview({ months = 6 } = {}) {
   };
 }
 
-module.exports = { getDashboardOverview };
+function parseYmd(value, label) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) throw new ApiError(400, `Invalid ${label} date. Use YYYY-MM-DD.`);
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (Number.isNaN(date.getTime()) || date.getMonth() !== Number(match[2]) - 1) {
+    throw new ApiError(400, `Invalid ${label} date.`);
+  }
+  return date;
+}
+
+function methodLabel(raw) {
+  const key = String(raw || 'other').toLowerCase();
+  if (key === 'cash') return 'Cash';
+  if (key === 'bank_transfer') return 'Bank Transfer';
+  if (key === 'online') return 'Mobile Wallet';
+  if (key === 'cheque') return 'Cheque';
+  return 'Other';
+}
+
+function cashDate(value, fallbackYear, fallbackMonth) {
+  if (value) {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  return new Date(fallbackYear, fallbackMonth - 1, 1);
+}
+
+function inSpan(date, fromDate, toEnd) {
+  return date >= fromDate && date <= toEnd;
+}
+
+function monthOverlaps(year, month, fromDate, toEnd) {
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0, 23, 59, 59, 999);
+  return end >= fromDate && start <= toEnd;
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+/**
+ * Cash-basis figures for the finance dashboard.
+ * Paid fees count on paidAt (billing month when paidAt is missing), matching the balance sheet.
+ * Paid expenses count on expenseDate. Paid salaries count on paidAt (salary month when missing).
+ * Unpaid fees count in the month they were billed.
+ */
+async function getFinanceDashboard({ from, to } = {}) {
+  const fromDate = parseYmd(from, 'start');
+  const toDay = parseYmd(to, 'end');
+  if (fromDate > toDay) throw new ApiError(400, 'Start date must be on or before the end date.');
+  const toEnd = new Date(toDay.getFullYear(), toDay.getMonth(), toDay.getDate(), 23, 59, 59, 999);
+  const spanMonths =
+    (toDay.getFullYear() - fromDate.getFullYear()) * 12 +
+    (toDay.getMonth() - fromDate.getMonth()) +
+    1;
+  if (spanMonths > 48) throw new ApiError(400, 'Choose a range of 48 months or less.');
+
+  const fromYear = fromDate.getFullYear();
+  const toYear = toDay.getFullYear();
+  const yearSpan = { year: { $gte: fromYear, $lte: toYear } };
+
+  const [paidFees, unpaidFees, expenses, salaries, categoryNames] = await Promise.all([
+    AcademyFeeRecord.find({
+      status: 'paid',
+      $or: [{ paidAt: { $gte: fromDate, $lte: toEnd } }, { paidAt: null, ...yearSpan }],
+    })
+      .select('studentId amount paidAt paymentMethod feeType month year receiptNumber')
+      .lean(),
+    AcademyFeeRecord.find({
+      status: { $in: ['pending', 'overdue'] },
+      ...yearSpan,
+    })
+      .select('studentId amount status dueDate feeType month year')
+      .lean(),
+    AcademyExpense.find({ status: 'paid', expenseDate: { $gte: fromDate, $lte: toEnd } })
+      .select('title amount expenseDate category categoryOther paymentMethod vendor')
+      .sort({ expenseDate: -1 })
+      .lean(),
+    AcademySalaryRecord.find({
+      status: 'paid',
+      $or: [{ paidAt: { $gte: fromDate, $lte: toEnd } }, { paidAt: null, ...yearSpan }],
+    })
+      .select('amount month year status paymentMethod paidAt staffId')
+      .populate('staffId', 'name')
+      .lean(),
+    categoryNameMap(),
+  ]);
+
+  const paidInRange = paidFees.filter((fee) =>
+    inSpan(cashDate(fee.paidAt, fee.year, fee.month), fromDate, toEnd)
+  );
+  const unpaidInRange = unpaidFees.filter((fee) => monthOverlaps(fee.year, fee.month, fromDate, toEnd));
+  const salariesInRange = salaries.filter((row) =>
+    inSpan(cashDate(row.paidAt, row.year, row.month), fromDate, toEnd)
+  );
+
+  const studentIds = [
+    ...new Set(
+      [...paidInRange, ...unpaidInRange].map((fee) => (fee.studentId ? String(fee.studentId) : '')).filter(Boolean)
+    ),
+  ];
+  const students = studentIds.length
+    ? await AcademyStudent.find({ _id: { $in: studentIds } })
+        .select('studentName studentId classId')
+        .populate('classId', 'className')
+        .lean()
+    : [];
+  const studentById = new Map(students.map((student) => [String(student._id), student]));
+  const classNameOf = (studentId) => {
+    const student = studentById.get(String(studentId || ''));
+    return student?.classId?.className || 'Unassigned';
+  };
+  const studentLabel = (studentId) => {
+    const student = studentById.get(String(studentId || ''));
+    return {
+      studentName: student?.studentName || '—',
+      studentCode: student?.studentId || '',
+    };
+  };
+
+  const feeMap = new Map();
+  const addFee = (fee, kind) => {
+    const when = kind === 'collected' ? cashDate(fee.paidAt, fee.year, fee.month) : new Date(fee.year, fee.month - 1, 1);
+    const year = when.getFullYear();
+    const month = when.getMonth() + 1;
+    const className = classNameOf(fee.studentId);
+    const method = kind === 'collected' ? methodLabel(fee.paymentMethod) : '';
+    const feeType = fee.feeType || 'monthly';
+    const key = `${year}-${month}|${className}|${method}|${feeType}|${kind}`;
+    const row = feeMap.get(key) || {
+      year,
+      month,
+      className,
+      method,
+      feeType,
+      collected: 0,
+      pending: 0,
+      count: 0,
+    };
+    if (kind === 'collected') row.collected += Number(fee.amount) || 0;
+    else row.pending += Number(fee.amount) || 0;
+    row.count += 1;
+    feeMap.set(key, row);
+  };
+  paidInRange.forEach((fee) => addFee(fee, 'collected'));
+  unpaidInRange.forEach((fee) => addFee(fee, 'pending'));
+
+  const expenseMap = new Map();
+  for (const expense of expenses) {
+    const when = new Date(expense.expenseDate);
+    const year = when.getFullYear();
+    const month = when.getMonth() + 1;
+    const method = methodLabel(expense.paymentMethod);
+    const category = expense.category || 'other';
+    const name =
+      category === 'other' && String(expense.categoryOther || '').trim()
+        ? String(expense.categoryOther).trim()
+        : categoryNames[category] || category;
+    const key = `${year}-${month}|${method}|${category}|${name}`;
+    const row = expenseMap.get(key) || { year, month, method, category, name, amount: 0, count: 0 };
+    row.amount += Number(expense.amount) || 0;
+    row.count += 1;
+    expenseMap.set(key, row);
+  }
+
+  const salaryMap = new Map();
+  for (const salary of salariesInRange) {
+    const when = cashDate(salary.paidAt, salary.year, salary.month);
+    const year = when.getFullYear();
+    const month = when.getMonth() + 1;
+    const method = methodLabel(salary.paymentMethod);
+    const key = `${year}-${month}|${method}`;
+    const row = salaryMap.get(key) || { year, month, method, amount: 0, count: 0 };
+    row.amount += Number(salary.amount) || 0;
+    row.count += 1;
+    salaryMap.set(key, row);
+  }
+
+  const money = (row) => ({
+    ...row,
+    collected: roundMoney(row.collected),
+    pending: roundMoney(row.pending),
+    amount: roundMoney(row.amount),
+  });
+
+  const recentPayments = paidInRange
+    .map((fee) => {
+      const when = cashDate(fee.paidAt, fee.year, fee.month);
+      const who = studentLabel(fee.studentId);
+      return {
+        id: String(fee._id),
+        amount: roundMoney(fee.amount),
+        paidAt: when.toISOString(),
+        feeType: fee.feeType,
+        month: fee.month,
+        year: fee.year,
+        voucherNumber: fee.receiptNumber || '',
+        paymentMethod: fee.paymentMethod || 'cash',
+        studentName: who.studentName,
+        studentId: who.studentCode,
+        className: classNameOf(fee.studentId),
+      };
+    })
+    .sort((a, b) => b.paidAt.localeCompare(a.paidAt))
+    .slice(0, 300);
+
+  const recentExpenses = expenses.slice(0, 300).map((expense) => ({
+    id: String(expense._id),
+    title: expense.title,
+    amount: roundMoney(expense.amount),
+    expenseDate: expense.expenseDate,
+    category: expense.category || 'other',
+    categoryName:
+      expense.category === 'other' && String(expense.categoryOther || '').trim()
+        ? String(expense.categoryOther).trim()
+        : categoryNames[expense.category] || expense.category || 'Other',
+    paymentMethod: expense.paymentMethod || 'other',
+    vendor: expense.vendor || '',
+    status: 'paid',
+  }));
+
+  const recentSalaries = salariesInRange
+    .map((salary) => ({
+      id: String(salary._id),
+      amount: roundMoney(salary.amount),
+      month: salary.month,
+      year: salary.year,
+      status: salary.status,
+      paymentMethod: salary.paymentMethod || 'other',
+      paidAt: cashDate(salary.paidAt, salary.year, salary.month).toISOString(),
+      staffName: salary.staffId?.name || 'Staff',
+    }))
+    .sort((a, b) => String(b.paidAt).localeCompare(String(a.paidAt)))
+    .slice(0, 300);
+
+  const [paymentStatus, aging] = await Promise.all([
+    paymentStatusByClass(),
+    agingByClass(),
+  ]);
+
+  return {
+    range: {
+      from: `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}-${String(fromDate.getDate()).padStart(2, '0')}`,
+      to: `${toDay.getFullYear()}-${String(toDay.getMonth() + 1).padStart(2, '0')}-${String(toDay.getDate()).padStart(2, '0')}`,
+    },
+    fees: [...feeMap.values()].map(money),
+    expenses: [...expenseMap.values()].map(money),
+    salaries: [...salaryMap.values()].map(money),
+    paymentStatus,
+    aging,
+    recentPayments,
+    recentExpenses,
+    recentSalaries,
+  };
+}
+
+async function paymentStatusByClass() {
+  const rows = await AcademyFeeRecord.aggregate([
+    {
+      $group: {
+        _id: '$studentId',
+        unpaid: { $sum: { $cond: [{ $in: ['$status', ['pending', 'overdue']] }, 1, 0] } },
+        paid: { $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] } },
+        overdue: { $sum: { $cond: [{ $eq: ['$status', 'overdue'] }, 1, 0] } },
+      },
+    },
+    {
+      $lookup: { from: 'students', localField: '_id', foreignField: '_id', as: 'student' },
+    },
+    { $unwind: { path: '$student', preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: { from: 'classes', localField: 'student.classId', foreignField: '_id', as: 'klass' },
+    },
+    { $unwind: { path: '$klass', preserveNullAndEmptyArrays: true } },
+  ]);
+
+  const tally = new Map();
+  const add = (className, name) => {
+    const key = `${className}\u0000${name}`;
+    tally.set(key, (tally.get(key) || 0) + 1);
+  };
+  for (const row of rows) {
+    const className = row.klass?.className || 'Unassigned';
+    if (row.unpaid === 0 && row.paid > 0) add(className, 'Fully Paid');
+    else if (row.unpaid > 0 && row.paid > 0) add(className, 'Partially Paid');
+    else if (row.unpaid > 0 && row.paid === 0) add(className, 'Unpaid');
+    if (row.overdue > 0) add(className, 'Overdue');
+  }
+  return [...tally.entries()].map(([key, students]) => {
+    const [className, name] = key.split('\u0000');
+    return { className, name, students };
+  });
+}
+
+async function agingByClass() {
+  const now = new Date();
+  const unpaid = await AcademyFeeRecord.find({ status: { $in: ['pending', 'overdue'] } })
+    .select('amount dueDate studentId')
+    .lean();
+  const studentIds = [...new Set(unpaid.map((fee) => (fee.studentId ? String(fee.studentId) : '')).filter(Boolean))];
+  const students = studentIds.length
+    ? await AcademyStudent.find({ _id: { $in: studentIds } }).select('classId').populate('classId', 'className').lean()
+    : [];
+  const classByStudent = new Map(
+    students.map((student) => [String(student._id), student.classId?.className || 'Unassigned'])
+  );
+  const buckets = [
+    { label: '1–30 days', min: 1, max: 30 },
+    { label: '31–60 days', min: 31, max: 60 },
+    { label: '61–90 days', min: 61, max: 90 },
+    { label: '90+ days', min: 91, max: Infinity },
+  ];
+  const groups = new Map();
+  for (const fee of unpaid) {
+    if (!fee.dueDate) continue;
+    const days = Math.floor((now - new Date(fee.dueDate)) / 86400000);
+    if (days < 1) continue;
+    const bucket = buckets.find((item) => days >= item.min && days <= item.max);
+    if (!bucket) continue;
+    const className = classByStudent.get(String(fee.studentId)) || 'Unassigned';
+    const key = `${className}|${bucket.label}`;
+    const row = groups.get(key) || { className, label: bucket.label, amount: 0, students: new Set() };
+    row.amount += Number(fee.amount) || 0;
+    if (fee.studentId) row.students.add(String(fee.studentId));
+    groups.set(key, row);
+  }
+  return [...groups.values()].map((row) => ({
+    className: row.className,
+    label: row.label,
+    amount: roundMoney(row.amount),
+    students: row.students.size,
+  }));
+}
+
+module.exports = { getDashboardOverview, getFinanceDashboard };

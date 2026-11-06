@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   Area,
   AreaChart,
@@ -69,12 +69,13 @@ import {
 import {
   EXPENSE_CATEGORY_LABELS,
   fetchBalanceSheetPdf,
-  fetchDashboardOverview,
   fetchFeeDefaulters,
+  fetchFinanceDashboard,
+  type FinanceDashboardData,
 } from "@/lib/studentManagementApi";
 
 type PeriodView = "monthly" | "quarterly" | "yearly";
-type DashboardTx = FinanceTransaction & { ymd: string };
+type DashboardTx = FinanceTransaction & { ymd: string; className?: string };
 
 const cardClass =
   "rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(16,38,77,0.06)]";
@@ -95,7 +96,9 @@ const CHART_COLORS = [
 const METHOD_COLORS: Record<string, string> = {
   Cash: "#16A36A",
   "Bank Transfer": "#2478E8",
+  "Mobile Wallet": "#8B5CF6",
   Online: "#8B5CF6",
+  Cheque: "#F59E0B",
   Other: "#94A3B8",
 };
 
@@ -137,12 +140,28 @@ function toYmd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function monthOverlapsRange(year: number, month: number, from: string, to: string): boolean {
-  if (!from || !to || from > to) return true;
-  const start = `${year}-${String(month).padStart(2, "0")}-01`;
-  const last = new Date(year, month, 0).getDate();
-  const end = `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
-  return end >= from && start <= to;
+function monthsInRange(from: string, to: string): { year: number; month: number; label: string }[] {
+  if (!from || !to || from > to) return [];
+  const [fy, fm] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  if (!fy || !fm || !ty || !tm) return [];
+  const out: { year: number; month: number; label: string }[] = [];
+  let year = fy;
+  let month = fm;
+  while (year < ty || (year === ty && month <= tm)) {
+    out.push({
+      year,
+      month,
+      label: new Date(year, month - 1, 1).toLocaleString("en", { month: "short", year: "2-digit" }),
+    });
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+    if (out.length > 48) break;
+  }
+  return out;
 }
 
 function toYmdFromUnknown(value?: string | Date | null): string {
@@ -308,12 +327,207 @@ function BarSpark({ className, style }: { className?: string; style?: CSSPropert
   return <FileBarChart2 className={className} style={style} />;
 }
 
+function monthKey(year: number, month: number) {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function buildFinanceFigures(
+  finance: FinanceDashboardData | undefined,
+  from: string,
+  to: string,
+  classFilter: string,
+  methodFilter: string,
+) {
+  const months = monthsInRange(from, to);
+  const today = toYmd(new Date());
+  const buckets = new Map(
+    months.map((month) => {
+      const key = monthKey(month.year, month.month);
+      return [
+        key,
+        {
+          month: month.label,
+          monthKey: key,
+          monthNum: month.month,
+          year: month.year,
+          income: 0,
+          expenses: 0,
+          feesCollected: 0,
+          feesPending: 0,
+          net: 0,
+          started: `${key}-01` <= today,
+        },
+      ];
+    }),
+  );
+
+  const classMap = new Map<
+    string,
+    { className: string; assessed: number; collected: number; outstanding: number; pct: number; color: string }
+  >();
+
+  for (const row of finance?.fees || []) {
+    const bucket = buckets.get(monthKey(row.year, row.month));
+    const classOk = classFilter === "all" || row.className === classFilter;
+    const methodOk = methodFilter === "all" || row.method === methodFilter;
+    if (bucket && classOk && methodOk) {
+      bucket.income += row.collected;
+      bucket.feesCollected += row.collected;
+    }
+    if (bucket && classOk) bucket.feesPending += row.pending;
+
+    const klass = classMap.get(row.className) || {
+      className: row.className,
+      assessed: 0,
+      collected: 0,
+      outstanding: 0,
+      pct: 0,
+      color: "",
+    };
+    if (methodOk) klass.collected += row.collected;
+    klass.outstanding += row.pending;
+    classMap.set(row.className, klass);
+  }
+
+  for (const row of finance?.expenses || []) {
+    if (methodFilter !== "all" && row.method !== methodFilter) continue;
+    const bucket = buckets.get(monthKey(row.year, row.month));
+    if (bucket) bucket.expenses += row.amount;
+  }
+  for (const row of finance?.salaries || []) {
+    if (methodFilter !== "all" && row.method !== methodFilter) continue;
+    const bucket = buckets.get(monthKey(row.year, row.month));
+    if (bucket) bucket.expenses += row.amount;
+  }
+
+  const trendRows = [...buckets.values()];
+  const started = trendRows.filter((row) => row.started);
+  const compare = started.length ? started : trendRows;
+  const last = compare[compare.length - 1];
+  const prev = compare[compare.length - 2];
+  const monthlyTrend = trendRows.map((row) => ({
+    month: row.month,
+    monthKey: row.monthKey,
+    monthNum: row.monthNum,
+    year: row.year,
+    income: row.income,
+    expenses: row.expenses,
+    feesCollected: row.feesCollected,
+    feesPending: row.feesPending,
+    net: row.income - row.expenses,
+  }));
+
+  const classCollections = [...classMap.values()]
+    .map((row) => {
+      const assessed = row.collected + row.outstanding;
+      return {
+        ...row,
+        assessed,
+        pct: assessed > 0 ? Math.round((row.collected / assessed) * 100) : 0,
+      };
+    })
+    .sort((a, b) => b.assessed - a.assessed)
+    .map((row, i) => ({ ...row, color: CHART_COLORS[i % CHART_COLORS.length] }));
+  if (classFilter !== "all" && !classCollections.some((row) => row.className === classFilter)) {
+    classCollections.push({
+      className: classFilter,
+      assessed: 0,
+      collected: 0,
+      outstanding: 0,
+      pct: 0,
+      color: CHART_COLORS[classCollections.length % CHART_COLORS.length],
+    });
+  }
+
+  const feesCollected = monthlyTrend.reduce((n, month) => n + month.income, 0);
+  const outstandingFees = monthlyTrend.reduce((n, month) => n + month.feesPending, 0);
+  const totalExpensesPeriod = monthlyTrend.reduce((n, month) => n + month.expenses, 0);
+
+  const expenseCats = new Map<string, { name: string; amount: number; count: number }>();
+  let salaryTotal = 0;
+  let salaryCount = 0;
+  for (const row of finance?.expenses || []) {
+    if (methodFilter !== "all" && row.method !== methodFilter) continue;
+    const cat = expenseCats.get(row.name) || { name: row.name, amount: 0, count: 0 };
+    cat.amount += row.amount;
+    cat.count += row.count;
+    expenseCats.set(row.name, cat);
+  }
+  for (const row of finance?.salaries || []) {
+    if (methodFilter !== "all" && row.method !== methodFilter) continue;
+    salaryTotal += row.amount;
+    salaryCount += row.count;
+  }
+  const expenseBreakdown = [...expenseCats.values()]
+    .sort((a, b) => b.amount - a.amount)
+    .map((row, i) => ({
+      ...row,
+      color: CHART_COLORS[(i + (salaryTotal > 0 ? 1 : 0)) % CHART_COLORS.length],
+    }));
+  if (salaryTotal > 0) {
+    expenseBreakdown.unshift({
+      name: "Staff Salaries",
+      amount: salaryTotal,
+      count: salaryCount,
+      color: FINANCE_COLORS.primary,
+    });
+  }
+
+  const methodMap = new Map<string, { name: string; amount: number; count: number; color: string }>();
+  for (const row of finance?.fees || []) {
+    if (!row.collected) continue;
+    if (classFilter !== "all" && row.className !== classFilter) continue;
+    if (methodFilter !== "all" && row.method !== methodFilter) continue;
+    const name = row.method || "Other";
+    const current = methodMap.get(name) || {
+      name,
+      amount: 0,
+      count: 0,
+      color: METHOD_COLORS[name] || METHOD_COLORS.Other,
+    };
+    current.amount += row.collected;
+    current.count += row.count;
+    methodMap.set(name, current);
+  }
+
+  const revenueSources = months.map((month) => {
+    let tuition = 0;
+    let admission = 0;
+    let other = 0;
+    for (const row of finance?.fees || []) {
+      if (row.year !== month.year || row.month !== month.month || !row.collected) continue;
+      if (classFilter !== "all" && row.className !== classFilter) continue;
+      if (methodFilter !== "all" && row.method !== methodFilter) continue;
+      if (row.feeType === "admission") admission += row.collected;
+      else if (row.feeType === "stationery") other += row.collected;
+      else tuition += row.collected;
+    }
+    return { month: month.label, tuition, admission, examination: 0, transport: 0, other };
+  });
+
+  return {
+    monthlyTrend,
+    classCollections,
+    feesCollected,
+    outstandingFees,
+    assessedFees: feesCollected + outstandingFees,
+    totalExpensesPeriod,
+    net: feesCollected - totalExpensesPeriod,
+    revenueGrowthPct: prev ? momPct(last?.income || 0, prev.income) : 0,
+    expensesGrowthPct: prev ? momPct(last?.expenses || 0, prev.expenses) : 0,
+    outstandingChangePct: prev ? momPct(last?.feesPending || 0, prev.feesPending) : 0,
+    expenseBreakdown,
+    paymentMethods: [...methodMap.values()].sort((a, b) => b.amount - a.amount),
+    revenueSources,
+  };
+}
+
 const FinanceDashboard = () => {
   const { role } = useParams<{ role: Role }>();
   const r = (role || "admin") as Role;
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { selected, sessions, isAll } = usePanelSession();
+  const { selected, sessions, isAll, isLoading: sessionsLoading } = usePanelSession();
   const financeSession =
     !isAll && selected
       ? selected
@@ -335,82 +549,72 @@ const FinanceDashboard = () => {
   const [sheetTo, setSheetTo] = useState("");
   const pageSize = 5;
 
+  const rangeReady = Boolean(sheetFrom && sheetTo && sheetFrom <= sheetTo);
+
   const {
-    data: overview,
+    data: finance,
     isLoading,
     isError,
     error,
     refetch,
   } = useQuery({
-    queryKey: ["finance-dashboard-overview"],
-    queryFn: () => fetchDashboardOverview(12),
+    queryKey: ["finance-dashboard-overview", sheetFrom, sheetTo],
+    queryFn: () => fetchFinanceDashboard(sheetFrom, sheetTo),
+    enabled: rangeReady,
+    placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
 
   const { data: defaultersData } = useQuery({
-    queryKey: ["finance-dashboard-defaulters"],
-    queryFn: () => fetchFeeDefaulters({ page: 1, limit: 100 }),
+    queryKey: ["finance-dashboard-defaulters", sheetFrom, sheetTo],
+    queryFn: () =>
+      fetchFeeDefaulters({ page: 1, limit: 100, periodFrom: sheetFrom, periodTo: sheetTo }),
+    enabled: rangeReady,
+    placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
 
   useEffect(() => {
-    if (!sessionFrom || !sessionTo) return;
-    setSheetFrom(sessionFrom);
-    setSheetTo(sessionTo);
+    if (sessionFrom && sessionTo) {
+      setSheetFrom(sessionFrom);
+      setSheetTo(sessionTo);
+      setTxPage(1);
+      return;
+    }
+    if (sessionsLoading) return;
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    setSheetFrom(toYmd(from));
+    setSheetTo(toYmd(now));
     setTxPage(1);
-  }, [financeSession?._id, sessionFrom, sessionTo]);
+  }, [financeSession?._id, sessionFrom, sessionTo, sessionsLoading]);
 
-  const trends = (overview?.charts.monthlyTrends || []).filter((m) =>
-    monthOverlapsRange(m.year, m.month, sheetFrom, sheetTo),
+  const figures = useMemo(
+    () => buildFinanceFigures(finance, sheetFrom, sheetTo, classFilter, methodFilter),
+    [finance, sheetFrom, sheetTo, classFilter, methodFilter],
   );
-  const last = trends[trends.length - 1];
-  const prev = trends[trends.length - 2];
-
-  const classCollections = (overview?.charts.feesByClass || []).map((c, i) => ({
-    ...c,
-    color: CHART_COLORS[i % CHART_COLORS.length],
-  }));
-  const selectedClass =
-    classFilter === "all" ? null : classCollections.find((c) => c.className === classFilter) ?? null;
-  const periodCollected = trends.reduce((n, m) => n + (m.feesCollected || 0), 0);
-  const periodPending = trends.reduce((n, m) => n + (m.feesPending || 0), 0);
-  const feesCollected = selectedClass ? selectedClass.collected : periodCollected;
-  const outstandingFees = selectedClass ? selectedClass.outstanding : periodPending;
-  const assessedFees = feesCollected + outstandingFees;
-  const expensesMonth = overview?.kpis.expensesMonth || 0;
-  const salaryPaidMonth = overview?.kpis.salaryPaidMonth || 0;
-  const totalExpensesPeriod = trends.reduce((n, m) => n + (m.expenses || 0) + (m.salaryPaid || 0), 0);
-  const totalRevenuePeriod = trends.reduce((n, m) => n + (m.feesCollected || 0), 0);
-  const net = totalRevenuePeriod - totalExpensesPeriod;
-
-  const revenueGrowthPct = momPct(last?.feesCollected || 0, prev?.feesCollected || 0);
-  const expensesGrowthPct = momPct(
-    (last?.expenses || 0) + (last?.salaryPaid || 0),
-    (prev?.expenses || 0) + (prev?.salaryPaid || 0),
-  );
-  const outstandingChangePct = momPct(last?.feesPending || 0, prev?.feesPending || 0);
+  const {
+    monthlyTrend,
+    classCollections,
+    feesCollected,
+    outstandingFees,
+    assessedFees,
+    totalExpensesPeriod,
+    net,
+    revenueGrowthPct,
+    expensesGrowthPct,
+    outstandingChangePct,
+    expenseBreakdown,
+    paymentMethods,
+    revenueSources,
+  } = figures;
   const collectedGrowthPct = revenueGrowthPct;
   const rate = pctOf(feesCollected, assessedFees);
-
-  const monthlyTrend = useMemo(
-    () =>
-      trends.map((m) => {
-        const income = m.feesCollected || 0;
-        const expenses = (m.expenses || 0) + (m.salaryPaid || 0);
-        return {
-          month: m.label,
-          monthKey: `${m.year}-${String(m.month).padStart(2, "0")}`,
-          monthNum: m.month,
-          year: m.year,
-          income,
-          expenses,
-          feesCollected: m.feesCollected || 0,
-          feesPending: m.feesPending || 0,
-          net: income - expenses,
-        };
-      }),
-    [trends],
-  );
+  const todayKey = toYmd(new Date()).slice(0, 7);
+  const latestMonth =
+    [...monthlyTrend].reverse().find((month) => month.monthKey <= todayKey) ||
+    monthlyTrend[monthlyTrend.length - 1];
+  const latestCollected = latestMonth?.feesCollected || 0;
 
   const sheetRangeError = Boolean(sheetFrom && sheetTo && sheetFrom > sheetTo);
 
@@ -455,75 +659,49 @@ const FinanceDashboard = () => {
     [monthlyTrend],
   );
 
-  const expenseBreakdown = useMemo(() => {
-    const cats = (overview?.charts.expensesByCategory || []).map((c, i) => ({
-      name: c.name || EXPENSE_CATEGORY_LABELS[c.category] || c.category,
-      amount: c.total,
-      color: CHART_COLORS[i % CHART_COLORS.length],
-      count: c.count,
+  const expenseTotal = expenseBreakdown.reduce((n, c) => n + c.amount, 0);
+  const paymentMethodTotal = paymentMethods.reduce((n, m) => n + m.amount, 0);
+
+  const agingAnalysis = useMemo(() => {
+    const labels = ["1–30 days", "31–60 days", "61–90 days", "90+ days"];
+    const rows = (finance?.aging || []).filter(
+      (row) => classFilter === "all" || row.className === classFilter,
+    );
+    return labels.map((label, i) => ({
+      label,
+      amount: rows.filter((row) => row.label === label).reduce((n, row) => n + row.amount, 0),
+      students: rows.filter((row) => row.label === label).reduce((n, row) => n + row.students, 0),
+      color: AGING_COLORS[i % AGING_COLORS.length],
     }));
-    if (salaryPaidMonth > 0) {
-      cats.unshift({
-        name: "Staff Salaries",
-        amount: salaryPaidMonth,
-        color: FINANCE_COLORS.primary,
-        count: 0,
-      });
+  }, [finance, classFilter]);
+
+  const paymentStatusRows = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const row of finance?.paymentStatus || []) {
+      if (classFilter !== "all" && row.className !== classFilter) continue;
+      totals.set(row.name, (totals.get(row.name) || 0) + row.students);
     }
-    return cats;
-  }, [overview, salaryPaidMonth]);
-
-  const expenseTotal = expenseBreakdown.reduce((n, c) => n + c.amount, 0) || totalExpensesPeriod;
-
-  const paymentMethods = useMemo(() => {
-    const rows = (overview?.charts.paymentMethods || [])
-      .map((m) => ({
-        name: m.name === "Online" ? "Mobile Wallet" : m.name,
-        amount: m.amount,
-        count: m.count,
-        color: METHOD_COLORS[m.name] || METHOD_COLORS.Other,
-      }))
-      .filter((m) => methodFilter === "all" || m.name === methodFilter);
-    return rows;
-  }, [overview, methodFilter]);
-
-  const revenueSources = useMemo(
-    () =>
-      (overview?.charts.revenueByFeeType || [])
-        .filter((m) => monthOverlapsRange(m.year, m.month, sheetFrom, sheetTo))
-        .map((m) => ({
-          month: m.label,
-          tuition: m.monthly,
-          admission: m.admission,
-          examination: 0,
-          transport: 0,
-          other: m.stationery,
-        })),
-    [overview, sheetFrom, sheetTo],
-  );
-
-  const agingAnalysis = useMemo(
-    () =>
-      (overview?.charts.agingBuckets || []).map((b, i) => ({
-        ...b,
-        color: AGING_COLORS[i % AGING_COLORS.length],
-      })),
-    [overview],
-  );
+    const base =
+      (totals.get("Fully Paid") || 0) +
+      (totals.get("Partially Paid") || 0) +
+      (totals.get("Unpaid") || 0) || 1;
+    return ["Fully Paid", "Partially Paid", "Unpaid", "Overdue"].map((name) => ({
+      name,
+      students: totals.get(name) || 0,
+      pct: Math.round(((totals.get(name) || 0) / base) * 1000) / 10,
+      color: STATUS_COLORS[name] || FINANCE_COLORS.slate,
+    }));
+  }, [finance, classFilter]);
 
   const studentPaymentStatus = useMemo(() => {
-    const rows = (overview?.charts.studentPaymentStatus || []).map((s) => ({
-      ...s,
-      color: STATUS_COLORS[s.name] || FINANCE_COLORS.slate,
-    }));
-    if (txStatusFilter === "Paid") return rows.filter((s) => s.name === "Fully Paid");
-    if (txStatusFilter === "Pending") return rows.filter((s) => s.name !== "Fully Paid");
+    if (txStatusFilter === "Paid") return paymentStatusRows.filter((s) => s.name === "Fully Paid");
+    if (txStatusFilter === "Pending") return paymentStatusRows.filter((s) => s.name !== "Fully Paid");
     if (txStatusFilter === "Failed") return [];
-    return rows;
-  }, [overview, txStatusFilter]);
+    return paymentStatusRows;
+  }, [paymentStatusRows, txStatusFilter]);
 
   const transactions = useMemo(() => {
-    const fees: DashboardTx[] = (overview?.widgets.recentPayments || []).map((p) => ({
+    const fees: DashboardTx[] = (finance?.recentPayments || []).map((p) => ({
       id: `FEE-${p.id.slice(-6).toUpperCase()}`,
       date: formatShortDate(p.paidAt),
       type: "Fee Payment",
@@ -533,8 +711,9 @@ const FinanceDashboard = () => {
       amount: p.amount,
       status: "Paid" as const,
       ymd: toYmdFromUnknown(p.paidAt),
+      className: p.className,
     }));
-    const expenses: DashboardTx[] = (overview?.widgets.recentExpenses || []).map((e) => ({
+    const expenses: DashboardTx[] = (finance?.recentExpenses || []).map((e) => ({
       id: `EXP-${e.id.slice(-6).toUpperCase()}`,
       date: formatShortDate(e.expenseDate),
       type: "Expense",
@@ -545,7 +724,7 @@ const FinanceDashboard = () => {
       status: (e.status === "paid" ? "Paid" : "Pending") as "Paid" | "Pending",
       ymd: toYmdFromUnknown(e.expenseDate),
     }));
-    const salaries: DashboardTx[] = (overview?.widgets.recentSalaries || []).map((s) => ({
+    const salaries: DashboardTx[] = (finance?.recentSalaries || []).map((s) => ({
       id: `SAL-${s.id.slice(-6).toUpperCase()}`,
       date: formatShortDate(s.paidAt) !== "—" ? formatShortDate(s.paidAt) : `${monthLabel(s.month, s.year)} ${s.year}`,
       type: "Salary",
@@ -557,7 +736,7 @@ const FinanceDashboard = () => {
       ymd: toYmdFromUnknown(s.paidAt) || `${s.year}-${String(s.month).padStart(2, "0")}-01`,
     }));
     return [...fees, ...expenses, ...salaries].sort((a, b) => b.ymd.localeCompare(a.ymd));
-  }, [overview]);
+  }, [finance]);
 
   const pendingDues = useMemo(
     () =>
@@ -591,18 +770,13 @@ const FinanceDashboard = () => {
     [classCollections],
   );
 
-  const unpaidStudents = studentPaymentStatus
-    .filter((s) => s.name !== "Fully Paid")
+  const unpaidStudents = paymentStatusRows
+    .filter((s) => s.name === "Partially Paid" || s.name === "Unpaid")
     .reduce((n, s) => n + s.students, 0);
 
   const avgMonthlyRevenue = monthlyTrend.length
     ? Math.round(monthlyTrend.reduce((n, m) => n + m.income, 0) / monthlyTrend.length)
     : 0;
-
-  const periodLabel =
-    overview?.period != null
-      ? `${monthLabel(overview.period.month, overview.period.year)} ${overview.period.year}`
-      : "Current period";
 
   const quickInsights = useMemo(() => {
     const items: { id: string; title: string; detail: string; tone: "success" | "purple" | "warning" | "primary" }[] =
@@ -613,13 +787,13 @@ const FinanceDashboard = () => {
         revenueGrowthPct >= 0
           ? `Fee collection up ${revenueGrowthPct}%`
           : `Fee collection down ${Math.abs(revenueGrowthPct)}%`,
-      detail: "vs. last month",
+      detail: "vs. previous month in range",
       tone: revenueGrowthPct >= 0 ? "success" : "warning",
     });
     items.push({
       id: "dues",
-      title: `${overview?.kpis.defaulterCount || 0} fee defaulters`,
-      detail: formatPkr(overview?.kpis.defaulterOutstanding || outstandingFees, true) + " outstanding",
+      title: `${unpaidStudents} students with unpaid fees`,
+      detail: formatPkr(outstandingFees, true) + " outstanding",
       tone: "purple",
     });
     if (peakMonth.month !== "—") {
@@ -637,43 +811,59 @@ const FinanceDashboard = () => {
       tone: "primary",
     });
     return items.slice(0, 4);
-  }, [revenueGrowthPct, overview, outstandingFees, peakMonth, net]);
+  }, [revenueGrowthPct, unpaidStudents, outstandingFees, peakMonth, net]);
 
   const trendData = useMemo(() => {
     if (periodView === "yearly") {
-      const income = monthlyTrend.reduce((n, m) => n + m.income, 0);
-      const expenses = monthlyTrend.reduce((n, m) => n + m.expenses, 0);
-      return [
-        {
-          month: periodLabel,
-          income,
-          expenses,
-          feesCollected,
-          feesPending: outstandingFees,
-          net: income - expenses,
-        },
-      ];
+      const byYear = new Map<number, (typeof monthlyTrend)[number]>();
+      for (const month of monthlyTrend) {
+        const row = byYear.get(month.year) || {
+          month: String(month.year),
+          monthKey: String(month.year),
+          monthNum: 0,
+          year: month.year,
+          income: 0,
+          expenses: 0,
+          feesCollected: 0,
+          feesPending: 0,
+          net: 0,
+        };
+        row.income += month.income;
+        row.expenses += month.expenses;
+        row.feesCollected += month.feesCollected;
+        row.feesPending += month.feesPending;
+        row.net += month.net;
+        byYear.set(month.year, row);
+      }
+      return [...byYear.values()];
     }
     if (periodView === "quarterly") {
-      const qs = [
-        { label: "Q1", months: monthlyTrend.filter((m) => m.monthNum >= 1 && m.monthNum <= 3) },
-        { label: "Q2", months: monthlyTrend.filter((m) => m.monthNum >= 4 && m.monthNum <= 6) },
-        { label: "Q3", months: monthlyTrend.filter((m) => m.monthNum >= 7 && m.monthNum <= 9) },
-        { label: "Q4", months: monthlyTrend.filter((m) => m.monthNum >= 10 && m.monthNum <= 12) },
-      ];
-      return qs
-        .filter((q) => q.months.length)
-        .map((q) => ({
-          month: q.label,
-          income: q.months.reduce((n, m) => n + m.income, 0),
-          expenses: q.months.reduce((n, m) => n + m.expenses, 0),
-          feesCollected: q.months.reduce((n, m) => n + m.feesCollected, 0),
-          feesPending: q.months.reduce((n, m) => n + m.feesPending, 0),
-          net: q.months.reduce((n, m) => n + m.net, 0),
-        }));
+      const byQuarter = new Map<string, (typeof monthlyTrend)[number]>();
+      for (const month of monthlyTrend) {
+        const quarter = Math.ceil(month.monthNum / 3);
+        const key = `${month.year}-Q${quarter}`;
+        const row = byQuarter.get(key) || {
+          month: `Q${quarter} '${String(month.year).slice(2)}`,
+          monthKey: key,
+          monthNum: quarter,
+          year: month.year,
+          income: 0,
+          expenses: 0,
+          feesCollected: 0,
+          feesPending: 0,
+          net: 0,
+        };
+        row.income += month.income;
+        row.expenses += month.expenses;
+        row.feesCollected += month.feesCollected;
+        row.feesPending += month.feesPending;
+        row.net += month.net;
+        byQuarter.set(key, row);
+      }
+      return [...byQuarter.values()];
     }
     return monthlyTrend;
-  }, [periodView, monthlyTrend, periodLabel, feesCollected, outstandingFees]);
+  }, [periodView, monthlyTrend]);
 
   const classRows = useMemo(() => {
     if (classFilter === "all") return classCollections;
@@ -683,12 +873,13 @@ const FinanceDashboard = () => {
   const filteredTx = useMemo(() => {
     return transactions.filter((t) => {
       if (sheetFrom && sheetTo && sheetFrom <= sheetTo && t.ymd && (t.ymd < sheetFrom || t.ymd > sheetTo)) return false;
+      if (classFilter !== "all" && t.type === "Fee Payment" && t.className !== classFilter) return false;
       if (methodFilter !== "all" && t.method !== methodFilter) return false;
       if (txStatusFilter !== "all" && t.status !== txStatusFilter) return false;
       if (txTypeFilter !== "all" && t.type !== txTypeFilter) return false;
       return true;
     });
-  }, [transactions, methodFilter, txStatusFilter, txTypeFilter, sheetFrom, sheetTo]);
+  }, [transactions, methodFilter, txStatusFilter, txTypeFilter, sheetFrom, sheetTo, classFilter]);
 
   const filteredDues = useMemo(() => {
     const q = dueSearch.trim().toLowerCase();
@@ -733,7 +924,21 @@ const FinanceDashboard = () => {
     { name: "Pending", value: outstandingFees, color: FINANCE_COLORS.softBlue },
   ];
 
-  if (isLoading) {
+  if (sheetRangeError) {
+    return (
+      <div className="min-h-[50vh] grid place-items-center px-4" style={{ backgroundColor: FINANCE_COLORS.pageBg }}>
+        <div className={cn(cardClass, "p-6 max-w-md text-center space-y-3")}>
+          <AlertTriangle className="h-8 w-8 text-amber-500 mx-auto" />
+          <p className="font-semibold text-[#10264D]">Start date must be on or before the end date</p>
+          <Button type="button" variant="outline" onClick={clearFilters}>
+            Clear
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!finance || isLoading) {
     return (
       <div className="min-h-[50vh] grid place-items-center" style={{ backgroundColor: FINANCE_COLORS.pageBg }}>
         <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -871,7 +1076,7 @@ const FinanceDashboard = () => {
           />
           <KpiCard
             label="Total Expenses"
-            value={formatPkr(totalExpensesPeriod || expensesMonth + salaryPaidMonth)}
+            value={formatPkr(totalExpensesPeriod)}
             changePct={expensesGrowthPct}
             icon={CreditCard}
             iconBg="rgba(36,120,232,0.12)"
@@ -891,7 +1096,7 @@ const FinanceDashboard = () => {
           />
           <KpiCard
             label="Collected Fees"
-            value={formatPkr(last?.feesCollected || 0)}
+            value={formatPkr(latestCollected)}
             changePct={collectedGrowthPct}
             icon={Receipt}
             iconBg="rgba(13,148,136,0.12)"
@@ -1131,7 +1336,7 @@ const FinanceDashboard = () => {
                     {d.name}
                   </span>
                   <span className="font-medium text-[#10264D]">
-                    {pctOf(d.amount, feesCollected)}%
+                    {pctOf(d.amount, paymentMethodTotal)}%
                     {d.count != null && <span className="text-slate-400 font-normal"> · {d.count}</span>}
                   </span>
                 </div>

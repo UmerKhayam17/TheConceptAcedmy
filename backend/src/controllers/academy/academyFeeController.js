@@ -367,6 +367,8 @@ function paidExportQuery(req) {
     feeType: req.query.feeType,
     dateFrom: ymdQuery(req.query.dateFrom),
     dateTo: ymdQuery(req.query.dateTo),
+    periodFrom: ymdQuery(req.query.periodFrom),
+    periodTo: ymdQuery(req.query.periodTo),
   };
 }
 

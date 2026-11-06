@@ -1975,7 +1975,7 @@ async function getFeeSummary({
   periodTo,
 }) {
   await syncOverdueFees({ month, year, classId, sectionId, studentId, studentIds, sessionId });
-  // dateFrom/dateTo = paid date (Paid tab); periodFrom/periodTo = billing month (other tabs).
+  // periodFrom/periodTo = billing month on Fee records and Paid. dateFrom/dateTo = payment date.
   const q = await buildFeeQuery({
     month,
     year,
@@ -2655,7 +2655,18 @@ function paymentMethodExportLabel(method) {
   return map[method] || method || '';
 }
 
-async function loadPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo }) {
+async function loadPaidFees({
+  classId,
+  month,
+  year,
+  search,
+  sessionId,
+  feeType,
+  dateFrom,
+  dateTo,
+  periodFrom,
+  periodTo,
+}) {
   const base = await buildFeeQuery({
     classId,
     month,
@@ -2665,6 +2676,8 @@ async function loadPaidFees({ classId, month, year, search, sessionId, feeType, 
     feeType,
     dateFrom,
     dateTo,
+    periodFrom,
+    periodTo,
   });
   const q = await applyFeeRecordSearch(base, search);
   // Keep paid history for inactive / suspended students (collection lists exclude them separately).
@@ -2823,8 +2836,30 @@ function paidFeesToCsv(records) {
   return [header, ...body].map((r) => r.map(escapeCsvCell).join(',')).join('\n');
 }
 
-async function exportPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo }) {
-  const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo });
+async function exportPaidFees({
+  classId,
+  month,
+  year,
+  search,
+  sessionId,
+  feeType,
+  dateFrom,
+  dateTo,
+  periodFrom,
+  periodTo,
+}) {
+  const records = await loadPaidFees({
+    classId,
+    month,
+    year,
+    search,
+    sessionId,
+    feeType,
+    dateFrom,
+    dateTo,
+    periodFrom,
+    periodTo,
+  });
   return paidFeesToCsv(records);
 }
 
@@ -3022,10 +3057,23 @@ async function exportPaidFeesReport({
   feeType,
   dateFrom,
   dateTo,
+  periodFrom,
+  periodTo,
   format,
   variant,
 }) {
-  const records = await loadPaidFees({ classId, month, year, search, sessionId, feeType, dateFrom, dateTo });
+  const records = await loadPaidFees({
+    classId,
+    month,
+    year,
+    search,
+    sessionId,
+    feeType,
+    dateFrom,
+    dateTo,
+    periodFrom,
+    periodTo,
+  });
   const isSummary = variant === 'summary';
   const { columns, rows } = isSummary
     ? buildPaidFeeSummaryReport(records, await require('./concessionCategoryService').categoryNameMap())
@@ -3036,6 +3084,9 @@ async function exportPaidFeesReport({
       ? dateFrom === dateTo
         ? `Date: ${dateFrom}`
         : `From ${dateFrom}  To ${dateTo}`
+      : null,
+    periodFrom && periodTo
+      ? `Billing months from ${periodFrom.slice(0, 7)} to ${periodTo.slice(0, 7)}`
       : null,
     formatReportMonthLabel({ month, year, records, allLabel: 'All paid months' }),
   ].filter(Boolean);

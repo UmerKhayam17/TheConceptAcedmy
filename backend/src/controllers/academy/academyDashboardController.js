@@ -11,6 +11,14 @@ const overview = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const finance = catchAsync(async (req, res) => {
+  const data = await dashboardService.getFinanceDashboard({
+    from: req.query.from,
+    to: req.query.to,
+  });
+  res.json({ success: true, data });
+});
+
 const balanceSheet = catchAsync(async (req, res) => {
   const data = await balanceSheetService.getBalanceSheet({
     from: req.query.from,
@@ -42,4 +50,4 @@ const balanceSheetPdf = catchAsync(async (req, res) => {
   res.send(buffer);
 });
 
-module.exports = { overview, balanceSheet, balanceSheetPdf, openingBalance, saveOpeningBalance };
+module.exports = { overview, finance, balanceSheet, balanceSheetPdf, openingBalance, saveOpeningBalance };

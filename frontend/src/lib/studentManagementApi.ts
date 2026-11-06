@@ -1236,6 +1236,77 @@ export type DashboardOverview = {
 export const fetchDashboardOverview = (months = 6) =>
   api<DashboardOverview>(`/dashboard/overview?months=${months}`);
 
+export type FinanceDashboardData = {
+  range: { from: string; to: string };
+  fees: {
+    year: number;
+    month: number;
+    className: string;
+    method: string;
+    feeType: string;
+    collected: number;
+    pending: number;
+    count: number;
+  }[];
+  expenses: {
+    year: number;
+    month: number;
+    method: string;
+    category: string;
+    name: string;
+    amount: number;
+    count: number;
+  }[];
+  salaries: {
+    year: number;
+    month: number;
+    method: string;
+    amount: number;
+    count: number;
+  }[];
+  paymentStatus: { className: string; name: string; students: number }[];
+  aging: { className: string; label: string; amount: number; students: number }[];
+  recentPayments: {
+    id: string;
+    amount: number;
+    paidAt: string;
+    feeType: string;
+    month: number;
+    year: number;
+    voucherNumber: string;
+    paymentMethod: string;
+    studentName: string;
+    studentId: string;
+    className: string;
+  }[];
+  recentExpenses: {
+    id: string;
+    title: string;
+    amount: number;
+    expenseDate: string;
+    category: string;
+    categoryName?: string;
+    paymentMethod: string;
+    vendor: string;
+    status: string;
+  }[];
+  recentSalaries: {
+    id: string;
+    amount: number;
+    month: number;
+    year: number;
+    status: string;
+    paymentMethod: string;
+    paidAt: string | null;
+    staffName: string;
+  }[];
+};
+
+export const fetchFinanceDashboard = (from: string, to: string) =>
+  api<FinanceDashboardData>(
+    `/dashboard/finance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+
 export type BalanceSheetLine = {
   key?: string;
   label: string;
@@ -1798,6 +1869,9 @@ export type PaidFeeExportParams = {
   feeType?: "admission" | "monthly" | "stationery";
   dateFrom?: string;
   dateTo?: string;
+  /** Billing-month range. Same meaning as the fee records date filter. */
+  periodFrom?: string;
+  periodTo?: string;
 };
 
 export const exportPaidFeesCsv = async (params?: PaidFeeExportParams) => {
@@ -1810,6 +1884,8 @@ export const exportPaidFeesCsv = async (params?: PaidFeeExportParams) => {
   if (params?.feeType) q.set("feeType", params.feeType);
   if (params?.dateFrom) q.set("dateFrom", params.dateFrom);
   if (params?.dateTo) q.set("dateTo", params.dateTo);
+  if (params?.periodFrom) q.set("periodFrom", params.periodFrom);
+  if (params?.periodTo) q.set("periodTo", params.periodTo);
   const res = await authedFetch(`/student-management/fees/paid/export?${q}`, { method: "GET" });
   if (!res.ok) throw new Error("Export failed");
   return res.blob();
@@ -1831,6 +1907,8 @@ export const exportPaidFeesReport = async (
   if (params?.feeType) q.set("feeType", params.feeType);
   if (params?.dateFrom) q.set("dateFrom", params.dateFrom);
   if (params?.dateTo) q.set("dateTo", params.dateTo);
+  if (params?.periodFrom) q.set("periodFrom", params.periodFrom);
+  if (params?.periodTo) q.set("periodTo", params.periodTo);
   const res = await authedFetch(`/student-management/fees/paid/export-report?${q}`, { method: "GET" });
   if (!res.ok) throw new Error("Export failed");
   return res.blob();

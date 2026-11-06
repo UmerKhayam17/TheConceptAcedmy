@@ -177,23 +177,6 @@ function renderBalanceSheetPdf(sheet) {
         return y;
       };
 
-      const drawFullRow = (y, label, amount) => {
-        if (y + ROW_H > pageBottom()) {
-          doc.addPage();
-          y = startBodyY();
-        }
-        doc.save();
-        doc.rect(MARGIN, y, contentW, ROW_H).fill(NAVY);
-        doc.restore();
-        doc.rect(MARGIN, y, contentW, ROW_H).strokeColor(LINE).lineWidth(0.85).stroke();
-        const amountX = MARGIN + contentW - AMOUNT_W;
-        doc.moveTo(amountX, y).lineTo(amountX, y + ROW_H).strokeColor(LINE).lineWidth(0.4).stroke();
-        doc.font('Helvetica-Bold').fontSize(8).fillColor('#FFFFFF');
-        pdfLine(doc, label, MARGIN + 4, y + 4, { width: contentW - AMOUNT_W - 10 });
-        pdfLine(doc, money(amount), amountX + 3, y + 4, { width: AMOUNT_W - 8, align: 'right' });
-        return y + ROW_H;
-      };
-
       const drawSingleTable = (y, title, rows) => {
         const height = HEADER_H + rows.length * ROW_H;
         if (y + height > pageBottom()) {
@@ -253,7 +236,25 @@ function renderBalanceSheetPdf(sheet) {
         return y + height;
       };
 
+      const drawFullRow = (y, label, amount) => {
+        if (y + ROW_H > pageBottom()) {
+          doc.addPage();
+          y = startBodyY();
+        }
+        doc.rect(MARGIN, y, contentW, ROW_H).strokeColor(LINE).lineWidth(0.4).stroke();
+        const amountX = MARGIN + contentW - AMOUNT_W;
+        doc.moveTo(amountX, y).lineTo(amountX, y + ROW_H).strokeColor(LINE).lineWidth(0.4).stroke();
+        doc.font('Helvetica-Bold').fontSize(8).fillColor('#111111');
+        pdfLine(doc, label, MARGIN + 4, y + 4, { width: contentW - AMOUNT_W - 10 });
+        pdfLine(doc, money(amount), amountX + 3, y + 4, { width: AMOUNT_W - 8, align: 'right' });
+        return y + ROW_H;
+      };
+
       let y = startBodyY();
+
+      const openingAsOf = sheet.cashFlow.openingAsOf || sheet.range.from;
+      y = drawFullRow(y, `Opening balance (${shortDate(openingAsOf)})`, sheet.cashFlow.opening);
+      y += 8;
 
       // Left = Income · Right = Expenditure
       const income = [
@@ -265,11 +266,36 @@ function renderBalanceSheetPdf(sheet) {
         { label: 'Total expenditure', amount: sheet.incomeStatement.totalExpenditure, kind: 'grand' },
       ];
       y = drawPair(y, 'Income', 'Expenditure', income, expenditure);
-      y = drawFullRow(
-        y,
-        `Net ${sheet.incomeStatement.surplus >= 0 ? 'surplus' : 'deficit'} for the period`,
-        sheet.incomeStatement.surplus
-      );
+
+      // Cash calculation sits directly under income and expenditure.
+      y += 10;
+      if (y + 20 > pageBottom()) {
+        doc.addPage();
+        y = startBodyY();
+      }
+      doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9);
+      pdfLine(doc, 'Cash on Hand', MARGIN, y);
+      doc.save();
+      doc.rect(MARGIN, y + 12, contentW, 1.5).fill(GOLD);
+      doc.restore();
+      y += 18;
+
+      y = drawSingleTable(y, 'Cash on Hand', [
+        {
+          label: sheet.cashFlow.manualOpening
+            ? `Opening balance (${shortDate(sheet.range.from)})`
+            : `Opening cash (${shortDate(sheet.range.from)})`,
+          amount: sheet.cashFlow.opening,
+          kind: 'item',
+        },
+        { label: 'Add: fees / receipts collected', amount: sheet.cashFlow.receipts, kind: 'item' },
+        { label: 'Less: academy expenses paid', amount: -sheet.cashFlow.expensePayments, kind: 'item' },
+        {
+          label: `Cash on hand as at ${shortDate(sheet.range.to)}`,
+          amount: sheet.cashFlow.closing,
+          kind: 'grand',
+        },
+      ]);
 
       const heads = sheet.headCounts || {};
       y += 14;
@@ -300,38 +326,6 @@ function renderBalanceSheetPdf(sheet) {
       studentRows.showCount = true;
       studentRows.amountHeader = 'Collected';
       y = drawSingleTable(y, 'Students', studentRows);
-
-      // Cash on hand at the end
-      y += 14;
-      if (y + 20 > pageBottom()) {
-        doc.addPage();
-        y = startBodyY();
-      }
-      doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9);
-      pdfLine(doc, 'Cash on Hand', MARGIN, y);
-      doc.save();
-      doc.rect(MARGIN, y + 12, contentW, 1.5).fill(GOLD);
-      doc.restore();
-      y += 18;
-
-      const totalPayments = Number(sheet.cashFlow.expensePayments) || 0;
-      y = drawSingleTable(y, 'Cash on Hand', [
-        {
-          label: sheet.cashFlow.manualOpening
-            ? `Opening balance (${shortDate(sheet.range.from)})`
-            : `Opening cash (${shortDate(sheet.range.from)})`,
-          amount: sheet.cashFlow.opening,
-          kind: 'item',
-        },
-        { label: 'Add: fees / receipts collected', amount: sheet.cashFlow.receipts, kind: 'item' },
-        { label: 'Less: academy expenses paid', amount: -sheet.cashFlow.expensePayments, kind: 'item' },
-        { label: 'Total payments', amount: -totalPayments, kind: 'item' },
-        {
-          label: `Cash on hand as at ${shortDate(sheet.range.to)}`,
-          amount: sheet.cashFlow.closing,
-          kind: 'grand',
-        },
-      ]);
 
       // Signature block pinned to the bottom of the last page (above the footer).
       const SIGN_BLOCK_H = 52;

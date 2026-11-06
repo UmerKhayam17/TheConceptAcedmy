@@ -61,6 +61,17 @@ router.get(
 );
 
 router.get(
+  '/dashboard/finance',
+  requireAnyPermission(
+    'view_academy_fee_reports',
+    'manage_academy_fees',
+    'view_attendance',
+    'manage_users'
+  ),
+  dashboardCtrl.finance
+);
+
+router.get(
   '/finance/balance-sheet.pdf',
   requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
   dashboardCtrl.balanceSheetPdf
