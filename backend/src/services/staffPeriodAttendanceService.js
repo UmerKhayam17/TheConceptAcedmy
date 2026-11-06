@@ -18,7 +18,7 @@ const {
   minutesSinceMidnight,
 } = require('../utils/schoolDay');
 const { publicEmail } = require('../config/staffRoles');
-const { graceMinutes, hhmmToMinutes } = require('./aiAttendance/attendanceStatusFromTimetable');
+const { staffGraceMinutes: graceMinutes, hhmmToMinutes } = require('./aiAttendance/attendanceStatusFromTimetable');
 
 /** left_early is only ever set by an admin (it counts as missed, like absent). */
 const PERIOD_STATUSES = new Set(['present', 'late', 'absent', 'leave', 'left_early']);

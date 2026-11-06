@@ -22,6 +22,19 @@ function graceMinutes() {
   return raw;
 }
 
+/** Used when AI_STAFF_LATE_GRACE_MINUTES is missing or invalid. */
+const DEFAULT_STAFF_GRACE_MINUTES = 5;
+
+/** Teachers/staff: minutes after their earliest period start before they are late. */
+function staffGraceMinutes() {
+  const raw = Number(process.env.AI_STAFF_LATE_GRACE_MINUTES);
+  if (process.env.AI_STAFF_LATE_GRACE_MINUTES === undefined || process.env.AI_STAFF_LATE_GRACE_MINUTES === '') {
+    return DEFAULT_STAFF_GRACE_MINUTES;
+  }
+  if (!Number.isFinite(raw) || raw < 0) return DEFAULT_STAFF_GRACE_MINUTES;
+  return raw;
+}
+
 /** Period types that count as class time (not breaks). */
 const START_PERIOD_TYPES = new Set(['lecture', 'assembly', 'prayer']);
 
@@ -184,11 +197,11 @@ async function getTeacherFirstPeriodStartMinutes(userId, checkIn = new Date()) {
   return { startMinutes: Math.min(...todayStarts), timeZone };
 }
 
-/** Same rule as students: earliest period today + grace; otherwise 9:30 AM. */
+/** Earliest period today + staff grace (default 5 min); otherwise 9:30 AM. */
 async function resolveStaffAttendanceStatus(userId, checkIn = new Date()) {
   const { startMinutes, timeZone } = await getTeacherFirstPeriodStartMinutes(userId, checkIn);
   const checkInMinutes = minutesSinceMidnight(checkIn, timeZone);
-  const grace = startMinutes == null ? 0 : graceMinutes();
+  const grace = startMinutes == null ? 0 : staffGraceMinutes();
   return statusFromMinutes(checkInMinutes, startMinutes, grace);
 }
 
@@ -199,6 +212,7 @@ function resolveFallbackAttendanceStatus(checkIn = new Date()) {
 
 module.exports = {
   graceMinutes,
+  staffGraceMinutes,
   resolveStudentAttendanceStatus,
   resolveFallbackAttendanceStatus,
   resolveStaffAttendanceStatus,
