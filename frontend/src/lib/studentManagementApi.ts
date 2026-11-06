@@ -287,6 +287,8 @@ export interface AcademyAttendanceRecord {
   _id: string;
   studentId: string;
   date: string;
+  /** School day (YYYY-MM-DD) computed by the server in the academy timezone, when provided. */
+  ymd?: string;
   status: "present" | "absent" | "late" | "leave";
   source?: "manual" | "ai" | "auto";
   checkIn?: string;

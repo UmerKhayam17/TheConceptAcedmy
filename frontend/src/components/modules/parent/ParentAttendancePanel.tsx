@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { schoolDayYmd } from "@/lib/localDate";
+import { recordDayYmd } from "@/lib/localDate";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bar,
@@ -92,9 +92,6 @@ function formatDobLong(dob?: string) {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-function dayKey(date: string | Date) {
-  return schoolDayYmd(date);
-}
 
 function formatDayLong(ymd: string) {
   const d = new Date(`${ymd}T12:00:00`);
@@ -151,7 +148,7 @@ function weekBuckets(records: AcademyAttendanceRecord[], month: number, year: nu
     let late = 0;
     let absent = 0;
     records.forEach((r) => {
-      const key = dayKey(r.date);
+      const key = recordDayYmd(r);
       if (key < startKey || key > endKey) return;
       if (r.status === "present") present += 1;
       else if (r.status === "late") late += 1;
@@ -178,7 +175,7 @@ function ratePct(presentLike: number, total: number) {
 function downloadMonthCsv(studentName: string, month: number, year: number, records: AcademyAttendanceRecord[]) {
   const header = ["Date", "Day", "Status", "Time In", "Time Out", "Remarks"];
   const rows = records.map((r) => {
-    const ymd = dayKey(r.date);
+    const ymd = recordDayYmd(r);
     return [
       ymd,
       formatWeekday(ymd),
@@ -280,7 +277,7 @@ export default function ParentAttendancePanel() {
 
   const byDay = useMemo(() => {
     const map = new Map<string, AcademyAttendanceRecord>();
-    (data?.records || []).forEach((r) => map.set(dayKey(r.date), r));
+    (data?.records || []).forEach((r) => map.set(recordDayYmd(r), r));
     return map;
   }, [data?.records]);
 
@@ -352,7 +349,7 @@ export default function ParentAttendancePanel() {
 
   const recordsSorted = useMemo(() => {
     const list = [...(data?.records || [])];
-    list.sort((a, b) => dayKey(b.date).localeCompare(dayKey(a.date)));
+    list.sort((a, b) => recordDayYmd(b).localeCompare(recordDayYmd(a)));
     return list;
   }, [data?.records]);
 
@@ -786,7 +783,7 @@ export default function ParentAttendancePanel() {
                   </thead>
                   <tbody>
                     {leaveRecords.map((r) => {
-                      const ymd = dayKey(r.date);
+                      const ymd = recordDayYmd(r);
                       return (
                         <tr key={r._id || ymd} className="border-b border-slate-100 last:border-0">
                           <td className="py-3 font-medium text-primary">{formatDayLong(ymd)}</td>
@@ -830,9 +827,9 @@ export default function ParentAttendancePanel() {
                   </thead>
                   <tbody>
                     {recordsSorted
-                      .filter((r) => !selectedDay || dayKey(r.date) === selectedDay)
+                      .filter((r) => !selectedDay || recordDayYmd(r) === selectedDay)
                       .map((r) => {
-                        const ymd = dayKey(r.date);
+                        const ymd = recordDayYmd(r);
                         return (
                           <tr
                             key={r._id || ymd}

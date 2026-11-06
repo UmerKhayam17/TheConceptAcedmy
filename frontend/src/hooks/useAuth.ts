@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { getSession, restoreSessionOnce, SessionUser } from "@/lib/auth";
+import { getSession, restoreSessionOnce, SessionUser, USER_KEY } from "@/lib/auth";
 
 export type AuthState = {
   user: SessionUser | null;
@@ -7,7 +7,6 @@ export type AuthState = {
   loading: boolean;
 };
 
-const USER_KEY = "tces_user";
 
 /**
  * One auth store shared by every useAuth() caller. The session is restored once per

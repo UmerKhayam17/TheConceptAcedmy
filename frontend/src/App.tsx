@@ -1,9 +1,6 @@
 import { Suspense, lazy, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { getSession } from "@/lib/auth";
-
-/** Same localStorage key lib/auth.ts and hooks/useAuth.ts use for the signed-in user. */
-const USER_KEY = "tces_user";
+import { getSession, USER_KEY } from "@/lib/auth";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";

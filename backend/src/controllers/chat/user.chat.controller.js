@@ -17,6 +17,16 @@ const { escapeRegex, clampLimit } = require("../../services/socket/utils/chatAcc
  *    portal usernames).
  * Record-only staff (canLogin: false) are never listed — they cannot read chat.
  */
+// The parent role id never changes at runtime: look it up once, not on every keystroke.
+let parentRoleIdCache = null;
+async function getParentRoleId() {
+  if (!parentRoleIdCache) {
+    const role = await Role.findOne({ name: "parent" }).select("_id").lean();
+    parentRoleIdCache = role?._id || null;
+  }
+  return parentRoleIdCache;
+}
+
 exports.searchUsers = async (req, res) => {
   try {
     const myId = req.user._id;
@@ -32,8 +42,8 @@ exports.searchUsers = async (req, res) => {
       $or: isParentViewer ? [{ name: pattern }] : [{ name: pattern }, { email: pattern }],
     };
     if (isParentViewer) {
-      const parentRole = await Role.findOne({ name: "parent" }).select("_id").lean();
-      if (parentRole) filter.role = { $ne: parentRole._id };
+      const parentRoleId = await getParentRoleId();
+      if (parentRoleId) filter.role = { $ne: parentRoleId };
     }
 
     const users = await User.find(filter)

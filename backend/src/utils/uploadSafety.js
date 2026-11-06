@@ -67,16 +67,36 @@ function extOf(filename) {
  * The extension must be listed; the client's MIME type must agree with it (when `strictMime`)
  * or at least not be a dangerous type.
  */
+/** Client types that say nothing about the content (some Android pickers, WebViews, camera capture). */
+const GENERIC_MIME = new Set(['', 'application/octet-stream', 'binary/octet-stream']);
+
+/**
+ * With `strictMime`, the client's type must not CONTRADICT the extension: it may be blank/generic,
+ * or in the same family (any image/* for an image extension, e.g. image/pjpeg or image/jpg for
+ * .jpg; application/pdf for .pdf). Anything else (text/html for .png, …) is rejected.
+ */
+function mimeAgreesWithExt(clientMime, mime) {
+  if (GENERIC_MIME.has(clientMime)) return true;
+  if (mime.startsWith('image/')) return clientMime.startsWith('image/') && clientMime !== 'image/svg+xml';
+  return clientMime === mime;
+}
+
+/** Extension for a client type, e.g. image/png → .png (camera files sometimes have no extension). */
+function extForMime(allowed, clientMime) {
+  const normalized = clientMime === 'image/jpg' || clientMime === 'image/pjpeg' ? 'image/jpeg' : clientMime;
+  return Object.keys(allowed).find((ext) => allowed[ext] === normalized) || '';
+}
+
 function classifyUpload(file, allowed, { strictMime = false } = {}) {
-  const ext = extOf(file?.originalname);
+  const clientMime = String(file?.mimetype || '').toLowerCase().trim();
+  let ext = extOf(file?.originalname);
+  // No extension at all (e.g. a camera capture named "image"): fall back to the client type,
+  // but only when that type is itself on the allow-list.
+  if (!ext) ext = extForMime(allowed, clientMime);
   const mime = allowed[ext];
   if (!mime) return null;
-  const clientMime = String(file?.mimetype || '').toLowerCase();
-  if (DANGEROUS_MIME.test(clientMime) && !(ext === '.svg' && clientMime === 'image/svg+xml')) return null;
-  if (strictMime) {
-    const sameFamily = clientMime === mime || (mime === 'image/jpeg' && clientMime === 'image/jpg');
-    if (!sameFamily) return null;
-  }
+  if (DANGEROUS_MIME.test(clientMime)) return null;
+  if (strictMime && !mimeAgreesWithExt(clientMime, mime)) return null;
   return { ext, mime };
 }
 

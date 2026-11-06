@@ -360,6 +360,9 @@ exports.removeParticipant = async (req, res) => {
       removedUserId: targetUserId,
       removedBy:     userId,
     });
+    // After telling them, pull the removed user's live connections out of the room so they
+    // stop receiving this group's messages / typing (room = membership for socket events).
+    io.of("/chat").in(`user:${targetUserId}`).socketsLeave(`conv:${conversationId}`);
 
     res.json({ ok: true });
   } catch (err) {
@@ -485,6 +488,8 @@ exports.leaveGroup = async (req, res) => {
       removedUserId: userId.toString(),
       removedBy:     userId.toString(),
     });
+    // The leaver's open tabs leave the room too.
+    io.of("/chat").in(`user:${userId}`).socketsLeave(`conv:${conversationId}`);
 
     if (newAdminId) {
       const populated = await Conversation.findById(conv._id)
@@ -534,6 +539,8 @@ exports.deleteGroup = async (req, res) => {
       conversationId,
       deletedBy: userId,
     });
+    // Deleted group: empty its room so nobody keeps receiving events for it.
+    io.of("/chat").in(`conv:${conversationId}`).socketsLeave(`conv:${conversationId}`);
 
     res.json({ ok: true });
   } catch (err) {

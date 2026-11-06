@@ -6,6 +6,7 @@
 
 const mongoose = require("mongoose");
 const Conversation = require("../../../models/chat/conversation.chat.model");
+const { escapeRegExp } = require("../../../utils/parentScope");
 
 const isObjectId = (id) => mongoose.isValidObjectId(id) && /^[a-f0-9]{24}$/i.test(String(id));
 
@@ -37,7 +38,7 @@ async function canSeeMessage(message, userId) {
 
 /** Escape user text before using it inside a $regex (prevents ReDoS / regex injection). */
 function escapeRegex(value) {
-  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return escapeRegExp(String(value || ""));
 }
 
 /** Clamp a client-supplied page size. */

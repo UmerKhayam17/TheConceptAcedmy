@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { schoolDayYmd } from "@/lib/localDate";
+import { recordDayYmd } from "@/lib/localDate";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -173,7 +173,7 @@ function buildAttendanceWeeks(records: AcademyAttendanceRecord[]) {
     let present = 0;
     let absent = 0;
     records.forEach((r) => {
-      const day = schoolDayYmd(r.date);
+      const day = recordDayYmd(r);
       if (day < startKey || day > endKey) return;
       if (r.status === "present" || r.status === "late") present += 1;
       else if (r.status === "absent") absent += 1;
@@ -187,7 +187,7 @@ function monthRateFromRecords(records: AcademyAttendanceRecord[], year: number, 
   let present = 0;
   let marked = 0;
   records.forEach((r) => {
-    const day = schoolDayYmd(r.date);
+    const day = recordDayYmd(r);
     const [y, m] = day.split("-").map(Number);
     if (y !== year || m !== month) return;
     if (r.status === "present" || r.status === "late" || r.status === "absent" || r.status === "leave") {

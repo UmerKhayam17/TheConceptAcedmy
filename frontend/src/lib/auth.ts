@@ -13,7 +13,8 @@ export interface SessionUser {
   isSystemAdmin?: boolean;
 }
 
-const USER_KEY = "tces_user";
+/** localStorage key of the signed-in user. Exported so listeners (App, useAuth) share one name. */
+export const USER_KEY = "tces_user";
 const ACCESS_KEY = "tces_access";
 /** Legacy cross-tab refresh lock — no longer used (backend no longer rotates per refresh). */
 const LEGACY_REFRESH_LOCK_KEY = "tces_refresh_lock";

@@ -26,6 +26,15 @@ const schoolDayFormat = new Intl.DateTimeFormat("en-CA", {
  * `value.slice(0, 10)` would wrongly give 4 Nov. A bare "YYYY-MM-DD" is returned unchanged.
  * Uses the school timezone, not the browser's, so the day is right on any device.
  */
+/**
+ * School day of an attendance-style record. Prefers the server's own `ymd` (computed in the
+ * academy's configured timezone), and only falls back to converting `date` here.
+ */
+export function recordDayYmd(record: { ymd?: string | null; date: string | Date }): string {
+  if (record.ymd && /^\d{4}-\d{2}-\d{2}$/.test(record.ymd)) return record.ymd;
+  return schoolDayYmd(record.date);
+}
+
 export function schoolDayYmd(value: string | Date | null | undefined): string {
   if (!value) return "";
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;

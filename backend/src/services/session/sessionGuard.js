@@ -62,14 +62,46 @@ function isSessionReadOnly(session) {
   return resolveSessionStatus(session) !== 'active';
 }
 
-/** Every session that currently counts as active (by status or legacy flags), except `exceptId`. */
+/**
+ * Every session that holds any "active" marker, except `exceptId`: status 'active' OR the
+ * isActive flag (archived/completed rows with a stale isActive=true included — they still count
+ * against the one_active_session unique index, so they must be cleared too).
+ */
 function otherActiveFilter(exceptId) {
-  const filter = {
-    status: { $ne: 'archived' },
-    $or: [{ status: 'active' }, { isActive: true }],
-  };
+  const filter = { $or: [{ status: 'active' }, { isActive: true }] };
   if (exceptId) filter._id = { $ne: exceptId };
   return filter;
+}
+
+/**
+ * Close sessions in one update: clear the active flags, mark non-archived ones completed
+ * (archived stays archived), and keep an existing completion date (only fill it when missing).
+ */
+function closeSessionsUpdate() {
+  return [
+    {
+      $set: {
+        isActive: false,
+        isClosed: true,
+        status: { $cond: [{ $eq: ['$status', 'archived'] }, 'archived', 'completed'] },
+        completedAt: { $ifNull: ['$completedAt', '$$NOW'] },
+      },
+    },
+  ];
+}
+
+/** Put a session's lifecycle fields back exactly as they were (used on rollback). */
+function restoreLifecycle(prev) {
+  const $set = {};
+  const $unset = {};
+  ['status', 'isActive', 'isClosed', 'completedAt'].forEach((key) => {
+    if (prev[key] === undefined || prev[key] === null) $unset[key] = '';
+    else $set[key] = prev[key];
+  });
+  const update = {};
+  if (Object.keys($set).length) update.$set = $set;
+  if (Object.keys($unset).length) update.$unset = $unset;
+  return update;
 }
 
 /**
@@ -86,11 +118,17 @@ async function activateExclusively(session) {
   session.archivedAt = undefined;
   await session.validate();
 
-  const previous = await Session.find(otherActiveFilter(session._id)).select('_id status isActive isClosed').lean();
+  // Raw collection read: Mongoose would fill in schema defaults (status 'active') for old rows
+  // that have no status saved, and the rollback must restore exactly what was stored.
+  const previous = await Session.collection
+    .find(otherActiveFilter(session._id), {
+      projection: { status: 1, isActive: 1, isClosed: 1, completedAt: 1 },
+    })
+    .toArray();
   if (previous.length) {
-    await Session.updateMany(
+    await Session.collection.updateMany(
       { _id: { $in: previous.map((s) => s._id) } },
-      { $set: { isActive: false, status: 'completed', isClosed: true, completedAt: new Date() } }
+      closeSessionsUpdate()
     );
   }
 
@@ -98,12 +136,7 @@ async function activateExclusively(session) {
     await session.save();
   } catch (err) {
     await Promise.all(
-      previous.map((s) =>
-        Session.updateOne(
-          { _id: s._id },
-          { $set: { isActive: s.isActive, status: s.status, isClosed: s.isClosed }, $unset: { completedAt: '' } }
-        )
-      )
+      previous.map((s) => Session.collection.updateOne({ _id: s._id }, restoreLifecycle(s)))
     ).catch(() => {});
     if (err?.code === 11000 && err?.keyPattern?.isActive) {
       throw new ApiError(409, 'Another session was activated at the same time. Refresh and try again.');
@@ -119,33 +152,36 @@ async function activateExclusively(session) {
  * active, keep the one with the latest start date and close the rest.
  */
 async function ensureSingleActiveSession() {
-  const candidates = await Session.find(otherActiveFilter()).sort({ startDate: -1, updatedAt: -1 });
-  // A row whose status says completed but still has isActive=true is a completed session with
-  // stale flags: close it, never re-open it.
-  const active = candidates.filter((s) => resolveSessionStatus(s) === 'active');
-  const stale = candidates.filter((s) => resolveSessionStatus(s) !== 'active');
-  if (stale.length) {
-    await Session.updateMany(
-      { _id: { $in: stale.map((s) => s._id) } },
-      { $set: { isActive: false, isClosed: true } }
-    );
-  }
-  if (active.length <= 1) {
-    if (active[0] && (!active[0].isActive || active[0].isClosed)) {
-      syncSessionFlags(active[0], 'active');
-      await active[0].save();
-    }
-    return { kept: active[0]?._id || null, closed: [] };
-  }
-  const [keep, ...rest] = active;
-  await Session.updateMany(
-    { _id: { $in: rest.map((s) => s._id) } },
-    { $set: { isActive: false, status: 'completed', isClosed: true, completedAt: new Date() } }
+  const raw = Session.collection;
+
+  // 1. Old rows with no status saved: give them the status the app already shows for them
+  //    (resolveSessionStatus: closed → completed, otherwise active). Without this, the app
+  //    treats them as active while database queries on `status` skip them.
+  await raw.updateMany({ status: { $exists: false }, isClosed: true }, { $set: { status: 'completed' } });
+  await raw.updateMany({ status: { $exists: false } }, { $set: { status: 'active' } });
+
+  // 2. Rows whose status is completed/archived but still carry isActive=true: stale flags.
+  //    Clear them (they still count against the unique index); never re-open them.
+  await raw.updateMany(
+    { status: { $in: ['completed', 'archived'] }, $or: [{ isActive: true }, { isClosed: { $ne: true } }] },
+    { $set: { isActive: false, isClosed: true } }
   );
-  if (!keep.isActive || keep.isClosed) {
-    syncSessionFlags(keep, 'active');
-    await keep.save();
+
+  // 3. Keep exactly one 'active' session: the one with the latest start date.
+  const active = await raw
+    .find({ status: 'active' }, { projection: { name: 1, isActive: 1, isClosed: 1 } })
+    .sort({ startDate: -1, updatedAt: -1 })
+    .toArray();
+  if (!active.length) return { kept: null, closed: [] };
+
+  const [keep, ...rest] = active;
+  if (rest.length) {
+    await raw.updateMany({ _id: { $in: rest.map((s) => s._id) } }, closeSessionsUpdate());
   }
+  if (!keep.isActive || keep.isClosed) {
+    await raw.updateOne({ _id: keep._id }, { $set: { isActive: true, isClosed: false } });
+  }
+  if (!rest.length) return { kept: keep._id, closed: [] };
   // eslint-disable-next-line no-console
   console.warn(
     `[sessions] ${active.length} sessions were active. Kept "${keep.name}" (latest start date); closed: ${rest
@@ -155,15 +191,28 @@ async function ensureSingleActiveSession() {
   return { kept: keep._id, closed: rest.map((s) => s._id) };
 }
 
-/** Startup: repair old data, then build the one-active-session unique index. */
+/**
+ * Startup: repair old data, then build the one-active-session unique index.
+ * Never stops the API from starting: if the index still cannot be built, the application-level
+ * rule (activateExclusively) keeps working and a clear error is logged for the admin.
+ */
 async function ensureSessionIndexes() {
-  await ensureSingleActiveSession();
-  const existing = await Session.collection.indexes().catch(() => []);
-  // The old plain index has the same key ({ isActive: 1 }) and would block the unique one.
-  if (existing.some((ix) => ix.name === 'isActive_1')) {
-    await Session.collection.dropIndex('isActive_1');
+  try {
+    await ensureSingleActiveSession();
+    const existing = await Session.collection.indexes().catch(() => []);
+    // The old plain index has the same key ({ isActive: 1 }) and would block the unique one.
+    if (existing.some((ix) => ix.name === 'isActive_1')) {
+      await Session.collection.dropIndex('isActive_1');
+    }
+    await Session.createIndexes();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[sessions] Could not build the one-active-session index. The API will still run, but check ' +
+        'db.sessions.find({ isActive: true }) — more than one row is marked active.',
+      err?.message || err
+    );
   }
-  await Session.createIndexes();
 }
 
 module.exports = {
