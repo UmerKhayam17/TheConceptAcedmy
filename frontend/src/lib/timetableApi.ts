@@ -79,7 +79,7 @@ export interface Room {
 
 export interface TeacherProfile {
   _id: string;
-  user: { _id: string; name: string; email: string; phone?: string };
+  user: { _id: string; name: string; email: string; phone?: string; profileImage?: string };
   session: string;
   subjects: { _id: string; name: string; code: string }[];
   maxLecturesPerDay: number;

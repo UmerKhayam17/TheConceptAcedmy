@@ -4,7 +4,7 @@ const Role = require('../../models/Role');
 const ApiError = require('../../utils/ApiError');
 
 const populateOpts = [
-  { path: 'user', select: 'name email phone isActive' },
+  { path: 'user', select: 'name email phone isActive profileImage' },
   {
     path: 'subjects',
     select: 'subjectName subjectCode',

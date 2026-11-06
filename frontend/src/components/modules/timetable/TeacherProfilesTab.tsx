@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2, UserCircle, Users } from "lucide-react";
+import { avatarTone } from "@/lib/avatarTone";
+import { cn } from "@/lib/utils";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
+import { resolveUploadUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchStaffUsers } from "@/lib/staffApi";
@@ -29,6 +33,32 @@ import { DAY_LABELS, normalizeWorkingDays } from "./constants";
 const QK = (sid: string) => ["timetable-teacher-profiles", sid] as const;
 
 type AvailabilityMap = Partial<Record<Weekday, string[]>>;
+
+/** True when the teacher is limited to some periods (an empty list means every school period). */
+function isLimited(profile: TeacherProfile) {
+  return Boolean(profile.availability?.length);
+}
+
+/** Same square avatar as Staff Logins: photo, or the first letter on a stable pastel tone. */
+function TeacherAvatar({ name, profileImage }: { name: string; profileImage?: string }) {
+  const imgSrc = profileImage ? resolveUploadUrl(profileImage) : null;
+  if (imgSrc) {
+    return (
+      <img src={imgSrc} alt="" className="h-8 w-8 shrink-0 rounded-md border border-border object-cover" />
+    );
+  }
+  const initial = String(name || "").trim().charAt(0).toUpperCase() || "?";
+  return (
+    <span
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold",
+        avatarTone(name || ""),
+      )}
+    >
+      {initial}
+    </span>
+  );
+}
 
 function availabilitySummary(profile: TeacherProfile) {
   if (!profile.availability?.length) return "All school periods";
@@ -196,101 +226,238 @@ export default function TeacherProfilesTab({ sessionId, caps }: { sessionId: str
     onError: (e: Error) => toast({ title: "Sync failed", description: e.message, variant: "destructive" }),
   });
 
-  const { search, setSearch, filtered: profilesFiltered } = usePanelListSearch(profiles, (p) => [
+  const [availabilityFilter, setAvailabilityFilter] = useState<"" | "all" | "limited">("");
+  const profilesByAvailability = availabilityFilter
+    ? profiles.filter((p) => (availabilityFilter === "limited") === isLimited(p))
+    : profiles;
+
+  const { search, setSearch, filtered: profilesFiltered } = usePanelListSearch(profilesByAvailability, (p) => [
     p.user.name,
     p.user.email,
     p.maxLecturesPerDay,
     p.maxLecturesPerWeek,
     availabilitySummary(p),
+    ...(p.preferredRooms || []).map((room) => room.name),
   ]);
 
   if (!sessionId) return null;
 
   const canSave = Boolean(userId) && maxDay >= 1 && maxWeek >= 1 && !saveMut.isPending;
+  const hasActions = caps.canEdit || caps.canDelete;
+  const colSpan = 6 + (hasActions ? 1 : 0);
+  const thClass =
+    "whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600";
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      <p className="text-sm text-muted-foreground max-w-3xl">
-        Session teachers appear here after sync or manual add. Timetable, subject teachers, and class teachers use this roster — not the general staff list. Sync pulls every active teaching staff account into this session with default scheduling limits.
-      </p>
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <PanelSearchBar value={search} onChange={setSearch} placeholder="Search teacher name or email…" className="max-w-md" />
-        <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row">
-          {caps.canCreate && (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 w-full justify-center gap-2 sm:h-9 sm:w-auto"
-              disabled={syncMut.isPending}
-              onClick={() => syncMut.mutate()}
-            >
-              <RefreshCw className={`h-4 w-4 shrink-0 ${syncMut.isPending ? "animate-spin" : ""}`} />
-              {syncMut.isPending ? "Syncing…" : "Sync all teachers"}
-            </Button>
-          )}
-          {caps.canCreate && (
-            <Button className="h-10 w-full justify-center gap-2 shrink-0 sm:h-9 sm:w-auto" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add teacher profile
-            </Button>
-          )}
+    <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <UserCircle className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Teachers
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                The session's teacher roster used by the timetable, subject teachers and class teachers. Sync adds
+                every active teaching staff account with default limits.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[15rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              A great school builds great futures.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
         </div>
       </div>
-      <Card className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 border-b">
-            <tr>
-              <th className="text-left p-3">Teacher</th>
-              <th className="text-left p-3">Max/day</th>
-              <th className="text-left p-3">Max/week</th>
-              <th className="text-left p-3">Availability</th>
-              {(caps.canEdit || caps.canDelete) && <th className="text-right p-3">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
+
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <FilterToolbar>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[12rem] shrink-0"
+            value={availabilityFilter}
+            onChange={(e) => setAvailabilityFilter(e.target.value as "" | "all" | "limited")}
+            aria-label="Availability filter"
+          >
+            <option value="">All Availability</option>
+            <option value="all">All school periods</option>
+            <option value="limited">Limited availability</option>
+          </select>
+          <PanelSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search teacher, email or room…"
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+          {caps.canCreate && (
+            <FilterToolbarActions>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2 h-10"
+                disabled={syncMut.isPending}
+                onClick={() => syncMut.mutate()}
+              >
+                <RefreshCw className={`h-4 w-4 shrink-0 ${syncMut.isPending ? "animate-spin" : ""}`} />
+                {syncMut.isPending ? "Syncing…" : "Sync all teachers"}
+              </Button>
+              <Button className="gap-2 h-10" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Add teacher profile
+              </Button>
+            </FilterToolbarActions>
+          )}
+        </FilterToolbar>
+      </Card>
+
+      <Card className="overflow-hidden shadow-sm border-border/80">
+        <div className="flex items-center justify-between gap-2 border-b bg-white px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2 font-display font-semibold text-[#1a2b4b]">
+            <Users className="h-4 w-4 shrink-0 text-primary" />
+            <span className="truncate">Session teachers</span>
+          </div>
+          <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+            {profilesFiltered.length}
+            {profilesFiltered.length !== profiles.length ? ` of ${profiles.length}` : ""}
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[52rem] text-sm">
+            <thead className="border-b bg-[#eef4fc]">
               <tr>
-                <td colSpan={5} className="p-6 text-center text-muted-foreground">Loading…</td>
+                <th className={`${thClass} w-12`}>#</th>
+                <th className={thClass}>Teacher</th>
+                <th className={`${thClass} text-center`}>Max / day</th>
+                <th className={`${thClass} text-center`}>Max / week</th>
+                <th className={thClass}>Availability</th>
+                <th className={thClass}>Preferred rooms</th>
+                {hasActions && <th className={`${thClass} text-right`}>Actions</th>}
               </tr>
-            )}
-            {!isLoading && profilesFiltered.length === 0 && (
-              <tr>
-                <td colSpan={5} className="p-6 text-center text-muted-foreground">
-                  {profiles.length === 0 ? "No teacher profiles for this session yet." : "No profiles match your search."}
-                </td>
-              </tr>
-            )}
-            {profilesFiltered.map((p) => (
-                <tr key={p._id} className="border-b">
-                  <td className="p-3">
-                    <div className="font-medium">{p.user.name}</div>
-                    <div className="text-xs text-muted-foreground">{p.user.email}</div>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr>
+                  <td colSpan={colSpan} className="p-10 text-center text-muted-foreground">
+                    Loading teachers…
                   </td>
-                  <td className="p-3">{p.maxLecturesPerDay}</td>
-                  <td className="p-3">{p.maxLecturesPerWeek}</td>
-                  <td className="p-3">{availabilitySummary(p)}</td>
-                  {(caps.canEdit || caps.canDelete) && (
-                    <td className="p-3 text-right whitespace-nowrap">
-                      {caps.canEdit && (
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(p)} aria-label="Edit profile">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {caps.canDelete && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => confirm("Remove profile?") && delMut.mutate(p._id)}
-                          aria-label="Remove profile"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                </tr>
+              )}
+              {!isLoading && profilesFiltered.length === 0 && (
+                <tr>
+                  <td colSpan={colSpan} className="p-10 text-center">
+                    <UserCircle className="mx-auto h-8 w-8 text-slate-300" />
+                    <p className="mt-2 text-sm font-medium text-slate-600">
+                      {profiles.length === 0 ? "No teachers on this session yet" : "No teachers match your filters"}
+                    </p>
+                    {profiles.length === 0 && caps.canCreate && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Use Sync all teachers to add every active teaching staff account.
+                      </p>
+                    )}
+                  </td>
+                </tr>
+              )}
+              {profilesFiltered.map((p, index) => {
+                const limited = isLimited(p);
+                const rooms = p.preferredRooms || [];
+                return (
+                  <tr key={p._id} className="border-b last:border-0 transition-colors hover:bg-slate-50/80">
+                    <td className="px-4 py-3 text-xs font-medium text-slate-400">{index + 1}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <TeacherAvatar name={p.user.name} profileImage={p.user.profileImage} />
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-[#1a2b4b]">{p.user.name}</p>
+                          <p className="truncate text-xs text-slate-500">{p.user.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex min-w-[2.25rem] justify-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                        {p.maxLecturesPerDay}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex min-w-[2.25rem] justify-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                        {p.maxLecturesPerWeek}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {limited ? (
+                        <div className="space-y-1">
+                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                            Limited
+                          </span>
+                          <p className="text-xs text-slate-500">{availabilitySummary(p)}</p>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                          All school periods
+                        </span>
                       )}
                     </td>
-                  )}
-                </tr>
-            ))}
-          </tbody>
-        </table>
+                    <td className="px-4 py-3">
+                      {rooms.length ? (
+                        <div className="flex max-w-[16rem] flex-wrap gap-1">
+                          {rooms.map((room) => (
+                            <span
+                              key={room._id}
+                              className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-600"
+                            >
+                              {room.code || room.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">Class room</span>
+                      )}
+                    </td>
+                    {hasActions && (
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-0.5">
+                          {caps.canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-primary"
+                              onClick={() => openEdit(p)}
+                              aria-label={`Edit ${p.user.name}`}
+                              title="Edit profile"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {caps.canDelete && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-destructive/10"
+                              onClick={() =>
+                                confirm(`Remove ${p.user.name} from this session's teachers?`) && delMut.mutate(p._id)
+                              }
+                              aria-label={`Remove ${p.user.name}`}
+                              title="Remove from session"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) resetForm(); }}>
