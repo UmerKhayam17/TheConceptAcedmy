@@ -3,13 +3,28 @@
  */
 
 const Reaction = require("../../../models/chat/reaction.chat.model");
+const Message = require("../../../models/chat/message.chat.model");
 const { emitToConversation } = require("../utils/roomEmitter");
+const { canSeeMessage, isObjectId } = require("../utils/chatAccess");
 
 function registerReactionHandlers(socket, nsp) {
   socket.on("reaction:toggle", async (data, ack) => {
     try {
-      const { messageId, conversationId, emoji } = data;
+      const { messageId, emoji } = data || {};
       const userId = socket.user._id;
+
+      if (!isObjectId(messageId) || typeof emoji !== "string" || !emoji.trim() || emoji.length > 16) {
+        return ack?.({ ok: false, error: "Invalid reaction" });
+      }
+      // The message must be visible to this user. Its real conversation is used (never the
+      // client's conversationId), so reactions can't be added to, or broadcast into, other chats.
+      const message = await Message.findById(messageId)
+        .select("conversationId deletedForEveryone deletedForUsers")
+        .lean();
+      if (!message || !(await canSeeMessage(message, userId))) {
+        return ack?.({ ok: false, error: "Message not found" });
+      }
+      const conversationId = message.conversationId;
 
       // Check if same emoji exists → remove it (toggle)
       const existing = await Reaction.findOne({ messageId, userId });

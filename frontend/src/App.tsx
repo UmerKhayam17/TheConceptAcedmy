@@ -1,5 +1,9 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { getSession } from "@/lib/auth";
+
+/** Same localStorage key lib/auth.ts and hooks/useAuth.ts use for the signed-in user. */
+const USER_KEY = "tces_user";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -39,8 +43,37 @@ function RouteFallback() {
   );
 }
 
+/**
+ * Cached API data belongs to the user who fetched it. When that user signs out (here or in
+ * another tab, or the session expires) or a different user signs in, drop the whole cache so
+ * the next person on this device never sees the previous user's fees, children, messages, etc.
+ */
+function ClearCacheOnUserChange() {
+  useEffect(() => {
+    let lastUserId: string | null = getSession()?.id ?? null;
+    const check = () => {
+      const userId = getSession()?.id ?? null;
+      if (userId === lastUserId) return;
+      const hadUser = lastUserId !== null;
+      lastUserId = userId;
+      if (hadUser) queryClient.clear();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === USER_KEY) check();
+    };
+    window.addEventListener("tces-auth-change", check);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("tces-auth-change", check);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <ClearCacheOnUserChange />
     <TooltipProvider delayDuration={300}>
       <Toaster />
       <Sonner />

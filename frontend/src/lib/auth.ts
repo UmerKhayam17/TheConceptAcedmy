@@ -74,8 +74,18 @@ function persistUser(user: SessionUser) {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
+/** Browser-stored choices that belong to one signed-in user and must not carry over. */
+const PER_USER_STORAGE_KEYS = ["parent_selected_student_id"];
+const PER_USER_SESSION_KEYS = ["panel:academic-session-id"];
+
 export function clearStorage() {
   localStorage.removeItem(USER_KEY);
+  try {
+    PER_USER_STORAGE_KEYS.forEach((k) => localStorage.removeItem(k));
+    PER_USER_SESSION_KEYS.forEach((k) => sessionStorage.removeItem(k));
+  } catch {
+    /* storage blocked — nothing to clear */
+  }
   setAccessToken(null);
   stopProactiveRefresh();
   stopRestoreRetry();

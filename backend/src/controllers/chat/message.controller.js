@@ -11,6 +11,7 @@ const Message      = require("../../models/chat/message.chat.model");
 const Conversation = require("../../models/chat/conversation.chat.model");
 const Reaction     = require("../../models/chat/reaction.chat.model");
 const { getIO }    = require("../../services/socket/index");
+const { escapeRegex, clampLimit } = require("../../services/socket/utils/chatAccess");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET paginated messages for a conversation
@@ -19,7 +20,8 @@ exports.getMessages = async (req, res) => {
   try {
     const userId = req.user._id;
     const { conversationId } = req.params;
-    const { before, limit = 40 } = req.query;
+    const { before } = req.query;
+    const pageSize = clampLimit(req.query.limit, 40, 100);
 
     // Verify access
     const conv = await Conversation.findOne({
@@ -38,7 +40,7 @@ exports.getMessages = async (req, res) => {
 
     const messages = await Message.find(query)
       .sort({ createdAt: -1 })
-      .limit(Number(limit))
+      .limit(pageSize)
       .populate("senderId", "name profile_image")
       .populate("replyToPreview.senderId", "name")
       // Populate mentions.userId → { _id, name, profile_image }
@@ -67,7 +69,7 @@ exports.getMessages = async (req, res) => {
     res.json({
       ok:       true,
       messages: enriched.reverse(),  // oldest-first
-      hasMore:  messages.length === Number(limit),
+      hasMore:  messages.length === pageSize,
     });
   } catch (err) {
     console.error(err);
@@ -95,10 +97,11 @@ exports.searchMessages = async (req, res) => {
     const messages = await Message.find({
       conversationId,
       deletedForEveryone: false,
-      text: { $regex: q, $options: "i" },
+      deletedForUsers: { $ne: userId },
+      text: { $regex: escapeRegex(String(q).slice(0, 100)), $options: "i" },
     })
       .sort({ createdAt: -1 })
-      .limit(Number(limit))
+      .limit(clampLimit(limit, 20, 50))
       .populate("senderId", "name profile_image")
       .populate("mentions.userId", "name profile_image")
       .lean();
@@ -167,7 +170,9 @@ exports.getConversationMedia = async (req, res) => {
   try {
     const userId = req.user._id;
     const { conversationId } = req.params;
-    const { type = "image", page = 1, limit = 20 } = req.query;
+    const { type = "image" } = req.query;
+    const limit = clampLimit(req.query.limit, 20, 100);
+    const page = Math.max(1, Math.floor(Number(req.query.page)) || 1);
 
     const conv = await Conversation.findOne({
       _id: conversationId,
@@ -191,7 +196,7 @@ exports.getConversationMedia = async (req, res) => {
     })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(Number(limit))
+      .limit(limit)
       .populate("senderId", "name")
       .lean();
 

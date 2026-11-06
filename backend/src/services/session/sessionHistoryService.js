@@ -7,7 +7,7 @@ const AcademySection = require('../../models/academy/AcademySection');
 const AcademySubject = require('../../models/academy/AcademySubject');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const { logAudit, listAuditLogs } = require('./auditService');
-const { getSessionOrThrow, syncSessionFlags } = require('./sessionGuard');
+const { getSessionOrThrow, syncSessionFlags, activateExclusively } = require('./sessionGuard');
 const { shiftFullSessionConfiguration } = require('./sessionShiftService');
 
 async function getAcademySessionSummary(sessionId) {
@@ -172,11 +172,7 @@ async function activateSession(sessionId, userId) {
     throw new ApiError(400, 'Completed sessions cannot be reactivated. Create a new session or shift configuration from session history.');
   }
 
-  await Session.updateMany({ _id: { $ne: sessionId } }, { $set: { isActive: false, status: 'completed', isClosed: true } });
-
-  syncSessionFlags(session, 'active');
-  session.archivedAt = undefined;
-  await session.save();
+  await activateExclusively(session);
 
   await logAudit({
     sessionId,
@@ -198,26 +194,27 @@ async function cloneSessionStructure(sourceSessionId, body, userId) {
     throw new ApiError(409, `A session named "${name}" already exists`);
   }
 
-  const newSession = await Session.create({
+  // The configuration is copied into the new session, which needs it to be writable, and a
+  // non-active session can never be activated later. So the clone always becomes the one
+  // active session and the previous active session is closed.
+  if (body.activate === false) {
+    throw new ApiError(
+      400,
+      'A shifted session always becomes the active session. Only one session can be active at a time.'
+    );
+  }
+
+  const newSession = new Session({
     name,
     startDate: body.startDate,
     endDate: body.endDate,
     workingDays: body.workingDays || source.workingDays,
     timezone: body.timezone || source.timezone,
-    status: body.activate ? 'active' : 'active',
-    isActive: !!body.activate,
-    isClosed: false,
     clonedFrom: source._id,
     createdBy: userId,
     notes: body.notes || `Shifted configuration from ${source.name}`,
   });
-
-  if (body.activate) {
-    await Session.updateMany({ _id: { $ne: newSession._id } }, { $set: { isActive: false, status: 'completed', isClosed: true } });
-  }
-
-  syncSessionFlags(newSession, body.activate ? 'active' : 'active');
-  await newSession.save();
+  await activateExclusively(newSession);
 
   const shift = await shiftFullSessionConfiguration(
     newSession._id,

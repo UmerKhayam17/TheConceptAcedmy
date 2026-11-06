@@ -7,6 +7,7 @@ const {
   syncSessionFlags,
   resolveSessionStatus,
   healSessionFlags,
+  activateExclusively,
 } = require('../services/session/sessionGuard');
 const Session = require('../models/Session');
 const AcademyClass = require('../models/academy/AcademyClass');
@@ -94,14 +95,7 @@ const createSession = catchAsync(async (req, res) => {
     existingCount === 0 ||
     (body.isActive !== false && body.status !== 'completed' && body.status !== 'archived');
 
-  if (shouldActivate && existingCount > 0) {
-    await Session.updateMany(
-      {},
-      { $set: { isActive: false, status: 'completed', isClosed: true } }
-    );
-  }
-
-  const session = await Session.create({
+  const session = new Session({
     name,
     startDate: body.startDate,
     endDate: body.endDate,
@@ -111,11 +105,13 @@ const createSession = catchAsync(async (req, res) => {
     createdBy: req.user._id,
   });
   if (shouldActivate) {
-    syncSessionFlags(session, 'active');
+    // Closes the previous active session only once the new one is known to be valid.
+    await activateExclusively(session);
   } else {
-    syncSessionFlags(session, body.status || 'completed');
+    // Not activating → never 'active' (that would make a second active session).
+    syncSessionFlags(session, body.status === 'archived' ? 'archived' : 'completed');
+    await session.save();
   }
-  await session.save();
 
   await logAudit({
     sessionId: session._id,
@@ -137,22 +133,27 @@ const patchSession = catchAsync(async (req, res) => {
   if (updates.status === 'archived' || updates.status === 'completed') {
     throw new ApiError(400, 'Use session lifecycle endpoints to complete or archive a session');
   }
-  if (updates.isActive || updates.status === 'active') {
+  const wantsActive = updates.isActive === true || updates.status === 'active';
+  // Lifecycle flags are only changed through activateExclusively, never written directly.
+  delete updates.isActive;
+  delete updates.status;
+  delete updates.isClosed;
+  delete updates.completedAt;
+  delete updates.archivedAt;
+
+  if (wantsActive) {
     const currentStatus = resolveSessionStatus(session);
     if (currentStatus === 'completed' || currentStatus === 'archived') {
       throw new ApiError(400, 'Completed sessions cannot be reactivated. Create a new session instead.');
     }
-    await Session.updateMany(
-      { _id: { $ne: req.params.id } },
-      { $set: { isActive: false, status: 'completed', isClosed: true } }
-    );
-    updates.isActive = true;
-    updates.status = 'active';
-    updates.isClosed = false;
   }
 
   const updated = await Session.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
-  if (updated) await healSessionFlags(updated);
+  if (updated && wantsActive) {
+    await activateExclusively(updated);
+  } else if (updated) {
+    await healSessionFlags(updated);
+  }
   const data = await Session.findById(req.params.id);
   res.json({ success: true, data });
 });

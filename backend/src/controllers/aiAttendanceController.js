@@ -1,5 +1,6 @@
 const catchAsync = require('../utils/catchAsync');
 const ApiError = require('../utils/ApiError');
+const { isSystemAdmin, roleNameOfUser } = require('../utils/systemAdmin');
 const ai = require('../services/aiAttendance/aiAttendanceService');
 const faceEnrollment = require('../services/aiAttendance/faceEnrollmentService');
 const staffAttendanceService = require('../services/staffAttendanceService');
@@ -185,13 +186,35 @@ const listStaffPeriodMonth = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
+/**
+ * Staff attendance feeds salary, so writing it is restricted by ROLE (not the legacy
+ * permission names, which teachers hold for student attendance):
+ *  - only these roles may mark staff attendance,
+ *  - nobody may mark their own attendance, except the bootstrap system admin.
+ * Add a role name here (e.g. a principal / HR role) to let it mark staff attendance.
+ */
+const STAFF_ATTENDANCE_MARKER_ROLES = new Set(['admin']);
+
+function assertCanMarkStaffAttendance(req, targetUserIds) {
+  const actorIsSystemAdmin = isSystemAdmin(req.user);
+  if (!actorIsSystemAdmin && !STAFF_ATTENDANCE_MARKER_ROLES.has(roleNameOfUser(req.user))) {
+    throw new ApiError(403, 'Staff attendance can only be marked by an administrator.');
+  }
+  if (actorIsSystemAdmin) return;
+  const me = String(req.user._id);
+  if (targetUserIds.some((id) => String(id) === me)) {
+    throw new ApiError(403, 'You cannot mark your own attendance. Ask another administrator.');
+  }
+}
+
 const saveStaffPeriodAttendance = catchAsync(async (req, res) => {
-  const role = req.user?.roleDoc || req.user?.role;
-  const roleName = typeof role === 'object' && role?.name ? role.name : '';
-  const isAdmin = roleName === 'admin';
-  let marks = Array.isArray(req.body?.marks) ? req.body.marks : [];
-  if (!isAdmin) {
-    marks = marks.map((mark) => ({ ...mark, userId: req.user._id }));
+  const marks = Array.isArray(req.body?.marks) ? req.body.marks : [];
+  assertCanMarkStaffAttendance(
+    req,
+    marks.map((mark) => mark?.userId).filter(Boolean)
+  );
+  if (marks.some((mark) => !mark?.userId)) {
+    throw new ApiError(400, 'Each period mark needs a staff member.');
   }
   const data = await staffPeriodAttendanceService.saveMarks({
     sessionId: req.body?.sessionId,
@@ -203,9 +226,10 @@ const saveStaffPeriodAttendance = catchAsync(async (req, res) => {
 });
 
 const markStaffAttendance = catchAsync(async (req, res) => {
-  // Route already requires mark_attendance / manage_users — allow marking any staff.
-  const userId = req.body.userId || req.user._id;
+  // No default to the caller: the staff member must be named explicitly.
+  const userId = req.body.userId;
   if (!userId) throw new ApiError(400, 'userId required');
+  assertCanMarkStaffAttendance(req, [userId]);
   const data = await staffAttendanceService.markManual({ ...req.body, userId }, req.user._id);
   res.status(201).json({ success: true, data });
 });

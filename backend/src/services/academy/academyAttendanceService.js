@@ -3,7 +3,7 @@ const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const { loadExpectationContext } = require('./attendanceExpectationService');
-const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
+const { dayBounds, formatDateInTz, monthBounds } = require('../../utils/schoolDay');
 const { sortStudentsByClassThenRoll } = require('../../utils/academyStudentSort');
 
 /** Inclusive calendar-day cap for custom attendance report ranges. */
@@ -450,8 +450,7 @@ async function markAttendance({ date, entries }, userId, { assertStudentAccess }
 
 async function getSummary({ month, year, scopeFilter = null, studentIds = null }) {
   if (!month || !year) throw new ApiError(400, 'month and year required');
-  const start = new Date(Number(year), Number(month) - 1, 1);
-  const end = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
+  const { start, end } = monthBounds(year, month);
 
   let studentIdFilter = null;
   if (Array.isArray(studentIds)) {
@@ -490,8 +489,7 @@ async function listByStudentMonth({ studentId, month, year }) {
   if (!studentId) throw new ApiError(400, 'studentId required');
   if (!month || !year) throw new ApiError(400, 'month and year required');
 
-  const start = new Date(Number(year), Number(month) - 1, 1);
-  const end = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
+  const { start, end, daysInMonth } = monthBounds(year, month);
 
   const records = await AcademyAttendance.find({
     studentId,
@@ -513,9 +511,10 @@ async function listByStudentMonth({ studentId, month, year }) {
   return {
     month: Number(month),
     year: Number(year),
-    daysInMonth: end.getDate(),
+    daysInMonth,
     summary: { ...summary, attendanceRate },
-    records,
+    // `ymd` = the school day, so clients never have to derive it from the UTC timestamp.
+    records: records.map((r) => ({ ...r, ymd: formatDateInTz(r.date) })),
   };
 }
 

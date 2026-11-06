@@ -18,7 +18,8 @@ exports.uploadFile = async (req, res) => {
     const userId = req.user._id;
     const { conversationId } = req.body;
 
-    const mime = req.file.mimetype;
+    // Server-decided type (from the allow-list), not the client's Content-Type.
+    const mime = req.file.safeType?.mime || "application/octet-stream";
 const isImage = mime.startsWith("image/");
     const isVideo = mime.startsWith("video/");
     const isAudio = mime.startsWith("audio/");

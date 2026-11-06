@@ -174,7 +174,10 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   const panelSession = usePanelSessionOptional();
   const sessionId = panelSession?.apiSessionId || panelSession?.sessionId || "";
   const isAdmin = user?.role === "admin";
-  const canMark = caps.canCreate || caps.canEdit;
+  // Staff attendance feeds salary: only administrators mark it (the API enforces the same rule),
+  // and nobody marks their own row except the main system admin.
+  const canMark = (caps.canCreate || caps.canEdit) && (isAdmin || Boolean(user?.isSystemAdmin));
+  const lockedUserId = user?.isSystemAdmin ? undefined : user?.id;
   const now = new Date();
 
   const [view, setView] = useState<"daily" | "monthly">("daily");
@@ -761,6 +764,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               loading={dayLoading}
               drafts={drafts}
               canMark={canMark}
+              lockedUserId={lockedUserId}
               onChange={updatePeriod}
               onViewDetails={viewStaffDetails}
             />
@@ -786,6 +790,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               staff={dailyStaff}
               drafts={drafts}
               canMark={canMark}
+              lockedUserId={lockedUserId}
               onChange={updatePeriod}
               onViewDetails={viewStaffDetails}
             />
@@ -1080,7 +1085,8 @@ function DayClassGrid({
   teachers,
   loading,
   drafts,
-  canMark,
+  canMark: canMarkAny,
+  lockedUserId,
   onChange,
   onViewDetails,
 }: {
@@ -1089,6 +1095,8 @@ function DayClassGrid({
   loading: boolean;
   drafts: Record<string, PeriodDraft>;
   canMark: boolean;
+  /** The viewer's own row: shown read-only (nobody marks their own attendance). */
+  lockedUserId?: string;
   onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
   onViewDetails?: (userId: string) => void;
 }) {
@@ -1130,7 +1138,8 @@ function DayClassGrid({
             .forEach((period) => onChange(teacher.userId, period.periodKey, "left_early")),
       },
     ].filter((item) => item.key !== "left_early" || teacher.periods.some((p) => p.review));
-    return { teacher, statuses, total, present, hasLate, items };
+    const canMark = canMarkAny && String(teacher.userId) !== String(lockedUserId);
+    return { teacher, statuses, total, present, hasLate, items, canMark };
   });
 
   if (teachers.length === 0) {
@@ -1178,7 +1187,7 @@ function DayClassGrid({
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ teacher, statuses, total, present, hasLate, items }) => (
+            {rows.map(({ teacher, statuses, total, present, hasLate, items, canMark }) => (
               <tr key={teacher.userId} className="group">
                 <td className={cn(cellClass, "align-middle")} style={{ width: teacherWidth, minWidth: teacherWidth }}>
                   <StaffIdentity person={teacher} />
@@ -1309,13 +1318,16 @@ const STAFF_MARK_ACTIONS: { status: StaffPeriodStatus; label: string; icon: Luci
 function StaffDayTable({
   staff,
   drafts,
-  canMark,
+  canMark: canMarkAny,
+  lockedUserId,
   onChange,
   onViewDetails,
 }: {
   staff: StaffPeriodTeacher[];
   drafts: Record<string, PeriodDraft>;
   canMark: boolean;
+  /** The viewer's own row: shown read-only (nobody marks their own attendance). */
+  lockedUserId?: string;
   onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
   onViewDetails?: (userId: string) => void;
 }) {
@@ -1338,6 +1350,7 @@ function StaffDayTable({
         </thead>
         <tbody>
           {staff.map((person) => {
+            const canMark = canMarkAny && String(person.userId) !== String(lockedUserId);
             const period = person.periods[0];
             const draft = period ? drafts[periodDraftKey(person.userId, period.periodKey)] : undefined;
             const status = defaultPeriodStatus(draft?.status ?? period?.status);

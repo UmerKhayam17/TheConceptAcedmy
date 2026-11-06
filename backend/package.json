@@ -10,6 +10,7 @@
     "dev:api": "node --watch src/server.js",
     "dev:worker": "node scripts/dev.js --worker-only",
     "backfill:reg-numbers": "node scripts/backfillRegistrationNumbers.js",
+    "audit:user-emails": "node scripts/auditUserEmails.js",
     "lint": "eslint src scripts"
   },
   "engines": {

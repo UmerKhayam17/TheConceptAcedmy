@@ -8,7 +8,12 @@ const User = require('../models/User');
 const AcademyStudent = require('../models/academy/AcademyStudent');
 const { MODULES } = require('../modules');
 const { getSystemModulesForApi } = require('../config/systemModules');
-const { isSystemAdmin, seedAdminEmail } = require('../utils/systemAdmin');
+const {
+  isSystemAdmin,
+  seedAdminEmail,
+  normalizeEmail,
+  isReservedAdminEmail,
+} = require('../utils/systemAdmin');
 const { expandModulePermissions } = require('../modules/expandModulePermissions');
 const {
   accountModuleForRoleName,
@@ -323,7 +328,10 @@ const createUser = catchAsync(async (req, res) => {
   if (!resolvedCanLogin && roleName === 'admin') {
     throw new ApiError(400, 'Admin accounts must be able to log in.');
   }
-  let finalEmail = String(email || '').toLowerCase().trim();
+  let finalEmail = normalizeEmail(email);
+  if (isReservedAdminEmail(finalEmail)) {
+    throw new ApiError(403, 'This email is reserved.');
+  }
   let hash;
   if (resolvedCanLogin) {
     if (isNoLoginEmail(finalEmail)) {
@@ -382,9 +390,6 @@ const createUser = catchAsync(async (req, res) => {
   }
 
   if (roleName === 'admin') {
-    if (finalEmail === seedAdminEmail()) {
-      throw new ApiError(400, 'Cannot create another account with the system admin email.');
-    }
     // Ensure Map exists so secondary admins always use dynamic permissions (not role full-access).
     if (!userModulePerms) userModulePerms = new Map();
   }
@@ -450,10 +455,19 @@ const updateUser = catchAsync(async (req, res) => {
 
   if (name !== undefined) user.name = name;
   if (email !== undefined) {
-    if (targetIsSystemAdmin && String(email).toLowerCase().trim() !== seedAdminEmail()) {
-      throw new ApiError(400, 'Cannot change the system admin email.');
+    const nextEmail = normalizeEmail(email);
+    if (targetIsSystemAdmin) {
+      if (nextEmail !== seedAdminEmail()) {
+        throw new ApiError(400, 'Cannot change the system admin email.');
+      }
+    } else if (isReservedAdminEmail(nextEmail)) {
+      throw new ApiError(403, 'This email is reserved.');
     }
-    user.email = email;
+    if (nextEmail !== normalizeEmail(user.email)) {
+      const taken = await User.exists({ email: nextEmail, _id: { $ne: user._id } });
+      if (taken) throw new ApiError(409, 'Email already in use');
+    }
+    user.email = nextEmail;
   }
   if (phone !== undefined) user.phone = phone;
   if (role !== undefined) {

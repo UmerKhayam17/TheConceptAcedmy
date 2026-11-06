@@ -7,6 +7,7 @@ const cookieParser = require('cookie-parser');
 const v1 = require('./routes/v1');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { protectUpload } = require('./middleware/auth');
+const { setUploadSecurityHeaders } = require('./utils/uploadSafety');
 
 const clientOrigins = (process.env.CLIENT_URL || 'http://localhost:5173,http://localhost:8080,https://localhost:8080')
   .split(',')
@@ -58,7 +59,11 @@ app.use('/uploads/ai-faces', (req, res) => {
   res.status(403).json({ success: false, message: 'Face images are not publicly accessible' });
 });
 // All other uploads require a valid access JWT (Bearer or httpOnly cookie)
-app.use('/uploads', protectUpload, express.static(uploadsRoot));
+app.use(
+  '/uploads',
+  protectUpload,
+  express.static(uploadsRoot, { setHeaders: setUploadSecurityHeaders })
+);
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'academy-backend' });

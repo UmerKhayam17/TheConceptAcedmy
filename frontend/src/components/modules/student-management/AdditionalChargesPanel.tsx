@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { requiredAmount } from "@/lib/moneyInput";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -193,9 +194,8 @@ export default function AdditionalChargesPanel({
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const amount = Number(form.amount);
       if (!form.name.trim()) throw new Error("Enter a charge name.");
-      if (!Number.isFinite(amount) || amount < 0) throw new Error("Enter an amount of 0 or more.");
+      const amount = requiredAmount(form.amount, "charge amount");
       if (form.frequency === "selected_months" && form.months.length === 0) {
         throw new Error("Select at least one month.");
       }

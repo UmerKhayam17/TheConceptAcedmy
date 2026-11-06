@@ -16,7 +16,28 @@ const Message        = require("../../../models/chat/message.chat.model");
 const Conversation   = require("../../../models/chat/conversation.chat.model");
 const MessageReceipt = require("../../../models/chat/messageReceipt.chat.model");
 const User           = require("../../../models/User");
+const FileDoc        = require("../../../models/chat/file.chat.model");
 const { emitToConversation } = require("../utils/roomEmitter");
+const { isParticipant, canSeeMessage, isObjectId } = require("../utils/chatAccess");
+
+/**
+ * A file attached to a message must be one this sender uploaded (via /chat/upload).
+ * Returns the stored file info, or null when the client sent someone else's / a made-up file.
+ */
+async function resolveOwnFile(file, senderId) {
+  const url = typeof file?.url === "string" ? file.url : "";
+  if (!url.startsWith("/uploads/chat/")) return null;
+  const doc = await FileDoc.findOne({ url, uploadedBy: senderId }).lean();
+  if (!doc) return null;
+  return {
+    ...file,
+    _id: doc._id,
+    url: doc.url,
+    name: doc.name,
+    size: doc.size,
+    mimeType: doc.mimeType,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // helpers
@@ -163,11 +184,28 @@ function registerMessageHandlers(socket, nsp) {
       // Normalise & validate position-based mentions
       const mentions = normaliseMentions(rawMentions);
 
-      // Build replyToPreview
+      // An attached file must be the sender's own upload.
+      let safeFile;
+      if (file) {
+        safeFile = await resolveOwnFile(file, senderId);
+        if (!safeFile) return ack?.({ ok: false, error: "Attachment not found" });
+      }
+
+      // Build replyToPreview — only from a message in THIS conversation that the sender can see,
+      // otherwise a reply could copy text out of a chat the sender is not part of.
       let replyToPreview;
-      if (replyToMessageId) {
-        const original = await Message.findById(replyToMessageId).select("text type senderId").lean();
+      let replyId;
+      if (replyToMessageId && isObjectId(replyToMessageId)) {
+        const original = await Message.findOne({
+          _id: replyToMessageId,
+          conversationId,
+          deletedForEveryone: false,
+          deletedForUsers: { $ne: senderId },
+        })
+          .select("text type senderId")
+          .lean();
         if (original) {
+          replyId = original._id;
           replyToPreview = {
             senderId: original.senderId,
             text:     original.text || `[${original.type}]`,
@@ -182,8 +220,8 @@ function registerMessageHandlers(socket, nsp) {
         senderId,
         type,
         text:             text || "",
-        file:             file || undefined,
-        replyToMessageId: replyToMessageId || undefined,
+        file:             safeFile || undefined,
+        replyToMessageId: replyId || undefined,
         replyToPreview:   replyToPreview   || undefined,
         mentions,                                          // [{ userId, position }]
         status:           "sent",
@@ -329,11 +367,18 @@ function registerMessageHandlers(socket, nsp) {
       const { messageId, targetConversationIds } = data;
       const { _id: senderId, name } = socket.user;
 
+      if (!isObjectId(messageId) || !Array.isArray(targetConversationIds)) {
+        return ack?.({ ok: false, error: "Original message not found" });
+      }
       const original = await Message.findById(messageId).lean();
-      if (!original) return ack?.({ ok: false, error: "Original message not found" });
+      // Only a message the sender can actually see may be forwarded (same error either way,
+      // so the response does not reveal whether a message id exists elsewhere).
+      if (!original || !(await canSeeMessage(original, senderId))) {
+        return ack?.({ ok: false, error: "Original message not found" });
+      }
 
       const created = [];
-      for (const convId of targetConversationIds) {
+      for (const convId of targetConversationIds.slice(0, 20)) {
         const targetConversation = await Conversation.findOne({
           _id:                  convId,
           "participants.userId": senderId,
@@ -390,6 +435,10 @@ function registerMessageHandlers(socket, nsp) {
     try {
       const { conversationId } = data;
       const userId = socket.user._id;
+
+      if (!(await isParticipant(conversationId, userId))) {
+        return ack?.({ ok: false, error: "Conversation not found or access denied" });
+      }
 
       socket.activeConversationId = conversationId;
 

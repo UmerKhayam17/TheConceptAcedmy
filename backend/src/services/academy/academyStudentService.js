@@ -9,6 +9,7 @@ const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const AcademySection = require('../../models/academy/AcademySection');
 const User = require('../../models/User');
 const Role = require('../../models/Role');
+const { isReservedAdminEmail } = require('../../utils/systemAdmin');
 const bcrypt = require('bcryptjs');
 const {
   getByClass,
@@ -283,6 +284,10 @@ async function registerStudent(payload, userId) {
   const parentPassword = payload.parentPassword;
   const parentName = payload.guardianName?.trim() || payload.fatherName?.trim() || 'Parent';
 
+  if (isReservedAdminEmail(parentEmail)) {
+    throw new ApiError(403, 'This guardian email is reserved. Use the parent’s own email.');
+  }
+
   let parentUser = await User.findOne({ email: parentEmail });
   if (!parentUser) {
     parentUser = await User.create({
@@ -293,6 +298,14 @@ async function registerStudent(payload, userId) {
       role: parentRole._id,
     });
   } else {
+    // Only an existing parent account may be reused. Otherwise registering a student with a
+    // staff/admin email would rename that account and reset its password.
+    if (String(parentUser.role) !== String(parentRole._id)) {
+      throw new ApiError(
+        409,
+        'This guardian email belongs to a staff account. Use the parent’s own email.'
+      );
+    }
     parentUser.name = parentName || parentUser.name;
     parentUser.phone = phone || parentUser.phone;
     if (parentPassword) {

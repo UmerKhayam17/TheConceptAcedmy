@@ -163,6 +163,9 @@ export default function ConcessionCategoriesTab({ caps }: { caps: ModuleActionCa
     mutationFn: async () => {
       const name = form.name.trim();
       if (!name) throw new Error("Category name is required");
+      if (String(form.discountPercent ?? "").trim() === "") {
+        throw new Error("Enter the discount percentage (0–100).");
+      }
       const discountPercent = Number(form.discountPercent);
       if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
         throw new Error("Discount percentage must be between 0 and 100");

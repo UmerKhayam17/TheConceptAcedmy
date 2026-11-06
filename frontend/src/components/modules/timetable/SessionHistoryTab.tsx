@@ -308,14 +308,10 @@ export default function SessionHistoryTab({ caps }: { caps: ModuleActionCaps }) 
                 <Input type="date" value={cloneForm.endDate} onChange={(e) => setCloneForm((f) => ({ ...f, endDate: e.target.value }))} />
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={cloneForm.activate}
-                onChange={(e) => setCloneForm((f) => ({ ...f, activate: e.target.checked }))}
-              />
-              Set as active session
-            </label>
+            <p className="text-xs text-muted-foreground">
+              The new session becomes the active session. The current active session is closed and becomes
+              read-only. Only one session can be active at a time.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCloneOpen(false)}>Cancel</Button>

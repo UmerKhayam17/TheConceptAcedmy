@@ -5,6 +5,7 @@ const app = require('./app');
 const { connectDatabase } = require('./config/database');
 const { seedPermissionsAndRoles } = require('./services/seed');
 const { ensureAcademyStudentIndexes } = require('./services/academy/ensureAcademyStudentIndexes');
+const { ensureSessionIndexes } = require('./services/session/sessionGuard');
 const { ensureCamerasFromEnv } = require('./services/aiAttendance/cameraEnvService');
 const { autostartFromEnv } = require('./services/aiAttendance/cctvPoller');
 const { startCronJobs } = require('./jobs/cron');
@@ -19,6 +20,7 @@ const clientOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
 async function bootstrap() {
   await connectDatabase();
   await seedPermissionsAndRoles();
+  await ensureSessionIndexes();
   await ensureAcademyStudentIndexes();
   await ensureCamerasFromEnv();
   startCronJobs();

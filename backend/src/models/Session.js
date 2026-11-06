@@ -10,7 +10,8 @@ const sessionSchema = new mongoose.Schema(
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
     status: { type: String, enum: SESSION_STATUSES, default: 'active', index: true },
-    isActive: { type: Boolean, default: false, index: true },
+    /** Indexed by the partial unique `one_active_session` index below. */
+    isActive: { type: Boolean, default: false },
     workingDays: {
       type: [{ type: String, enum: WEEKDAYS }],
       default: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'],
@@ -27,5 +28,11 @@ const sessionSchema = new mongoose.Schema(
 );
 
 sessionSchema.index({ name: 1 }, { unique: true });
+// Database-level guarantee: at most one session with isActive = true.
+// Built at startup by ensureSessionIndexes(), after ensureSingleActiveSession() repairs old data.
+sessionSchema.index(
+  { isActive: 1 },
+  { unique: true, partialFilterExpression: { isActive: true }, name: 'one_active_session' }
+);
 
 module.exports = mongoose.model('Session', sessionSchema);

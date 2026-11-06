@@ -51,6 +51,21 @@ const PERMISSIONS = [
   { name: 'view_datasheets', module: 'datasheets', action: 'read', description: 'View datasheets' },
 ];
 
+/**
+ * Exactly one account carries the system admin flag: the one stored with the exact
+ * (lowercase) SEED_ADMIN_EMAIL. Any other flagged account loses it.
+ */
+async function clearSystemAdminFlagExcept(email, keepId) {
+  const keep = keepId || (await User.findOne({ email }).select('_id').lean())?._id;
+  const filter = { isSystemAdmin: true };
+  if (keep) filter._id = { $ne: keep };
+  const res = await User.updateMany(filter, { $set: { isSystemAdmin: false } });
+  if (res.modifiedCount) {
+    // eslint-disable-next-line no-console
+    console.warn(`[seed] Removed the system admin flag from ${res.modifiedCount} other account(s).`);
+  }
+}
+
 async function ensureDefaultAdmin() {
   const email = seedAdminEmail();
   const adminRole = await Role.findOne({ name: 'admin' });
@@ -85,7 +100,9 @@ async function ensureDefaultAdmin() {
       permissions: permissionIds,
       modulePermissions,
       isActive: true,
+      isSystemAdmin: true,
     });
+    await clearSystemAdminFlagExcept(email);
     if (!isProd()) {
       // eslint-disable-next-line no-console
       console.log(`[seed] Default admin created: ${email}`);
@@ -97,6 +114,7 @@ async function ensureDefaultAdmin() {
   const set = {
     role: adminRole._id,
     isActive: true,
+    isSystemAdmin: true,
     permissions: permissionIds,
     modulePermissions: Object.fromEntries(modulePermissions),
   };
@@ -104,6 +122,7 @@ async function ensureDefaultAdmin() {
     set.password = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD || 'Admin@123456', 12);
   }
   await User.updateOne({ _id: user._id }, { $set: set });
+  await clearSystemAdminFlagExcept(email, user._id);
   if (!isProd()) {
     // eslint-disable-next-line no-console
     console.log(`[seed] Default admin ensured: ${email}`);

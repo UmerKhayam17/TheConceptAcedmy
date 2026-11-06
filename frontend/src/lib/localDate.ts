@@ -9,3 +9,27 @@ export function localTodayYmd(d = new Date()) {
 export function localDateYmd(date: Date) {
   return localTodayYmd(date);
 }
+
+/** The academy's timezone. School days (attendance, etc.) are stored as midnight in this zone. */
+export const SCHOOL_TIME_ZONE = "Asia/Karachi";
+
+const schoolDayFormat = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SCHOOL_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/**
+ * School calendar day (YYYY-MM-DD) of a stored date.
+ * The API sends 5 Nov as "2026-11-04T19:00:00.000Z" (midnight Karachi in UTC), so
+ * `value.slice(0, 10)` would wrongly give 4 Nov. A bare "YYYY-MM-DD" is returned unchanged.
+ * Uses the school timezone, not the browser's, so the day is right on any device.
+ */
+export function schoolDayYmd(value: string | Date | null | undefined): string {
+  if (!value) return "";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return typeof value === "string" ? value.slice(0, 10) : "";
+  return schoolDayFormat.format(d);
+}

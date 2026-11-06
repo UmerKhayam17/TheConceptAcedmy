@@ -122,6 +122,20 @@ function dayBounds(ymd, timeZone = DEFAULT_TZ) {
   return { start, end, ymd: `${y}-${mo}-${d}`, timeZone: tz };
 }
 
+/**
+ * A whole calendar month in the school timezone (not the server's), so a UTC host
+ * does not drop the 1st of the month or pull in the next month's 1st.
+ */
+function monthBounds(year, month, timeZone = DEFAULT_TZ) {
+  const y = Number(year);
+  const m = Number(month);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const mm = String(m).padStart(2, '0');
+  const first = dayBounds(`${y}-${mm}-01`, timeZone);
+  const last = dayBounds(`${y}-${mm}-${String(daysInMonth).padStart(2, '0')}`, timeZone);
+  return { start: first.start, end: last.end, daysInMonth };
+}
+
 /** Weekday name (monday…sunday) for an instant in timezone. */
 function weekdayName(date, timeZone = DEFAULT_TZ) {
   const name = new Intl.DateTimeFormat('en-US', {
@@ -157,6 +171,7 @@ module.exports = {
   formatWallClockRange,
   todayYmd,
   dayBounds,
+  monthBounds,
   weekdayName,
   minutesSinceMidnight,
 };

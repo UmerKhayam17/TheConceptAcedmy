@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { schoolDayYmd } from "@/lib/localDate";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bar,
@@ -92,7 +93,7 @@ function formatDobLong(dob?: string) {
 }
 
 function dayKey(date: string | Date) {
-  return typeof date === "string" ? date.slice(0, 10) : ymdLocal(new Date(date));
+  return schoolDayYmd(date);
 }
 
 function formatDayLong(ymd: string) {

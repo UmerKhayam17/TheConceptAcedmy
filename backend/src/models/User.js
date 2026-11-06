@@ -1,9 +1,16 @@
 const mongoose = require('mongoose');
+const { isReservedAdminEmail } = require('../utils/systemAdmin');
 
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true },
+    /** Always stored lowercase + trimmed, so `Admin@X` and `admin@x` are the same account. */
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    /**
+     * Marks the one bootstrap admin. Set only by the startup seed (services/seed.js
+     * ensureDefaultAdmin). No create/update API reads this field from a request.
+     */
+    isSystemAdmin: { type: Boolean, default: false },
     password: { type: String, required: true, minlength: 8, select: false },
     /**
      * Last password assigned to a parent portal, kept so staff can reprint login sheets.
@@ -61,6 +68,15 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ isActive: 1 });
+
+// Last line of defence for every save path: the reserved admin email can only sit on the
+// flagged system admin account.
+userSchema.pre('validate', function reserveAdminEmail(next) {
+  if (isReservedAdminEmail(this.email) && this.isSystemAdmin !== true) {
+    this.invalidate('email', 'This email is reserved.');
+  }
+  next();
+});
 
 userSchema.virtual('profile_image').get(function profileImageAlias() {
   return this.profileImage;

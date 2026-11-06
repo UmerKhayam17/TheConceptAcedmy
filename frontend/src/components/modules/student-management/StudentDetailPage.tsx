@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { schoolDayYmd } from "@/lib/localDate";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -504,7 +505,7 @@ function AttendanceTab({ studentId }: { studentId: string }) {
   const byDay = useMemo(() => {
     const map = new Map<string, AcademyAttendanceRecord>();
     (data?.records || []).forEach((r) => {
-      const key = typeof r.date === "string" ? r.date.slice(0, 10) : ymdLocal(new Date(r.date));
+      const key = schoolDayYmd(r.date);
       map.set(key, r);
     });
     return map;
@@ -665,7 +666,7 @@ function AttendanceTab({ studentId }: { studentId: string }) {
             )}
             {(data?.records || []).map((r) => {
               const day =
-                typeof r.date === "string" ? r.date.slice(0, 10) : ymdLocal(new Date(r.date));
+                schoolDayYmd(r.date);
               return (
                 <div
                   key={r._id || day}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { requiredAmount } from "@/lib/moneyInput";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -252,9 +253,9 @@ export default function ClassDetailPage({
   const feeMut = useMutation({
     mutationFn: async () => {
       const body = {
-        perSubjectFee: Number(feeForm.perSubjectFee),
-        fullPackageFee: Number(feeForm.fullPackageFee),
-        admissionFee: Number(feeForm.admissionFee),
+        perSubjectFee: requiredAmount(feeForm.perSubjectFee, "per subject fee"),
+        fullPackageFee: requiredAmount(feeForm.fullPackageFee, "full package fee"),
+        admissionFee: requiredAmount(feeForm.admissionFee, "admission fee"),
         status: feeForm.status,
       };
       if (editFee) return updateFeeStructure(editFee._id, body);
@@ -266,7 +267,8 @@ export default function ClassDetailPage({
       setFeeOpen(false);
       toast({ title: editFee ? "Fee structure updated" : "Fee structure created" });
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) =>
+      toast({ title: "Could not save fee structure", description: e.message, variant: "destructive" }),
   });
 
   const deleteFeeMut = useMutation({

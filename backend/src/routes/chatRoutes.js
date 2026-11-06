@@ -1,5 +1,8 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const ApiError = require('../utils/ApiError');
+const { CHAT_FILE_TYPES, classifyUpload } = require('../utils/uploadSafety');
 const { Router } = require('express');
 const multer = require('multer');
 const { protect } = require('../middleware/auth');
@@ -15,12 +18,21 @@ fs.mkdirSync(chatUploadDir, { recursive: true });
 const chatUpload = multer({
   storage: multer.diskStorage({
     destination: chatUploadDir,
+    // Random, unguessable name + the server-approved extension (never the client's name).
     filename: (_req, file, cb) => {
-      const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-      cb(null, `${Date.now()}-${safe}`);
+      cb(null, `${Date.now()}-${crypto.randomBytes(12).toString('hex')}${file.safeType.ext}`);
     },
   }),
   limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    const safeType = classifyUpload(file, CHAT_FILE_TYPES);
+    if (!safeType) {
+      return cb(new ApiError(400, 'This file type is not allowed in chat.'));
+    }
+    // eslint-disable-next-line no-param-reassign
+    file.safeType = safeType;
+    return cb(null, true);
+  },
 });
 
 const router = Router();
