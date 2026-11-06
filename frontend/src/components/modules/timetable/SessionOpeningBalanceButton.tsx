@@ -69,7 +69,7 @@ export default function SessionOpeningBalanceButton({
       if (!start) throw new Error("This session has no start date");
       const trimmed = amount.trim();
       const value = Number(trimmed);
-      if (trimmed === "" || !Number.isFinite(value) || value < 0) throw new Error("Enter the opening amount");
+      if (trimmed === "" || !Number.isFinite(value) || value < 0) throw new Error("Enter the opening balance");
       return saveOpeningBalance({ amount: value, sessionId: session._id, asOf: start });
     },
     onSuccess: (row) => {
@@ -118,7 +118,7 @@ export default function SessionOpeningBalanceButton({
               </div>
             </div>
             <div>
-              <Label htmlFor={`opening-${session._id}`}>Opening amount</Label>
+              <Label htmlFor={`opening-${session._id}`}>Opening Balance</Label>
               <Input
                 id={`opening-${session._id}`}
                 type="number"

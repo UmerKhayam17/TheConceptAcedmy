@@ -255,7 +255,7 @@ export default function AcademicSetupTab({
 
       <Card className="overflow-hidden">
         <div className="px-4 py-3 border-b bg-muted/30 font-display font-semibold text-primary">
-          All sessions ({filtered.length}{search.trim() ? ` of ${sessions.length}` : ""})
+          All Sessions ({filtered.length}{search.trim() ? ` of ${sessions.length}` : ""})
         </div>
         {isLoading ? (
           <p className="p-8 text-center text-sm text-muted-foreground">Loading sessions…</p>
@@ -271,7 +271,7 @@ export default function AcademicSetupTab({
                   <th className="text-left font-medium px-4 py-2.5">Session</th>
                   <th className="text-left font-medium px-4 py-2.5">Period</th>
                   <th className="text-left font-medium px-4 py-2.5">Status</th>
-                  <th className="text-left font-medium px-4 py-2.5">Opening balance</th>
+                  <th className="text-left font-medium px-4 py-2.5">Opening Balance</th>
                   <th className="text-right font-medium px-4 py-2.5">Actions</th>
                 </tr>
               </thead>
