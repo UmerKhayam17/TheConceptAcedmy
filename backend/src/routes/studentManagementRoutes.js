@@ -80,7 +80,7 @@ router.get(
 
 router.put(
   '/finance/opening-balance',
-  requireAnyPermission('view_academy_fee_reports', 'manage_academy_fees'),
+  requireAnyPermission('manage_academy_fees'),
   validate(schemas.openingBalanceBody),
   dashboardCtrl.saveOpeningBalance
 );

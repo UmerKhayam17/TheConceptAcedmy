@@ -66,9 +66,10 @@ export default function SessionOpeningBalanceButton({
 
   const saveMut = useMutation({
     mutationFn: () => {
-      const value = Number(amount);
       if (!start) throw new Error("This session has no start date");
-      if (!Number.isFinite(value) || value < 0) throw new Error("Enter the opening amount");
+      const trimmed = amount.trim();
+      const value = Number(trimmed);
+      if (trimmed === "" || !Number.isFinite(value) || value < 0) throw new Error("Enter the opening amount");
       return saveOpeningBalance({ amount: value, sessionId: session._id, asOf: start });
     },
     onSuccess: (row) => {
@@ -140,7 +141,11 @@ export default function SessionOpeningBalanceButton({
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" disabled={saveMut.isPending || !start || !end} onClick={() => saveMut.mutate()}>
+            <Button
+              type="button"
+              disabled={saveMut.isPending || !start || !end}
+              onClick={() => saveMut.mutate()}
+            >
               {saveMut.isPending ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>

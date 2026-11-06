@@ -172,7 +172,9 @@ export default function SessionDetailPage({
 
         {caps.canEdit && (
           <div className="flex flex-wrap gap-2">
-            <SessionOpeningBalanceButton session={session} variant="outline" className="h-8 text-xs gap-1" />
+            {status === "active" && (
+              <SessionOpeningBalanceButton session={session} variant="outline" className="h-8 text-xs gap-1" />
+            )}
             {status === "active" && (
               <Button
                 variant="outline"

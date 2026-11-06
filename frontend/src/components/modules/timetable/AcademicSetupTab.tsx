@@ -328,7 +328,7 @@ export default function AcademicSetupTab({
                               <Eye className="h-4 w-4" />
                             </Link>
                           </Button>
-                          {caps.canEdit && <SessionOpeningBalanceButton session={s} iconOnly />}
+                          {caps.canEdit && status === "active" && <SessionOpeningBalanceButton session={s} iconOnly />}
                           {caps.canEdit && status === "active" && (
                             <Button
                               variant="ghost"

@@ -6,6 +6,7 @@ const Session = require('../../models/Session');
 const { categoryNameMap } = require('./expenseCategoryService');
 const { ACADEMY_BRAND } = require('../../config/academyBrand');
 const ApiError = require('../../utils/ApiError');
+const { resolveSessionStatus } = require('../session/sessionGuard');
 
 /**
  * Balance sheet (statement of financial position) built from fee records and
@@ -63,12 +64,20 @@ function ymdFromStored(value) {
 
 async function loadSession(sessionId) {
   if (!sessionId || !/^[a-f0-9]{24}$/i.test(String(sessionId))) return null;
-  const session = await Session.findById(sessionId).select('name startDate endDate').lean();
+  const session = await Session.findById(sessionId)
+    .select('name startDate endDate status isActive isClosed')
+    .lean();
   if (!session?.startDate || !session?.endDate) return null;
   const from = ymdFromStored(session.startDate);
   const to = ymdFromStored(session.endDate);
   if (!from || !to) return null;
-  return { id: String(session._id), name: session.name, from, to };
+  return {
+    id: String(session._id),
+    name: session.name,
+    from,
+    to,
+    status: resolveSessionStatus(session),
+  };
 }
 
 async function getOpeningBalance(sessionId) {
@@ -87,6 +96,9 @@ async function getOpeningBalance(sessionId) {
 async function saveOpeningBalance({ amount, sessionId }, userId) {
   const session = await loadSession(sessionId);
   if (!session) throw new ApiError(400, 'Choose a session before saving the opening balance.');
+  if (session.status !== 'active') {
+    throw new ApiError(403, 'This session is closed. Its opening balance is read-only.');
+  }
   const row = await AcademyOpeningBalance.findOneAndUpdate(
     { key: session.id },
     { key: session.id, amount: Number(amount) || 0, asOf: session.from, updatedBy: userId },
@@ -190,7 +202,10 @@ async function getBalanceSheet({ from, to, sessionId } = {}) {
   let receivableCurrent = 0;
   let feesInAdvance = 0;
   const paidStudentIds = new Set();
-  const savedAsOf = /^\d{4}-\d{2}-\d{2}$/.test(String(savedOpening?.asOf || '')) ? savedOpening.asOf : null;
+  // A session's opening always sits on the session's current start date, even if the
+  // session dates were edited after the amount was saved.
+  const openingDate = savedOpening ? (session ? session.from : savedOpening.asOf) : null;
+  const savedAsOf = /^\d{4}-\d{2}-\d{2}$/.test(String(openingDate || '')) ? openingDate : null;
   const manualAsOf =
     savedAsOf && savedAsOf <= ymd(fromDate) ? parseYmd(savedAsOf, 'opening balance') : null;
   let skippedCash = 0;
