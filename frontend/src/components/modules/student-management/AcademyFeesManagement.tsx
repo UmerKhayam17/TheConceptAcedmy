@@ -86,7 +86,7 @@ import {
 import { resolveUploadUrl } from "@/lib/api";
 import { academyStudentRoutes, type AcademyStudentRoutes } from "@/lib/studentManagementMenus";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
-import { formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
+import { formatDate, formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
 import { FreeStudentBadge, isFreeFeeStudent } from "./FeeModeSelector";
 import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
@@ -1283,6 +1283,20 @@ export default function AcademyFeesManagement({
         <Card className="p-3 border-destructive/40 bg-destructive/5 text-sm text-destructive">
           {(error as Error)?.message || (summaryErr as Error)?.message || "Could not load fee records."}
         </Card>
+      )}
+      {!isParent && !effectiveStudentId && (
+        <p className="text-xs text-muted-foreground">
+          {rangeFrom && rangeTo ? (
+            <>
+              Showing {paidOnlyView ? "fees paid" : "vouchers billed"} from{" "}
+              <span className="font-semibold text-foreground">{formatDate(rangeFrom)}</span> to{" "}
+              <span className="font-semibold text-foreground">{formatDate(rangeTo)}</span>
+              {paidOnlyView ? "" : " (whole billing months)"}
+            </>
+          ) : (
+            "Showing all dates"
+          )}
+        </p>
       )}
       {isParent ? (
         <FeeMetricCards summary={summary} loading={summaryLoading} compact />

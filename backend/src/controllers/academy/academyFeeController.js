@@ -16,7 +16,7 @@ const {
 /** YYYY-MM-DD query value, or undefined. */
 function ymdQuery(value) {
   const v = String(value || '');
-  return /^d{4}-d{2}-d{2}$/.test(v) ? v : undefined;
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
 }
 
 /** Date-range filters: dateFrom/dateTo = paid date, periodFrom/periodTo = billing month. */
