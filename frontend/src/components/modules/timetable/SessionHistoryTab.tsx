@@ -10,6 +10,7 @@ import { Archive, CheckCircle2, Copy, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar from "@/components/modules/FilterToolbar";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
 import {
   archiveSession,
@@ -100,7 +101,12 @@ export default function SessionHistoryTab({ caps }: { caps: ModuleActionCaps }) 
   const selected = sessions.find((s) => s._id === selectedId);
   const status = selected ? sessionStatus(selected) : null;
 
-  const { search, setSearch, filtered: sessionsFiltered } = usePanelListSearch(sessions, (s) => [
+  const [statusFilter, setStatusFilter] = useState<"" | SessionStatus>("");
+  const sessionsByStatus = statusFilter
+    ? sessions.filter((s) => sessionStatus(s) === statusFilter)
+    : sessions;
+
+  const { search, setSearch, filtered: sessionsFiltered } = usePanelListSearch(sessionsByStatus, (s) => [
     s.name,
     sessionStatus(s),
     s.startDate,
@@ -108,27 +114,62 @@ export default function SessionHistoryTab({ caps }: { caps: ModuleActionCaps }) 
   ]);
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      <div className="flex items-start gap-3">
-        <History className="h-8 w-8 text-primary shrink-0 mt-1" />
-        <div>
-          <h2 className="font-semibold text-lg text-primary">Session history</h2>
+    <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <History className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Session History
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                Review past sessions, complete or archive them, and shift the configuration to the next session.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[15rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              A great school builds great futures.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
         </div>
       </div>
 
-      <PanelSearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search sessions by name or status…"
-        className="max-w-md"
-      />
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <FilterToolbar>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "" | SessionStatus)}
+            aria-label="Status filter"
+          >
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="archived">Archived</option>
+          </select>
+          <PanelSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search sessions…"
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+        </FilterToolbar>
+      </Card>
 
       <div className="grid lg:grid-cols-3 gap-4">
         <Card className="p-3 space-y-1 max-h-[420px] overflow-y-auto">
-          {sessionsFiltered.length === 0 ? (
-            <p className="p-4 text-center text-sm text-muted-foreground">
-              {sessions.length === 0 ? "No sessions yet." : "No sessions match your search."}
-            </p>
+          {sessionsFiltered.length === 0 && sessions.length > 0 ? (
+            <p className="p-4 text-center text-sm text-muted-foreground">No sessions match your filters.</p>
           ) : null}
           {sessionsFiltered.map((s) => {
             const st = sessionStatus(s);

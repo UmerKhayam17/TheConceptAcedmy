@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { SlidersHorizontal } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchPeriodTemplates, fetchTimetableSettings, updateTimetableSettings } from "@/lib/timetableApi";
@@ -71,11 +72,37 @@ export default function TimetableSettingsTab({
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6">
-      <Card className="p-6 max-w-xl space-y-4">
-        <div>
-          <h3 className="font-semibold text-primary">Timetable rules</h3>
+    <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <SlidersHorizontal className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Timetable Rules
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                Set the default period template and the daily lecture limits used when building timetables.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[15rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              A great school builds great futures.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
         </div>
+      </div>
+
+      <Card className="p-6 max-w-xl space-y-4">
 
         <div>
           <Label>Default period template</Label>

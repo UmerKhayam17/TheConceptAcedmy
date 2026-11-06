@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { GraduationCap, Plus, Pencil, Trash2 } from "lucide-react";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
@@ -29,6 +30,7 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
   const role = user?.role ?? "admin";
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | "active" | "inactive">("");
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<AcademyClass | null>(null);
   const [form, setForm] = useState({ className: "", status: "active" as "active" | "inactive" });
@@ -94,22 +96,66 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
   };
 
   const colSpan = 3 + (showSessionCol ? 1 : 0) + ((writable && (caps.canEdit || caps.canDelete)) ? 1 : 0);
+  const visibleClasses = statusFilter ? classes.filter((c) => c.status === statusFilter) : classes;
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <PanelSearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="Search classes…"
-          className="max-w-md"
-        />
-        {caps.canCreate && writable && (
-          <Button onClick={openCreate} className="h-10 w-full gap-2 sm:w-auto sm:shrink-0" disabled={!hasScope}>
-            <Plus className="h-4 w-4" /> Add Class
-          </Button>
-        )}
+    <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <GraduationCap className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Classes
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                Add and manage the classes of the session. Open a class to see its sections, subjects and fees.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[15rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              A great school builds great futures.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
+        </div>
       </div>
+
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <FilterToolbar>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "" | "active" | "inactive")}
+            aria-label="Status filter"
+          >
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <PanelSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search classes…"
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+          {caps.canCreate && writable && (
+            <FilterToolbarActions>
+              <Button onClick={openCreate} className="gap-2 h-10" disabled={!hasScope}>
+                <Plus className="h-4 w-4" /> Add Class
+              </Button>
+            </FilterToolbarActions>
+          )}
+        </FilterToolbar>
+      </Card>
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -132,14 +178,18 @@ export default function ClassesTab({ caps, sessionId }: { caps: ModuleActionCaps
               {!isLoading && !hasScope && (
                 <tr><td colSpan={colSpan} className="p-8 text-center text-muted-foreground">—</td></tr>
               )}
-              {!isLoading && hasScope && classes.length === 0 && (
+              {!isLoading && hasScope && visibleClasses.length === 0 && (
                 <tr>
                   <td colSpan={colSpan} className="p-8 text-center text-muted-foreground">
-                    {isAll ? "No classes found" : "No classes for this session yet"}
+                    {classes.length > 0
+                      ? "No classes match your filters"
+                      : isAll
+                        ? "No classes found"
+                        : "No classes for this session yet"}
                   </td>
                 </tr>
               )}
-              {classes.map((c) => (
+              {visibleClasses.map((c) => (
                 <tr
                   key={c._id}
                   className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"

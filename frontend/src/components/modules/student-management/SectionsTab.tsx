@@ -38,6 +38,7 @@ import {
   type AcademySectionWithClass,
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
 import { classDisplayName } from "@/lib/configApi";
 import { matchesPanelSearch } from "@/lib/panelSearch";
@@ -86,6 +87,7 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<AcademySection | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | "active" | "inactive">("");
   const [page, setPage] = useState(1);
   const [form, setForm] = useState({
     classId: "",
@@ -106,12 +108,13 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
   useEffect(() => {
     setClassFilter("");
     setSearch("");
+    setStatusFilter("");
     setPage(1);
   }, [sessionId]);
 
   useEffect(() => {
     setPage(1);
-  }, [classFilter, search]);
+  }, [classFilter, search, statusFilter]);
 
   const { data: allSections = [], isLoading: sectionsLoading } = useQuery({
     queryKey: ["academy-sections", "session", sessionId, apiSessionId, classFilter],
@@ -152,8 +155,9 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
   }, [studentsPage?.students]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return allSections;
-    return allSections.filter((s) =>
+    const byStatus = statusFilter ? allSections.filter((s) => s.status === statusFilter) : allSections;
+    if (!search.trim()) return byStatus;
+    return byStatus.filter((s) =>
       matchesPanelSearch(
         search,
         s.sectionName,
@@ -164,7 +168,7 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
         String(enrolledBySection[s._id] ?? 0),
       ),
     );
-  }, [allSections, search, enrolledBySection, classes]);
+  }, [allSections, search, statusFilter, enrolledBySection, classes]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -292,28 +296,38 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
     : "All sections";
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Layers className="h-5 w-5" />
-          </span>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight text-primary">Sections</h1>
-            <p className="mt-1 text-sm text-muted-foreground max-w-xl">
-              Create and manage class sections (A, B, C…). Timetable and enrollment both use these.
+    <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <Layers className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                Sections
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                Create and manage class sections (A, B, C…). Timetable and enrollment both use these.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[15rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              A great school builds great futures.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
             </p>
           </div>
         </div>
-        <p className="shrink-0 text-sm italic text-primary/70 sm:pt-1">
-          “Better management, better learning.”
-        </p>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-end flex-1 min-w-0">
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <FilterToolbar>
           <ClassProgramSelect
             className="w-full sm:w-[16.5rem] shrink-0"
             value={classFilter}
@@ -327,24 +341,34 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
                 : undefined
             }
           />
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "" | "active" | "inactive")}
+            aria-label="Status filter"
+          >
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
           <PanelSearchBar
             value={search}
             onChange={setSearch}
             placeholder="Search sections…"
-            className="w-full sm:max-w-xs"
+            className="min-w-[12rem] flex-1 max-w-md"
           />
-        </div>
-        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
-          {caps.canCreate && writable && (
-            <Button className="h-10 w-full gap-2 sm:w-auto" onClick={openCreate} disabled={!hasScope}>
-              <Plus className="h-4 w-4" /> Add Section
-            </Button>
-          )}
-          <span className="inline-flex h-9 items-center rounded-md border bg-muted/40 px-3 text-xs font-medium text-muted-foreground">
-            {filtered.length} section(s)
-          </span>
-        </div>
-      </div>
+          <FilterToolbarActions>
+            <span className="inline-flex h-10 items-center justify-center rounded-md border bg-muted/40 px-3 text-xs font-medium text-muted-foreground">
+              {filtered.length} section(s)
+            </span>
+            {caps.canCreate && writable && (
+              <Button className="gap-2 h-10" onClick={openCreate} disabled={!hasScope}>
+                <Plus className="h-4 w-4" /> Add Section
+              </Button>
+            )}
+          </FilterToolbarActions>
+        </FilterToolbar>
+      </Card>
 
       <Card className="overflow-hidden">
         <div className="flex flex-col gap-2 px-4 py-3 border-b bg-muted/20">
@@ -410,7 +434,7 @@ export default function SectionsTab({ caps, sessionId }: { caps: ModuleActionCap
                   <td colSpan={colSpan} className="p-8 text-center text-muted-foreground">
                     {allSections.length === 0
                       ? "No sections yet. Use Add Section or filter a class for Quick add."
-                      : "No sections match your search."}
+                      : "No sections match your filters."}
                   </td>
                 </tr>
               )}
