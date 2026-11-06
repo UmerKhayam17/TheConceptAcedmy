@@ -4,7 +4,9 @@ import {
   ArrowUp,
   CalendarClock,
   Clock3,
+  GraduationCap,
   ReceiptText,
+  UserPlus,
   TriangleAlert,
   WalletCards,
 } from "lucide-react";
@@ -307,6 +309,42 @@ export function FeeMetricCards({
     },
   ];
 
+  /** Tuition (monthly) and admission: collected, with what is still due underneath. */
+  const typeCard = (
+    id: string,
+    title: string,
+    key: "monthly" | "admission",
+    icon: FeeMetricItem["icon"],
+    variant: FeeMetricItem["variant"],
+  ): FeeMetricItem => {
+    const t = summary?.byFeeType?.[key];
+    const paidAmt = t?.paid ?? 0;
+    const dueAmt = t?.pending ?? 0;
+    const paidCount = t?.paidCount ?? 0;
+    return {
+      id,
+      title,
+      value: loading ? "…" : formatRs(paidAmt),
+      icon,
+      variant,
+      chart: null,
+      footer: (
+        <div className="mt-2.5 min-w-0 leading-tight">
+          <p className="truncate text-[11px] font-semibold text-[#16A66A]">
+            {loading ? "…" : `${paidCount} paid voucher${paidCount === 1 ? "" : "s"}`}
+          </p>
+          <p className="truncate text-[10px] font-medium text-slate-400">
+            {loading ? "" : dueAmt > 0 ? `${formatRs(dueAmt)} still due` : "nothing due"}
+          </p>
+        </div>
+      ),
+    };
+  };
+  metrics.push(
+    typeCard("tuition", "Tuition Fee Collected", "monthly", GraduationCap, "primary"),
+    typeCard("admission", "Admission Fee Collected", "admission", UserPlus, "purple"),
+  );
+
   if (!compact) {
     metrics.push({
       id: "pending",
@@ -340,8 +378,8 @@ export function FeeMetricCards({
       className={cn(
         "grid gap-3",
         compact
-          ? "grid-cols-1 sm:grid-cols-3"
-          : "grid-cols-1 sm:grid-cols-2 min-[1101px]:grid-cols-4",
+          ? "grid-cols-1 sm:grid-cols-2 min-[1101px]:grid-cols-5"
+          : "grid-cols-1 sm:grid-cols-2 min-[1101px]:grid-cols-3",
       )}
     >
       {metrics.map((m) => (

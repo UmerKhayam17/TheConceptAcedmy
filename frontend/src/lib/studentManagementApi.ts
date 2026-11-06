@@ -986,6 +986,11 @@ export interface AcademyFeeSummary {
   totalPending: number;
   totalAmount: number;
   byStatus: { pending: number; paid: number; overdue: number; waived: number };
+  /** Paid / outstanding per fee type (monthly = tuition). */
+  byFeeType?: Record<
+    "monthly" | "admission" | "stationery",
+    { paid: number; pending: number; paidCount: number; pendingCount: number }
+  >;
   activeStudents: number;
   previous?: {
     month: number;
@@ -1019,6 +1024,9 @@ export const fetchAcademyFees = async (params?: {
   month?: number;
   year?: number;
   sessionId?: string;
+  /** Billing-month range (YYYY-MM-DD dates). */
+  periodFrom?: string;
+  periodTo?: string;
   search?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -1034,6 +1042,8 @@ export const fetchAcademyFees = async (params?: {
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
   if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.periodFrom) q.set("periodFrom", params.periodFrom);
+  if (params?.periodTo) q.set("periodTo", params.periodTo);
   if (params?.search) q.set("search", params.search);
   if (params?.dateFrom) q.set("dateFrom", params.dateFrom);
   if (params?.dateTo) q.set("dateTo", params.dateTo);
@@ -1055,6 +1065,12 @@ export const fetchAcademyFeeSummary = (params?: {
   sectionId?: string;
   studentId?: string;
   sessionId?: string;
+  /** Paid date range (Paid tab). */
+  dateFrom?: string;
+  dateTo?: string;
+  /** Billing-month range (YYYY-MM-DD dates). */
+  periodFrom?: string;
+  periodTo?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.month) q.set("month", String(params.month));
@@ -1063,6 +1079,10 @@ export const fetchAcademyFeeSummary = (params?: {
   if (params?.sectionId) q.set("sectionId", params.sectionId);
   if (params?.studentId) q.set("studentId", params.studentId);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.dateFrom) q.set("dateFrom", params.dateFrom);
+  if (params?.dateTo) q.set("dateTo", params.dateTo);
+  if (params?.periodFrom) q.set("periodFrom", params.periodFrom);
+  if (params?.periodTo) q.set("periodTo", params.periodTo);
   const qs = q.toString();
   return api<AcademyFeeSummary>(`/fees/summary${qs ? `?${qs}` : ""}`);
 };
@@ -1672,6 +1692,9 @@ export const fetchFeeDefaulters = async (params?: {
   year?: number;
   search?: string;
   sessionId?: string;
+  /** Billing-month range (YYYY-MM-DD dates). */
+  periodFrom?: string;
+  periodTo?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.page) q.set("page", String(params.page));
@@ -1681,6 +1704,8 @@ export const fetchFeeDefaulters = async (params?: {
   if (params?.year) q.set("year", String(params.year));
   if (params?.search) q.set("search", params.search);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.periodFrom) q.set("periodFrom", params.periodFrom);
+  if (params?.periodTo) q.set("periodTo", params.periodTo);
   const res = await authedFetch(`/student-management/fees/defaulters?${q}`);
   const body = await parseJson<{
     success?: boolean;
@@ -1697,12 +1722,17 @@ export const fetchFeeDefaultersSummary = (params?: {
   month?: number;
   year?: number;
   sessionId?: string;
+  /** Billing-month range (YYYY-MM-DD dates). */
+  periodFrom?: string;
+  periodTo?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.classId) q.set("classId", params.classId);
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
   if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.periodFrom) q.set("periodFrom", params.periodFrom);
+  if (params?.periodTo) q.set("periodTo", params.periodTo);
   const qs = q.toString();
   return api<FeeDefaultersSummary>(`/fees/defaulters/summary${qs ? `?${qs}` : ""}`);
 };
@@ -1713,6 +1743,9 @@ export const exportFeeDefaultersCsv = async (params?: {
   year?: number;
   search?: string;
   sessionId?: string;
+  /** Billing-month range (YYYY-MM-DD dates). */
+  periodFrom?: string;
+  periodTo?: string;
 }) => {
   const q = new URLSearchParams();
   if (params?.classId) q.set("classId", params.classId);
@@ -1720,6 +1753,8 @@ export const exportFeeDefaultersCsv = async (params?: {
   if (params?.year) q.set("year", String(params.year));
   if (params?.search) q.set("search", params.search);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.periodFrom) q.set("periodFrom", params.periodFrom);
+  if (params?.periodTo) q.set("periodTo", params.periodTo);
   const res = await authedFetch(`/student-management/fees/defaulters/export?${q}`, { method: "GET" });
   if (!res.ok) throw new Error("Export failed");
   return res.blob();
@@ -1734,6 +1769,9 @@ export const exportFeeDefaultersMonthWise = async (
     year?: number;
     search?: string;
     sessionId?: string;
+    /** Billing-month range (YYYY-MM-DD dates). */
+    periodFrom?: string;
+    periodTo?: string;
   },
   format: DefaulterReportFormat = "xlsx"
 ) => {
@@ -1744,6 +1782,8 @@ export const exportFeeDefaultersMonthWise = async (
   if (params?.year) q.set("year", String(params.year));
   if (params?.search) q.set("search", params.search);
   if (params?.sessionId) q.set("sessionId", params.sessionId);
+  if (params?.periodFrom) q.set("periodFrom", params.periodFrom);
+  if (params?.periodTo) q.set("periodTo", params.periodTo);
   const res = await authedFetch(`/student-management/fees/defaulters/export-month-wise?${q}`, { method: "GET" });
   if (!res.ok) throw new Error("Export failed");
   return res.blob();

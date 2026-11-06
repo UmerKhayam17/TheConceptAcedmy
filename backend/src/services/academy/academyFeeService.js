@@ -85,10 +85,32 @@ function escapeCsvCell(value) {
   return s;
 }
 
-function buildDefaulterFeeMatch({ classId, month, year, studentIds }) {
+/**
+ * Billing-month range from two YYYY-MM-DD dates: a voucher matches when its billing
+ * month falls between the month of `periodFrom` and the month of `periodTo`.
+ * Returns a Mongo $expr (works in find and aggregate $match), or null.
+ */
+function billingPeriodExpr(periodFrom, periodTo) {
+  const key = (value) => {
+    const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(value || ''));
+    return m ? Number(m[1]) * 12 + Number(m[2]) : null;
+  };
+  const fromKey = key(periodFrom);
+  const toKey = key(periodTo);
+  if (fromKey == null && toKey == null) return null;
+  const recordKey = { $add: [{ $multiply: ['$year', 12] }, '$month'] };
+  const conds = [];
+  if (fromKey != null) conds.push({ $gte: [recordKey, fromKey] });
+  if (toKey != null) conds.push({ $lte: [recordKey, toKey] });
+  return { $and: conds };
+}
+
+function buildDefaulterFeeMatch({ classId, month, year, studentIds, periodFrom, periodTo }) {
   const feeMatch = { status: { $in: ['pending', 'overdue'] } };
   if (month) feeMatch.month = Number(month);
   if (year) feeMatch.year = Number(year);
+  const period = billingPeriodExpr(periodFrom, periodTo);
+  if (period) feeMatch.$expr = period;
   if (studentIds?.length) feeMatch.studentId = { $in: studentIds };
   return feeMatch;
 }
@@ -629,6 +651,9 @@ async function buildFeeQuery({
   sessionId,
   dateFrom,
   dateTo,
+  /** Billing-month range (YYYY-MM-DD dates); see billingPeriodExpr. */
+  periodFrom,
+  periodTo,
   /** When true, only fee rows for active students (hides inactive / suspended). */
   activeStudentsOnly = false,
 }) {
@@ -637,6 +662,8 @@ async function buildFeeQuery({
   if (feeType) q.feeType = feeType;
   if (month) q.month = Number(month);
   if (year) q.year = Number(year);
+  const period = billingPeriodExpr(periodFrom, periodTo);
+  if (period) q.$expr = period;
   if (dateFrom || dateTo) {
     const paidAt = {};
     if (dateFrom) paidAt.$gte = dayBounds(String(dateFrom)).start;
@@ -941,6 +968,8 @@ async function listFeeRecords({
   search,
   dateFrom,
   dateTo,
+  periodFrom,
+  periodTo,
 }) {
   await syncOverdueFees({
     studentId,
@@ -984,6 +1013,8 @@ async function listFeeRecords({
     sessionId,
     dateFrom,
     dateTo,
+    periodFrom,
+    periodTo,
     activeStudentsOnly,
   });
   const q = await applyFeeRecordSearch(base, search);
@@ -1930,9 +1961,34 @@ async function getStudentFeeHistory(studentId) {
   return { student, records };
 }
 
-async function getFeeSummary({ month, year, classId, sectionId, studentId, studentIds, sessionId }) {
+async function getFeeSummary({
+  month,
+  year,
+  classId,
+  sectionId,
+  studentId,
+  studentIds,
+  sessionId,
+  dateFrom,
+  dateTo,
+  periodFrom,
+  periodTo,
+}) {
   await syncOverdueFees({ month, year, classId, sectionId, studentId, studentIds, sessionId });
-  const q = await buildFeeQuery({ month, year, classId, sectionId, studentId, studentIds, sessionId });
+  // dateFrom/dateTo = paid date (Paid tab); periodFrom/periodTo = billing month (other tabs).
+  const q = await buildFeeQuery({
+    month,
+    year,
+    classId,
+    sectionId,
+    studentId,
+    studentIds,
+    sessionId,
+    dateFrom,
+    dateTo,
+    periodFrom,
+    periodTo,
+  });
   const records = await AcademyFeeRecord.find(q).select('amount status studentId month year feeType dueDate').lean();
 
   // Paid history stays for inactive/suspended; unpaid KPIs are active students only.
@@ -1959,16 +2015,33 @@ async function getFeeSummary({ month, year, classId, sectionId, studentId, stude
   let totalPending = 0;
   let oldestPending = null;
   let recordsCount = 0;
+  /** Paid / outstanding split by fee type (tuition = monthly). Same rules as the totals. */
+  const byFeeType = {
+    monthly: { paid: 0, pending: 0, paidCount: 0, pendingCount: 0 },
+    admission: { paid: 0, pending: 0, paidCount: 0, pendingCount: 0 },
+    stationery: { paid: 0, pending: 0, paidCount: 0, pendingCount: 0 },
+  };
 
   records.forEach((r) => {
     const isPaid = r.status === 'paid';
     const isActiveStudent = activeIdSet.has(String(r.studentId));
     if (!isPaid && !isActiveStudent) return;
 
+    const typeBucket = byFeeType[r.feeType || 'monthly'];
     recordsCount += 1;
     if (byStatus[r.status] != null) byStatus[r.status] += 1;
-    if (isPaid) totalPaid += r.amount;
+    if (isPaid) {
+      totalPaid += r.amount;
+      if (typeBucket) {
+        typeBucket.paid += Number(r.amount) || 0;
+        typeBucket.paidCount += 1;
+      }
+    }
     if (isActiveStudent && (r.status === 'pending' || r.status === 'overdue')) {
+      if (typeBucket) {
+        typeBucket.pending += Number(r.amount) || 0;
+        typeBucket.pendingCount += 1;
+      }
       totalPending += r.amount;
       const key = (Number(r.year) || 0) * 12 + (Number(r.month) || 0);
       if (!oldestPending || key < oldestPending.key) {
@@ -2136,6 +2209,7 @@ async function getFeeSummary({ month, year, classId, sectionId, studentId, stude
     totalPending,
     totalAmount: totalPaid + totalPending,
     byStatus,
+    byFeeType,
     activeStudents,
     previous,
     trends,
@@ -2159,6 +2233,8 @@ async function listFeeDefaulters({
   year,
   search,
   sessionId,
+  periodFrom,
+  periodTo,
 }) {
   await syncOverdueFees({ classId, month, year, sessionId });
 
@@ -2174,7 +2250,7 @@ async function listFeeDefaulters({
     }
   }
 
-  const feeMatch = buildDefaulterFeeMatch({ classId, month, year, studentIds });
+  const feeMatch = buildDefaulterFeeMatch({ classId, month, year, studentIds, periodFrom, periodTo });
   const perPage = Math.min(100, Math.max(1, limit));
   const skip = (Math.max(1, page) - 1) * perPage;
 
@@ -2235,7 +2311,7 @@ async function listFeeDefaulters({
   };
 }
 
-async function getDefaultersSummary({ classId, month, year, sessionId }) {
+async function getDefaultersSummary({ classId, month, year, sessionId, periodFrom, periodTo }) {
   await syncOverdueFees({ classId, month, year, sessionId });
 
   let studentIds;
@@ -2251,7 +2327,7 @@ async function getDefaultersSummary({ classId, month, year, sessionId }) {
     }
   }
 
-  const feeMatch = buildDefaulterFeeMatch({ classId, month, year, studentIds });
+  const feeMatch = buildDefaulterFeeMatch({ classId, month, year, studentIds, periodFrom, periodTo });
   const pipeline = buildDefaultersPipeline({ feeMatch });
   pipeline.push({
     $group: {
@@ -2302,7 +2378,7 @@ function defaultersToCsv(items) {
   return [header, ...rows].map((r) => r.map(escapeCsvCell).join(',')).join('\n');
 }
 
-async function exportFeeDefaulters({ classId, month, year, search, sessionId }) {
+async function exportFeeDefaulters({ classId, month, year, search, sessionId, periodFrom, periodTo }) {
   const { items } = await listFeeDefaulters({
     page: 1,
     limit: 10000,
@@ -2311,6 +2387,8 @@ async function exportFeeDefaulters({ classId, month, year, search, sessionId }) 
     year,
     search,
     sessionId,
+    periodFrom,
+    periodTo,
   });
   return defaultersToCsv(items);
 }
@@ -2485,7 +2563,7 @@ function buildDefaulterReport(records, categoryNames = {}) {
   return { columns, rows };
 }
 
-async function loadUnpaidFees({ classId, month, year, search, sessionId }) {
+async function loadUnpaidFees({ classId, month, year, search, sessionId, periodFrom, periodTo }) {
   await syncOverdueFees({ classId, month, year, sessionId });
 
   let studentIds;
@@ -2494,7 +2572,7 @@ async function loadUnpaidFees({ classId, month, year, search, sessionId }) {
     if (!studentIds.length) return [];
   }
 
-  const feeMatch = buildDefaulterFeeMatch({ classId, month, year, studentIds });
+  const feeMatch = buildDefaulterFeeMatch({ classId, month, year, studentIds, periodFrom, periodTo });
   let records = await AcademyFeeRecord.find(feeMatch)
     .populate({
       path: 'studentId',
@@ -2989,16 +3067,28 @@ async function exportPaidFeesReport({
   return renderBrandedExcel(payload);
 }
 
-async function exportFeeDefaultersMonthWise({ classId, month, year, search, sessionId, format }) {
-  const records = await loadUnpaidFees({ classId, month, year, search, sessionId });
+async function exportFeeDefaultersMonthWise({
+  classId,
+  month,
+  year,
+  search,
+  sessionId,
+  format,
+  periodFrom,
+  periodTo,
+}) {
+  const records = await loadUnpaidFees({ classId, month, year, search, sessionId, periodFrom, periodTo });
   const { columns, rows } = buildDefaulterReport(
     records,
     await require('./concessionCategoryService').categoryNameMap()
   );
   const { sessionLabel, classLabel } = await resolveFeeReportContext({ sessionId, classId });
   const periodBits = [
+    periodFrom && periodTo
+      ? `Billing months from ${periodFrom.slice(0, 7)} to ${periodTo.slice(0, 7)}`
+      : null,
     formatReportMonthLabel({ month, year, records, allLabel: 'All unpaid months' }),
-  ];
+  ].filter(Boolean);
   const studentCount = rows.length && rows[rows.length - 1]?._isTotal ? rows.length - 1 : rows.length;
   const voucherCount = records.length;
   const meta = {

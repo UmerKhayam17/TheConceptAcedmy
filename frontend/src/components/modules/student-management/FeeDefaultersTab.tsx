@@ -4,7 +4,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CalendarClock,
-  CalendarDays,
   FileText,
   Loader2,
   Phone,
@@ -40,6 +39,7 @@ import {
 } from "@/lib/studentManagementApi";
 import { academyStudentRoutes } from "@/lib/studentManagementMenus";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
+import { DateRangePickerField } from "@/components/ui/date-range-picker";
 import { DefaulterListDownload } from "./DefaulterListDownload";
 import { FeeMetricCard } from "./FeeMetricCards";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
@@ -51,8 +51,6 @@ import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
-
-const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function SeverityBadge({ days }: { days: number }) {
   if (days >= 30) {
@@ -95,24 +93,9 @@ export default function FeeDefaultersTab({
   const routes = user?.role ? academyStudentRoutes(user.role, "records") : null;
   const { apiSessionId, hasScope } = useSessionScope(sessionId);
 
-  const [month, setMonth] = useState("");
-  const [year, setYear] = useState("");
-  /** Month dropdown choices: 3 months ahead back to 24 months ago, newest first. */
-  const monthOptions = useMemo(() => {
-    const base = new Date();
-    return Array.from({ length: 28 }, (_, i) => {
-      const d = new Date(base.getFullYear(), base.getMonth() + 3 - i, 1);
-      const m = d.getMonth() + 1;
-      const y = d.getFullYear();
-      return { value: `${y}-${m}`, label: `${MONTH_LABELS[m - 1]} ${y}` };
-    });
-  }, []);
-  const monthValue = month && year ? `${year}-${month}` : "";
-  const onMonthChange = (value: string) => {
-    const [y = "", m = ""] = value ? value.split("-") : [];
-    setYear(y);
-    setMonth(m);
-  };
+  /** Billing-month range (From / To). Empty = all unpaid months. */
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -137,18 +120,18 @@ export default function FeeDefaultersTab({
 
   const filterParams = useMemo(
     () => ({
-      month: month ? Number(month) : undefined,
-      year: year ? Number(year) : undefined,
+      periodFrom: rangeFrom || undefined,
+      periodTo: rangeTo || undefined,
       classId: classFilter || undefined,
       search: search.trim() || undefined,
       sessionId: apiSessionId,
     }),
-    [month, year, classFilter, search, apiSessionId]
+    [rangeFrom, rangeTo, classFilter, search, apiSessionId]
   );
 
   useEffect(() => {
     setPage(1);
-  }, [month, year, classFilter, search]);
+  }, [rangeFrom, rangeTo, classFilter, search]);
 
   useEffect(() => {
     setClassFilter("");
@@ -166,8 +149,8 @@ export default function FeeDefaultersTab({
     queryFn: () =>
       fetchFeeDefaultersSummary({
         classId: filterParams.classId,
-        month: filterParams.month,
-        year: filterParams.year,
+        periodFrom: filterParams.periodFrom,
+        periodTo: filterParams.periodTo,
         sessionId: filterParams.sessionId,
       }),
     enabled: hasScope,
@@ -192,26 +175,7 @@ export default function FeeDefaultersTab({
     const preview = openReportPreviewTab(format);
     try {
       const blob = await exportFeeDefaultersMonthWise(filterParams, format);
-      const MONTHS = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-      ];
-      const period =
-        month && year
-          ? `${MONTHS[Number(month) - 1] || month}-${year}`
-          : year
-            ? String(year)
-            : "All";
+      const period = rangeFrom && rangeTo ? `${rangeFrom}_to_${rangeTo}` : "All";
       const mode = deliverReportBlob(
         blob,
         `Fee-Defaulters_${period}.${format}`,
@@ -278,25 +242,33 @@ export default function FeeDefaultersTab({
       </div>
 
       <Card className="p-3">
-        <div className="grid grid-cols-1 items-center gap-3 min-[480px]:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.6fr)_auto]">
-          <div className="relative min-w-0">
-            <label className="sr-only" htmlFor="defaulters-month">
-              Month
-            </label>
-            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <select
-              id="defaulters-month"
-              className="h-9 w-full cursor-pointer truncate rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-sm text-foreground outline-none transition-colors hover:border-primary/30 focus:border-primary focus:ring-2 focus:ring-primary/10"
-              value={monthValue}
-              onChange={(e) => onMonthChange(e.target.value)}
-            >
-              <option value="">All Months</option>
-              {monthOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+        <div className="grid grid-cols-1 items-center gap-3 min-[480px]:grid-cols-2 lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,1.6fr)_auto]">
+          <div className="flex min-w-0 items-center gap-1 min-[480px]:col-span-2 lg:col-span-1">
+            <DateRangePickerField
+              from={rangeFrom}
+              to={rangeTo}
+              onChange={(nextFrom, nextTo) => {
+                setRangeFrom(nextFrom);
+                setRangeTo(nextTo);
+              }}
+              className="h-9"
+            />
+            {rangeFrom || rangeTo ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 text-muted-foreground"
+                onClick={() => {
+                  setRangeFrom("");
+                  setRangeTo("");
+                }}
+                aria-label="Show all months"
+                title="Show all months"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
           </div>
           <ClassProgramSelect
             className="min-w-0 sm:min-w-0"

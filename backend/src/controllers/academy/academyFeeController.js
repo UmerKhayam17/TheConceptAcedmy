@@ -13,6 +13,22 @@ const {
   assertParentOwnsStudent,
 } = require('../../utils/parentScope');
 
+/** YYYY-MM-DD query value, or undefined. */
+function ymdQuery(value) {
+  const v = String(value || '');
+  return /^d{4}-d{2}-d{2}$/.test(v) ? v : undefined;
+}
+
+/** Date-range filters: dateFrom/dateTo = paid date, periodFrom/periodTo = billing month. */
+function rangeQuery(req) {
+  return {
+    dateFrom: ymdQuery(req.query.dateFrom),
+    dateTo: ymdQuery(req.query.dateTo),
+    periodFrom: ymdQuery(req.query.periodFrom),
+    periodTo: ymdQuery(req.query.periodTo),
+  };
+}
+
 const list = catchAsync(async (req, res) => {
   const isParent = roleNameOf(req) === 'parent';
 
@@ -39,8 +55,7 @@ const list = catchAsync(async (req, res) => {
     feeType: req.query.feeType,
     sessionId: isParent ? undefined : req.query.sessionId,
     search: req.query.search,
-    dateFrom: req.query.dateFrom,
-    dateTo: req.query.dateTo,
+    ...rangeQuery(req),
   });
   res.json({ success: true, data: result.items, pagination: result.pagination });
 });
@@ -238,6 +253,7 @@ const summary = catchAsync(async (req, res) => {
     studentId: studentId || undefined,
     studentIds,
     sessionId: isParent ? undefined : req.query.sessionId,
+    ...rangeQuery(req),
   });
   res.json({ success: true, data });
 });
@@ -251,6 +267,8 @@ const defaulters = catchAsync(async (req, res) => {
     year: req.query.year ? Number(req.query.year) : undefined,
     search: req.query.search,
     sessionId: req.query.sessionId,
+    periodFrom: ymdQuery(req.query.periodFrom),
+    periodTo: ymdQuery(req.query.periodTo),
   });
   res.json({ success: true, data: result.items, pagination: result.pagination });
 });
@@ -261,6 +279,8 @@ const defaultersSummary = catchAsync(async (req, res) => {
     month: req.query.month ? Number(req.query.month) : undefined,
     year: req.query.year ? Number(req.query.year) : undefined,
     sessionId: req.query.sessionId,
+    periodFrom: ymdQuery(req.query.periodFrom),
+    periodTo: ymdQuery(req.query.periodTo),
   });
   res.json({ success: true, data });
 });
@@ -272,6 +292,8 @@ function defaulterExportQuery(req) {
     year: req.query.year ? Number(req.query.year) : undefined,
     search: req.query.search,
     sessionId: req.query.sessionId,
+    periodFrom: ymdQuery(req.query.periodFrom),
+    periodTo: ymdQuery(req.query.periodTo),
   };
 }
 
@@ -279,6 +301,8 @@ function feeReportFileBase(prefix, query) {
   const parts = [prefix];
   if (query.dateFrom && query.dateTo) {
     parts.push(query.dateFrom === query.dateTo ? query.dateFrom : `${query.dateFrom}_to_${query.dateTo}`);
+  } else if (query.periodFrom && query.periodTo) {
+    parts.push(`${query.periodFrom}_to_${query.periodTo}`);
   }
   if (query.month && query.year) {
     const monthNames = [
@@ -341,8 +365,8 @@ function paidExportQuery(req) {
     search: req.query.search,
     sessionId: req.query.sessionId,
     feeType: req.query.feeType,
-    dateFrom: req.query.dateFrom,
-    dateTo: req.query.dateTo,
+    dateFrom: ymdQuery(req.query.dateFrom),
+    dateTo: ymdQuery(req.query.dateTo),
   };
 }
 
