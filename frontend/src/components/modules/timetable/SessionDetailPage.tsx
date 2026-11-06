@@ -1,11 +1,22 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CalendarRange, CheckCircle2, Download, Layers, Users, GraduationCap } from "lucide-react";
+import {
+  CalendarRange,
+  CheckCircle2,
+  Download,
+  ExternalLink,
+  GraduationCap,
+  History,
+  Layers,
+  Users,
+} from "lucide-react";
 import SessionOpeningBalanceButton from "@/components/modules/timetable/SessionOpeningBalanceButton";
+import PanelStatCard from "@/components/modules/PanelStatCard";
+import PanelSearchBar from "@/components/modules/PanelSearchBar";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,6 +41,12 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
   active: "Active",
   completed: "Completed",
   archived: "Archived",
+};
+
+const VERSION_BADGE: Record<string, string> = {
+  published: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  draft: "border-sky-200 bg-sky-50 text-sky-700",
+  archived: "border-slate-200 bg-slate-100 text-slate-600",
 };
 
 function formatDate(value: string) {
@@ -60,6 +77,8 @@ export default function SessionDetailPage({
     ...defaultSessionImportForm(),
     enabled: true,
   }));
+  const [classSearch, setClassSearch] = useState("");
+  const [classStatusFilter, setClassStatusFilter] = useState<"" | "active" | "inactive">("");
 
   const { data: history, isLoading, isError, error } = useQuery({
     queryKey: ["session-history", sessionId],
@@ -143,176 +162,304 @@ export default function SessionDetailPage({
     closeMut.mutate();
   };
 
-  const stats = [
-    { label: "Classes", value: academy.classCount, icon: GraduationCap },
-    { label: "Sections", value: academy.sectionCount, icon: Layers },
-    { label: "Students", value: academy.studentCount, icon: Users },
-    { label: "Timetable versions", value: history.summary.timetableVersions, icon: CalendarRange },
-  ];
+  const canChange = caps.canEdit && status === "active";
+  const openImport = () => {
+    setImportForm({ ...defaultSessionImportForm(), enabled: true });
+    setImportOpen(true);
+  };
+
+  const q = classSearch.trim().toLowerCase();
+  const visibleClasses = academy.classes.filter((cls) => {
+    if (classStatusFilter && cls.status !== classStatusFilter) return false;
+    if (!q) return true;
+    return (
+      cls.className.toLowerCase().includes(q) ||
+      cls.sections.some((sec) => sec.sectionName.toLowerCase().includes(q))
+    );
+  });
+
+  const versionsByStatus = Object.entries(history.summary.versionsByStatus || {});
+  const thClass =
+    "whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600";
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div className="space-y-2">
-          <Button variant="ghost" size="sm" className="gap-1 -ml-2 h-8" asChild>
-            <Link to={systemConfigHref(role, "academic")}>
-              <ArrowLeft className="h-4 w-4" /> All sessions
-            </Link>
-          </Button>
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="font-display text-2xl font-bold text-primary">{session.name}</h2>
-            <Badge variant="outline" className="capitalize">
-              {STATUS_LABEL[status]}
-            </Badge>
+    <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+      {/* Top bar — same layout as the other System Config pages */}
+      <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <CalendarRange className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1a2b4b] leading-tight">
+                {session.name}
+              </h2>
+              <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
+                {STATUS_LABEL[status]} session · {formatDate(session.startDate)} – {formatDate(session.endDate)}
+                {status !== "active" ? " · Read-only" : ""}
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {formatDate(session.startDate)} – {formatDate(session.endDate)}
-          </p>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 max-w-[15rem]">
+            <p className="text-xs sm:text-sm italic leading-snug text-[#1a2b4b]/80">
+              <span className="mr-1 text-primary not-italic font-serif text-base leading-none">
+                &ldquo;
+              </span>
+              A great school builds great futures.
+              <span className="ml-0.5 text-primary not-italic font-serif text-base leading-none">
+                &rdquo;
+              </span>
+            </p>
+          </div>
         </div>
+      </div>
 
-        {caps.canEdit && (
-          <div className="flex flex-wrap gap-2">
-            {status === "active" && (
-              <SessionOpeningBalanceButton session={session} variant="outline" className="h-8 text-xs gap-1" />
-            )}
-            {status === "active" && (
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <PanelStatCard
+          label="Classes"
+          value={academy.classCount}
+          hint="In this session"
+          icon={GraduationCap}
+          iconWrapClass="bg-[#dbeafe]"
+          iconClass="text-[#1d4ed8]"
+        />
+        <PanelStatCard
+          label="Sections"
+          value={academy.sectionCount}
+          hint="Across all classes"
+          icon={Layers}
+          iconWrapClass="bg-[#ede9fe]"
+          iconClass="text-[#7c3aed]"
+        />
+        <PanelStatCard
+          label="Students"
+          value={academy.studentCount}
+          hint="Enrolled"
+          icon={Users}
+          iconWrapClass="bg-[#d1fae5]"
+          iconClass="text-[#059669]"
+        />
+        <PanelStatCard
+          label="Timetable versions"
+          value={history.summary.timetableVersions}
+          hint={`${history.summary.scheduleSlots} schedule slots`}
+          icon={CalendarRange}
+          iconWrapClass="bg-[#fef3c7]"
+          iconClass="text-[#d97706]"
+        />
+      </div>
+
+      {/* Filter bar */}
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <FilterToolbar>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+            value={classStatusFilter}
+            onChange={(e) => setClassStatusFilter(e.target.value as "" | "active" | "inactive")}
+            aria-label="Class status filter"
+          >
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <PanelSearchBar
+            value={classSearch}
+            onChange={setClassSearch}
+            placeholder="Search class or section…"
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+          {canChange && (
+            <FilterToolbarActions>
+              <SessionOpeningBalanceButton session={session} variant="outline" className="h-10 gap-2" />
               <Button
                 variant="outline"
-                size="sm"
-                className="gap-1"
+                className="h-10 gap-2"
                 disabled={closeMut.isPending}
                 onClick={handleClose}
               >
-                <CheckCircle2 className="h-4 w-4" /> Close session
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Close session
               </Button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {stats.map((s) => (
-          <Card key={s.label} className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-              <s.icon className="h-3.5 w-3.5" />
-              {s.label}
-            </div>
-            <div className="font-display text-2xl font-bold text-primary">{s.value}</div>
-          </Card>
-        ))}
-      </div>
-
-      <Card className="overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 border-b bg-muted/30">
-          <h3 className="font-semibold text-primary">Enrollment structure</h3>
-          {caps.canEdit && status === "active" && (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1"
-                onClick={() => {
-                  setImportForm({ ...defaultSessionImportForm(), enabled: true });
-                  setImportOpen(true);
-                }}
-              >
+              <Button variant="outline" className="h-10 gap-2" onClick={openImport}>
                 <Download className="h-4 w-4" /> Shift configuration
               </Button>
-              <Button size="sm" variant="outline" asChild>
-                <Link to={studentManagementHref(role, "classes")}>Manage in Enrollment</Link>
+              <Button className="h-10 gap-2" asChild>
+                <Link to={studentManagementHref(role, "classes")}>
+                  <ExternalLink className="h-4 w-4" /> Manage in Enrollment
+                </Link>
               </Button>
-            </div>
+            </FilterToolbarActions>
           )}
+        </FilterToolbar>
+      </Card>
+
+      {/* Enrollment structure table */}
+      <Card className="overflow-hidden shadow-sm border-border/80">
+        <div className="flex items-center justify-between gap-2 border-b bg-white px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2 font-display font-semibold text-[#1a2b4b]">
+            <GraduationCap className="h-4 w-4 shrink-0 text-primary" />
+            <span className="truncate">Enrollment structure</span>
+          </div>
+          <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+            {visibleClasses.length}
+            {visibleClasses.length !== academy.classes.length ? ` of ${academy.classes.length}` : ""}
+          </span>
         </div>
-        {academy.classes.length === 0 ? (
-          <div className="p-8 text-center space-y-3">
-            <p className="text-sm text-muted-foreground">
-              No classes linked to this session yet.
-            </p>
-            {caps.canEdit && status === "active" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1"
-                onClick={() => {
-                  setImportForm({ ...defaultSessionImportForm(), enabled: true });
-                  setImportOpen(true);
-                }}
-              >
-                <Download className="h-4 w-4" /> Shift configuration from session
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-muted-foreground">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[36rem] text-sm">
+            <thead className="border-b bg-[#eef4fc]">
+              <tr>
+                <th className={`${thClass} w-12`}>#</th>
+                <th className={thClass}>Class</th>
+                <th className={thClass}>Sections</th>
+                <th className={`${thClass} text-center`}>Section count</th>
+                <th className={thClass}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleClasses.length === 0 && (
                 <tr>
-                  <th className="text-left font-medium px-4 py-2.5">Class</th>
-                  <th className="text-left font-medium px-4 py-2.5">Sections</th>
-                  <th className="text-left font-medium px-4 py-2.5">Status</th>
+                  <td colSpan={5} className="p-10 text-center">
+                    <GraduationCap className="mx-auto h-8 w-8 text-slate-300" />
+                    <p className="mt-2 text-sm font-medium text-slate-600">
+                      {academy.classes.length === 0
+                        ? "No classes linked to this session yet"
+                        : "No classes match your filters"}
+                    </p>
+                    {academy.classes.length === 0 && canChange && (
+                      <Button variant="outline" size="sm" className="mt-3 gap-2" onClick={openImport}>
+                        <Download className="h-4 w-4" /> Shift configuration from session
+                      </Button>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {academy.classes.map((cls) => (
-                  <tr key={cls._id} className="border-t border-border">
-                    <td className="px-4 py-2.5 font-medium text-primary">{cls.className}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">
-                      {cls.sections.length === 0
-                        ? "—"
-                        : cls.sections.map((sec) => sec.sectionName).join(", ")}
-                    </td>
-                    <td className="px-4 py-2.5 capitalize text-xs">{cls.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              )}
+              {visibleClasses.map((cls, index) => (
+                <tr key={cls._id} className="border-b last:border-0 transition-colors hover:bg-slate-50/80">
+                  <td className="px-4 py-3 text-xs font-medium text-slate-400">{index + 1}</td>
+                  <td className="px-4 py-3 font-semibold text-[#1a2b4b]">{cls.className}</td>
+                  <td className="px-4 py-3">
+                    {cls.sections.length === 0 ? (
+                      <span className="text-xs text-slate-400">No sections</span>
+                    ) : (
+                      <div className="flex max-w-[22rem] flex-wrap gap-1">
+                        {cls.sections.map((sec) => (
+                          <span
+                            key={sec._id}
+                            className={`rounded-md border px-1.5 py-0.5 text-[11px] font-semibold ${
+                              sec.status === "active"
+                                ? "border-primary/20 bg-primary/5 text-primary"
+                                : "border-slate-200 bg-slate-50 text-slate-400 line-through"
+                            }`}
+                            title={sec.status === "active" ? "Active section" : "Inactive section"}
+                          >
+                            {sec.sectionName}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="inline-flex min-w-[2.25rem] justify-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                      {cls.sections.length}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold capitalize ${
+                        cls.status === "active"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-slate-50 text-slate-500"
+                      }`}
+                    >
+                      {cls.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
 
-      <Card className="p-4 space-y-3">
-        <h3 className="font-semibold text-primary">Timetable summary</h3>
-        <dl className="grid sm:grid-cols-2 gap-3 text-sm">
-          <div>
-            <dt className="text-muted-foreground text-xs">Schedule slots</dt>
-            <dd className="font-medium">{history.summary.scheduleSlots}</dd>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Timetable summary */}
+        <Card className="overflow-hidden shadow-sm border-border/80">
+          <div className="flex items-center gap-2 border-b bg-white px-4 py-3 font-display font-semibold text-[#1a2b4b]">
+            <CalendarRange className="h-4 w-4 shrink-0 text-primary" />
+            Timetable summary
           </div>
-          <div>
-            <dt className="text-muted-foreground text-xs">Version statuses</dt>
-            <dd className="font-medium">
-              {Object.keys(history.summary.versionsByStatus || {}).length === 0
-                ? "None"
-                : Object.entries(history.summary.versionsByStatus)
-                    .map(([k, v]) => `${k}: ${v}`)
-                    .join(" · ")}
-            </dd>
+          <div className="grid grid-cols-2 gap-3 p-4">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs font-medium text-slate-500">Schedule slots</p>
+              <p className="mt-0.5 text-xl font-bold tabular-nums text-[#1a2b4b]">
+                {history.summary.scheduleSlots}
+              </p>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs font-medium text-slate-500">Timetable versions</p>
+              <p className="mt-0.5 text-xl font-bold tabular-nums text-[#1a2b4b]">
+                {history.summary.timetableVersions}
+              </p>
+            </div>
+            <div className="col-span-2">
+              <p className="mb-1.5 text-xs font-medium text-slate-500">Versions by status</p>
+              {versionsByStatus.length === 0 ? (
+                <p className="text-sm text-slate-400">None</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {versionsByStatus.map(([key, count]) => (
+                    <span
+                      key={key}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold capitalize ${
+                        VERSION_BADGE[key] || "border-slate-200 bg-slate-50 text-slate-600"
+                      }`}
+                    >
+                      {key}
+                      <span className="tabular-nums">{count}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </dl>
-      </Card>
-
-      {history.auditLogs?.length > 0 && (
-        <Card className="p-4 space-y-3">
-          <h3 className="font-semibold text-primary">Recent activity</h3>
-          <ul className="text-sm space-y-2 max-h-48 overflow-y-auto">
-            {history.auditLogs.slice(0, 8).map((log) => (
-              <li key={log._id} className="flex justify-between gap-2 text-muted-foreground">
-                <span>{log.action.replace(/_/g, " ")}</span>
-                <span className="text-xs shrink-0">
-                  {new Date(log.createdAt).toLocaleString("en-US", {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: true,
-                  })}
-                </span>
-              </li>
-            ))}
-          </ul>
         </Card>
-      )}
+
+        {/* Recent activity */}
+        <Card className="overflow-hidden shadow-sm border-border/80">
+          <div className="flex items-center gap-2 border-b bg-white px-4 py-3 font-display font-semibold text-[#1a2b4b]">
+            <History className="h-4 w-4 shrink-0 text-primary" />
+            Recent activity
+          </div>
+          {history.auditLogs?.length ? (
+            <ul className="max-h-64 divide-y overflow-y-auto">
+              {history.auditLogs.slice(0, 8).map((log) => (
+                <li key={log._id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-primary/60" />
+                    <span className="truncate text-sm font-medium capitalize text-slate-700">
+                      {log.action.replace(/_/g, " ").toLowerCase()}
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-xs text-slate-500">
+                    {new Date(log.createdAt).toLocaleString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="p-6 text-center text-sm text-slate-400">No activity recorded yet.</p>
+          )}
+        </Card>
+      </div>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent>
