@@ -3,6 +3,7 @@ const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const { loadExpectationContext } = require('./attendanceExpectationService');
+const { loadStudentHolidayContext } = require('../holidayService');
 const { dayBounds, formatDateInTz, monthBounds } = require('../../utils/schoolDay');
 const { sortStudentsByClassThenRoll } = require('../../utils/academyStudentSort');
 
@@ -124,13 +125,21 @@ async function listByDate({
     : [];
 
   const recordByStudent = preferEarlierCheckIn(records);
+  const { isStudentHoliday, holidayName } = await loadStudentHolidayContext(students);
+  const holidayStudentIds = students.filter((s) => isStudentHoliday(s, ymd)).map((s) => String(s._id));
+  const holidayNames = [...new Set(holidayStudentIds.map((id) => {
+    const student = students.find((s) => String(s._id) === id);
+    return holidayName(student, ymd);
+  }).filter(Boolean))];
 
-  // Students without a saved mark count as absent by default.
+  // Students without a saved mark count as absent, except on an approved holiday.
   const summary = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
   students.forEach((s) => {
     const rec = recordByStudent.get(String(s._id));
-    if (!rec) summary.absent += 1;
-    else if (summary[rec.status] !== undefined) summary[rec.status] += 1;
+    if (!rec) {
+      if (holidayStudentIds.includes(String(s._id))) summary.unmarked += 1;
+      else summary.absent += 1;
+    } else if (summary[rec.status] !== undefined) summary[rec.status] += 1;
   });
 
   return {
@@ -140,6 +149,9 @@ async function listByDate({
     students,
     records: [...recordByStudent.values()],
     summary,
+    holiday: holidayStudentIds.length > 0,
+    holidayName: holidayNames.join(', '),
+    holidayStudentIds,
   };
 }
 
@@ -204,10 +216,14 @@ async function listByDateRange({
   }
 
   const dayCount = days.length;
+  const { isStudentHoliday } = await loadStudentHolidayContext(students);
   const summary = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
   const studentSummaries = students.map((s) => {
     const counts = { present: 0, absent: 0, leave: 0, late: 0 };
+    let countable = 0;
     days.forEach((ymd) => {
+      if (isStudentHoliday(s, ymd)) return;
+      countable += 1;
       const rec = byStudentDay.get(`${String(s._id)}|${ymd}`);
       const status = rec?.status && counts[rec.status] !== undefined ? rec.status : 'absent';
       counts[status] += 1;
@@ -215,12 +231,12 @@ async function listByDateRange({
     });
     const markedPresent = counts.present + counts.late;
     const attendancePercent =
-      dayCount > 0 ? Math.round((markedPresent / dayCount) * 1000) / 10 : 0;
+      countable > 0 ? Math.round((markedPresent / countable) * 1000) / 10 : 0;
     return {
       studentId: s._id,
       student: s,
       ...counts,
-      totalDays: dayCount,
+      totalDays: countable || dayCount,
       attendancePercent,
     };
   });
@@ -288,6 +304,7 @@ async function listAbsentByDateRange({
   }
 
   const singleDay = days.length === 1;
+  const { isStudentHoliday } = await loadStudentHolidayContext(students);
   const byDate = [];
   let totalAbsent = 0;
 
@@ -295,8 +312,8 @@ async function listAbsentByDateRange({
     if (!singleDay && !daysWithMarks.has(ymd)) return;
     const absentees = students.filter((s) => {
       const rec = byStudentDay.get(`${String(s._id)}|${ymd}`);
-      const status = rec?.status || 'absent';
-      return status === 'absent';
+      if (!rec) return !isStudentHoliday(s, ymd);
+      return rec.status === 'absent' && !isStudentHoliday(s, ymd);
     });
     if (absentees.length === 0) return;
     totalAbsent += absentees.length;

@@ -10,6 +10,7 @@ const roleRoutes = require('./roleRoutes');
 const chatRoutes = require('./chatRoutes');
 const datasheetRoutes = require('./datasheetRoutes');
 const notificationRoutes = require('./notificationRoutes');
+const holidayRoutes = require('./holidayRoutes');
 
 const router = Router();
 
@@ -19,6 +20,7 @@ router.use(roleRoutes);
 router.use(examRoutes);
 router.use('/announcements', announcementRoutes);
 router.use('/config', configRoutes);
+router.use('/config', holidayRoutes);
 router.use('/timetable', timetableRoutes);
 router.use('/student-management', studentManagementRoutes);
 router.use('/chat', chatRoutes);

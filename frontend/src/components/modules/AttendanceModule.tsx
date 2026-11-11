@@ -116,6 +116,7 @@ const MARK_BUTTONS = [
 function statusBadgeClass(status: string) {
   if (status === "present") return "border-primary/20 bg-primary/10 text-primary";
   if (status === "late") return "border-amber-200 bg-amber-100 text-amber-800";
+  if (status === "holiday") return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (status === "absent") return "border-rose-200 bg-rose-100 text-rose-800";
   if (status === "leave") return "border-sky-200 bg-sky-100 text-sky-800";
   return "border-border bg-muted text-muted-foreground";
@@ -124,6 +125,7 @@ function statusBadgeClass(status: string) {
 function statusDotClass(status: string) {
   if (status === "present") return "bg-primary";
   if (status === "late") return "bg-amber-500";
+  if (status === "holiday") return "bg-emerald-500";
   if (status === "absent") return "bg-rose-600";
   if (status === "leave") return "bg-sky-600";
   return "bg-muted-foreground";
@@ -131,6 +133,7 @@ function statusDotClass(status: string) {
 
 function statusLabel(status: string) {
   if (!status) return "—";
+  if (status === "holiday") return "Holiday";
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
@@ -316,16 +319,23 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
     return [...base].sort(compareAttendanceStudents);
   }, [students, search, studentFilter, user?.role]);
 
+  const holidayIds = useMemo(
+    () => new Set(data?.holidayStudentIds || []),
+    [data?.holidayStudentIds],
+  );
+
   const visibleSummary = useMemo(() => {
     const counts = { present: 0, absent: 0, leave: 0, late: 0 };
     studentsFiltered.forEach((s) => {
       const rec = recordMap.get(s._id);
-      // No saved mark → absent by default
-      if (!rec) counts.absent += 1;
-      else if (rec.status in counts) (counts as Record<string, number>)[rec.status] += 1;
+      if (!rec) {
+        if (!holidayIds.has(s._id)) counts.absent += 1;
+        return;
+      }
+      if (rec.status in counts) (counts as Record<string, number>)[rec.status] += 1;
     });
     return counts;
-  }, [studentsFiltered, recordMap]);
+  }, [studentsFiltered, recordMap, holidayIds]);
 
   /** Flat rows for the absent list — same date filter as the toolbar. */
   const absentRows = useMemo(() => {
@@ -675,6 +685,13 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
           </Card>
         )}
 
+        {data?.holiday && data.holidayName && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <span className="font-semibold">{data.holidayName}</span>
+            {" "}is an approved holiday. Students without a mark are not counted absent.
+          </div>
+        )}
+
         <Card className="overflow-hidden border-border/80 shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[56rem] text-sm">
@@ -726,7 +743,8 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                 )}
                 {studentsFiltered.map((s) => {
                   const record = recordMap.get(s._id);
-                  const cur = record?.status ?? "absent";
+                  const onHoliday = !record && holidayIds.has(s._id);
+                  const cur = record?.status ?? (onHoliday ? "holiday" : "absent");
                   return (
                     <tr
                       key={s._id}

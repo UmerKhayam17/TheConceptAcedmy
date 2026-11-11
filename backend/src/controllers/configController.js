@@ -119,6 +119,12 @@ const createSession = catchAsync(async (req, res) => {
     userId: req.user._id,
     details: { name: session.name },
   });
+  try {
+    const { ensureSessionHolidays } = require('../services/holidayService');
+    await ensureSessionHolidays(session, req.user._id);
+  } catch (err) {
+    console.error('[holidays] Could not seed session holidays:', err?.message || err);
+  }
   res.status(201).json({ success: true, data: session });
 });
 

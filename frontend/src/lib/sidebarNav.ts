@@ -109,6 +109,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => systemConfigHref(role, "history"),
       },
       {
+        id: "holidays",
+        label: "Holidays",
+        icon: CalendarDays,
+        moduleKey: "holidays",
+        href: (role) => moduleHref(role, "holidays"),
+      },
+      {
         id: "classes",
         label: "Classes",
         icon: School,

@@ -19,6 +19,7 @@ const { STAFF_ROLE_NAMES } = require('../config/staffRoles');
 const { dayBounds, todayYmd, formatDateInTz } = require('../utils/schoolDay');
 const { autoAbsentTime } = require('./academy/autoAbsentService');
 const { activeSession } = require('./aiAttendance/attendanceStatusFromTimetable');
+const { holidayClosureForSession } = require('./holidayService');
 
 const DEFAULT_WORKING_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const WEEKDAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -66,16 +67,21 @@ async function markStaffAbsentForDay(ymd = todayYmd()) {
     isActive: true,
     role: { $in: roles.map((r) => r._id) },
   })
-    .select('_id createdAt')
+    .select('_id createdAt role')
+    .populate('role', 'name')
     .lean();
   if (!users.length) return { date: ymd, expected: 0, alreadyMarked: 0, markedAbsent: 0 };
 
   const session = await activeSession();
   const workingDays = session?.workingDays?.length ? session.workingDays : DEFAULT_WORKING_DAYS;
   const byTeacher = await teachingWeekdays(session?._id);
+  const closure = await holidayClosureForSession(session?._id);
+  const closed = closure(ymd);
 
   const expected = users.filter((u) => {
     if (u.createdAt && formatDateInTz(u.createdAt) > ymd) return false;
+    const roleName = String(u.role?.name || '').toLowerCase();
+    if (roleName === 'teacher' ? closed.teachers : closed.staff) return false;
     const days = byTeacher.get(String(u._id));
     return days ? days.has(weekday) : workingDays.includes(weekday);
   });

@@ -18,6 +18,7 @@ const {
   minutesSinceMidnight,
 } = require('../utils/schoolDay');
 const { publicEmail } = require('../config/staffRoles');
+const { holidayClosureForSession } = require('./holidayService');
 const { staffGraceMinutes: graceMinutes, hhmmToMinutes } = require('./aiAttendance/attendanceStatusFromTimetable');
 
 /** left_early is only ever set by an admin (it counts as missed, like absent). */
@@ -446,6 +447,21 @@ function dayStatusFor(userId, day, markMap, dailyMap) {
   );
 }
 
+function savedOnDay(markMap, userId, day) {
+  const prefix = `${userId}|${day}|`;
+  for (const key of markMap.keys()) {
+    if (key.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+function holidayShape(user, attendanceType, holidayName) {
+  return {
+    ...teacherShape(user, [], attendanceType, {}),
+    holidayName,
+  };
+}
+
 async function listDay({ sessionId, date, userId }) {
   const session = await resolveSession(sessionId);
   const ymd = dayBounds(date, session.timezone).ymd;
@@ -460,12 +476,17 @@ async function listDay({ sessionId, date, userId }) {
     marksForDays(sessionId, [ymd], userId || undefined),
     dailyMarksForDays([ymd], userId || undefined),
   ]);
+  const closure = await holidayClosureForSession(session._id);
+  const closed = closure(ymd);
 
   const classTeachers = teacherIds
     .map((id) => users.get(id))
     .filter(Boolean)
     .map((user) => {
       const id = String(user._id);
+      if (closed.teachers && !savedOnDay(markMap, id, ymd) && !dailyMap.has(`${id}|${ymd}`)) {
+        return holidayShape(user, 'class', closed.name);
+      }
       const periods = periodsForTeacher(byWeekday, weekday, id, ymd, markMap, dailyMap, session.timezone);
       return teacherShape(user, periods, 'class', teacherScan(id, ymd, periods, dailyMap, session.timezone));
     });
@@ -474,14 +495,22 @@ async function listDay({ sessionId, date, userId }) {
   if (isWorkingDay(session, weekday)) {
     dailyStaff = (await dailyStaffUsers(allTimetableTeacherIds(byWeekday)))
       .filter((user) => !userId || String(user._id) === String(userId))
-      .map((user) =>
-        teacherShape(
+      .map((user) => {
+        const id = String(user._id);
+        if (
+          closed.staff &&
+          !markMap.get(`${id}|${ymd}|${DAY_PERIOD_KEY}`) &&
+          !dailyMap.has(`${id}|${ymd}`)
+        ) {
+          return holidayShape(user, 'daily', closed.name);
+        }
+        return teacherShape(
           user,
           [dayPeriod(dayStatusFor(user._id, ymd, markMap, dailyMap))],
           'daily',
           scanTimes(dailyMap.get(`${user._id}|${ymd}`), session.timezone)
-        )
-      );
+        );
+      });
   }
 
   const teachers = [...classTeachers, ...dailyStaff].sort((a, b) =>
@@ -504,6 +533,7 @@ async function listDay({ sessionId, date, userId }) {
     weekday,
     sessionId: String(session._id),
     sessionName: session.name || '',
+    holiday: closed.teachers || closed.staff ? { name: closed.name, teachers: closed.teachers, staff: closed.staff } : null,
     teachers,
     summary: { ...summary, attendancePercent: attendancePercent(summary) },
   };
@@ -522,6 +552,7 @@ async function listMonth({ sessionId, month, year, userId }) {
   if (userId) ids = ids.filter((id) => id === String(userId));
 
   const users = await teacherUsers(ids);
+  const closure = await holidayClosureForSession(session._id);
   // Days after today have not happened yet — they would all count as absent.
   const today = todayYmd(session.timezone);
   const pastDays = days.filter(({ day }) => day <= today);
@@ -543,6 +574,10 @@ async function listMonth({ sessionId, month, year, userId }) {
     .map((user) => {
       const detail = [];
       pastDays.forEach(({ day, weekday }) => {
+        const closed = closure(day);
+        if (closed.teachers && !savedOnDay(markMap, String(user._id), day) && !dailyMap.has(`${user._id}|${day}`)) {
+          return;
+        }
         periodsForTeacher(
           byWeekday,
           weekday,
@@ -569,11 +604,21 @@ async function listMonth({ sessionId, month, year, userId }) {
     .map((user) =>
       teacherShape(
         user,
-        workingDays.map(({ day, weekday }) => ({
-          day,
-          weekday,
-          ...dayPeriod(dayStatusFor(user._id, day, markMap, dailyMap)),
-        })),
+        workingDays.map(({ day, weekday }) => {
+          const closed = closure(day);
+          if (
+            closed.staff &&
+            !markMap.get(`${user._id}|${day}|${DAY_PERIOD_KEY}`) &&
+            !dailyMap.has(`${user._id}|${day}`)
+          ) {
+            return null;
+          }
+          return {
+            day,
+            weekday,
+            ...dayPeriod(dayStatusFor(user._id, day, markMap, dailyMap)),
+          };
+        }).filter(Boolean),
         'daily'
       )
     );

@@ -13,6 +13,7 @@ const ScheduleSlot = require('../../models/timetable/ScheduleSlot');
 const AcademyClass = require('../../models/academy/AcademyClass');
 const Session = require('../../models/Session');
 const { formatDateInTz } = require('../../utils/schoolDay');
+const { loadStudentHolidayContext } = require('../holidayService');
 
 const DEFAULT_WORKING_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const WEEKDAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -92,10 +93,12 @@ async function loadExpectationContext(students) {
     ])
   );
   const defaultWorking = new Set(DEFAULT_WORKING_DAYS);
+  const { isStudentHoliday } = await loadStudentHolidayContext(list);
 
   function isExpected(student, ymd) {
     const joined = student.activatedAt || student.enrolledAt;
     if (joined && ymd < formatDateInTz(new Date(joined))) return false;
+    if (isStudentHoliday(student, ymd)) return false;
 
     const weekday = weekdayOfYmd(ymd);
     const sectionId = idOf(student.sectionId);

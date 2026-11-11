@@ -74,8 +74,8 @@ function contactNoOf(s) {
 }
 
 function statusLabel(status) {
-  // No saved mark → absent by default
   if (!status) return 'Absent';
+  if (status === 'holiday') return 'Holiday';
   return String(status).charAt(0).toUpperCase() + String(status).slice(1);
 }
 

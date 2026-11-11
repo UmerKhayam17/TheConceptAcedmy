@@ -2449,6 +2449,9 @@ export interface AcademyAttendanceDay {
   date: string;
   students: AcademyStudent[];
   records: AcademyAttendanceRecord[];
+  holiday?: boolean;
+  holidayName?: string;
+  holidayStudentIds?: string[];
   summary: {
     present: number;
     absent: number;

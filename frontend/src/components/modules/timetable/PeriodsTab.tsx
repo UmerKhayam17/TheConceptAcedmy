@@ -15,8 +15,18 @@ import {
   updatePeriodTemplate,
   type PeriodSlot,
 } from "@/lib/timetableApi";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
+import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
+import { matchesPanelSearch } from "@/lib/panelSearch";
 import { formatWallClock, formatWallClockRange } from "@/lib/utils";
+
+const SLOT_TYPES = [
+  { value: "lecture", label: "Lecture" },
+  { value: "break", label: "Break" },
+  { value: "assembly", label: "Assembly" },
+  { value: "prayer", label: "Prayer" },
+] as const;
 
 const QK = (sid: string) => ["timetable-periods", sid] as const;
 
@@ -159,6 +169,7 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
     [templates]
   );
 
+  const [slotType, setSlotType] = useState<"" | EditableSlot["type"]>("");
   const [form, setForm] = useState({
     academyStartTime: "",
     academyEndTime: "",
@@ -258,13 +269,19 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const { filtered: templatesFiltered } = usePanelListSearch(templates, (t) => [
+  const { search, setSearch, filtered: templatesSearched } = usePanelListSearch(templates, (t) => [
     t.name || "",
     t.academyStartTime,
     t.academyEndTime,
     String(t.periodDurationMinutes),
+    t.isDefault ? "default" : "",
     ...t.breaks.map((b) => [b.breakName, b.startTime, b.endTime].join(" ")),
+    ...t.slots.flatMap((s) => [s.label, s.startTime, s.endTime, s.type]),
   ]);
+
+  const templatesFiltered = slotType
+    ? templatesSearched.filter((t) => t.slots.some((s) => s.type === slotType))
+    : templatesSearched;
 
   const breakErrors = form.breaks.map((br) => {
     const start = parseTimeToMinutes(br.startTime);
@@ -301,11 +318,26 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
     });
   };
 
+  const previewSlots = form.slots.length
+    ? form.slots
+    : generatePeriods(
+        form.academyStartTime,
+        form.academyEndTime,
+        form.periodDurationMinutes,
+        form.breaks,
+      );
+
+  const visibleSlots = previewSlots
+    .map((slot, index) => ({ slot, index }))
+    .filter(({ slot }) => {
+      if (slotType && slot.type !== slotType) return false;
+      return matchesPanelSearch(search, slot.label, slot.startTime, slot.endTime, slot.type);
+    });
+
   if (!sessionId) return null;
 
   return (
     <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      <div className="space-y-3">
         <div className="rounded-xl border-0 bg-white px-4 py-3 sm:px-5 sm:py-3.5 shadow-sm ring-1 ring-black/[0.04]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
@@ -335,22 +367,45 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
             </div>
           </div>
         </div>
-        {activeTemplate && caps.canDelete && (
-          <div className="flex justify-end">
-            <Button
-              variant="destructive"
-              className="w-full sm:w-auto"
-              onClick={() => {
-                if (!confirm("Delete this configuration?")) return;
-                deleteMut.mutate(activeTemplate._id);
-              }}
-              disabled={deleteMut.isPending}
-            >
-              Delete configuration
-            </Button>
-          </div>
-        )}
-      </div>
+
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <FilterToolbar>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+            value={slotType}
+            onChange={(e) => setSlotType(e.target.value as "" | EditableSlot["type"])}
+            aria-label="Period type filter"
+          >
+            <option value="">All Types</option>
+            {SLOT_TYPES.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+          <PanelSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search periods or configurations…"
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+          {activeTemplate && caps.canDelete && (
+            <FilterToolbarActions>
+              <Button
+                variant="destructive"
+                className="h-10"
+                onClick={() => {
+                  if (!confirm("Delete this configuration?")) return;
+                  deleteMut.mutate(activeTemplate._id);
+                }}
+                disabled={deleteMut.isPending}
+              >
+                Delete configuration
+              </Button>
+            </FilterToolbarActions>
+          )}
+        </FilterToolbar>
+      </Card>
 
       <Card className="p-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-5">
@@ -533,15 +588,7 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
                 </tr>
               </thead>
               <tbody>
-                {(form.slots.length
-                  ? form.slots
-                  : generatePeriods(
-                      form.academyStartTime,
-                      form.academyEndTime,
-                      form.periodDurationMinutes,
-                      form.breaks
-                    )
-                ).map((p, index) => {
+                {visibleSlots.map(({ slot: p, index }) => {
                   const editable = Boolean(activeTemplate && form.slots.length);
                   const err = editable ? slotErrors[index] : null;
                   return (
@@ -590,16 +637,17 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
                     </tr>
                   );
                 })}
-                {!form.slots.length &&
-                  !generatePeriods(
-                    form.academyStartTime,
-                    form.academyEndTime,
-                    form.periodDurationMinutes,
-                    form.breaks
-                  ).length && (
+                {previewSlots.length === 0 && (
                     <tr>
                       <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
                         Set academy hours to preview periods.
+                      </td>
+                    </tr>
+                  )}
+                {previewSlots.length > 0 && visibleSlots.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+                        No periods match your filters.
                       </td>
                     </tr>
                   )}
@@ -612,12 +660,19 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-primary">Saved configurations</h2>
-          <span className="text-sm text-muted-foreground">{templates.length} saved</span>
+          <span className="text-sm text-muted-foreground">
+            {templatesFiltered.length}
+            {templatesFiltered.length !== templates.length ? ` of ${templates.length}` : ""} saved
+          </span>
         </div>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : templatesFiltered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No saved configurations yet.</p>
+          <p className="text-sm text-muted-foreground">
+            {templates.length === 0
+              ? "No saved configurations yet."
+              : "No configurations match your filters."}
+          </p>
         ) : (
           <div className="grid gap-4">
             {templatesFiltered.map((template) => (
@@ -636,7 +691,9 @@ export default function PeriodsTab({ sessionId, caps }: { sessionId: string; cap
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <tbody>
-                      {template.slots.map((s) => (
+                      {template.slots
+                        .filter((s) => !slotType || s.type === slotType)
+                        .map((s) => (
                         <tr key={s._id} className="border-t">
                           <td className="py-1.5 pr-3 font-medium">{s.label}</td>
                           <td className="py-1.5 font-mono text-muted-foreground">

@@ -1150,6 +1150,18 @@ function DayClassGrid({
     );
   }
 
+  const holidayLabel = teachers.find((teacher) => teacher.holidayName)?.holidayName;
+  const allOnHoliday =
+    teachers.length > 0 && teachers.every((teacher) => teacher.holidayName && teacher.periods.length === 0);
+  if (allOnHoliday) {
+    return (
+      <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-8 text-center text-sm text-emerald-900">
+        <span className="font-semibold">{holidayLabel || "Public holiday"}</span>
+        {" "}— teachers are not marked absent.
+      </p>
+    );
+  }
+
   return (
     <div className="w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-lg border border-slate-200/80 dark:border-slate-700">
         <table
@@ -1195,6 +1207,13 @@ function DayClassGrid({
                 </td>
                 {Array.from({ length: classCount }, (_, index) => {
                   const period = teacher.periods[index];
+                  if (!period && teacher.holidayName && index === 0) {
+                    return (
+                      <td key="holiday" className={cn(cellClass, "align-middle text-sm font-medium text-emerald-800")}>
+                        Holiday — {teacher.holidayName}
+                      </td>
+                    );
+                  }
                   if (!period) {
                     return (
                       <td key={index} className={cellClass} style={{ width: classWidth, minWidth: classWidth }}>
@@ -1351,6 +1370,26 @@ function StaffDayTable({
         <tbody>
           {staff.map((person) => {
             const canMark = canMarkAny && String(person.userId) !== String(lockedUserId);
+            if (person.holidayName && person.periods.length === 0) {
+              return (
+                <tr
+                  key={person.userId}
+                  className="border-b border-slate-100 last:border-0 dark:border-slate-800"
+                >
+                  <td className={cellClass}>
+                    <StaffIdentity person={person} />
+                  </td>
+                  <td className={cellClass}>
+                    <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold capitalize text-slate-700">
+                      {String(person.role || "staff").toLowerCase()}
+                    </span>
+                  </td>
+                  <td className={cn(cellClass, "font-medium text-emerald-800")} colSpan={3}>
+                    Holiday — {person.holidayName}. Not marked absent.
+                  </td>
+                </tr>
+              );
+            }
             const period = person.periods[0];
             const draft = period ? drafts[periodDraftKey(person.userId, period.periodKey)] : undefined;
             const status = defaultPeriodStatus(draft?.status ?? period?.status);

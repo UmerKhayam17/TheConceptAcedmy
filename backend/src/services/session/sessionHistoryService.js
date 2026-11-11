@@ -216,6 +216,13 @@ async function cloneSessionStructure(sourceSessionId, body, userId) {
   });
   await activateExclusively(newSession);
 
+  try {
+    const { ensureSessionHolidays } = require('../holidayService');
+    await ensureSessionHolidays(newSession, userId);
+  } catch (err) {
+    console.error('[holidays] Could not seed session holidays:', err?.message || err);
+  }
+
   const shift = await shiftFullSessionConfiguration(
     newSession._id,
     { sourceSessionId, includeFeeStructure: body.includeFeeStructure !== false },

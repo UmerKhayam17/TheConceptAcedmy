@@ -321,6 +321,8 @@ export type StaffPeriodTeacher = {
   checkOutTime?: string;
   attendancePercent: number;
   periods: StaffPeriodRow[];
+  /** Set when this person is off because of an approved public holiday. */
+  holidayName?: string;
 };
 
 export type StaffPeriodReport = {
@@ -338,8 +340,9 @@ export type StaffPeriodReport = {
     leave: number;
     left_early?: number;
     needsReview?: number;
-    attendancePercent: number;
+    attendancePercent?: number;
   };
+  holiday?: { name: string; teachers?: boolean; staff?: boolean } | null;
 };
 
 export const fetchStaffPeriodDay = (date: string, sessionId: string, userId?: string) => {

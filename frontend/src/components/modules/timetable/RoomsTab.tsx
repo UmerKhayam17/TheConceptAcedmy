@@ -10,8 +10,16 @@ import { useToast } from "@/hooks/use-toast";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { fetchClasses, classDisplayName } from "@/lib/configApi";
 import { createRoom, deleteRoom, fetchRooms, updateRoom, type Room } from "@/lib/timetableApi";
+import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import { usePanelListSearch } from "@/hooks/usePanelListSearch";
+
+const ROOM_TYPES = [
+  { value: "classroom", label: "Classroom" },
+  { value: "lab", label: "Lab" },
+  { value: "hall", label: "Hall" },
+  { value: "computer", label: "Computer Lab" },
+] as const;
 
 const QK = (sid: string) => ["timetable-rooms", sid] as const;
 
@@ -30,6 +38,7 @@ export default function RoomsTab({ sessionId, caps }: { sessionId: string; caps:
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Room | null>(null);
+  const [typeFilter, setTypeFilter] = useState("");
   const [form, setForm] = useState({
     name: "",
     code: "",
@@ -57,7 +66,9 @@ export default function RoomsTab({ sessionId, caps }: { sessionId: string; caps:
       .filter(Boolean),
   );
 
-  const { search, setSearch, filtered: roomsFiltered } = usePanelListSearch(rooms, (r) => [
+  const roomsByType = typeFilter ? rooms.filter((r) => r.type === typeFilter) : rooms;
+
+  const { search, setSearch, filtered: roomsFiltered } = usePanelListSearch(roomsByType, (r) => [
     r.code,
     r.name,
     r.type,
@@ -128,21 +139,43 @@ export default function RoomsTab({ sessionId, caps }: { sessionId: string; caps:
           </div>
         </div>
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <PanelSearchBar value={search} onChange={setSearch} placeholder="Search code, name, class…" className="max-w-md" />
-        {caps.canCreate && (
-          <Button
-            className="h-10 w-full gap-2 sm:w-auto sm:shrink-0"
-            onClick={() => {
-              setEdit(null);
-              setForm({ name: "", code: "", capacity: 35, type: "classroom", assignedClass: "" });
-              setOpen(true);
-            }}
+      <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+        <FilterToolbar>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm w-[10rem] shrink-0"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            aria-label="Room type filter"
           >
-            <Plus className="h-4 w-4" /> Add room
-          </Button>
-        )}
-      </div>
+            <option value="">All Types</option>
+            {ROOM_TYPES.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+          <PanelSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search code, name, class…"
+            className="min-w-[12rem] flex-1 max-w-md"
+          />
+          {caps.canCreate && (
+            <FilterToolbarActions>
+              <Button
+                className="h-10 gap-2"
+                onClick={() => {
+                  setEdit(null);
+                  setForm({ name: "", code: "", capacity: 35, type: "classroom", assignedClass: "" });
+                  setOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" /> Add room
+              </Button>
+            </FilterToolbarActions>
+          )}
+        </FilterToolbar>
+      </Card>
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b">
@@ -166,7 +199,7 @@ export default function RoomsTab({ sessionId, caps }: { sessionId: string; caps:
             {!isLoading && roomsFiltered.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-muted-foreground">
-                  {rooms.length === 0 ? "No rooms" : "No rooms match your search."}
+                  {rooms.length === 0 ? "No rooms" : "No rooms match your filters."}
                 </td>
               </tr>
             )}
@@ -239,10 +272,11 @@ export default function RoomsTab({ sessionId, caps }: { sessionId: string; caps:
                 value={form.type}
                 onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
               >
-                <option value="classroom">Classroom</option>
-                <option value="lab">Lab</option>
-                <option value="hall">Hall</option>
-                <option value="computer">Computer Lab</option>
+                {ROOM_TYPES.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div>

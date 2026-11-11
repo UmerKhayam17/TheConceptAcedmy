@@ -23,6 +23,12 @@ async function bootstrap() {
   await ensureSessionIndexes();
   await ensureAcademyStudentIndexes();
   await ensureCamerasFromEnv();
+  try {
+    const { ensureActiveSessionHolidays } = require('./services/holidayService');
+    await ensureActiveSessionHolidays();
+  } catch (err) {
+    console.error('[holidays] Could not seed active session:', err?.message || err);
+  }
   startCronJobs();
 
   const server = http.createServer(app);

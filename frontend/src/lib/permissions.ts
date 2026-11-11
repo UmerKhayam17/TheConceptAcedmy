@@ -36,6 +36,7 @@ export type ModuleKey =
   /** Academic setup leaves */
   | "sessions"
   | "session-history"
+  | "holidays"
   | "classes"
   | "sections"
   | "subjects"
@@ -139,6 +140,7 @@ export const MODULES: ModuleDef[] = [
   // Academic setup leaves
   { key: "sessions", label: "Sessions", icon: "GraduationCap", desc: "Academic sessions" },
   { key: "session-history", label: "Session History", icon: "History", desc: "Past academic sessions" },
+  { key: "holidays", label: "Holidays", icon: "CalendarRange", desc: "Public holidays, Islamic dates, and school vacations" },
   { key: "classes", label: "Classes", icon: "School", desc: "Class definitions" },
   { key: "sections", label: "Sections", icon: "Layers", desc: "Class sections" },
   { key: "subjects", label: "Subjects", icon: "BookOpen", desc: "Subjects and weightage" },
@@ -316,6 +318,7 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
     modules: [
       "sessions",
       "session-history",
+      "holidays",
       "classes",
       "sections",
       "subjects",
@@ -511,6 +514,7 @@ export const LEGACY_BACKEND_EXPANSION: Record<string, string[]> = {
   config: [
     "sessions",
     "sessionHistory",
+    "holidays",
     "rooms",
     "periods",
     "timetableRules",
@@ -566,6 +570,7 @@ export const BACKEND_MODULE_KEY_MAP: Record<string, ModuleKey> = {
   // Academic setup leaves
   sessions: "sessions",
   sessionHistory: "session-history",
+  holidays: "holidays",
   classes: "classes",
   sections: "sections",
   subjects: "subjects",
@@ -795,6 +800,15 @@ export function resolveModuleCaps(
     if (moduleKey === "expenses") {
       return capsForExpensesModule(expanded);
     }
+    if (moduleKey === "holidays") {
+      if (Object.prototype.hasOwnProperty.call(expanded, "holidays")) {
+        const arr = expanded.holidays;
+        return capsFromBackendActions(Array.isArray(arr) ? arr : []);
+      }
+      const fromSessions = expanded.sessions || expanded.config || [];
+      if (fromSessions.length) return capsFromBackendActions(fromSessions);
+      return emptyActionCaps();
+    }
     if (moduleKey === "permission-catalog") {
       const arr = expanded.role;
       return capsFromBackendActions(Array.isArray(arr) ? arr : []);
@@ -897,6 +911,9 @@ export function applyBackendModulePermissions(
   if (expanded.academyExpense) {
     const expenseLevel = permLevelFromActionCaps(capsForExpensesModule(expanded));
     if (expenseLevel !== "none") next.expenses = expenseLevel;
+  }
+  if ((!next.holidays || next.holidays === "none") && next.sessions && next.sessions !== "none") {
+    next.holidays = next.sessions;
   }
 
   // Finance dashboard is a client analytics view for anyone with fee access.

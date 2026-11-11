@@ -59,6 +59,7 @@ const StaffAttendanceModule = lazy(() => import("@/components/modules/StaffAtten
 const TeacherFeatureModule = lazy(() => import("@/components/modules/TeacherFeatureModule"));
 const NotificationsModule = lazy(() => import("@/components/modules/NotificationsModule"));
 const SchoolCalendarModule = lazy(() => import("@/components/modules/SchoolCalendarModule"));
+const HolidaysCalendarModule = lazy(() => import("@/components/modules/HolidaysCalendarModule"));
 const AdminDashboard = lazy(() => import("@/components/modules/AdminDashboard"));
 const TeacherDashboard = lazy(() => import("@/components/modules/TeacherDashboard"));
 const ParentDashboard = lazy(() => import("@/components/modules/ParentDashboard"));
@@ -492,6 +493,7 @@ const Panel = () => {
       case "announcements": return <AnnouncementsModule perm={perm} caps={caps} />;
       case "notifications": return <NotificationsModule />;
       case "school-calendar": return <SchoolCalendarModule />;
+      case "holidays": return <HolidaysCalendarModule caps={caps} />;
       case "reports":       return <ReportsModule />;
       case "datasheets":    return <DatasheetsModule perm={perm} caps={caps} />;
       case "permissions":   return <PermissionsModule perm={perm} caps={caps} />;

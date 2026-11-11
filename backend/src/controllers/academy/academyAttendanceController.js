@@ -277,6 +277,9 @@ const exportAttendance = catchAsync(async (req, res) => {
   });
 
   const records = recordMapFromDay(data);
+  (data.holidayStudentIds || []).forEach((id) => {
+    if (!records.has(String(id))) records.set(String(id), { status: 'holiday', studentId: id });
+  });
   const buffer =
     format === 'pdf'
       ? await renderAttendancePdf(data.students, records, meta)

@@ -94,6 +94,16 @@ const SYSTEM_MODULES = [
     parentGroup: 'academic-setup',
   },
   {
+    key: 'holidays',
+    panelSlug: 'holidays',
+    label: 'Holidays',
+    icon: 'CalendarRange',
+    description: 'Pakistan public holidays, Islamic dates, and school vacations',
+    order: 21.5,
+    actions: CRUD,
+    parentGroup: 'academic-setup',
+  },
+  {
     key: 'classes',
     panelSlug: 'classes',
     label: 'Classes',
@@ -654,6 +664,7 @@ const LEGACY_MODULE_EXPANSION = {
   config: [
     'sessions',
     'sessionHistory',
+    'holidays',
     'rooms',
     'periods',
     'timetableRules',
