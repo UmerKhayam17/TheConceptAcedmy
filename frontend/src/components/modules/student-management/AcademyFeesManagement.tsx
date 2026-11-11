@@ -547,6 +547,10 @@ export default function AcademyFeesManagement({
   const [selectedFeeIds, setSelectedFeeIds] = useState<string[]>([]);
   const [selectedChargeIds, setSelectedChargeIds] = useState<string[]>([]);
   const [amountOverrides, setAmountOverrides] = useState<Record<string, string>>({});
+  /** Months whose amount the user typed. Charge changes must not overwrite those. */
+  const amountTouchedRef = useRef<Set<string>>(new Set());
+  /** Resets the pay form only when a different voucher or mode is opened. */
+  const payFormKeyRef = useRef("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayInputValue);
@@ -753,7 +757,7 @@ export default function AcademyFeesManagement({
     enabled: Boolean(payStudentId),
   });
 
-  const { data: allCharges = EMPTY_ADDITIONAL_CHARGES } = useQuery({
+  const { data: allCharges = EMPTY_ADDITIONAL_CHARGES, isFetched: chargesFetched } = useQuery({
     queryKey: ["additional-charges"],
     queryFn: fetchAdditionalCharges,
     enabled: Boolean(payRecord) && payModalMode !== "edit",
@@ -776,56 +780,103 @@ export default function AcademyFeesManagement({
   );
 
   useEffect(() => {
-    if (!payRecord || !payHistory) return;
+    if (!payRecord) {
+      payFormKeyRef.current = "";
+      return;
+    }
+    if (!payHistory) return;
+    // Wait for the charge catalog so the first amounts already include checked charges.
+    if (payModalMode === "pay" && !chargesFetched) return;
+
+    const formKey = `${payModalMode}:${payRecord._id}`;
+    const isNewForm = payFormKeyRef.current !== formKey;
+    if (isNewForm) {
+      payFormKeyRef.current = formKey;
+      amountTouchedRef.current = new Set();
+    }
+
     // Paid edit uses the voucher itself — don't replace with unpaid months.
     if (payModalMode === "edit" && payRecord.status === "paid") {
+      if (!isNewForm) return;
       setSelectedFeeIds([payRecord._id]);
       setSelectedChargeIds([]);
       setAmountOverrides({ [payRecord._id]: String(payRecord.amount ?? "") });
       return;
     }
-    // Default to the clicked voucher only — user can check more months if needed.
-    const clickedUnpaid = unpaidForPay.some((r) => r._id === payRecord._id);
-    setSelectedFeeIds(
-      clickedUnpaid
-        ? [payRecord._id]
-        : unpaidForPay[0]
-          ? [unpaidForPay[0]._id]
-          : [payRecord._id]
-    );
+
     // Keep voucher as-is: only pre-check charges already on the challan. Do not auto-apply
     // registration defaults (that would rewrite previously correct voucher amounts).
     const fromFees = unpaidForPay.flatMap((fee) => chargeIdsOnFee(fee));
     const applicableIds = new Set(payApplicableCharges.map((c) => c._id));
     const initialCharges = [...new Set(fromFees)].filter((id) => applicableIds.has(id));
-    setSelectedChargeIds(initialCharges);
-    const amounts: Record<string, string> = {};
-    for (const fee of unpaidForPay) {
-      amounts[fee._id] = String(
-        feeAmountWithCharges(fee, payHistory.student, allCharges, initialCharges)
-      );
-    }
-    setAmountOverrides(amounts);
-  }, [payRecord, payHistory, unpaidForPay, payModalMode, allCharges, payApplicableCharges]);
 
-  useEffect(() => {
-    if (!payRecord || payModalMode === "edit" || !payHistory) return;
-    setAmountOverrides((prev) => {
-      const next = { ...prev };
+    if (isNewForm) {
+      // Default to the clicked voucher only — user can check more months if needed.
+      const clickedUnpaid = unpaidForPay.some((r) => r._id === payRecord._id);
+      setSelectedFeeIds(
+        clickedUnpaid
+          ? [payRecord._id]
+          : unpaidForPay[0]
+            ? [unpaidForPay[0]._id]
+            : [payRecord._id]
+      );
+      setSelectedChargeIds(initialCharges);
+      const amounts: Record<string, string> = {};
       for (const fee of unpaidForPay) {
-        next[fee._id] = String(
-          feeAmountWithCharges(fee, payHistory.student, allCharges, selectedChargeIds)
+        amounts[fee._id] = String(
+          feeAmountWithCharges(fee, payHistory.student, allCharges, initialCharges)
         );
       }
-      return next;
+      setAmountOverrides(amounts);
+      return;
+    }
+
+    // Edit mode keeps whatever was typed. Pay mode refills only rows not typed yet,
+    // so checking a charge updates the fee until staff enter their own amount.
+    if (payModalMode === "edit") return;
+    setAmountOverrides((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const fee of unpaidForPay) {
+        if (amountTouchedRef.current.has(fee._id)) continue;
+        const value = String(
+          feeAmountWithCharges(fee, payHistory.student, allCharges, selectedChargeIds)
+        );
+        if (next[fee._id] !== value) {
+          next[fee._id] = value;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
-  }, [selectedChargeIds, payRecord, payModalMode, payHistory, unpaidForPay, allCharges]);
+  }, [
+    payRecord,
+    payHistory,
+    unpaidForPay,
+    payModalMode,
+    allCharges,
+    payApplicableCharges,
+    chargesFetched,
+    selectedChargeIds,
+  ]);
+
+  const parsedFeeAmount = (fee: AcademyFeeRecord) => {
+    const raw = amountOverrides[fee._id];
+    if (raw === undefined || raw.trim() === "") return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
 
   const feeAmount = (fee: AcademyFeeRecord) => {
-    const raw = amountOverrides[fee._id];
-    if (raw === undefined || raw === "") return Number(fee.amount) || 0;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : Number(fee.amount) || 0;
+    const parsed = parsedFeeAmount(fee);
+    if (parsed !== null) return parsed;
+    if (amountOverrides[fee._id] === undefined) return Number(fee.amount) || 0;
+    return 0;
+  };
+
+  const setFeeAmount = (feeId: string, value: string, markTouched: boolean) => {
+    if (markTouched) amountTouchedRef.current.add(feeId);
+    setAmountOverrides((prev) => ({ ...prev, [feeId]: value }));
   };
 
   const selectedUnpaid = unpaidForPay.filter((r) => selectedFeeIds.includes(r._id));
@@ -859,23 +910,47 @@ export default function AcademyFeesManagement({
         };
       }
 
+      const notes = paymentNotes.trim();
       if (payModalMode === "edit") {
         for (const fee of selectedUnpaid) {
-          const nextAmount = feeAmount(fee);
-          if (nextAmount < 0) throw new Error("Amount cannot be negative");
+          const nextAmount = parsedFeeAmount(fee);
+          if (nextAmount === null) throw new Error("Enter a valid fee amount");
           if (nextAmount !== Number(fee.amount)) {
-            await updateAcademyFee(fee._id, { amount: nextAmount, notes: paymentNotes.trim() });
+            await updateAcademyFee(fee._id, {
+              amount: nextAmount,
+              ...(notes ? { notes } : {}),
+            });
           }
         }
       } else {
         const chargeableIds = selectedUnpaid
           .filter((f) => f.feeType === "monthly" || f.feeType === "admission")
           .map((f) => f._id);
-        if (chargeableIds.length) {
-          await applyFeeCharges({
-            feeRecordIds: chargeableIds,
-            chargeIds: selectedChargeIds,
-          });
+        // Charges rebuild the voucher from the student profile. Write a typed
+        // amount after that so a 15-day (or other) fee is what gets paid.
+        const charged = chargeableIds.length
+          ? await applyFeeCharges({
+              feeRecordIds: chargeableIds,
+              chargeIds: selectedChargeIds,
+            })
+          : [];
+        const chargedAmount = new Map(
+          (charged || []).map((row) => [String(row._id), Number(row.amount) || 0])
+        );
+        for (const fee of selectedUnpaid) {
+          const nextAmount = parsedFeeAmount(fee);
+          if (nextAmount === null) throw new Error("Enter a valid fee amount");
+          // Compare with the voucher after charges, not the preview. Charges rebuild
+          // the full monthly fee, so a typed (or on-screen) amount has to be saved after.
+          const afterCharges = chargedAmount.get(String(fee._id));
+          const serverAmount =
+            afterCharges === undefined ? Number(fee.amount) || 0 : afterCharges;
+          if (Math.abs(nextAmount - serverAmount) > 0.009) {
+            await updateAcademyFee(fee._id, {
+              amount: nextAmount,
+              ...(notes ? { notes } : {}),
+            });
+          }
         }
       }
       return payAcademyFees({
@@ -894,6 +969,7 @@ export default function AcademyFeesManagement({
       qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
       qc.invalidateQueries({ queryKey: ["academy-student-record"] });
       qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
+      amountTouchedRef.current = new Set();
       setPayRecord(null);
       setSelectedFeeIds([]);
       setSelectedChargeIds([]);
@@ -1846,6 +1922,7 @@ export default function AcademyFeesManagement({
         open={Boolean(payRecord)}
         onOpenChange={(o) => {
           if (!o) {
+            amountTouchedRef.current = new Set();
             setPayRecord(null);
             setSelectedFeeIds([]);
             setSelectedChargeIds([]);
@@ -1877,12 +1954,19 @@ export default function AcademyFeesManagement({
                 </div>
               )}
               <div className="rounded-md border">
-                <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
-                  {editingPaid
-                    ? "Paid fee"
-                    : payModalMode === "edit"
-                      ? "Fee months (edit amount & select)"
-                      : "Unpaid months"}
+                <div className="px-3 py-2 border-b text-xs text-muted-foreground">
+                  <p className="font-medium">
+                    {editingPaid
+                      ? "Paid fee"
+                      : payModalMode === "edit"
+                        ? "Fee months (edit amount & select)"
+                        : "Unpaid months"}
+                  </p>
+                  {payModalMode === "pay" && !editingPaid && (
+                    <p className="mt-0.5">
+                      Change the amount for this visit. Charge checkboxes update it until you type your own figure.
+                    </p>
+                  )}
                 </div>
                 {editingPaid && payRecord ? (
                   <div className="flex items-center gap-3 px-3 py-2">
@@ -1926,47 +2010,45 @@ export default function AcademyFeesManagement({
                                 selectedChargeIds
                               )
                               : [];
+                          const previewTotal = lines.reduce((sum, line) => sum + line.amount, 0);
+                          const typed = parsedFeeAmount(fee);
+                          const showLines =
+                            lines.length > 0 &&
+                            (typed === null || Math.abs(typed - previewTotal) <= 0.009);
                           return (
                             <li key={fee._id} className="px-3 py-2 hover:bg-muted/40">
-                              <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4 shrink-0"
-                                  checked={checked}
-                                  onChange={() =>
-                                    setSelectedFeeIds((current) =>
-                                      checked
-                                        ? current.filter((id) => id !== fee._id)
-                                        : [...current, fee._id]
-                                    )
-                                  }
-                                />
-                                <span className="flex-1 min-w-0">
-                                  <span className="font-medium">{periodLabel(fee)}</span>
-                                  <span className="ml-2 text-xs text-muted-foreground">
-                                    {feeTypeLabel(fee.feeType)} · {fee.status}
-                                  </span>
-                                </span>
-                                {payModalMode === "edit" ? (
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    className="h-8 w-28 text-right tabular-nums"
-                                    value={amountOverrides[fee._id] ?? String(fee.amount ?? "")}
-                                    onClick={(e) => e.preventDefault()}
-                                    onChange={(e) =>
-                                      setAmountOverrides((prev) => ({
-                                        ...prev,
-                                        [fee._id]: e.target.value,
-                                      }))
+                              <div className="flex items-center gap-3">
+                                <label className="flex flex-1 min-w-0 items-center gap-3 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 shrink-0"
+                                    checked={checked}
+                                    onChange={() =>
+                                      setSelectedFeeIds((current) =>
+                                        checked
+                                          ? current.filter((id) => id !== fee._id)
+                                          : [...current, fee._id]
+                                      )
                                     }
                                   />
-                                ) : (
-                                  <span className="font-semibold tabular-nums">
-                                    {formatPkr(feeAmount(fee))}
+                                  <span className="flex-1 min-w-0">
+                                    <span className="font-medium">{periodLabel(fee)}</span>
+                                    <span className="ml-2 text-xs text-muted-foreground">
+                                      {feeTypeLabel(fee.feeType)} · {fee.status}
+                                    </span>
                                   </span>
-                                )}
-                              </label>
+                                </label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  aria-label={`Amount for ${periodLabel(fee)}`}
+                                  className="h-8 w-28 text-right tabular-nums"
+                                  value={amountOverrides[fee._id] ?? String(fee.amount ?? "")}
+                                  onChange={(e) =>
+                                    setFeeAmount(fee._id, e.target.value, payModalMode === "pay")
+                                  }
+                                />
+                              </div>
                               {payModalMode === "pay" && lines.length > 0 && (
                                 <ul className="mt-1.5 ml-7 space-y-1 text-xs text-muted-foreground">
                                   {lines.map((line) => (
@@ -2090,8 +2172,9 @@ export default function AcademyFeesManagement({
                 payMut.isPending ||
                 !paymentDate ||
                 (editingPaid
-                  ? amountOverrides[payRecord?._id || ""] === ""
-                  : selectedFeeIds.length === 0)
+                  ? parsedFeeAmount(payRecord!) === null
+                  : selectedUnpaid.length === 0 ||
+                    selectedUnpaid.some((fee) => parsedFeeAmount(fee) === null))
               }
               onClick={() => payMut.mutate()}
             >
