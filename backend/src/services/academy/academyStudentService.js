@@ -19,6 +19,8 @@ const {
   createEnrollmentFeeVouchers,
   syncUnpaidChallansForStudent,
   isStudentFullFeeWaiver,
+  waiveUnpaidFeesOnLeave,
+  syncFeesForReturningStudent,
 } = require('./academyFeeService');
 const { validateEnrollmentSubjects } = require('./academyEnrollmentSubjectService');
 const { resolveEnrollmentDiscipline } = require('./academyDisciplineService');
@@ -500,6 +502,16 @@ async function updateStudent(id, payload) {
   }
 
   await student.save();
+
+  // Leaving waives unpaid vouchers from this month on. Coming back bills the
+  // return month only; months they were away stay waived.
+  if (payload.status && payload.status !== previousStatus) {
+    if (student.status === 'inactive') {
+      await waiveUnpaidFeesOnLeave(student._id);
+    } else if (student.status === 'active' && previousStatus === 'inactive') {
+      await syncFeesForReturningStudent(student);
+    }
+  }
 
   // Keep Fee Management challans aligned with the recalculated student fee profile.
   // Do not force defaultChargeIds onto existing vouchers — charges stay opt-in at pay/print.

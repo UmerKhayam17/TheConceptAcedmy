@@ -1122,6 +1122,134 @@ async function attachUnpaidMonthCounts(docs) {
   });
 }
 
+/** Marked on vouchers waived because the student was set inactive. Do not reuse this text for a manual waive. */
+const LEAVE_FEE_WAIVER_NOTE = 'Waived: student marked inactive';
+
+function periodIndex(month, year) {
+  return Number(year) * 12 + Number(month);
+}
+
+function currentPeriodIndex() {
+  const [year, month] = todayYmd().split('-').map(Number);
+  return periodIndex(month, year);
+}
+
+function isLeaveFeeWaiver(record) {
+  return String(record?.notes || '').includes(LEAVE_FEE_WAIVER_NOTE);
+}
+
+async function reopenLeaveFeeWaiver(record, userId) {
+  record.status = unpaidStatusFromDueDate(record.dueDate);
+  if (userId) record.recordedBy = userId;
+  record.notes = appendFeeNote(record.notes, 'Restored: student active again');
+  await record.save();
+  return record;
+}
+
+async function reopenLeaveWaivedStationery(studentId, month, year, userId) {
+  const rows = await AcademyFeeRecord.find({
+    studentId,
+    month,
+    year,
+    feeType: 'stationery',
+    status: 'waived',
+  });
+  let restored = 0;
+  for (const row of rows) {
+    if (!isLeaveFeeWaiver(row)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await reopenLeaveFeeWaiver(row, userId);
+    restored += 1;
+  }
+  return restored;
+}
+
+/**
+ * Student left. Waive unpaid monthly (and legacy stationery) vouchers from this
+ * month onward. Earlier unpaid months stay due — that is real debt.
+ */
+async function waiveUnpaidFeesOnLeave(studentId, userId) {
+  const from = currentPeriodIndex();
+  const records = await AcademyFeeRecord.find({
+    studentId,
+    status: { $in: ['pending', 'overdue'] },
+    feeType: { $in: ['monthly', 'stationery'] },
+  });
+  let waived = 0;
+  for (const record of records) {
+    if (periodIndex(record.month, record.year) < from) continue;
+    record.status = 'waived';
+    if (userId) record.recordedBy = userId;
+    if (!isLeaveFeeWaiver(record)) {
+      record.notes = appendFeeNote(record.notes, LEAVE_FEE_WAIVER_NOTE);
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await record.save();
+    waived += 1;
+  }
+  return { waived };
+}
+
+/**
+ * Student came back. Re-open this month's leave waiver, or create it if the
+ * monthly job ran while they were inactive. Older leave waivers stay waived.
+ */
+async function syncFeesForReturningStudent(student, userId) {
+  const [year, month] = todayYmd().split('-').map(Number);
+  const admission = await AcademyFeeRecord.findOne({
+    studentId: student._id,
+    month,
+    year,
+    feeType: 'admission',
+  });
+  if (admission) return { restored: 0, created: false };
+
+  const monthly = await AcademyFeeRecord.findOne({
+    studentId: student._id,
+    month,
+    year,
+    feeType: 'monthly',
+  });
+
+  let restored = 0;
+  let created = false;
+  if (monthly && monthly.status === 'waived' && isLeaveFeeWaiver(monthly)) {
+    await reopenLeaveFeeWaiver(monthly, userId);
+    restored += 1;
+  } else if (!monthly) {
+    const dueDate = resolveMonthlyDueDate(month, year);
+    const { amount, components } = composeMonthlyComponents(
+      student,
+      month,
+      [],
+      monthlyBillAmount(student),
+      { chargeIds: [] }
+    );
+    const isFree = amount <= 0;
+    await AcademyFeeRecord.create({
+      studentId: student._id,
+      month,
+      year,
+      amount: isFree ? 0 : amount,
+      components: isFree ? [{ name: 'Tuition', amount: 0, kind: 'tuition' }] : components,
+      feeType: 'monthly',
+      status: isFree ? 'paid' : 'pending',
+      dueDate,
+      receiptNumber: receiptNumber(student, month, year, 'monthly'),
+      recordedBy: userId,
+      createdBy: userId,
+      ...(isFree
+        ? { paidAt: new Date(), paymentMethod: 'other', notes: FULL_WAIVER_NOTE }
+        : { pendingNoticeAt: new Date() }),
+    });
+    created = true;
+  }
+
+  restored += await reopenLeaveWaivedStationery(student._id, month, year, userId);
+  await absorbUnpaidStationeryIntoMonthly(student._id, month, year, userId);
+  return { restored, created };
+}
+
 async function generateMonthlyFees({ month, year, classId }, userId) {
   const studentQ = { status: 'active' };
   if (classId) studentQ.classId = classId;
@@ -1192,6 +1320,17 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
       feeType: 'monthly',
     });
     if (exists) {
+      // A leave waiver for this month (or a later one staff generate on purpose)
+      // becomes payable again once the student is active. Past gap months stay waived.
+      if (
+        exists.status === 'waived' &&
+        isLeaveFeeWaiver(exists) &&
+        periodIndex(month, year) >= currentPeriodIndex()
+      ) {
+        await reopenLeaveFeeWaiver(exists, userId);
+        await reopenLeaveWaivedStationery(student._id, month, year, userId);
+        repaired += 1;
+      }
       await absorbUnpaidStationeryIntoMonthly(student._id, month, year, userId);
       skipped.push(student._id);
       continue;
@@ -3353,6 +3492,8 @@ module.exports = {
   createEnrollmentFeeVouchers,
   syncUnpaidChallansForStudent,
   isStudentFullFeeWaiver,
+  waiveUnpaidFeesOnLeave,
+  syncFeesForReturningStudent,
   monthlyBillAmount,
   recordPayment,
   recordPayments,

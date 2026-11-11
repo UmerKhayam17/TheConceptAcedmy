@@ -214,6 +214,9 @@ function isUnpaid(status: string) {
   return status === "pending" || status === "overdue";
 }
 
+/** Manual gap-month waive. Must not match the automatic "student marked inactive" note, or a later return would bill it again. */
+const ABSENCE_WAIVER_NOTE = "Waived: month not attended";
+
 function isPdfSlip(path: string) {
   return /\.pdf$/i.test(path.split("?")[0] || "");
 }
@@ -580,6 +583,7 @@ export default function AcademyFeesManagement({
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
   const [payRecord, setPayRecord] = useState<AcademyFeeRecord | null>(null);
+  const [waiveRecord, setWaiveRecord] = useState<AcademyFeeRecord | null>(null);
   const [payModalMode, setPayModalMode] = useState<"pay" | "edit">("pay");
   const [selectedFeeIds, setSelectedFeeIds] = useState<string[]>([]);
   const [selectedChargeIds, setSelectedChargeIds] = useState<string[]>([]);
@@ -953,6 +957,27 @@ export default function AcademyFeesManagement({
       }
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const waiveMut = useMutation({
+    mutationFn: async (record: AcademyFeeRecord) => {
+      const notes = [record.notes?.trim(), ABSENCE_WAIVER_NOTE].filter(Boolean).join(" · ");
+      return updateAcademyFee(record._id, { status: "waived", notes });
+    },
+    onSuccess: (_updated, record) => {
+      qc.invalidateQueries({ queryKey: ["academy-fees"] });
+      qc.invalidateQueries({ queryKey: ["academy-fees-summary"] });
+      qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
+      qc.invalidateQueries({ queryKey: ["academy-student-record"] });
+      qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
+      qc.invalidateQueries({ queryKey: ["fee-defaulters-summary"] });
+      setWaiveRecord(null);
+      toast({
+        title: "Month waived",
+        description: `${periodLabel(record)} is no longer counted as a defaulter.`,
+      });
+    },
+    onError: (e: Error) => toast({ title: "Could not waive fee", description: e.message, variant: "destructive" }),
   });
 
   const printMut = useMutation({
@@ -1749,6 +1774,17 @@ export default function AcademyFeesManagement({
                             Record payment
                           </Button>
                         )}
+                        {canEditFee && payable && r.feeType !== "admission" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0"
+                            disabled={waiveMut.isPending}
+                            onClick={() => setWaiveRecord(r)}
+                          >
+                            Waive
+                          </Button>
+                        )}
                         {canEditFee && (payable || r.status === "paid") && (
                           <Button
                             size="icon"
@@ -2202,6 +2238,36 @@ export default function AcademyFeesManagement({
         }}
         studentId={assignSectionStudentId}
       />
+
+      <Dialog
+        open={Boolean(waiveRecord)}
+        onOpenChange={(open) => {
+          if (!open && !waiveMut.isPending) setWaiveRecord(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Waive this month</DialogTitle>
+            <DialogDescription>
+              {waiveRecord
+                ? `${periodLabel(waiveRecord)} stays in the fee history and is not counted as a defaulter. Use this for a month the student was away. A month they attended and did not pay should stay unpaid.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={waiveMut.isPending} onClick={() => setWaiveRecord(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="hero"
+              disabled={waiveMut.isPending || !waiveRecord}
+              onClick={() => waiveRecord && waiveMut.mutate(waiveRecord)}
+            >
+              {waiveMut.isPending ? "Saving…" : "Waive month"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(correction)}
