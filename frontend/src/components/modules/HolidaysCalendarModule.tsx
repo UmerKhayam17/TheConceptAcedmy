@@ -20,10 +20,8 @@ import {
   Palmtree,
   Pencil,
   Plus,
-  ShieldCheck,
   Sparkles,
   Star,
-  Sun,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -337,8 +335,8 @@ export default function HolidaysCalendarModule({ caps }: { caps: ModuleActionCap
   };
 
   const upcoming = holidaysFiltered
-    .filter((h) => h.endDate >= today)
-    .slice(0, 4);
+    .filter((holiday) => holiday.endDate >= today)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.name.localeCompare(b.name));
 
   const openCreate = () => setEditor({ draft: emptyDraft(today) });
   const openEdit = (holiday: SchoolHoliday) =>
@@ -462,101 +460,7 @@ export default function HolidaysCalendarModule({ caps }: { caps: ModuleActionCap
         <p className="text-sm text-muted-foreground">Select an academic session to view holidays.</p>
       )}
 
-      <div className="grid items-stretch gap-4 xl:grid-cols-[32rem_minmax(0,1fr)]">
-        <Card className="flex h-full flex-col rounded-2xl border-slate-200/80 p-4 shadow-sm">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
-                <CalendarDays className="h-4 w-4" />
-              </span>
-              <h3 className="truncate text-sm font-semibold text-[#1a2b4b] sm:text-base">
-                Academic Calendar – {year}
-              </h3>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center rounded-lg border border-slate-200 bg-white">
-                <button
-                  type="button"
-                  className="rounded-l-lg p-1.5 text-slate-500 hover:bg-slate-50"
-                  onClick={() => setCursor(new Date(year, monthIndex - 1, 1))}
-                  aria-label="Previous month"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="min-w-[7.25rem] px-1 text-center text-sm font-medium text-[#1a2b4b]">
-                  {MONTHS_LONG[monthIndex]} {year}
-                </span>
-                <button
-                  type="button"
-                  className="rounded-r-lg p-1.5 text-slate-500 hover:bg-slate-50"
-                  onClick={() => setCursor(new Date(year, monthIndex + 1, 1))}
-                  aria-label="Next month"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-              <button
-                type="button"
-                className="h-8 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                onClick={goToday}
-              >
-                Today
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-7 text-center text-xs font-medium text-slate-400">
-            {WEEKDAYS.map((day) => (
-              <div key={day} className="py-1.5">{day}</div>
-            ))}
-          </div>
-          <div className="grid flex-1 grid-cols-7 gap-1">
-            {cells.map((cell) => {
-              const dayHolidays = cell.outside ? [] : holidaysFiltered.filter((h) => covers(h, cell.ymd));
-              const primary = dayHolidays[0];
-              const weekday = WEEKDAY_KEYS[new Date(`${cell.ymd}T00:00:00Z`).getUTCDay()];
-              const weeklyOff = !cell.outside && !primary && !workingDays.includes(weekday);
-              const isToday = cell.ymd === today;
-              const label = primary
-                ? calendarLabel(primary) + (dayHolidays.length > 1 ? ` +${dayHolidays.length - 1}` : "")
-                : weeklyOff
-                  ? "Weekly Off"
-                  : "";
-              const DayIcon = primary ? holidayIcon(primary) : weeklyOff ? Sun : null;
-              return (
-                <div
-                  key={cell.ymd}
-                  title={label || undefined}
-                  className={cn(
-                    "flex min-h-[4.25rem] flex-col items-center justify-center rounded-lg px-0.5 py-1 text-center",
-                    cell.outside && "text-slate-300",
-                    !cell.outside && !primary && !weeklyOff && "text-slate-700",
-                    primary?.category === "vacation" && "bg-violet-100 text-violet-800",
-                    primary && primary.category !== "vacation" && primary.category !== "government" && "bg-emerald-100 text-emerald-800",
-                    primary?.category === "government" && "bg-orange-100 text-orange-800",
-                    weeklyOff && "bg-sky-100 text-sky-700",
-                    isToday && "ring-1 ring-sky-400",
-                  )}
-                >
-                  <span className="text-sm font-semibold leading-none">{cell.day}</span>
-                  {DayIcon && <DayIcon className="mt-1 h-3.5 w-3.5" />}
-                  {label && (
-                    <span className="mt-0.5 line-clamp-2 text-[10px] font-medium leading-tight">{label}</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-500">
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Holiday</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-500" /> Vacation</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-orange-400" /> Event</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-400" /> Weekly Off</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-slate-300" /> Regular Day</span>
-          </div>
-        </Card>
-
-        <div className="relative h-full min-h-[24rem]">
-        <Card className="absolute inset-0 flex flex-col overflow-hidden rounded-2xl border-slate-200/80 shadow-sm">
+      <Card className="flex max-h-[32rem] flex-col overflow-hidden rounded-2xl border-slate-200/80 shadow-sm">
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
             <h3 className="font-display text-lg font-semibold text-[#1a2b4b]">Holiday Management</h3>
             <span className="text-sm text-muted-foreground">
@@ -564,8 +468,8 @@ export default function HolidaysCalendarModule({ caps }: { caps: ModuleActionCap
               {holidaysFiltered.length !== holidays.length ? ` of ${holidays.length}` : ""}
             </span>
           </div>
-          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-            <table className="w-full border-separate border-spacing-0 text-sm">
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto">
+            <table className="w-full min-w-[52rem] border-separate border-spacing-0 text-sm">
               <thead className="sticky top-0 z-10 bg-gray-50 text-left text-xs font-semibold text-slate-500">
                 <tr>
                   <th className="whitespace-nowrap bg-gray-50 px-3 py-2.5">Date</th>
@@ -673,18 +577,114 @@ export default function HolidaysCalendarModule({ caps }: { caps: ModuleActionCap
             </table>
           </div>
         </Card>
-        </div>
-      </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="rounded-2xl border-amber-100 bg-amber-50/70 p-5 shadow-sm">
-          <h3 className="font-display text-base font-semibold text-[#1a2b4b]">Upcoming Holidays</h3>
-          <ul className="mt-4 space-y-3">
+      <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card className="rounded-2xl border-slate-200/80 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+                <CalendarDays className="h-4 w-4" />
+              </span>
+              <h3 className="truncate text-sm font-semibold text-[#1a2b4b] sm:text-base">
+                Academic Calendar – {year}
+              </h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center rounded-lg border border-slate-200 bg-white">
+                <button
+                  type="button"
+                  className="rounded-l-lg p-1.5 text-slate-500 hover:bg-slate-50"
+                  onClick={() => setCursor(new Date(year, monthIndex - 1, 1))}
+                  aria-label="Previous month"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="min-w-[7.25rem] px-1 text-center text-sm font-medium text-[#1a2b4b]">
+                  {MONTHS_LONG[monthIndex]} {year}
+                </span>
+                <button
+                  type="button"
+                  className="rounded-r-lg p-1.5 text-slate-500 hover:bg-slate-50"
+                  onClick={() => setCursor(new Date(year, monthIndex + 1, 1))}
+                  aria-label="Next month"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              <button
+                type="button"
+                className="h-8 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                onClick={goToday}
+              >
+                Today
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-7 text-center text-xs font-medium text-slate-400">
+            {WEEKDAYS.map((day) => (
+              <div key={day} className="py-1.5">{day}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1.5">
+            {cells.map((cell) => {
+              const dayHolidays = cell.outside ? [] : holidaysFiltered.filter((h) => covers(h, cell.ymd));
+              const primary = dayHolidays[0];
+              const weekday = WEEKDAY_KEYS[new Date(`${cell.ymd}T00:00:00Z`).getUTCDay()];
+              const weeklyOff = !cell.outside && !primary && !workingDays.includes(weekday);
+              const isToday = cell.ymd === today;
+              const HolidayIcon = primary ? holidayIcon(primary) : null;
+              const title = primary
+                ? dayHolidays.map((holiday) => calendarLabel(holiday)).join(", ")
+                : weeklyOff
+                  ? "Weekly Off"
+                  : undefined;
+              return (
+                <div
+                  key={cell.ymd}
+                  title={title}
+                  className={cn(
+                    "flex min-h-[4.5rem] flex-col items-center justify-center rounded-lg px-1 py-1.5 text-center",
+                    cell.outside && "text-slate-300",
+                    !cell.outside && !primary && !weeklyOff && "text-slate-600",
+                    primary?.category === "vacation" && "bg-violet-100 text-violet-700",
+                    primary && primary.category !== "vacation" && primary.category !== "government" && "bg-emerald-50 text-emerald-700",
+                    primary?.category === "government" && "bg-orange-50 text-orange-700",
+                    weeklyOff && "bg-sky-100 text-sky-700",
+                    isToday && !primary && !weeklyOff && "ring-1 ring-slate-200",
+                  )}
+                >
+                  <span className={cn("text-sm font-semibold leading-none", cell.outside && "font-medium")}>{cell.day}</span>
+                  {HolidayIcon && (
+                    <span className="mt-1 inline-flex items-center gap-0.5">
+                      <HolidayIcon className="h-3.5 w-3.5" />
+                      {dayHolidays.length > 1 && (
+                        <span className="text-[10px] font-semibold leading-none">+{dayHolidays.length - 1}</span>
+                      )}
+                    </span>
+                  )}
+                  {!primary && weeklyOff && (
+                    <span className="mt-1 line-clamp-2 text-[11px] font-medium leading-tight">Weekly Off</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Holiday</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-500" /> Vacation</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-orange-400" /> Event</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-slate-300" /> Regular Day</span>
+          </div>
+        </Card>
+
+        <Card className="rounded-2xl border-amber-100 bg-amber-50/70 p-0 shadow-sm">
+          <h3 className="px-5 pt-5 font-display text-base font-semibold text-[#1a2b4b]">Upcoming Holidays</h3>
+          <ul className="mt-4 space-y-3 px-5 pb-5">
             {upcoming.length === 0 && <li className="text-sm text-slate-500">No upcoming holidays in this session.</li>}
             {upcoming.map((holiday) => (
               <li key={holiday._id} className="flex items-start gap-3 text-sm">
                 <HolidayGlyph holiday={holiday} className="mt-0.5" />
-                <span>
+                <span className="min-w-0">
                   <span className="block font-semibold text-[#1a2b4b]">{formatLong(holiday.startDate)}</span>
                   <span className="text-slate-600">
                     {holiday.name}
@@ -693,28 +693,6 @@ export default function HolidaysCalendarModule({ caps }: { caps: ModuleActionCap
                 </span>
               </li>
             ))}
-          </ul>
-        </Card>
-
-        <Card className="rounded-2xl border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-display text-base font-semibold text-[#1a2b4b]">How It Works</h3>
-          <ol className="mt-4 space-y-2 text-sm text-slate-600">
-            <li>1. The system pre-fills Pakistan’s fixed public holidays for the session.</li>
-            <li>2. Fixed holidays are confirmed automatically.</li>
-            <li>3. Islamic holidays are saved as estimates and stay pending.</li>
-            <li>4. An admin reviews the dates and confirms them. Only confirmed holidays affect attendance.</li>
-          </ol>
-        </Card>
-
-        <Card className="rounded-2xl border-emerald-100 bg-emerald-50/80 p-5 shadow-sm">
-          <h3 className="flex items-center gap-2 font-display text-base font-semibold text-[#1a2b4b]">
-            <ShieldCheck className="h-4 w-4 text-emerald-600" />
-            Attendance Protection
-          </h3>
-          <ul className="mt-4 space-y-2 text-sm text-slate-600">
-            <li>Confirmed holiday days are skipped in attendance.</li>
-            <li>No automatic absent marking for students, teachers, or staff.</li>
-            <li>Pending estimates do not change attendance until you confirm them.</li>
           </ul>
         </Card>
       </div>
