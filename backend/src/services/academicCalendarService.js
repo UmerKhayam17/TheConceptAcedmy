@@ -13,11 +13,14 @@ const ApiError = require('../utils/ApiError');
 const Session = require('../models/Session');
 const Holiday = require('../models/Holiday');
 const AssessmentAssignment = require('../models/AssessmentAssignment');
+const AcademyClass = require('../models/academy/AcademyClass');
+const AcademySection = require('../models/academy/AcademySection');
 const { hasModulePermission } = require('../modules');
 const { isSystemAdmin } = require('../utils/systemAdmin');
 const { isParentRole, linkedStudentsForParent } = require('../utils/parentScope');
 const { formatDateInTz, resolveTimezone } = require('../utils/schoolDay');
 const { assessmentTypeLabel } = require('../config/assessmentTaxonomy');
+const { calendarItemEvents, canPlan, canManageAll } = require('./calendarItemService');
 
 function idStr(ref) {
   if (!ref) return '';
@@ -133,6 +136,25 @@ async function getAcademicCalendar(req, { sessionId, classId, sectionId } = {}) 
   const classMap = new Map();
   const sectionMap = new Map();
 
+  // Staff always get the full class/section catalog for filters + planning.
+  // Parents only see classes/sections that appear on their children's events.
+  if (!parent) {
+    const classes = await AcademyClass.find({ sessionId: session._id }).select('className').lean();
+    for (const c of classes) {
+      classMap.set(String(c._id), { _id: String(c._id), className: c.className || '' });
+    }
+    const sections = await AcademySection.find({ classId: { $in: classes.map((c) => c._id) } })
+      .select('sectionName classId')
+      .lean();
+    for (const s of sections) {
+      sectionMap.set(String(s._id), {
+        _id: String(s._id),
+        sectionName: s.sectionName || '',
+        classId: String(s.classId),
+      });
+    }
+  }
+
   for (const a of assignments) {
     const cid = idStr(a.classId);
     const sid = idStr(a.sectionId);
@@ -175,6 +197,18 @@ async function getAcademicCalendar(req, { sessionId, classId, sectionId } = {}) 
     }
   }
 
+  // ── Lesson plans, homework & school events planned on the calendar ──
+  const planned = await calendarItemEvents(req, session, {
+    parent,
+    kidClassIds,
+    kidSectionIds,
+    classId,
+    sectionId,
+  });
+  events.push(...planned.events);
+  for (const [k, v] of planned.classMap) if (!classMap.has(k)) classMap.set(k, v);
+  for (const [k, v] of planned.sectionMap) if (!sectionMap.has(k)) sectionMap.set(k, v);
+
   events.sort((x, y) => (x.startDate < y.startDate ? -1 : x.startDate > y.startDate ? 1 : 0));
 
   const byName = (key) => (x, y) => String(x[key]).localeCompare(String(y[key]), undefined, { numeric: true });
@@ -194,7 +228,14 @@ async function getAcademicCalendar(req, { sessionId, classId, sectionId } = {}) 
       classes: [...classMap.values()].sort(byName('className')),
       sections: [...sectionMap.values()].sort(byName('sectionName')),
     },
-    scope: { parent, seeDrafts, seePendingHolidays },
+    scope: {
+      parent,
+      seeDrafts,
+      seePendingHolidays,
+      canPlan: canPlan(req),
+      canManageAll: canManageAll(req),
+      canManageHolidays: seePendingHolidays,
+    },
   };
 }
 

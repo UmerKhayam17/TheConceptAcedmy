@@ -630,9 +630,9 @@ const SYSTEM_MODULES = [
     panelSlug: 'academic-calendar',
     label: 'Academic Calendar',
     icon: 'CalendarRange',
-    description: 'Full-session calendar: holidays, tests, exams and session dates',
+    description: 'Plan lesson plans, homework, events and holidays across the session',
     order: 70,
-    actions: ['view'],
+    actions: ['view', 'create', 'edit', 'delete'],
     parentGroup: 'communication',
   },
   {

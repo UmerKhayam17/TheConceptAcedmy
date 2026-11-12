@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BookOpen,
   CalendarDays,
   CalendarRange,
   ChevronLeft,
@@ -8,17 +9,27 @@ import {
   ClipboardList,
   GraduationCap,
   List,
+  NotebookPen,
+  PartyPopper,
+  Pencil,
+  Plus,
   Printer,
   Sun,
   Flag,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SyllabusText } from "@/components/ui/syllabus-text";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
+import AcademicCalendarPlannerDialog, {
+  type PlannerSeed,
+} from "@/components/modules/AcademicCalendarPlannerDialog";
 import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
+import { useToast } from "@/hooks/use-toast";
 import {
+  deleteCalendarItem,
   fetchAcademicCalendar,
   type CalendarEvent,
   type CalendarEventKind,
@@ -69,7 +80,16 @@ function formatRange(a: string, b: string) {
 
 // ── Event kinds ─────────────────────────────────────────────────────────────
 
-const KIND_ORDER: CalendarEventKind[] = ["vacation", "holiday", "exam", "test", "session"];
+const KIND_ORDER: CalendarEventKind[] = [
+  "vacation",
+  "holiday",
+  "exam",
+  "test",
+  "event",
+  "homework",
+  "lesson_plan",
+  "session",
+];
 
 const KIND_META: Record<
   CalendarEventKind,
@@ -109,6 +129,27 @@ const KIND_META: Record<
     dot: "bg-amber-500",
     cell: "bg-amber-100",
     icon: GraduationCap,
+  },
+  lesson_plan: {
+    label: "Lesson plan",
+    chip: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200",
+    dot: "bg-emerald-500",
+    cell: "bg-emerald-100",
+    icon: BookOpen,
+  },
+  homework: {
+    label: "Homework",
+    chip: "bg-orange-100 text-orange-900 ring-1 ring-orange-200",
+    dot: "bg-orange-500",
+    cell: "bg-orange-100",
+    icon: NotebookPen,
+  },
+  event: {
+    label: "Event",
+    chip: "bg-teal-100 text-teal-900 ring-1 ring-teal-200",
+    dot: "bg-teal-500",
+    cell: "bg-teal-100",
+    icon: PartyPopper,
   },
 };
 
@@ -151,6 +192,8 @@ function escapeHtml(s: string) {
 
 export default function AcademicCalendarModule() {
   const today = localTodayYmd();
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const { apiSessionId } = usePanelSession();
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
@@ -158,10 +201,32 @@ export default function AcademicCalendarModule() {
   const [hidden, setHidden] = useState<Set<CalendarEventKind>>(new Set());
   const [cursor, setCursor] = useState<{ y: number; m: number } | null>(null);
   const [openDay, setOpenDay] = useState<string | null>(null);
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [plannerSeed, setPlannerSeed] = useState<PlannerSeed | null>(null);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["academic-calendar", apiSessionId || "", classId, sectionId],
     queryFn: () => fetchAcademicCalendar({ sessionId: apiSessionId, classId, sectionId }),
+  });
+
+  const canPlan = Boolean(data?.scope?.canPlan);
+  const canManageHolidays = Boolean(data?.scope?.canManageHolidays);
+  const isParent = Boolean(data?.scope?.parent);
+
+  const openPlanner = (seed: PlannerSeed | null = null) => {
+    setPlannerSeed(seed);
+    setPlannerOpen(true);
+  };
+
+  const deleteMut = useMutation({
+    mutationFn: (itemId: string) => deleteCalendarItem(itemId),
+    onSuccess: () => {
+      toast({ title: "Removed", description: "Calendar item deleted." });
+      void qc.invalidateQueries({ queryKey: ["academic-calendar"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not delete", description: err.message, variant: "destructive" });
+    },
   });
 
   const session = data?.session || null;
@@ -297,6 +362,7 @@ export default function AcademicCalendarModule() {
         .tag{display:inline-block;border-radius:999px;padding:1px 8px;font-weight:600;font-size:11px}
         .session{background:#e2e8f0}.holiday{background:#ffe4e6}.vacation{background:#ede9fe}
         .test{background:#e0f2fe}.exam{background:#fef3c7}
+        .lesson_plan{background:#d1fae5}.homework{background:#ffedd5}.event{background:#ccfbf1}
         .tent{color:#c2410c;font-size:11px}
       </style></head><body>
       <h1>Academic Calendar — ${escapeHtml(session.name)}</h1>
@@ -316,18 +382,31 @@ export default function AcademicCalendarModule() {
     <div className="min-h-full space-y-4 bg-white px-4 py-6 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-black/[0.04] sm:px-5 sm:py-3.5">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
-            <CalendarRange className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-lg font-bold leading-tight tracking-tight text-[#1a2b4b] sm:text-xl">
-              Academic Calendar
-            </h2>
-            <p className="mt-0.5 text-xs leading-snug text-slate-500 sm:text-sm">
-              {session
-                ? `${session.name} · ${formatLong(session.startDate)} to ${formatLong(session.endDate)}`
-                : "Holidays, tests, exams and session dates in one place."}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+              <CalendarRange className="h-5 w-5 text-primary-foreground" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg font-bold leading-tight tracking-tight text-[#1a2b4b] sm:text-xl">
+                Academic Calendar
+              </h2>
+              <p className="mt-0.5 max-w-xl text-xs leading-snug text-slate-500 sm:text-sm">
+                {session
+                  ? `${session.name} · ${formatLong(session.startDate)} to ${formatLong(session.endDate)}`
+                  : "Holidays, lesson plans, homework, events, tests and exams in one place."}
+              </p>
+            </div>
+          </div>
+          <div className="max-w-[15rem] shrink-0 rounded-lg bg-primary/10 px-3 py-2">
+            <p className="text-xs italic leading-snug text-[#1a2b4b]/80 sm:text-sm">
+              <span className="mr-1 font-serif text-base not-italic leading-none text-primary">
+                &ldquo;
+              </span>
+              A great school builds great futures.
+              <span className="ml-0.5 font-serif text-base not-italic leading-none text-primary">
+                &rdquo;
+              </span>
             </p>
           </div>
         </div>
@@ -424,6 +503,22 @@ export default function AcademicCalendarModule() {
             ))}
           </div>
           <FilterToolbarActions>
+            {canPlan && session && (
+              <>
+                <Button
+                  variant="outline"
+                  className="h-10 gap-1.5"
+                  onClick={() => openPlanner({ kind: "lesson_plan", date: today, bulk: "month" })}
+                >
+                  <CalendarRange className="h-4 w-4" />
+                  Plan month
+                </Button>
+                <Button className="h-10 gap-1.5" onClick={() => openPlanner({ date: today })}>
+                  <Plus className="h-4 w-4" />
+                  Add
+                </Button>
+              </>
+            )}
             <Button variant="outline" className="h-10 gap-1.5" onClick={printCalendar} disabled={!session}>
               <Printer className="h-4 w-4" />
               Print
@@ -433,7 +528,7 @@ export default function AcademicCalendarModule() {
 
         {/* Legend / type toggles */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {KIND_ORDER.map((k) => {
+          {KIND_ORDER.filter((k) => !(isParent && k === "lesson_plan")).map((k) => {
             const off = hidden.has(k);
             return (
               <button
@@ -512,14 +607,97 @@ export default function AcademicCalendarModule() {
                 : `${dayEvents.length} item${dayEvents.length === 1 ? "" : "s"} on this day.`}
             </DialogDescription>
           </DialogHeader>
+          {canPlan && openDay && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={() => {
+                  setOpenDay(null);
+                  openPlanner({ kind: "lesson_plan", date: openDay });
+                }}
+              >
+                <BookOpen className="h-3.5 w-3.5" /> Lesson plan
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={() => {
+                  setOpenDay(null);
+                  openPlanner({ kind: "homework", date: openDay });
+                }}
+              >
+                <NotebookPen className="h-3.5 w-3.5" /> Homework
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={() => {
+                  setOpenDay(null);
+                  openPlanner({ kind: "event", date: openDay });
+                }}
+              >
+                <PartyPopper className="h-3.5 w-3.5" /> Event
+              </Button>
+              {canManageHolidays && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1"
+                  onClick={() => {
+                    setOpenDay(null);
+                    openPlanner({ kind: "holiday", date: openDay });
+                  }}
+                >
+                  <Sun className="h-3.5 w-3.5" /> Holiday
+                </Button>
+              )}
+            </div>
+          )}
           <div className="space-y-2">
             {dayEvents.length === 0 && <p className="text-sm text-muted-foreground">Nothing scheduled.</p>}
             {dayEvents.map((e) => (
-              <EventCard key={`${e.id}-${openDay}`} e={e} />
+              <EventCard
+                key={`${e.id}-${openDay}`}
+                e={e}
+                hideLessonPlanNote={isParent}
+                onEdit={
+                  e.canEdit
+                    ? () => {
+                        setOpenDay(null);
+                        openPlanner({ editEvent: e });
+                      }
+                    : undefined
+                }
+                onDelete={
+                  e.canEdit && e.itemId
+                    ? () => {
+                        if (window.confirm(`Delete “${e.title}”?`)) deleteMut.mutate(e.itemId!);
+                      }
+                    : undefined
+                }
+              />
             ))}
           </div>
         </DialogContent>
       </Dialog>
+
+      {session && apiSessionId && (
+        <AcademicCalendarPlannerDialog
+          open={plannerOpen}
+          onOpenChange={setPlannerOpen}
+          sessionId={apiSessionId}
+          sessionStart={session.startDate}
+          sessionEnd={session.endDate}
+          workingDays={session.workingDays || []}
+          canManageHolidays={canManageHolidays}
+          seed={plannerSeed}
+          monthCursor={cursor}
+        />
+      )}
     </div>
   );
 }
@@ -555,9 +733,20 @@ function StatCard({
   );
 }
 
-function EventCard({ e }: { e: CalendarEvent }) {
-  const meta = KIND_META[e.kind];
+function EventCard({
+  e,
+  onEdit,
+  onDelete,
+  hideLessonPlanNote,
+}: {
+  e: CalendarEvent;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  hideLessonPlanNote?: boolean;
+}) {
+  const meta = KIND_META[e.kind] || KIND_META.event;
   const Icon = meta.icon;
+  const timeLabel = [e.startTime, e.endTime].filter(Boolean).join(" – ");
   return (
     <div className={cn("rounded-lg border p-3", e.tentative ? "border-dashed border-slate-300" : "border-slate-200")}>
       <div className="flex items-start gap-2">
@@ -565,26 +754,62 @@ function EventCard({ e }: { e: CalendarEvent }) {
           <Icon className="h-3.5 w-3.5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[#1a2b4b]">{e.title}</p>
+          <div className="flex items-start gap-2">
+            <p className="min-w-0 flex-1 text-sm font-semibold text-[#1a2b4b]">{e.title}</p>
+            {(onEdit || onDelete) && (
+              <div className="flex shrink-0 gap-1">
+                {onEdit && (
+                  <Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit} aria-label="Edit">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {onDelete && (
+                  <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={onDelete} aria-label="Delete">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
           <p className="text-xs text-slate-500">
             {[
               meta.label,
+              e.eventCategory && e.eventCategory !== "other" ? e.eventCategory : "",
               e.assessmentTypeLabel && e.assessmentTypeLabel !== meta.label ? e.assessmentTypeLabel : "",
-              classLabel(e),
+              classLabel(e) || (e.kind === "event" && !e.classId ? "Whole school" : ""),
+              e.subjectName,
               e.disciplineName,
               e.totalMarks ? `${e.totalMarks} marks` : "",
+              timeLabel,
+              e.createdByName ? `by ${e.createdByName}` : "",
             ]
               .filter(Boolean)
               .join(" · ")}
           </p>
           {e.startDate !== e.endDate && (
-            <p className="text-xs text-slate-500">{formatRange(e.startDate, e.endDate)}</p>
+            <p className="text-xs text-slate-500">
+              {e.kind === "homework" ? `Due ${formatLong(e.endDate)}` : formatRange(e.startDate, e.endDate)}
+            </p>
           )}
           {e.tentative && (
             <p className="mt-1 text-xs font-medium text-orange-700">
               {e.kind === "test" || e.kind === "exam" ? "Draft — not yet published" : "Tentative date"}
             </p>
           )}
+          {!hideLessonPlanNote && e.kind === "lesson_plan" && (
+            <p className="mt-1 text-[11px] text-emerald-700">Visible to staff only</p>
+          )}
+          {e.objectives && (
+            <p className="mt-1.5 text-xs text-slate-600">
+              <span className="font-medium">Objectives:</span> {e.objectives}
+            </p>
+          )}
+          {e.activities && (
+            <p className="mt-1 text-xs text-slate-600">
+              <span className="font-medium">Activities:</span> {e.activities}
+            </p>
+          )}
+          {e.description && <p className="mt-1 text-xs text-slate-500 whitespace-pre-wrap">{e.description}</p>}
           {e.syllabus && (
             <div className="mt-1.5 rounded bg-slate-50 px-2 py-1.5 text-xs text-slate-700">
               <SyllabusText text={e.syllabus} className="block whitespace-pre-wrap" />

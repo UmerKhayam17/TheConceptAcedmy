@@ -328,10 +328,19 @@ async function syncBuiltInRolePermissions() {
       ? teacherRole.modulePermissions
       : new Map(Object.entries(teacherRole.modulePermissions || {}));
     Object.entries(TEACHER_DEFAULT_MODULE_PERMISSIONS).forEach(([key, actions]) => {
-      if (!existing.has(key) || !Array.isArray(existing.get(key)) || existing.get(key).length === 0) {
+      const cur = existing.get(key);
+      if (!existing.has(key) || !Array.isArray(cur) || cur.length === 0) {
+        mp.set(key, actions);
+      } else if (
+        key === 'academicCalendar' &&
+        Array.isArray(cur) &&
+        cur.includes('view') &&
+        !cur.includes('create')
+      ) {
+        // Upgrade view-only calendar to planning (create/edit) for the built-in teacher role.
         mp.set(key, actions);
       } else {
-        mp.set(key, existing.get(key));
+        mp.set(key, cur);
       }
     });
     await Role.updateOne(

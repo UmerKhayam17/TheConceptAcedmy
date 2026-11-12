@@ -243,7 +243,7 @@ export const MODULES: ModuleDef[] = [
     key: "academic-calendar",
     label: "Academic Calendar",
     icon: "CalendarRange",
-    desc: "Full-session calendar: holidays, tests, exams and session dates",
+    desc: "Plan lesson plans, homework, events and holidays across the session",
   },
   {
     key: "notifications",
@@ -470,7 +470,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     "online-classes": "crud",
     library: "view",
     "school-calendar": "view",
-    "academic-calendar": "view",
+    "academic-calendar": "grade",
     notifications: "view",
     leave: "mark",
     salary: "view",
