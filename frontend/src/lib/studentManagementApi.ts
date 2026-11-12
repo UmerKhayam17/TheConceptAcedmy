@@ -262,6 +262,17 @@ export interface AcademyFeeRecord {
   notes?: string;
   /** Voucher amount before a collection-time adjustment (amount is the final payable). */
   originalAmount?: number;
+  /** Money received so far; below `amount` while being paid in installments. */
+  paidAmount?: number;
+  /** Every payment (installment) received against this voucher. */
+  payments?: {
+    amount: number;
+    paidAt?: string;
+    paymentMethod?: string;
+    paymentSlipNumber?: string;
+    receiptNumber?: string;
+    notes?: string;
+  }[];
   adjustment?: {
     kind: FeeAdjustmentKind;
     /** Signed change: negative reduced the fee, positive added to it. */
@@ -1618,6 +1629,8 @@ export interface FeePaymentAdjustment {
 export async function payAcademyFees(body: {
   feeRecordIds: string[];
   adjustments?: FeePaymentAdjustment[];
+  /** Cash received now; less than the total due records an installment. */
+  amountReceived?: number;
   paymentMethod?: string;
   paymentSlipNumber?: string;
   notes?: string;
@@ -1627,6 +1640,7 @@ export async function payAcademyFees(body: {
   const fd = new FormData();
   fd.append("feeRecordIds", JSON.stringify(body.feeRecordIds));
   if (body.adjustments?.length) fd.append("adjustments", JSON.stringify(body.adjustments));
+  if (body.amountReceived !== undefined) fd.append("amountReceived", String(body.amountReceived));
   if (body.paymentMethod) fd.append("paymentMethod", body.paymentMethod);
   if (body.paymentSlipNumber !== undefined) fd.append("paymentSlipNumber", body.paymentSlipNumber);
   if (body.notes) fd.append("notes", body.notes);
@@ -1638,7 +1652,13 @@ export async function payAcademyFees(body: {
   });
   const parsed = await parseJson<{
     success?: boolean;
-    data?: { paid: number; total: number; records?: AcademyFeeRecord[] };
+    data?: {
+      paid: number;
+      partial?: number;
+      total: number;
+      balanceLeft?: number;
+      records?: AcademyFeeRecord[];
+    };
     needsSectionAssignment?: boolean;
     studentId?: string;
     message?: string;
@@ -1646,6 +1666,8 @@ export async function payAcademyFees(body: {
   if (!res.ok) throw new Error(parsed.message || `Payment failed (${res.status})`);
   return {
     paid: parsed.data?.paid ?? 0,
+    partial: parsed.data?.partial ?? 0,
+    balanceLeft: parsed.data?.balanceLeft ?? 0,
     total: parsed.data?.total ?? 0,
     records: parsed.data?.records,
     needsSectionAssignment: Boolean(parsed.needsSectionAssignment),

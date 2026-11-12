@@ -15,6 +15,23 @@ const academyFeeRecordSchema = new mongoose.Schema(
     status: { type: String, enum: ['pending', 'paid', 'overdue', 'waived'], default: 'pending', index: true },
     dueDate: { type: Date },
     paidAt: { type: Date },
+    /**
+     * Money received so far. Equals `amount` once paid; between 0 and `amount`
+     * while a voucher is being paid in installments (status stays pending/overdue).
+     */
+    paidAmount: { type: Number, min: 0, default: 0 },
+    /** Every payment (installment) received against this voucher. */
+    payments: [{
+      amount: { type: Number, min: 0, required: true },
+      paidAt: { type: Date },
+      paymentMethod: { type: String, enum: ['cash', 'bank_transfer', 'online', 'other'] },
+      paymentSlip: { type: String, trim: true },
+      paymentSlipNumber: { type: String, trim: true },
+      receiptNumber: { type: String, trim: true },
+      notes: { type: String, trim: true },
+      recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      createdAt: { type: Date, default: Date.now },
+    }],
     receiptNumber: { type: String, trim: true },
     paymentMethod: { type: String, enum: ['cash', 'bank_transfer', 'online', 'other'], default: 'cash' },
     /** Uploaded bank or cash slip, stored under /uploads/payment-slips. */

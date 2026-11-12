@@ -909,6 +909,12 @@ async function updateFeeRecord(id, payload = {}, slipFile) {
     if (!Number.isFinite(amount) || amount < 0) {
       throw new ApiError(400, 'Amount must be a non-negative number');
     }
+    if (!isPaid && amount + 0.009 < receivedSoFar(record)) {
+      throw new ApiError(
+        400,
+        `Amount cannot be less than the ${receivedSoFar(record)} already received in installments`
+      );
+    }
     const hasAdjustment =
       record.originalAmount !== undefined && record.originalAmount !== null;
     if (hasAdjustment && Math.abs(amount - Number(record.amount)) > 0.009) {
@@ -984,6 +990,9 @@ async function updateFeeRecord(id, payload = {}, slipFile) {
       const next = String(payload.status);
       if (!['pending', 'overdue', 'waived'].includes(next)) {
         throw new ApiError(400, 'Status must be pending, overdue, or waived');
+      }
+      if (next === 'waived' && receivedSoFar(record) > 0) {
+        throw new ApiError(400, 'This fee has installments received — reverse them before waiving');
       }
       record.status = next;
     }
@@ -1829,16 +1838,24 @@ async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt, paymen
   const paymentSlip = savePaymentSlip(slipFile);
   const slipNumber = String(paymentSlipNumber || '').trim();
 
+  const when = resolvePaidAt(paidAt);
+  const balance = feeBalance(existing);
+  const installmentNo = (existing.payments?.length || 0) + 1;
   // Atomic: only one concurrent payer can flip pending/overdue → paid
   const record = await AcademyFeeRecord.findOneAndUpdate(
     {
       _id: feeRecordId,
       status: { $in: ['pending', 'overdue'] },
+      amount: existing.amount,
+      ...(receivedSoFar(existing) > 0
+        ? { paidAmount: existing.paidAmount }
+        : { paidAmount: { $in: [0, null] } }),
     },
     {
       $set: {
         status: 'paid',
-        paidAt: resolvePaidAt(paidAt),
+        paidAt: when,
+        paidAmount: roundMoney(Number(existing.amount) || 0),
         paymentMethod: paymentMethod || 'cash',
         notes: notes || '',
         recordedBy: userId,
@@ -1846,6 +1863,23 @@ async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt, paymen
         ...(paymentSlip ? { paymentSlip } : {}),
         ...(slipNumber ? { paymentSlipNumber: slipNumber } : {}),
       },
+      ...(balance > 0
+        ? {
+            $push: {
+              payments: {
+                amount: balance,
+                paidAt: when,
+                paymentMethod: paymentMethod || 'cash',
+                ...(paymentSlip ? { paymentSlip } : {}),
+                ...(slipNumber ? { paymentSlipNumber: slipNumber } : {}),
+                notes: notes || '',
+                recordedBy: userId,
+                receiptNumber:
+                  installmentNo === 1 || !nextReceipt ? nextReceipt : `${nextReceipt}-P${installmentNo}`,
+              },
+            },
+          }
+        : {}),
     },
     { new: true }
   ).populate({
@@ -1869,6 +1903,26 @@ async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt, paymen
   return { record, needsSectionAssignment: Boolean(needsSectionAssignment) };
 }
 
+/** Money already received on a voucher that is not fully paid yet. */
+function receivedSoFar(record) {
+  return roundMoney(Number(record?.paidAmount) || 0);
+}
+
+/** Remaining balance on a voucher (amount minus installments received). */
+function feeBalance(record) {
+  if (!record) return 0;
+  if (record.status === 'paid' || record.status === 'waived') return 0;
+  return Math.max(0, roundMoney((Number(record.amount) || 0) - receivedSoFar(record)));
+}
+
+/**
+ * Collect money for one student's selected vouchers.
+ *
+ * - `payload.adjustments`: optional collection-time adjustment per voucher.
+ * - `payload.amountReceived`: optional cash received. Less than the total due
+ *   records installments: vouchers are filled oldest first, a voucher that is
+ *   not covered in full stays pending/overdue with `paidAmount` = money so far.
+ */
 async function recordPayments(feeRecordIds, payload, userId, slipFile) {
   const ids = [...new Set((feeRecordIds || []).map(String))];
   const records = await AcademyFeeRecord.find({ _id: { $in: ids } }).sort({ year: 1, month: 1 });
@@ -1876,6 +1930,7 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
   const students = new Set(records.map((r) => String(r.studentId)));
   if (students.size !== 1) throw new ApiError(400, 'Pay fees for one student at a time');
   if (records.some((r) => r.status === 'paid')) throw new ApiError(400, 'One of the selected fees is already paid');
+  if (records.some((r) => r.status === 'waived')) throw new ApiError(400, 'One of the selected fees is waived');
 
   const paidAt = resolvePaidAt(payload.paidAt);
   const adjustmentByFee = new Map();
@@ -1885,23 +1940,28 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
     if (adjustmentByFee.has(key)) throw new ApiError(400, 'Only one adjustment per fee is allowed');
     adjustmentByFee.set(key, adj);
   }
-  const paymentSlip = savePaymentSlip(slipFile);
-  const slipNumber = String(payload.paymentSlipNumber || '').trim();
-  const paid = [];
-  for (const record of records) {
+
+  // Work out each voucher's final amount (after any adjustment) and balance first.
+  const plan = records.map((record) => {
     const adj = adjustmentByFee.get(String(record._id));
-    const original = roundMoney(Number(record.amount) || 0);
+    const current = roundMoney(Number(record.amount) || 0);
+    const received = receivedSoFar(record);
+    let finalAmount = current;
     let adjustmentSet = {};
     if (adj) {
+      if (record.originalAmount !== undefined && record.originalAmount !== null) {
+        throw new ApiError(400, 'This fee already has an adjustment');
+      }
       const size = roundMoney(Math.abs(Number(adj.amount) || 0));
       const delta = adj.kind === 'late_fine' ? size : -size;
-      const finalAmount = roundMoney(original + delta);
-      if (finalAmount < 0) {
-        throw new ApiError(400, 'Adjustment is larger than the fee amount');
+      finalAmount = roundMoney(current + delta);
+      if (finalAmount < 0) throw new ApiError(400, 'Adjustment is larger than the fee amount');
+      if (finalAmount + 0.009 < received) {
+        throw new ApiError(400, 'Adjustment would make the fee less than the money already received');
       }
       adjustmentSet = {
         amount: finalAmount,
-        originalAmount: original,
+        originalAmount: current,
         adjustment: {
           kind: adj.kind,
           amount: delta,
@@ -1911,40 +1971,102 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
         },
       };
     }
+    return {
+      record,
+      adj,
+      current,
+      received,
+      finalAmount,
+      balance: Math.max(0, roundMoney(finalAmount - received)),
+      adjustmentSet,
+    };
+  });
+
+  const totalDue = roundMoney(plan.reduce((sum, row) => sum + row.balance, 0));
+  const hasAmount =
+    payload.amountReceived !== undefined && payload.amountReceived !== null && payload.amountReceived !== '';
+  const cash = hasAmount ? roundMoney(Number(payload.amountReceived)) : totalDue;
+  if (!Number.isFinite(cash) || cash < 0) throw new ApiError(400, 'Amount received is not valid');
+  if (cash > totalDue + 0.009) {
+    throw new ApiError(400, `Amount received is more than the total due (${totalDue})`);
+  }
+  if (cash <= 0 && totalDue > 0) throw new ApiError(400, 'Enter the amount received');
+
+  const paymentSlip = savePaymentSlip(slipFile);
+  const slipNumber = String(payload.paymentSlipNumber || '').trim();
+  const method = payload.paymentMethod || 'cash';
+  const notes = payload.notes || '';
+
+  let left = cash;
+  const paid = [];
+  const partial = [];
+  for (const row of plan) {
+    const { record } = row;
+    const share = roundMoney(Math.min(row.balance, left));
+    const settles = share + 0.009 >= row.balance;
+    // A voucher this payment does not reach stays as it is (unless it carries an adjustment).
+    if (share <= 0 && !settles && !row.adj) continue;
+    left = roundMoney(left - share);
+
+    const baseReceipt =
+      record.receiptNumber || receiptNumber(record.studentId, record.month, record.year, record.feeType);
+    const installmentNo = (record.payments?.length || 0) + 1;
+    const installment =
+      share > 0
+        ? {
+            amount: share,
+            paidAt,
+            paymentMethod: method,
+            ...(paymentSlip ? { paymentSlip } : {}),
+            ...(slipNumber ? { paymentSlipNumber: slipNumber } : {}),
+            notes,
+            recordedBy: userId,
+            receiptNumber: settles && installmentNo === 1 ? baseReceipt : `${baseReceipt}-P${installmentNo}`,
+          }
+        : null;
+
+    // Only one payer may move this voucher: match the state the plan was built on.
+    const filter = {
+      _id: record._id,
+      status: { $in: ['pending', 'overdue'] },
+      amount: record.amount,
+      ...(row.received > 0 ? { paidAmount: record.paidAmount } : { paidAmount: { $in: [0, null] } }),
+    };
+    const update = settles
+      ? {
+          $set: {
+            ...row.adjustmentSet,
+            status: 'paid',
+            paidAt,
+            paidAmount: row.finalAmount,
+            paymentMethod: method,
+            notes,
+            recordedBy: userId,
+            receiptNumber: baseReceipt,
+            ...(paymentSlip ? { paymentSlip } : {}),
+            ...(slipNumber ? { paymentSlipNumber: slipNumber } : {}),
+          },
+          ...(installment ? { $push: { payments: installment } } : {}),
+        }
+      : {
+          $set: {
+            ...row.adjustmentSet,
+            paidAmount: roundMoney(row.received + share),
+            receiptNumber: baseReceipt,
+          },
+          ...(installment ? { $push: { payments: installment } } : {}),
+        };
+
     // eslint-disable-next-line no-await-in-loop
-    const updated = await AcademyFeeRecord.findOneAndUpdate(
-      {
-        _id: record._id,
-        status: { $in: ['pending', 'overdue'] },
-        // The adjustment was worked out from this amount; refuse if it changed meanwhile.
-        ...(adj ? { amount: record.amount } : {}),
-      },
-      {
-        $set: {
-          ...adjustmentSet,
-          status: 'paid',
-          paidAt,
-          paymentMethod: payload.paymentMethod || 'cash',
-          notes: payload.notes || '',
-          recordedBy: userId,
-          receiptNumber:
-            record.receiptNumber ||
-            receiptNumber(record.studentId, record.month, record.year, record.feeType),
-          ...(paymentSlip ? { paymentSlip } : {}),
-          ...(slipNumber ? { paymentSlipNumber: slipNumber } : {}),
-        },
-      },
-      { new: true }
-    );
+    const updated = await AcademyFeeRecord.findOneAndUpdate(filter, update, { new: true });
     if (!updated) {
       throw new ApiError(
-        adj ? 409 : 400,
-        adj
-          ? 'The fee amount changed while collecting — reopen the payment and try again'
-          : 'One of the selected fees is already paid'
+        409,
+        'This fee changed while you were collecting (paid or edited by someone else) — reopen it and try again'
       );
     }
-    paid.push(updated);
+    if (settles) paid.push(updated);
+    else partial.push(updated);
   }
 
   const studentId = records[0].studentId;
@@ -1955,8 +2077,11 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
 
   return {
     paid: paid.length,
-    total: paid.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
-    records: paid,
+    partial: partial.length,
+    total: cash,
+    totalDue,
+    balanceLeft: roundMoney(totalDue - cash),
+    records: [...paid, ...partial],
     needsSectionAssignment: Boolean(needsSectionAssignment),
     studentId: studentId ? String(studentId) : undefined,
   };
@@ -1983,7 +2108,8 @@ function appendFeeNote(existing, line) {
 async function reversePayment(id, { reason, kind = 'reverse' } = {}, userId) {
   const record = await AcademyFeeRecord.findById(id);
   if (!record) throw new ApiError(404, 'Fee record not found');
-  if (record.status !== 'paid') {
+  const partlyPaid = record.status !== 'paid' && receivedSoFar(record) > 0;
+  if (record.status !== 'paid' && !partlyPaid) {
     throw new ApiError(400, 'Only paid fees can be reversed or refunded');
   }
 
@@ -1999,14 +2125,21 @@ async function reversePayment(id, { reason, kind = 'reverse' } = {}, userId) {
   const adjustmentNote = hadAdjustment
     ? `; adjustment ₨${Number(record.adjustment?.amount || 0).toLocaleString()} removed`
     : '';
-  const noteLine = `${label} ${when} (was paid ${prevPaid}; ₨${Number(record.amount || 0).toLocaleString()}${adjustmentNote}): ${why}`;
+  const moneyBack = partlyPaid ? receivedSoFar(record) : Number(record.amount || 0);
+  const noteLine = `${label} ${when} (was ${partlyPaid ? 'part-paid' : 'paid'} ${prevPaid}; ₨${moneyBack.toLocaleString()}${
+    (record.payments?.length || 0) > 1 ? ` in ${record.payments.length} installments` : ''
+  }${adjustmentNote}): ${why}`;
 
   const updated = await AcademyFeeRecord.findOneAndUpdate(
-    { _id: record._id, status: 'paid' },
+    partlyPaid
+      ? { _id: record._id, status: record.status, paidAmount: record.paidAmount }
+      : { _id: record._id, status: 'paid' },
     {
       $set: {
         status: unpaidStatusFromDueDate(record.dueDate),
         paymentMethod: 'cash',
+        paidAmount: 0,
+        payments: [],
         notes: appendFeeNote(record.notes, noteLine),
         ...(userId && !record.createdBy ? { createdBy: userId } : {}),
         // Undo a collection-time adjustment so the voucher is back to its original fee.
@@ -2074,6 +2207,12 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
   if (target.status === 'paid') {
     throw new ApiError(400, 'Target fee is already paid');
   }
+  if ((source.payments?.length || 0) > 1) {
+    throw new ApiError(400, 'This fee was paid in installments — reverse it instead of transferring');
+  }
+  if (receivedSoFar(target) > 0) {
+    throw new ApiError(400, 'Target fee already has installments received — choose another fee');
+  }
   if (target.status === 'waived') {
     throw new ApiError(400, 'Target fee is waived and cannot receive a transfer');
   }
@@ -2099,6 +2238,8 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
 
   // Snapshot for rollback if the target update fails.
   const sourceSnapshot = {
+    paidAmount: source.paidAmount,
+    payments: source.payments,
     amount: source.amount,
     originalAmount: source.originalAmount,
     adjustment: source.adjustment,
@@ -2119,6 +2260,8 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
         paymentMethod: 'cash',
         notes: appendFeeNote(source.notes, sourceNote),
         ...(sourceHadAdjustment ? { amount: source.originalAmount } : {}),
+        paidAmount: 0,
+        payments: [],
       },
       $unset: {
         paidAt: 1,
@@ -2145,6 +2288,19 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
         notes: appendFeeNote(target.notes, targetNote),
         recordedBy: userId,
         receiptNumber: receipt,
+        paidAmount: roundMoney(Number(target.amount) || 0),
+        payments: [
+          {
+            amount: roundMoney(Number(target.amount) || 0),
+            paidAt,
+            paymentMethod,
+            ...(paymentSlip ? { paymentSlip } : {}),
+            ...(paymentSlipNumber ? { paymentSlipNumber } : {}),
+            notes: targetNote,
+            recordedBy: userId,
+            receiptNumber: receipt,
+          },
+        ],
         ...(paymentSlip ? { paymentSlip } : {}),
         ...(paymentSlipNumber ? { paymentSlipNumber } : {}),
       },
@@ -2155,6 +2311,8 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
   if (!paid) {
     await AcademyFeeRecord.findByIdAndUpdate(source._id, {
       $set: {
+        paidAmount: sourceSnapshot.paidAmount,
+        payments: sourceSnapshot.payments,
         amount: sourceSnapshot.amount,
         ...(sourceHadAdjustment
           ? { originalAmount: sourceSnapshot.originalAmount, adjustment: sourceSnapshot.adjustment }
@@ -3645,6 +3803,8 @@ module.exports = {
   monthlyBillAmount,
   recordPayment,
   recordPayments,
+  feeBalance,
+  receivedSoFar,
   reversePayment,
   transferPayment,
   getStudentFeeHistory,

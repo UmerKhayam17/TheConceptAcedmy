@@ -6,12 +6,13 @@ import {
   fetchAcademyClasses,
   fetchConcessionCategories,
   fetchDiscountReport,
+  type CollectionAdjustmentsReport,
   type DiscountReliefFilter,
   type DiscountReportRow,
 } from "@/lib/studentManagementApi";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import ClassProgramSelect from "@/components/modules/ClassProgramSelect";
-import { formatDate, formatPkr } from "./studentDisplayUtils";
+import { formatDate, formatPkr, MONTH_NAMES } from "./studentDisplayUtils";
 import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
 
@@ -22,6 +23,151 @@ const DISCOUNT_TYPE_LABELS: Record<DiscountReportRow["discountType"], string> = 
   legacy_combined: "Legacy combined",
   none: "None",
 };
+
+function signedPkr(n: number) {
+  if (!n) return formatPkr(0);
+  return `${n < 0 ? "−" : "+"} ${formatPkr(Math.abs(n))}`;
+}
+
+/** Discounts, partial months and fines given while collecting fees. */
+function CollectionAdjustmentsSection({ report }: { report: CollectionAdjustmentsReport }) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold">Collection-time adjustments</h3>
+        <p className="text-xs text-muted-foreground">
+          Given in the Collect Fee window. The original fee is kept; these show what was changed, by whom and why.
+          Class, search and date filters apply (date = when the adjustment was made).
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Adjustments</div>
+          <div className="mt-1 font-display text-2xl font-bold text-primary">{report.count}</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Total reduced</div>
+          <div className="mt-1 font-display text-2xl font-bold text-emerald-600">
+            {formatPkr(report.totalReduced)}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Total added (fines)</div>
+          <div className="mt-1 font-display text-2xl font-bold text-destructive">
+            {formatPkr(report.totalAdded)}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs text-muted-foreground">Net change</div>
+          <div className="mt-1 font-display text-2xl font-bold text-primary">{signedPkr(report.netChange)}</div>
+        </Card>
+      </div>
+
+      {report.count > 0 && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40 text-left">
+                  <th className="p-3 font-medium">Type</th>
+                  <th className="p-3 font-medium">Count</th>
+                  <th className="p-3 font-medium">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.byKind.map((row) => (
+                  <tr key={row.kind} className="border-b last:border-0">
+                    <td className="p-3 font-medium">{row.label}</td>
+                    <td className="p-3">{row.count}</td>
+                    <td className="p-3 tabular-nums">{signedPkr(row.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40 text-left">
+                  <th className="p-3 font-medium">Given by</th>
+                  <th className="p-3 font-medium">Count</th>
+                  <th className="p-3 font-medium">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.byStaff.map((row) => (
+                  <tr key={`${row.staffName}-${row.staffEmail}`} className="border-b last:border-0">
+                    <td className="p-3">
+                      <div className="font-medium">{row.staffName}</div>
+                      {row.staffEmail ? (
+                        <div className="text-xs text-muted-foreground">{row.staffEmail}</div>
+                      ) : null}
+                    </td>
+                    <td className="p-3">{row.count}</td>
+                    <td className="p-3 tabular-nums">{signedPkr(row.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {report.count === 0 ? (
+        <p className="py-2 text-sm text-muted-foreground">No adjustments given while collecting fees yet.</p>
+      ) : (
+        <div className="max-h-[32rem] overflow-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-muted">
+              <tr className="border-b text-left">
+                <th className="p-3 font-medium">Date</th>
+                <th className="p-3 font-medium">Student</th>
+                <th className="p-3 font-medium">Fee month</th>
+                <th className="p-3 font-medium">Type &amp; reason</th>
+                <th className="p-3 text-right font-medium">Original</th>
+                <th className="p-3 text-right font-medium">Adjustment</th>
+                <th className="p-3 text-right font-medium">Final</th>
+                <th className="p-3 font-medium">Given by</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.items.map((row) => (
+                <tr key={row.feeRecordId} className="border-b align-top last:border-0">
+                  <td className="whitespace-nowrap p-3">{row.at ? formatDate(row.at) : "—"}</td>
+                  <td className="p-3">
+                    <div className="font-medium">{row.studentName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {[row.studentCode, row.className].filter(Boolean).join(" · ")}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap p-3">
+                    {row.feeType === "admission"
+                      ? "Admission"
+                      : `${MONTH_NAMES[(row.month || 1) - 1]} ${row.year}`}
+                  </td>
+                  <td className="p-3">
+                    <div className="font-medium">{row.kindLabel}</div>
+                    {row.reason ? <div className="text-xs text-muted-foreground">{row.reason}</div> : null}
+                  </td>
+                  <td className="p-3 text-right tabular-nums">{formatPkr(row.originalAmount)}</td>
+                  <td
+                    className={`p-3 text-right font-medium tabular-nums ${
+                      row.adjustmentAmount < 0 ? "text-emerald-600" : "text-destructive"
+                    }`}
+                  >
+                    {signedPkr(row.adjustmentAmount)}
+                  </td>
+                  <td className="p-3 text-right font-semibold tabular-nums">{formatPkr(row.finalAmount)}</td>
+                  <td className="p-3">{row.by?.name || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function AcademyDiscountReport() {
   const [search, setSearch] = useState("");
@@ -266,6 +412,10 @@ export default function AcademyDiscountReport() {
             </table>
           </div>
         </section>
+      ) : null}
+
+      {summary?.collectionAdjustments ? (
+        <CollectionAdjustmentsSection report={summary.collectionAdjustments} />
       ) : null}
 
       <section className="space-y-2">

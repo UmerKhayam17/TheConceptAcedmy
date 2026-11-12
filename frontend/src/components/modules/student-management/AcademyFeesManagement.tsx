@@ -257,10 +257,13 @@ function AdjFields({
   idPrefix,
   value,
   onChange,
+  feeHint,
 }: {
   idPrefix: string;
   value: AdjInput;
   onChange: (patch: Partial<AdjInput>) => void;
+  /** Current fee, shown as the placeholder of "Fee to pay". */
+  feeHint?: number;
 }) {
   const off = value.kind === "none";
   return (
@@ -283,17 +286,17 @@ function AdjFields({
       </div>
       <div className="min-w-0 space-y-1.5">
         <Label htmlFor={`${idPrefix}-amount`}>
-          Amount (Rs.){!off && <span className="text-destructive"> *</span>}
+          Fee to pay (Rs.){!off && <span className="text-destructive"> *</span>}
         </Label>
         <Input
           id={`${idPrefix}-amount`}
           type="number"
           min={0}
           disabled={off}
-          className="tabular-nums"
+          className="font-semibold tabular-nums"
           value={value.amount}
           onChange={(e) => onChange({ amount: e.target.value })}
-          placeholder="0"
+          placeholder={feeHint !== undefined ? String(feeHint) : "Amount parent pays"}
         />
       </div>
       <div className="min-w-0 space-y-1.5">
@@ -315,12 +318,13 @@ function AdjFields({
 
 /** One-click preset that takes half the tuition off a month (15-day fee). */
 function HalfMonthButton({
-  amountOff,
+  toPay,
   applied,
   large,
   onClick,
 }: {
-  amountOff: number;
+  /** Fee the parent pays for a half month. */
+  toPay: number;
   applied: boolean;
   large?: boolean;
   onClick: () => void;
@@ -334,8 +338,8 @@ function HalfMonthButton({
         "inline-flex shrink-0 items-center gap-2 rounded-lg border-2 font-semibold shadow-sm transition-all",
         large ? "w-full justify-between px-4 py-2.5 text-sm sm:w-auto" : "px-3 py-1.5 text-xs",
         applied
-          ? "border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
-          : "border-accent bg-accent/15 text-primary hover:-translate-y-0.5 hover:bg-accent/25 hover:shadow-gold"
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-primary bg-background text-primary hover:bg-primary/5"
       )}
     >
       <span className="flex items-center gap-2">
@@ -349,10 +353,10 @@ function HalfMonthButton({
       <span
         className={cn(
           "rounded-md px-2 py-0.5 tabular-nums",
-          applied ? "bg-emerald-600 text-white" : "bg-primary text-primary-foreground"
+          applied ? "bg-primary-foreground/15 text-primary-foreground" : "bg-primary/10 text-primary"
         )}
       >
-        − {formatPkr(amountOff)}
+        Pay {formatPkr(toPay)}
       </span>
     </button>
   );
@@ -390,9 +394,11 @@ function PaySection({
 }) {
   return (
     <section className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-sm">
-      <header className="flex items-center gap-2.5 border-b bg-primary/[0.04] px-4 py-2.5">
-        <Icon className="h-4 w-4 text-accent" />
-        <h3 className="font-semibold text-primary">{title}</h3>
+      <header className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-semibold text-foreground">
+        <span className="grid h-7 w-7 place-items-center rounded-md bg-primary/10 text-primary">
+          <Icon className="h-4 w-4" />
+        </span>
+        <h3 className="font-semibold">{title}</h3>
         {action && <div className="ml-auto">{action}</div>}
       </header>
       {children}
@@ -785,6 +791,8 @@ export default function AcademyFeesManagement({
   /** "same" = one adjustment on every selected month; "each" = own adjustment per month. */
   const [adjMode, setAdjMode] = useState<"same" | "each">("same");
   const [adjEach, setAdjEach] = useState<Record<string, AdjInput>>({});
+  /** Cash received now; empty means the full amount due. */
+  const [amountReceived, setAmountReceived] = useState("");
   /** Set when the dialog opens; shown in the footer as the transaction time. */
   const [payOpenedAt, setPayOpenedAt] = useState(() => new Date());
   const [paymentNotes, setPaymentNotes] = useState("");
@@ -1033,6 +1041,7 @@ export default function AcademyFeesManagement({
       setAdjReason("");
       setAdjMode("same");
       setAdjEach({});
+      setAmountReceived("");
       setPayOpenedAt(new Date());
     }
 
@@ -1136,7 +1145,12 @@ export default function AcademyFeesManagement({
   const focusFee =
     unpaidForPay.find((r) => r._id === payRecord?._id) ?? unpaidForPay[0] ?? null;
   const remainingUnpaid = unpaidForPay.filter((r) => !selectedFeeIds.includes(r._id));
-  const remainingTotal = remainingUnpaid.reduce((sum, r) => sum + feeAmount(r), 0);
+  /** Installments already received on a voucher that is not fully paid. */
+  const received = (fee: AcademyFeeRecord) => Number(fee.paidAmount) || 0;
+  const remainingTotal = remainingUnpaid.reduce(
+    (sum, r) => sum + Math.max(0, feeAmount(r) - received(r)),
+    0
+  );
   const originalTotal =
     editingPaid && payRecord
       ? Number(amountOverrides[payRecord._id] ?? payRecord.amount) || 0
@@ -1154,11 +1168,22 @@ export default function AcademyFeesManagement({
   const adjIssue = (fee: AcademyFeeRecord, input: AdjInput) => {
     if (input.kind === "none") return "";
     const forMonth = selectedUnpaid.length > 1 ? ` for ${periodLabel(fee)}` : "";
-    const n = Number(input.amount);
-    if (input.amount.trim() === "") return `Enter the adjustment amount${forMonth}.`;
-    if (!Number.isFinite(n) || n <= 0) return `Adjustment amount${forMonth} must be more than 0.`;
-    if (input.kind !== "late_fine" && n > feeAmount(fee) + 0.009) {
-      return `Adjustment can't be more than the ${periodLabel(fee)} fee (${formatPkr(feeAmount(fee))}).`;
+    const toPay = Number(input.amount);
+    const fee0 = feeAmount(fee);
+    if (input.amount.trim() === "") return `Enter the fee the parent will pay${forMonth}.`;
+    if (!Number.isFinite(toPay) || toPay < 0) return `Fee to pay${forMonth} must be 0 or more.`;
+    const diff = Math.round((toPay - fee0) * 100) / 100;
+    if (Math.abs(diff) <= 0.009) {
+      return `Fee to pay${forMonth} is the same as the fee (${formatPkr(fee0)}) — choose "No adjustment".`;
+    }
+    if (diff > 0 && input.kind !== "late_fine") {
+      return `Fee to pay${forMonth} is more than the fee (${formatPkr(fee0)}). Choose "Late fine" to charge extra.`;
+    }
+    if (diff < 0 && input.kind === "late_fine") {
+      return `A late fine must be more than the fee (${formatPkr(fee0)})${forMonth}.`;
+    }
+    if (toPay + 0.009 < received(fee)) {
+      return `Fee to pay${forMonth} can't be less than ${formatPkr(received(fee))} already received.`;
     }
     if (input.reason.trim().length < 2) return `Enter a reason for the adjustment${forMonth}.`;
     return "";
@@ -1167,14 +1192,15 @@ export default function AcademyFeesManagement({
     ? selectedUnpaid.flatMap((fee) => {
         const input = adjInputFor(fee);
         if (input.kind === "none" || adjIssue(fee, input)) return [];
-        const amount = Number(input.amount);
+        const delta = Math.round((Number(input.amount) - feeAmount(fee)) * 100) / 100;
         const kind = input.kind as FeeAdjustmentKind;
         return [
           {
             fee,
             kind,
-            amount,
-            delta: kind === "late_fine" ? amount : -amount,
+            /** Size of the change (always positive), as the API expects. */
+            amount: Math.abs(delta),
+            delta,
             reason: input.reason.trim(),
           },
         ];
@@ -1188,6 +1214,19 @@ export default function AcademyFeesManagement({
   /** Net change across every adjusted month (negative = reduction). */
   const adjDelta = adjEntries.reduce((sum, entry) => sum + entry.delta, 0);
   const finalTotal = Math.max(0, originalTotal + adjDelta);
+  const receivedTotal = adjEnabled ? selectedUnpaid.reduce((sum, fee) => sum + received(fee), 0) : 0;
+  /** Still owed on the selected months after adjustments and earlier installments. */
+  const dueNow = Math.max(0, finalTotal - receivedTotal);
+  const cashTyped = amountReceived.trim() !== "";
+  const cashNum = cashTyped ? Number(amountReceived) : dueNow;
+  let cashError = "";
+  if (adjEnabled && cashTyped) {
+    if (!Number.isFinite(cashNum) || cashNum <= 0) cashError = "Enter the amount received.";
+    else if (cashNum > dueNow + 0.009) cashError = `Amount received can't be more than ${formatPkr(dueNow)}.`;
+  }
+  const cashNow = cashError ? 0 : Math.min(cashNum, dueNow);
+  const balanceAfter = adjEnabled ? Math.max(0, dueNow - cashNow) : 0;
+  const isPartialPayment = adjEnabled && !cashError && balanceAfter > 0.009;
   const canHalfMonth = (fee: AcademyFeeRecord) =>
     fee.feeType === "monthly" && tuitionPart(fee) > 0;
   const switchAdjMode = (mode: "same" | "each") => {
@@ -1263,26 +1302,15 @@ export default function AcademyFeesManagement({
             adjustmentReason: entry?.reason ?? "",
           };
         });
-  const summaryTotals = summaryRows.every((row) => row.detailed)
-    ? summaryRows
-        .flatMap((row) => row.lines)
-        .reduce(
-          (acc, line) => {
-            if (line.kind === "tuition") acc.tuition += line.amount;
-            else if (line.kind === "admission") acc.admission += line.amount;
-            else acc.charges += line.amount;
-            return acc;
-          },
-          { tuition: 0, admission: 0, charges: 0 }
-        )
-    : { tuition: 0, admission: 0, charges: 0 };
-
   /** Preset: take half the tuition off; admission and charges stay in full. */
   const halfMonthOff = (fee: AcademyFeeRecord) => Math.round(tuitionPart(fee) / 2);
+  const halfMonthToPay = (fee: AcademyFeeRecord) => Math.max(0, feeAmount(fee) - halfMonthOff(fee));
   const isHalfMonthApplied = (fee: AcademyFeeRecord, input: AdjInput) =>
-    input.kind === "partial_month" && Number(input.amount) === halfMonthOff(fee);
+    input.kind === "partial_month" &&
+    input.amount.trim() !== "" &&
+    Number(input.amount) === halfMonthToPay(fee);
   const applyHalfMonth = (fee: AcademyFeeRecord) => {
-    const amount = String(halfMonthOff(fee));
+    const amount = String(halfMonthToPay(fee));
     const reason = "Half month (15 days) fee";
     if (adjPerMonth) {
       setAdjFor(fee._id, {
@@ -1368,8 +1396,10 @@ export default function AcademyFeesManagement({
         }
       }
       if (adjError) throw new Error(adjError);
+      if (cashError) throw new Error(cashError);
       return payAcademyFees({
         feeRecordIds: selectedFeeIds,
+        amountReceived: cashTyped ? cashNum : undefined,
         adjustments: adjActive
           ? adjEntries.map((entry) => ({
               feeRecordId: entry.fee._id,
@@ -1404,8 +1434,15 @@ export default function AcademyFeesManagement({
       setPaymentSlip(null);
       setSlipInputKey((key) => key + 1);
       toast({
-        title: wasEdit ? "Fee updated" : "Payment recorded",
-        description: `${result.paid} month${result.paid === 1 ? "" : "s"} · ${formatPkr(result.total)}`,
+        title: wasEdit
+          ? "Fee updated"
+          : "partial" in result && result.partial
+            ? "Installment recorded"
+            : "Payment recorded",
+        description:
+          "partial" in result && result.partial
+            ? `${formatPkr(result.total)} received · ${formatPkr(result.balanceLeft ?? 0)} still due`
+            : `${result.paid} month${result.paid === 1 ? "" : "s"} · ${formatPkr(result.total)}`,
       });
       if (result.needsSectionAssignment && result.studentId) {
         setAssignSectionStudentId(result.studentId);
@@ -2386,17 +2423,17 @@ export default function AcademyFeesManagement({
           }
         }}
       >
-        <DialogContent className="flex min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(1400px,calc(100vw-3rem))] sm:p-0 [&>button]:right-5 [&>button]:top-5 [&>button]:text-primary-foreground [&>button]:opacity-90">
-          <DialogHeader className="shrink-0 bg-hero-gradient px-5 py-4 text-left text-primary-foreground sm:px-6">
+        <DialogContent className="flex min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(1400px,calc(100vw-3rem))] sm:p-0 [&>button]:right-5 [&>button]:top-5 [&>button]:text-primary-foreground [&>button]:opacity-100 [&>button]:hover:text-primary-foreground">
+          <DialogHeader className="shrink-0 bg-primary px-5 py-4 text-left text-primary-foreground sm:px-6">
             <div className="flex items-center gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold-gradient text-accent-foreground shadow-gold">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-foreground/15">
                 <Wallet className="h-5 w-5" />
               </div>
               <div className="min-w-0">
                 <DialogTitle className="text-xl text-primary-foreground">
                   {payModalMode === "edit" ? "Edit Fee Payment" : "Collect Student Fee"}
                 </DialogTitle>
-                <DialogDescription className="mt-1 text-primary-foreground/75">
+                <DialogDescription className="mt-1 text-primary-foreground/80">
                   {payModalMode === "edit"
                     ? "Correct the amount or payment details of this fee"
                     : "Edit adjustment if required and collect payment"}
@@ -2406,12 +2443,12 @@ export default function AcademyFeesManagement({
           </DialogHeader>
 
           {payRecord && (
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-muted/30">
               <div className="grid min-w-0 gap-5 p-4 text-sm sm:p-6 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_420px]">
                 {/* ---------- Left column ---------- */}
                 <div className="min-w-0 space-y-4">
                   <div className="flex min-w-0 items-center gap-4">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-accent/60 bg-primary/10 text-lg font-semibold text-primary">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-primary/20 bg-primary/10 text-lg font-semibold text-primary">
                       {payStudent?.photoImage ? (
                         <img
                           src={resolveUploadUrl(payStudent.photoImage)}
@@ -2533,6 +2570,12 @@ export default function AcademyFeesManagement({
                                         <span className="ml-2 text-xs text-muted-foreground">
                                           {feeTypeLabel(fee.feeType)} · {fee.status}
                                         </span>
+                                        {received(fee) > 0 && (
+                                          <span className="mt-0.5 block text-xs font-medium text-amber-700 dark:text-amber-300">
+                                            Part-paid: {formatPkr(received(fee))} received ·{" "}
+                                            {formatPkr(Math.max(0, feeAmount(fee) - received(fee)))} balance
+                                          </span>
+                                        )}
                                       </span>
                                     </label>
                                     {payModalMode === "edit" ? (
@@ -2591,7 +2634,7 @@ export default function AcademyFeesManagement({
                         )}
                       </>
                     )}
-                    <div className="flex items-center justify-between gap-3 border-t bg-primary/[0.06] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3 border-t bg-muted/40 px-4 py-3">
                       <span className="flex items-center gap-2 font-semibold text-primary">
                         <Calculator className="h-4 w-4" />
                         {editingPaid
@@ -2617,17 +2660,15 @@ export default function AcademyFeesManagement({
                   {adjEnabled && selectedUnpaid.length > 0 && (
                     <section
                       className={cn(
-                        "min-w-0 overflow-hidden rounded-xl border-2 bg-card shadow-sm",
-                        adjActive ? "border-primary/60" : "border-border"
+                        "min-w-0 overflow-hidden rounded-xl border bg-card shadow-sm",
+                        adjActive ? "border-primary/50" : "border-border"
                       )}
                     >
-                      <header className="flex flex-wrap items-center gap-2.5 border-b bg-primary/[0.04] px-4 py-2.5">
-                        <Settings2 className="h-4 w-4 text-accent" />
-                        <h3 className="font-semibold text-primary">Fee Adjustment</h3>
-                        <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs text-primary">
-                          <Info className="h-3.5 w-3.5" />
-                          Saved separately — the original fee stays safe
+                      <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5 text-sm font-semibold text-foreground">
+                        <span className="grid h-7 w-7 place-items-center rounded-md bg-primary/10 text-primary">
+                          <Settings2 className="h-4 w-4" />
                         </span>
+                        <h3 className="font-semibold">Fee Adjustment</h3>
                       </header>
                       <div className="space-y-3 p-4">
                         {selectedUnpaid.length > 1 && (
@@ -2677,7 +2718,7 @@ export default function AcademyFeesManagement({
                                     </span>
                                     {canHalfMonth(fee) && (
                                       <HalfMonthButton
-                                        amountOff={halfMonthOff(fee)}
+                                        toPay={halfMonthToPay(fee)}
                                         applied={isHalfMonthApplied(fee, input)}
                                         onClick={() => applyHalfMonth(fee)}
                                       />
@@ -2685,6 +2726,7 @@ export default function AcademyFeesManagement({
                                   </div>
                                   <AdjFields
                                     idPrefix={`adj-${fee._id}`}
+                                    feeHint={feeAmount(fee)}
                                     value={input}
                                     onChange={(patch) => setAdjFor(fee._id, patch)}
                                   />
@@ -2696,19 +2738,22 @@ export default function AcademyFeesManagement({
                         ) : (
                           <>
                             {selectedUnpaid.length === 1 && canHalfMonth(selectedUnpaid[0]) && (
-                              <HalfMonthButton
-                                large
-                                amountOff={halfMonthOff(selectedUnpaid[0])}
-                                applied={isHalfMonthApplied(selectedUnpaid[0], {
-                                  kind: adjKind,
-                                  amount: adjAmount,
-                                  reason: adjReason,
-                                })}
-                                onClick={() => applyHalfMonth(selectedUnpaid[0])}
-                              />
+                              <div className="flex justify-end">
+                                <HalfMonthButton
+                                  large
+                                  toPay={halfMonthToPay(selectedUnpaid[0])}
+                                  applied={isHalfMonthApplied(selectedUnpaid[0], {
+                                    kind: adjKind,
+                                    amount: adjAmount,
+                                    reason: adjReason,
+                                  })}
+                                  onClick={() => applyHalfMonth(selectedUnpaid[0])}
+                                />
+                              </div>
                             )}
                             <AdjFields
                               idPrefix="adj"
+                              feeHint={selectedUnpaid.length === 1 ? feeAmount(selectedUnpaid[0]) : undefined}
                               value={{ kind: adjKind, amount: adjAmount, reason: adjReason }}
                               onChange={(patch) => {
                                 if (patch.kind !== undefined) setAdjKind(patch.kind);
@@ -2731,7 +2776,7 @@ export default function AcademyFeesManagement({
                             )}
                             {selectedUnpaid.length > 1 && adjKind !== "none" && (
                               <p className="text-xs text-muted-foreground">
-                                Applied to each of the {selectedUnpaid.length} selected months.
+                                Each of the {selectedUnpaid.length} selected months will be charged this fee.
                               </p>
                             )}
                           </>
@@ -2766,18 +2811,29 @@ export default function AcademyFeesManagement({
                   )}
 
                   {!editingPaid && payModalMode === "pay" && (
-                    <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 px-5 py-4 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+                    <div className="rounded-xl border bg-card px-5 py-4 shadow-sm">
                       <p className="flex items-center gap-2 font-semibold">
-                        <Banknote className="h-4 w-4 text-emerald-600" />
-                        Amount to Collect
+                        <Banknote className="h-4 w-4 text-primary" />
+                        Amount Due
                       </p>
-                      <p className="mt-1 text-3xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
-                        {formatPkr(finalTotal)}
+                      <p className="mt-1 text-3xl font-bold tabular-nums text-primary">
+                        {formatPkr(dueNow)}
                       </p>
-                      {adjActive && (
-                        <p className="mt-0.5 text-xs text-emerald-800/80 dark:text-emerald-200/80">
-                          (Original {formatPkr(originalTotal)} {adjDelta < 0 ? "−" : "+"} Adjustment{" "}
-                          {formatPkr(Math.abs(adjDelta))})
+                      {(adjActive || receivedTotal > 0) && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          (Original {formatPkr(originalTotal)}
+                          {adjActive && (
+                            <>
+                              {" "}
+                              {adjDelta < 0 ? "−" : "+"} Adjustment {formatPkr(Math.abs(adjDelta))}
+                            </>
+                          )}
+                          {receivedTotal > 0 && <> − Already received {formatPkr(receivedTotal)}</>})
+                        </p>
+                      )}
+                      {isPartialPayment && (
+                        <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-1.5 text-sm font-medium text-amber-800 dark:text-amber-200">
+                          Receiving {formatPkr(cashNow)} now · {formatPkr(balanceAfter)} stays due
                         </p>
                       )}
                     </div>
@@ -2786,119 +2842,88 @@ export default function AcademyFeesManagement({
 
                 {/* ---------- Right column ---------- */}
                 <div className="min-w-0 space-y-4">
-                  <PaySection
-                    icon={FileText}
-                    title="Summary"
-                    action={
-                      <span className="text-xs text-muted-foreground">
-                        {summaryRows.length} item{summaryRows.length === 1 ? "" : "s"}
-                      </span>
-                    }
-                  >
-                    {/* Per month: every line on the voucher, plus its adjustment */}
-                    <div className="max-h-[22rem] divide-y overflow-y-auto">
+                  <PaySection icon={FileText} title="Summary">
+                    {/* 1. What is being paid: one line per month */}
+                    <div className="max-h-[18rem] divide-y overflow-y-auto">
                       {summaryRows.length === 0 && (
                         <p className="px-4 py-3 text-muted-foreground">Select at least one month.</p>
                       )}
-                      {summaryRows.map((row) => (
-                        <div key={row.fee._id} className="px-4 py-2.5">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="font-semibold text-primary">
-                              {periodLabel(row.fee)}
-                              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                                {feeTypeLabel(row.fee.feeType)}
-                                {row.fee.dueDate ? ` · due ${formatDate(row.fee.dueDate)}` : ""}
-                              </span>
-                            </span>
+                      {summaryRows.map((row) => {
+                        const monthTotal = row.amount + row.adjustment;
+                        const breakdown = row.detailed
+                          ? row.lines.map((line) => `${line.name} ${formatPkr(line.amount)}`).join(" · ")
+                          : "";
+                        return (
+                          <div key={row.fee._id} className="px-4 py-2.5">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span className="font-medium">{periodLabel(row.fee)}</span>
+                              <span className="font-semibold tabular-nums">{formatPkr(monthTotal)}</span>
+                            </div>
+                            {breakdown && row.lines.length > 1 && (
+                              <p className="mt-0.5 text-xs text-muted-foreground">{breakdown}</p>
+                            )}
                             {row.adjustment !== 0 && (
-                              <span className="text-xs text-muted-foreground line-through tabular-nums">
-                                {formatPkr(row.amount)}
-                              </span>
+                              <p
+                                className={cn(
+                                  "mt-0.5 text-xs",
+                                  row.adjustment < 0
+                                    ? "text-emerald-700 dark:text-emerald-300"
+                                    : "text-destructive"
+                                )}
+                              >
+                                {row.adjustmentLabel}: {formatPkr(row.amount)} → {formatPkr(monthTotal)}
+                                {row.adjustmentReason ? ` (${row.adjustmentReason})` : ""}
+                              </p>
                             )}
                           </div>
-                          <ul className="mt-1 space-y-0.5 text-xs">
-                            {row.lines.map((line) => (
-                              <li key={line.key} className="flex items-baseline justify-between gap-3">
-                                <span className="text-muted-foreground">{line.name}</span>
-                                <span className="tabular-nums">{formatPkr(line.amount)}</span>
-                              </li>
-                            ))}
-                            {row.adjustment !== 0 && (
-                              <li className="flex items-baseline justify-between gap-3">
-                                <span
-                                  className={row.adjustment < 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}
-                                >
-                                  {row.adjustmentLabel}
-                                  {row.adjustmentReason ? ` — ${row.adjustmentReason}` : ""}
-                                </span>
-                                <span
-                                  className={cn(
-                                    "font-medium tabular-nums",
-                                    row.adjustment < 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"
-                                  )}
-                                >
-                                  {formatSignedPkr(row.adjustment)}
-                                </span>
-                              </li>
-                            )}
-                          </ul>
-                          <div className="mt-1 flex items-center justify-between gap-3 border-t border-dashed pt-1 text-xs">
-                            <span className="font-medium">Month total</span>
-                            <span className="font-semibold tabular-nums">
-                              {formatPkr(row.amount + row.adjustment)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
-                    {/* Totals by category */}
+                    {/* 2. The calculation, top to bottom */}
                     <div className="divide-y border-t bg-muted/20 text-sm">
-                      {summaryTotals.tuition > 0 && (
-                        <SummaryLine label="Tuition" value={formatPkr(summaryTotals.tuition)} />
-                      )}
-                      {summaryTotals.admission > 0 && (
-                        <SummaryLine label="Admission" value={formatPkr(summaryTotals.admission)} />
-                      )}
-                      {summaryTotals.charges > 0 && (
+                      <SummaryLine
+                        label={`Total fee (${summaryRows.length} month${summaryRows.length === 1 ? "" : "s"})`}
+                        value={formatPkr(originalTotal)}
+                      />
+                      {adjActive && (
                         <SummaryLine
-                          label="Additional charges / stationery"
-                          value={formatPkr(summaryTotals.charges)}
+                          label={adjDelta < 0 ? "Less: adjustment" : "Add: late fine"}
+                          value={formatSignedPkr(adjDelta)}
+                          tone={adjDelta < 0 ? "good" : "bad"}
                         />
                       )}
-                      <SummaryLine label="Original Payable" value={formatPkr(originalTotal)} strong />
-                      {adjEnabled && (
+                      {receivedTotal > 0 && (
                         <SummaryLine
-                          label={
-                            adjEntries.length > 1
-                              ? `Adjustments (${adjEntries.length} months)`
-                              : adjEntries.length === 1
-                                ? `Adjustment (${periodLabel(adjEntries[0].fee)})`
-                                : "Adjustment"
-                          }
-                          value={adjActive ? formatSignedPkr(adjDelta) : formatPkr(0)}
-                          tone={!adjActive ? undefined : adjDelta < 0 ? "good" : "bad"}
+                          label="Less: already paid earlier"
+                          value={`− ${formatPkr(receivedTotal)}`}
+                          tone="good"
                         />
                       )}
                     </div>
-                    <div className="flex items-center justify-between gap-3 border-t bg-primary/[0.06] px-4 py-3">
-                      <span className="font-semibold text-primary">Final Payable</span>
+                    <div className="flex items-center justify-between gap-3 border-t bg-muted/40 px-4 py-3">
+                      <span className="font-semibold">{editingPaid ? "Paid amount" : "Amount Due"}</span>
                       <span className="text-2xl font-bold tabular-nums text-primary">
-                        {formatPkr(finalTotal)}
+                        {formatPkr(editingPaid ? originalTotal : dueNow)}
                       </span>
                     </div>
 
-                    {/* Payment details as entered */}
-                    <div className="divide-y border-t text-sm">
-                      {paymentNotes.trim() && <SummaryLine label="Notes" value={paymentNotes.trim()} />}
-                      {!editingPaid && !payHistoryLoading && (
-                        <SummaryLine
-                          label={`Still unpaid after this (${remainingUnpaid.length} month${remainingUnpaid.length === 1 ? "" : "s"})`}
-                          value={formatPkr(remainingTotal)}
-                          tone={remainingUnpaid.length === 0 ? "good" : undefined}
-                        />
-                      )}
-                    </div>
+                    {/* 3. Only when the parent pays part of it */}
+                    {isPartialPayment && (
+                      <div className="divide-y border-t text-sm">
+                        <SummaryLine label="Paying now" value={formatPkr(cashNow)} strong />
+                        <SummaryLine label="Left to pay" value={formatPkr(balanceAfter)} tone="bad" strong />
+                      </div>
+                    )}
+
+                    {/* 4. Other months not selected */}
+                    {!editingPaid && !payHistoryLoading && remainingTotal > 0.009 && (
+                      <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
+                        Other unpaid months (not selected):{" "}
+                        <span className="font-semibold text-foreground">{formatPkr(remainingTotal)}</span> (
+                        {remainingUnpaid.length} month{remainingUnpaid.length === 1 ? "" : "s"})
+                      </p>
+                    )}
                   </PaySection>
 
                   <PaySection icon={CreditCard} title="Payment Details">
@@ -2983,34 +3008,6 @@ export default function AcademyFeesManagement({
                           })
                         }
                       />
-                      {!editingPaid && payModalMode === "pay" && (
-                        <div className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
-                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                          <span>
-                            {selectedUnpaid.length === 1 ? "Voucher" : `${selectedUnpaid.length} vouchers`} will be
-                            marked as <span className="font-semibold">Paid</span> once{" "}
-                            {formatPkr(finalTotal)} is collected.
-                          </span>
-                        </div>
-                      )}
-                      {!editingPaid && !payHistoryLoading && (
-                        <div className="flex items-center gap-2.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
-                          <Info className="h-4 w-4 shrink-0 text-sky-600" />
-                          <span className="min-w-0 flex-1">
-                            <span className="font-semibold">Still unpaid after this:</span>{" "}
-                            {formatPkr(remainingTotal)}
-                            {remainingUnpaid.length > 0 && (
-                              <span className="text-xs">
-                                {" "}
-                                ({remainingUnpaid.length} month{remainingUnpaid.length === 1 ? "" : "s"})
-                              </span>
-                            )}
-                          </span>
-                          {remainingUnpaid.length === 0 && (
-                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                          )}
-                        </div>
-                      )}
                     </div>
                   </PaySection>
                 </div>
@@ -3048,12 +3045,12 @@ export default function AcademyFeesManagement({
                 Cancel
               </Button>
               <Button
-                variant="hero"
                 className="gap-2"
                 disabled={
                   payMut.isPending ||
                   !paymentDate ||
                   Boolean(adjError) ||
+                  Boolean(cashError) ||
                   (editingPaid
                     ? parsedFeeAmount(payRecord!) === null
                     : selectedUnpaid.length === 0 ||
@@ -3070,7 +3067,7 @@ export default function AcademyFeesManagement({
                   ? "Saving…"
                   : payModalMode === "edit"
                     ? "Save changes"
-                    : `Collect ${formatPkr(finalTotal)}`}
+                    : `Collect ${formatPkr(cashNow)}`}
               </Button>
             </div>
           </div>
