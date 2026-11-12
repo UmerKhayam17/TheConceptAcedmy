@@ -855,6 +855,7 @@ Add someone under Teachers if they are missing from the list.`}
                   <span className="block text-xs text-slate-500">Add or edit subjects</span>
                 </span>
               </Link>
+              {/* Reports module hidden for now
               <Link
                 to={moduleHref(role, "reports")}
                 className="flex items-start gap-3 rounded-xl border border-violet-100 bg-violet-50/80 px-3 py-2.5 transition-colors hover:bg-violet-50"
@@ -867,6 +868,7 @@ Add someone under Teachers if they are missing from the list.`}
                   <span className="block text-xs text-slate-500">Teacher & subject reports</span>
                 </span>
               </Link>
+              */}
               <Link
                 to={systemConfigHref(role, "timetable-rules")}
                 className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2.5 transition-colors hover:bg-amber-50"

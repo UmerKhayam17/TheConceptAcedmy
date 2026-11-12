@@ -24,8 +24,7 @@ import {
   MessageSquare,
   Bell,
   ScanFace,
-  BarChart3,
-  FileText,
+  // BarChart3, FileText — used by the Reports group (hidden for now)
   FileBadge,
   Users,
   UserCog,
@@ -107,20 +106,6 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: History,
         moduleKey: "session-history",
         href: (role) => systemConfigHref(role, "history"),
-      },
-      {
-        id: "holidays",
-        label: "Holidays",
-        icon: CalendarDays,
-        moduleKey: "holidays",
-        href: (role) => moduleHref(role, "holidays"),
-      },
-      {
-        id: "academic-calendar",
-        label: "Academic Calendar",
-        icon: Calendar,
-        moduleKey: "academic-calendar",
-        href: (role) => moduleHref(role, "academic-calendar"),
       },
       {
         id: "classes",
@@ -335,6 +320,28 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
       },
     ],
   },
+  {
+    id: "calendar-holidays",
+    label: "Calendar & Holidays",
+    icon: Calendar,
+    collapsible: true,
+    items: [
+      {
+        id: "academic-calendar",
+        label: "Academic Calendar",
+        icon: Calendar,
+        moduleKey: "academic-calendar",
+        href: (role) => moduleHref(role, "academic-calendar"),
+      },
+      {
+        id: "holidays",
+        label: "Holidays",
+        icon: CalendarDays,
+        moduleKey: "holidays",
+        href: (role) => moduleHref(role, "holidays"),
+      },
+    ],
+  },
   // Teaching group is for the teacher portal only (see TEACHER_SIDEBAR_NAV).
   {
     id: "examinations",
@@ -443,28 +450,30 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
       },
     ],
   },
-  {
-    id: "reports",
-    label: "Reports",
-    icon: BarChart3,
-    collapsible: true,
-    items: [
-      {
-        id: "reports",
-        label: "Reports",
-        icon: BarChart3,
-        moduleKey: "reports",
-        href: (role) => moduleHref(role, "reports"),
-      },
-      {
-        id: "datasheets",
-        label: "Datasheets",
-        icon: FileText,
-        moduleKey: "datasheets",
-        href: (role) => moduleHref(role, "datasheets"),
-      },
-    ],
-  },
+  // Reporting module (Reports + Datasheets) hidden from sidebar for now
+  // {
+  //   id: "reports",
+  //   label: "Reports",
+  //   icon: BarChart3,
+  //   collapsible: true,
+  //   items: [
+      // Reports module hidden for now
+      // {
+      //   id: "reports",
+      //   label: "Reports",
+      //   icon: BarChart3,
+      //   moduleKey: "reports",
+      //   href: (role) => moduleHref(role, "reports"),
+      // },
+  //     {
+  //       id: "datasheets",
+  //       label: "Datasheets",
+  //       icon: FileText,
+  //       moduleKey: "datasheets",
+  //       href: (role) => moduleHref(role, "datasheets"),
+  //     },
+  //   ],
+  // },
   {
     id: "administration",
     label: "Administration",
@@ -985,28 +994,30 @@ export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
       },
     ],
   },
-  {
-    id: "reports",
-    label: "Reports",
-    icon: BarChart3,
-    collapsible: true,
-    items: [
-      {
-        id: "reports",
-        label: "Reports",
-        icon: BarChart3,
-        moduleKey: "reports",
-        href: (role) => moduleHref(role, "reports"),
-      },
-      {
-        id: "datasheets",
-        label: "Datasheets",
-        icon: FileText,
-        moduleKey: "datasheets",
-        href: (role) => moduleHref(role, "datasheets"),
-      },
-    ],
-  },
+  // Reporting module (Reports + Datasheets) hidden from sidebar for now
+  // {
+  //   id: "reports",
+  //   label: "Reports",
+  //   icon: BarChart3,
+  //   collapsible: true,
+  //   items: [
+      // Reports module hidden for now
+      // {
+      //   id: "reports",
+      //   label: "Reports",
+      //   icon: BarChart3,
+      //   moduleKey: "reports",
+      //   href: (role) => moduleHref(role, "reports"),
+      // },
+  //     {
+  //       id: "datasheets",
+  //       label: "Datasheets",
+  //       icon: FileText,
+  //       moduleKey: "datasheets",
+  //       href: (role) => moduleHref(role, "datasheets"),
+  //     },
+  //   ],
+  // },
   {
     id: "communication",
     label: "Communication",

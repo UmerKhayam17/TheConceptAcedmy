@@ -277,7 +277,8 @@ export const MODULES: ModuleDef[] = [
     icon: "Bell",
     desc: "Announcements for assigned classes",
   },
-  { key: "reports", label: "Reports", icon: "BarChart3", desc: "Analytics & exports" },
+  // Reports module hidden for now
+  // { key: "reports", label: "Reports", icon: "BarChart3", desc: "Analytics & exports" },
   { key: "datasheets", label: "Datasheets", icon: "FileText", desc: "Create & manage spreadsheets" },
   { key: "parents", label: "Parents", shortLabel: "Parents", icon: "Users", desc: "Parent portal accounts" },
   { key: "staff-management", label: "Staff", shortLabel: "Staff", icon: "UserCog", desc: "Teachers and accountants" },
@@ -387,7 +388,9 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
     label: "Communication",
     modules: ["chat", "announcements", "notifications", "library", "school-calendar", "academic-calendar", "leave"],
   },
-  { id: "reports", label: "Reports", modules: ["reports", "datasheets"] },
+  // Reports module hidden for now
+  // { id: "reports", label: "Reports", modules: ["reports", "datasheets"] },
+  { id: "reports", label: "Reports", modules: ["datasheets"] },
   {
     id: "administration",
     label: "Administration",

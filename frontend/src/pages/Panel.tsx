@@ -48,7 +48,8 @@ const SalaryModule = lazy(() => import("@/components/modules/SalaryModule"));
 const ExpensesModule = lazy(() => import("@/components/modules/ExpensesModule"));
 const ChatModule = lazy(() => import("@/components/modules/ChatModule"));
 const AnnouncementsModule = lazy(() => import("@/components/modules/AnnouncementsModule"));
-const ReportsModule = lazy(() => import("@/components/modules/ReportsModule"));
+// Reports module hidden for now
+// const ReportsModule = lazy(() => import("@/components/modules/ReportsModule"));
 const SettingsModule = lazy(() => import("@/components/modules/SettingsModule"));
 const DatasheetsModule = lazy(() => import("@/components/modules/DatasheetsModule"));
 const PermissionsModule = lazy(() => import("@/components/modules/PermissionsModule"));
@@ -496,7 +497,8 @@ const Panel = () => {
       case "school-calendar": return <SchoolCalendarModule />;
       case "academic-calendar": return <AcademicCalendarModule />;
       case "holidays": return <HolidaysCalendarModule caps={caps} />;
-      case "reports":       return <ReportsModule />;
+      // Reports module hidden for now
+      // case "reports":       return <ReportsModule />;
       case "datasheets":    return <DatasheetsModule perm={perm} caps={caps} />;
       case "permissions":   return <PermissionsModule perm={perm} caps={caps} />;
       case "permission-catalog": return <PermissionCatalogModule role={r} />;
