@@ -38,10 +38,7 @@ export const DEFAULT_WORKING_DAYS: Weekday[] = DAY_ORDER.slice(0, 6);
 export function normalizeWorkingDays(days?: Weekday[]) {
   if (!days?.length) return DEFAULT_WORKING_DAYS;
   const uniqueDays = [...new Set(days)];
-  const isLegacyMondayToFriday =
-    uniqueDays.length === 5 &&
-    DAY_ORDER.slice(0, 5).every((day) => uniqueDays.includes(day));
-  if (isLegacyMondayToFriday) return DEFAULT_WORKING_DAYS;
+  // Mon–Fri is a real choice (Saturday weekly off), so it is kept as saved — attendance uses it too.
   return uniqueDays.sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b)) as Weekday[];
 }
 

@@ -19,7 +19,9 @@ import {
   shiftSessionConfiguration,
   sessionStatus,
   type AcademicSession,
+  type Weekday,
 } from "@/lib/configApi";
+import WorkingDaysPicker, { NEW_SESSION_WORKING_DAYS } from "./WorkingDaysPicker";
 import { sessionDetailHref } from "@/lib/systemConfigMenus";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
@@ -69,6 +71,7 @@ export default function AcademicSetupTab({
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", startDate: "", endDate: "" });
+  const [newWorkingDays, setNewWorkingDays] = useState<Weekday[]>(NEW_SESSION_WORKING_DAYS);
   const [importForm, setImportForm] = useState<SessionImportFormState>(defaultSessionImportForm);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "active" | "completed" | "archived">("");
@@ -98,12 +101,14 @@ export default function AcademicSetupTab({
     mutationFn: async () => {
       const importError = validateSessionImportForm(importForm);
       if (importError) throw new Error(importError);
+      if (!newWorkingDays.length) throw new Error("Pick at least one working day");
 
       const session = await createSession({
         name: form.name,
         startDate: form.startDate,
         endDate: form.endDate,
         isActive: true,
+        workingDays: newWorkingDays,
       });
 
       if (importForm.enabled && importForm.sourceSessionId && session._id) {
@@ -179,7 +184,7 @@ export default function AcademicSetupTab({
                 Academic Sessions
               </h2>
               <p className="mt-0.5 text-xs sm:text-sm leading-snug text-slate-500 max-w-xl">
-                Create sessions, set their dates, and edit the opening balance for each session.
+                Create sessions, set their dates, and edit each session’s opening balance and working days.
               </p>
             </div>
           </div>
@@ -222,6 +227,7 @@ export default function AcademicSetupTab({
                 className="gap-2 h-10"
                 onClick={() => {
                   setForm({ name: "", startDate: "", endDate: "" });
+                  setNewWorkingDays(NEW_SESSION_WORKING_DAYS);
                   setImportForm(defaultSessionImportForm());
                   setOpen(true);
                 }}
@@ -356,7 +362,7 @@ export default function AcademicSetupTab({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New academic session</DialogTitle>
+            <DialogTitle>New Academic Session</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div>
@@ -368,7 +374,7 @@ export default function AcademicSetupTab({
               />
             </div>
             <div>
-              <Label>Start date</Label>
+              <Label>Start Date</Label>
               <Input
                 type="date"
                 value={form.startDate}
@@ -376,13 +382,14 @@ export default function AcademicSetupTab({
               />
             </div>
             <div>
-              <Label>End date</Label>
+              <Label>End Date</Label>
               <Input
                 type="date"
                 value={form.endDate}
                 onChange={(e) => setForm({ ...form, endDate: e.target.value })}
               />
             </div>
+            <WorkingDaysPicker label="Working Days" value={newWorkingDays} onChange={setNewWorkingDays} />
             {caps.canCreate && (
               <SessionEnrollmentImportFields value={importForm} onChange={setImportForm} />
             )}
@@ -391,8 +398,8 @@ export default function AcademicSetupTab({
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
-              Create session
+            <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !newWorkingDays.length}>
+              Create Session
             </Button>
           </DialogFooter>
         </DialogContent>

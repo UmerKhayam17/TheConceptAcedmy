@@ -82,8 +82,10 @@ async function markStaffAbsentForDay(ymd = todayYmd()) {
     if (u.createdAt && formatDateInTz(u.createdAt) > ymd) return false;
     const roleName = String(u.role?.name || '').toLowerCase();
     if (roleName === 'teacher' ? closed.teachers : closed.staff) return false;
+    // A weekly holiday (day not in the session's working days) is off for everyone, teachers included.
+    if (!workingDays.includes(weekday)) return false;
     const days = byTeacher.get(String(u._id));
-    return days ? days.has(weekday) : workingDays.includes(weekday);
+    return days ? days.has(weekday) : true;
   });
 
   const existing = expected.length

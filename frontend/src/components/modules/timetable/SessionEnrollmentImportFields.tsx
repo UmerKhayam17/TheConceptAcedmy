@@ -86,7 +86,7 @@ export default function SessionEnrollmentImportFields({
         />
         <div>
           <Label htmlFor="import-enrollment" className="cursor-pointer font-medium">
-            Shift full configuration from a previous session
+            Shift Full Configuration From A Previous Session
           </Label>
         </div>
       </div>
@@ -94,13 +94,13 @@ export default function SessionEnrollmentImportFields({
       {value.enabled && (
         <>
           <div>
-            <Label>Source session</Label>
+            <Label>Source Session</Label>
             <Select
               value={value.sourceSessionId || undefined}
               onValueChange={(id) => patch({ sourceSessionId: id, classIds: [], mode: "all" })}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Choose session…" />
+                <SelectValue placeholder="Choose Session…" />
               </SelectTrigger>
               <SelectContent>
                 {sourceOptions.length === 0 ? (
@@ -121,7 +121,7 @@ export default function SessionEnrollmentImportFields({
           {value.sourceSessionId && (
             <>
               <div className="space-y-2">
-                <Label>What to import</Label>
+                <Label>What To Import</Label>
                 <div className="flex flex-col gap-2">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input
@@ -131,7 +131,7 @@ export default function SessionEnrollmentImportFields({
                       checked={value.mode === "all"}
                       onChange={() => patch({ mode: "all", classIds: [] })}
                     />
-                    All classes (with their sections and subjects)
+                    All Classes (With Their Sections And Subjects)
                   </label>
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input
@@ -141,7 +141,7 @@ export default function SessionEnrollmentImportFields({
                       checked={value.mode === "selected"}
                       onChange={() => patch({ mode: "selected" })}
                     />
-                    Selected classes only (sections & subjects for those classes)
+                    Selected Classes Only (Sections & Subjects For Those Classes)
                   </label>
                 </div>
               </div>
@@ -179,7 +179,7 @@ export default function SessionEnrollmentImportFields({
                   onCheckedChange={(checked) => patch({ includeFeeStructure: checked === true })}
                 />
                 <Label htmlFor="import-fees" className="cursor-pointer text-sm font-normal">
-                  Include fee structure per class
+                  Include Fee Structure Per Class
                 </Label>
               </div>
             </>

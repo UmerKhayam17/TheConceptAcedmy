@@ -147,6 +147,18 @@ const patchSession = catchAsync(async (req, res) => {
   delete updates.completedAt;
   delete updates.archivedAt;
 
+  if (updates.workingDays !== undefined) {
+    const VALID_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const days = Array.isArray(updates.workingDays)
+      ? [...new Set(updates.workingDays.map((d) => String(d).toLowerCase()))]
+      : [];
+    if (!days.length || days.some((d) => !VALID_DAYS.includes(d))) {
+      throw new ApiError(400, 'Pick at least one valid working day');
+    }
+    // Keep Monday→Sunday order so every screen lists days the same way.
+    updates.workingDays = VALID_DAYS.filter((d) => days.includes(d));
+  }
+
   if (wantsActive) {
     const currentStatus = resolveSessionStatus(session);
     if (currentStatus === 'completed' || currentStatus === 'archived') {
