@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect } from "react";
+import AcademyLoader from "@/components/AcademyLoader";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getSession, USER_KEY } from "@/lib/auth";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
@@ -33,11 +34,7 @@ const queryClient = new QueryClient({
 });
 
 function RouteFallback() {
-  return (
-    <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
-      Loading…
-    </div>
-  );
+  return <AcademyLoader />;
 }
 
 /**

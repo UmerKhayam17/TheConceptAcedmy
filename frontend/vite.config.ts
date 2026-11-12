@@ -61,7 +61,15 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: false,
-      includeAssets: ["favicon.png", "favicon.ico", "icons/apple-touch-icon.png"],
+      includeAssets: [
+        "favicon.png",
+        "favicon.ico",
+        "apple-touch-icon.png",
+        "icons/apple-touch-icon.png",
+        "icons/apple-touch-icon-167.png",
+        "icons/apple-touch-icon-152.png",
+        "icons/apple-touch-icon-120.png",
+      ],
       manifest: {
         id: "/",
         name: "The Concept Academy",
@@ -78,6 +86,8 @@ export default defineConfig(({ mode }) => ({
         icons: [
           { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
           { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-maskable-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
           { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },

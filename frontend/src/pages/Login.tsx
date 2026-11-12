@@ -25,6 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import SEO from "@/components/SEO";
 import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 import campus from "@/assets/login-campus.jpg";
+import AcademyLoader from "@/components/AcademyLoader";
 
 const schema = z.object({
   email: z.string().trim().email("Enter a valid email").max(255),
@@ -74,24 +75,7 @@ const Login = () => {
   const [submitting, setSubmitting] = useState(false);
   const [fieldError, setFieldError] = useState<{ field: "email" | "password"; message: string } | null>(null);
 
-  if (loading) {
-    return (
-      <div
-        className="flex min-h-screen flex-col items-center justify-center bg-[#071426]"
-        role="status"
-        aria-live="polite"
-        aria-label="Loading the academy portal"
-      >
-        <div className="relative grid h-20 w-20 place-items-center">
-          <span className="absolute inset-0 rounded-full border-2 border-[#D9A441]/25" />
-          <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#F4B72A] motion-safe:animate-spin" />
-          <GraduationCap className="h-8 w-8 text-[#F4B72A]" strokeWidth={1.75} />
-        </div>
-        <p className="mt-6 text-sm font-semibold tracking-[0.22em] text-white">THE CONCEPT ACADEMY</p>
-        <p className="mt-2 text-[11px] tracking-[0.28em] text-[#D9A441]">LEARN • GROW • SUCCEED</p>
-      </div>
-    );
-  }
+  if (loading) return <AcademyLoader />;
 
   if (user) return <Navigate to={panelPathFor(user.role)} replace />;
 
