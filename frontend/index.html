@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0E2A4E" />
+    <meta name="theme-color" content="#041e6e" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -19,6 +19,8 @@
     <link rel="apple-touch-icon" sizes="167x167" href="/icons/apple-touch-icon-167.png" />
     <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon-152.png" />
     <link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon-120.png" />
+    <link rel="preload" as="image" href="/splash.jpg" />
+    <link rel="apple-touch-startup-image" href="/splash.jpg" />
 
     <!-- Non-blocking fonts (critical for LCP / performance) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -45,9 +47,28 @@
     <meta name="twitter:image" content="/favicon.png">
     <meta name="twitter:title" content="The Concept Academy">
     <meta name="twitter:description" content="The Concept Academy — focused coaching for MDCAT, ECAT, O/A Levels and CSS in Islamabad.">
+    <style>
+      html, body { margin: 0; background: #041e6e; }
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        background: #041e6e url("/splash.jpg") center center / cover no-repeat;
+      }
+    </style>
   </head>
 
   <body>
+    <div id="boot-splash" role="status" aria-label="Loading the academy portal"></div>
+    <script>
+      (function () {
+        var path = location.pathname;
+        if (path !== "/login" && path.indexOf("/panel") !== 0) {
+          var splash = document.getElementById("boot-splash");
+          if (splash) splash.remove();
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

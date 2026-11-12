@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import {
@@ -26,6 +26,7 @@ import SEO from "@/components/SEO";
 import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 import campus from "@/assets/login-campus.jpg";
 import AcademyLoader from "@/components/AcademyLoader";
+import { hideBootSplash } from "@/lib/bootSplash";
 
 const schema = z.object({
   email: z.string().trim().email("Enter a valid email").max(255),
@@ -74,6 +75,10 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fieldError, setFieldError] = useState<{ field: "email" | "password"; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!loading && !user) hideBootSplash();
+  }, [loading, user]);
 
   if (loading) return <AcademyLoader />;
 

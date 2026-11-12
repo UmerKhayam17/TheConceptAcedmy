@@ -13,6 +13,7 @@ import {
   usePanelSession,
 } from "@/components/panel-header/PanelSessionContext";
 import SessionScopeBanner from "@/components/panel-header/SessionScopeBanner";
+import { hideBootSplash } from "@/lib/bootSplash";
 
 function PanelChrome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["user"]> }) {
   const { pathname } = useLocation();
@@ -71,6 +72,10 @@ const PanelLayout = () => {
   }, []);
 
   usePanelRealtime(Boolean(user));
+
+  useEffect(() => {
+    if (!loading && user) hideBootSplash();
+  }, [loading, user]);
 
   if (loading) {
     return (

@@ -69,6 +69,7 @@ export default defineConfig(({ mode }) => ({
         "icons/apple-touch-icon-167.png",
         "icons/apple-touch-icon-152.png",
         "icons/apple-touch-icon-120.png",
+        "splash.jpg",
       ],
       manifest: {
         id: "/",
@@ -80,8 +81,8 @@ export default defineConfig(({ mode }) => ({
         scope: "/",
         display: "standalone",
         orientation: "any",
-        background_color: "#0E2A4E",
-        theme_color: "#0E2A4E",
+        background_color: "#041e6e",
+        theme_color: "#041e6e",
         categories: ["education"],
         icons: [
           { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
