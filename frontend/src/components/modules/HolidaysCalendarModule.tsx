@@ -573,7 +573,7 @@ export default function HolidaysCalendarModule({ caps }: { caps: ModuleActionCap
       </Card>
 
       <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <Card className="flex max-h-[32rem] min-w-0 flex-col overflow-hidden rounded-2xl border-slate-200/80 shadow-sm">
+      <Card className="flex min-w-0 flex-col overflow-hidden rounded-2xl border-slate-200/80 shadow-sm">
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
             <h3 className="font-display text-lg font-semibold text-[#1a2b4b]">Holiday Management</h3>
             <span className="text-sm text-muted-foreground">
@@ -581,7 +581,7 @@ export default function HolidaysCalendarModule({ caps }: { caps: ModuleActionCap
               {holidaysFiltered.length !== holidays.length ? ` of ${holidays.length}` : ""}
             </span>
           </div>
-          <div className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto">
+          <div className="min-w-0 overflow-x-auto">
             <table className="w-full min-w-[52rem] border-separate border-spacing-0 text-sm">
               <thead className="sticky top-0 z-10 bg-gray-50 text-left text-xs font-semibold text-slate-500">
                 <tr>
@@ -691,9 +691,9 @@ export default function HolidaysCalendarModule({ caps }: { caps: ModuleActionCap
           </div>
         </Card>
 
-      <Card className="flex max-h-[32rem] flex-col overflow-hidden rounded-2xl border-amber-100 bg-amber-50/70 p-0 shadow-sm">
-        <h3 className="shrink-0 px-5 pt-5 font-display text-base font-semibold text-[#1a2b4b]">Upcoming Holidays</h3>
-        <ul className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5">
+      <Card className="rounded-2xl border-amber-100 bg-amber-50/70 p-0 shadow-sm">
+        <h3 className="px-5 pt-5 font-display text-base font-semibold text-[#1a2b4b]">Upcoming Holidays</h3>
+        <ul className="mt-4 space-y-3 px-5 pb-5">
           {upcoming.length === 0 && <li className="text-sm text-slate-500">No upcoming holidays in this session.</li>}
           {upcoming.map((holiday) => (
             <li key={holiday._id} className="flex items-start gap-3 text-sm">
