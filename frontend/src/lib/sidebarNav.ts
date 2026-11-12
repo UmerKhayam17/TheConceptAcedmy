@@ -116,6 +116,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         href: (role) => moduleHref(role, "holidays"),
       },
       {
+        id: "academic-calendar",
+        label: "Academic Calendar",
+        icon: Calendar,
+        moduleKey: "academic-calendar",
+        href: (role) => moduleHref(role, "academic-calendar"),
+      },
+      {
         id: "classes",
         label: "Classes",
         icon: School,
@@ -555,6 +562,13 @@ export const TEACHER_SIDEBAR_NAV: SidebarNavGroup[] = [
         moduleKey: "timetable-view",
         href: (role) => timetableHref(role, "view"),
       },
+      {
+        id: "academic-calendar",
+        label: "Academic Calendar",
+        icon: Calendar,
+        moduleKey: "academic-calendar",
+        href: (role) => moduleHref(role, "academic-calendar"),
+      },
       // Coming-soon placeholders — hidden from teacher sidebar for now
       // {
       //   id: "homework",
@@ -795,6 +809,13 @@ export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
         moduleKey: "timetable-view",
         href: (role) => timetableHref(role, "view"),
       },
+      {
+        id: "academic-calendar",
+        label: "Academic Calendar",
+        icon: Calendar,
+        moduleKey: "academic-calendar",
+        href: (role) => moduleHref(role, "academic-calendar"),
+      },
     ],
   },
   {
@@ -1007,6 +1028,13 @@ export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
     icon: Calendar,
     collapsible: true,
     items: [
+      {
+        id: "academic-calendar",
+        label: "Academic Calendar",
+        icon: Calendar,
+        moduleKey: "academic-calendar",
+        href: (role) => moduleHref(role, "academic-calendar"),
+      },
       {
         id: "school-calendar",
         label: "School Calendar",

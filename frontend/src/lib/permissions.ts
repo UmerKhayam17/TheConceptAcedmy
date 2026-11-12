@@ -77,6 +77,7 @@ export type ModuleKey =
   | "online-classes"
   | "library"
   | "school-calendar"
+  | "academic-calendar"
   | "notifications"
   | "leave"
   | "finance-dashboard"
@@ -239,6 +240,12 @@ export const MODULES: ModuleDef[] = [
     desc: "School events calendar",
   },
   {
+    key: "academic-calendar",
+    label: "Academic Calendar",
+    icon: "CalendarRange",
+    desc: "Full-session calendar: holidays, tests, exams and session dates",
+  },
+  {
     key: "notifications",
     label: "Notifications",
     icon: "BellRing",
@@ -378,7 +385,7 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
   {
     id: "communication",
     label: "Communication",
-    modules: ["chat", "announcements", "notifications", "library", "school-calendar", "leave"],
+    modules: ["chat", "announcements", "notifications", "library", "school-calendar", "academic-calendar", "leave"],
   },
   { id: "reports", label: "Reports", modules: ["reports", "datasheets"] },
   {
@@ -432,6 +439,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     "staff-attendance": "view",
     ...EXAM_LEAF_VIEW,
     "school-calendar": "view",
+    "academic-calendar": "view",
     notifications: "view",
     leave: "mark",
     "finance-dashboard": "view",
@@ -462,6 +470,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     "online-classes": "crud",
     library: "view",
     "school-calendar": "view",
+    "academic-calendar": "view",
     notifications: "view",
     leave: "mark",
     salary: "view",
@@ -483,6 +492,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     chat: "view",
     announcements: "view",
     notifications: "view",
+    "academic-calendar": "view",
   }),
   student: modulePermMatrix({
     dashboard: "view",
@@ -496,6 +506,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     "online-classes": "view",
     library: "view",
     "school-calendar": "view",
+    "academic-calendar": "view",
     notifications: "view",
     fees: "view",
     chat: "view",
@@ -604,6 +615,7 @@ export const BACKEND_MODULE_KEY_MAP: Record<string, ModuleKey> = {
   onlineClasses: "online-classes",
   library: "library",
   schoolCalendar: "school-calendar",
+  academicCalendar: "academic-calendar",
   notifications: "notifications",
   profile: "settings",
   leave: "leave",

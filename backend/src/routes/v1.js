@@ -27,5 +27,6 @@ router.use('/chat', chatRoutes);
 router.use('/datasheets', datasheetRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/ai-attendance', require('./aiAttendanceRoutes'));
+router.use('/academic-calendar', require('./academicCalendarRoutes'));
 
 module.exports = router;

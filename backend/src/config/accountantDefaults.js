@@ -26,6 +26,7 @@ const ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS = {
   notifications: ['view'],
   profile: ['view', 'edit'],
   schoolCalendar: ['view'],
+  academicCalendar: ['view'],
   leave: ['view', 'create'],
   staffAttendance: ['view', 'create'],
 };

@@ -33,6 +33,7 @@ const TEACHER_DEFAULT_MODULE_PERMISSIONS = {
   onlineClasses: ['view', 'create', 'edit', 'delete'],
   library: ['view'],
   schoolCalendar: ['view'],
+  academicCalendar: ['view'],
   notifications: ['view'],
   profile: ['view', 'edit'],
   leave: ['view', 'create'],

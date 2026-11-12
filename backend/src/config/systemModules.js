@@ -626,6 +626,16 @@ const SYSTEM_MODULES = [
     parentGroup: 'communication',
   },
   {
+    key: 'academicCalendar',
+    panelSlug: 'academic-calendar',
+    label: 'Academic Calendar',
+    icon: 'CalendarRange',
+    description: 'Full-session calendar: holidays, tests, exams and session dates',
+    order: 70,
+    actions: ['view'],
+    parentGroup: 'communication',
+  },
+  {
     key: 'notifications',
     panelSlug: 'notifications',
     label: 'Notifications',

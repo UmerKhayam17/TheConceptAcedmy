@@ -233,6 +233,7 @@ export const TEACHER_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   onlineClasses: ["view", "create", "edit", "delete"],
   library: ["view"],
   schoolCalendar: ["view"],
+  academicCalendar: ["view"],
   notifications: ["view"],
   profile: ["view", "edit"],
   leave: ["view", "create"],
@@ -265,6 +266,7 @@ export const ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   notifications: ["view"],
   profile: ["view", "edit"],
   schoolCalendar: ["view"],
+  academicCalendar: ["view"],
   leave: ["view", "create"],
   staffAttendance: ["view", "create"],
 };
@@ -281,6 +283,7 @@ export const PARENT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   chat: ["view", "create", "participate"],
   announcement: ["view"],
   notifications: ["view"],
+  academicCalendar: ["view"],
 };
 
 /** Modules selectable for parent accounts (portal matrix only). */

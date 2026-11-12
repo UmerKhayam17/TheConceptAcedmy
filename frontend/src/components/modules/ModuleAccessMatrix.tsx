@@ -45,6 +45,7 @@ const MODULE_ICONS: Record<string, LucideIcon> = {
   announcement: MessageSquare,
   library: Library,
   schoolCalendar: Calendar,
+  academicCalendar: Calendar,
   attendance: ClipboardList,
   staffAttendance: ClipboardList,
   reports: LayoutDashboard,

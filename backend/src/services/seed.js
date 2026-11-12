@@ -347,6 +347,39 @@ async function syncBuiltInRolePermissions() {
   }
 }
 
+/**
+ * One-time grant of `academicCalendar: view` to existing teacher/accountant users that carry
+ * their own (explicit) module matrix — role defaults don't reach them. Runs once (JobRun key),
+ * so an admin who later revokes the module for a user is not overridden on restart.
+ */
+async function grantAcademicCalendarOnce() {
+  const JobRun = require('../models/JobRun');
+  const key = 'migration:grant-academic-calendar-v1';
+  if (await JobRun.exists({ key, status: 'done' })) return;
+
+  const roles = await Role.find({ name: { $in: ['teacher', 'accountant'] } }).select('_id').lean();
+  let updated = 0;
+  if (roles.length) {
+    const users = await User.find({ role: { $in: roles.map((r) => r._id) } }).select('modulePermissions');
+    for (const u of users) {
+      const mp =
+        u.modulePermissions instanceof Map
+          ? u.modulePermissions
+          : new Map(Object.entries(u.modulePermissions || {}));
+      const explicit = [...mp.values()].some((a) => Array.isArray(a) && a.length > 0);
+      if (!explicit || mp.has('academicCalendar')) continue;
+      await User.updateOne({ _id: u._id }, { $set: { 'modulePermissions.academicCalendar': ['view'] } });
+      updated += 1;
+    }
+  }
+
+  await JobRun.findOneAndUpdate(
+    { key },
+    { $set: { status: 'done', trigger: 'seed', finishedAt: new Date(), result: { updated } } },
+    { upsert: true }
+  );
+}
+
 /** Rename old `academy*` collections to clean names; drop leftover junk. */
 async function dropLegacyDuplicateCollections() {
   const mongoose = require('mongoose');
@@ -444,6 +477,7 @@ async function seedPermissionsAndRoles() {
   await upsertAllPermissions();
   const rolesCreated = await ensureDefaultRoles();
   await syncBuiltInRolePermissions();
+  await grantAcademicCalendarOnce();
   await ensureDefaultAdmin();
 
   if (rolesCreated && !isProd()) {

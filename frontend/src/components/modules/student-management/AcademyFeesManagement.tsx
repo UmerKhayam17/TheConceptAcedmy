@@ -1513,6 +1513,7 @@ export default function AcademyFeesManagement({
       toast({
         title: mode === "waive" ? "Could not waive fee" : "Could not undo waive",
         description: e.message,
+
         variant: "destructive",
       }),
   });
