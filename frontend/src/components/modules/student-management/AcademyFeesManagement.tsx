@@ -1,9 +1,27 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
+  Banknote,
+  Calculator,
+  CalendarDays,
+  CalendarRange,
+  Check,
+  CheckCircle2,
   ChevronDown,
+  Clock,
+  CreditCard,
+  Globe,
+  GraduationCap,
+  Hash,
+  Info,
+  Landmark,
+  Plus,
+  PlusCircle,
+  Settings2,
+  ShieldCheck,
+  User,
   Download,
   Eye,
   FileText,
@@ -76,6 +94,7 @@ import {
   type AcademyStudent,
   type FeeReceiptSize,
 } from "@/lib/studentManagementApi";
+import type { FeeAdjustmentKind } from "@/lib/studentManagementApi";
 import {
   applicableChargesForFees,
   chargeIdsOnFee,
@@ -220,6 +239,210 @@ function formatFileSize(bytes: number) {
 }
 
 type SlipPreviewState = { src: string; isPdf: boolean };
+
+type AdjKindChoice = FeeAdjustmentKind | "none";
+
+const FEE_ADJUSTMENT_OPTIONS: { value: FeeAdjustmentKind; label: string }[] = [
+  { value: "discount", label: "Discount / Concession" },
+  { value: "partial_month", label: "Partial month (e.g. 15 days)" },
+  { value: "late_fine", label: "Late fine (adds to fee)" },
+  { value: "other", label: "Other reduction" },
+];
+
+type AdjInput = { kind: AdjKindChoice; amount: string; reason: string };
+const EMPTY_ADJ: AdjInput = { kind: "none", amount: "", reason: "" };
+
+/** Type / amount / reason inputs for one fee adjustment. */
+function AdjFields({
+  idPrefix,
+  value,
+  onChange,
+}: {
+  idPrefix: string;
+  value: AdjInput;
+  onChange: (patch: Partial<AdjInput>) => void;
+}) {
+  const off = value.kind === "none";
+  return (
+    <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]">
+      <div className="min-w-0 space-y-1.5">
+        <Label htmlFor={`${idPrefix}-kind`}>Adjustment type</Label>
+        <select
+          id={`${idPrefix}-kind`}
+          className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm"
+          value={value.kind}
+          onChange={(e) => onChange({ kind: e.target.value as AdjKindChoice })}
+        >
+          <option value="none">No adjustment</option>
+          {FEE_ADJUSTMENT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="min-w-0 space-y-1.5">
+        <Label htmlFor={`${idPrefix}-amount`}>
+          Amount (Rs.){!off && <span className="text-destructive"> *</span>}
+        </Label>
+        <Input
+          id={`${idPrefix}-amount`}
+          type="number"
+          min={0}
+          disabled={off}
+          className="tabular-nums"
+          value={value.amount}
+          onChange={(e) => onChange({ amount: e.target.value })}
+          placeholder="0"
+        />
+      </div>
+      <div className="min-w-0 space-y-1.5">
+        <Label htmlFor={`${idPrefix}-reason`}>
+          Reason{!off && <span className="text-destructive"> *</span>}
+        </Label>
+        <Input
+          id={`${idPrefix}-reason`}
+          disabled={off}
+          value={value.reason}
+          maxLength={300}
+          onChange={(e) => onChange({ reason: e.target.value })}
+          placeholder="e.g. Parent requested fee concession"
+        />
+      </div>
+    </div>
+  );
+}
+
+/** One-click preset that takes half the tuition off a month (15-day fee). */
+function HalfMonthButton({
+  amountOff,
+  applied,
+  large,
+  onClick,
+}: {
+  amountOff: number;
+  applied: boolean;
+  large?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={applied}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-2 rounded-lg border-2 font-semibold shadow-sm transition-all",
+        large ? "w-full justify-between px-4 py-2.5 text-sm sm:w-auto" : "px-3 py-1.5 text-xs",
+        applied
+          ? "border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+          : "border-accent bg-accent/15 text-primary hover:-translate-y-0.5 hover:bg-accent/25 hover:shadow-gold"
+      )}
+    >
+      <span className="flex items-center gap-2">
+        {applied ? (
+          <CheckCircle2 className={large ? "h-5 w-5" : "h-4 w-4"} />
+        ) : (
+          <CalendarRange className={large ? "h-5 w-5" : "h-4 w-4"} />
+        )}
+        {applied ? "Half month applied" : "Half month (15 days)"}
+      </span>
+      <span
+        className={cn(
+          "rounded-md px-2 py-0.5 tabular-nums",
+          applied ? "bg-emerald-600 text-white" : "bg-primary text-primary-foreground"
+        )}
+      >
+        − {formatPkr(amountOff)}
+      </span>
+    </button>
+  );
+}
+
+function formatSignedPkr(n: number) {
+  if (!n) return formatPkr(0);
+  return `${n < 0 ? "−" : "+"} ${formatPkr(Math.abs(n))}`;
+}
+
+const PAYMENT_METHOD_OPTIONS = [
+  { value: "cash", label: "Cash", icon: Banknote },
+  { value: "bank_transfer", label: "Bank Transfer", icon: Landmark },
+  { value: "online", label: "Online", icon: Globe },
+  { value: "other", label: "Other", icon: MoreHorizontal },
+] as const;
+
+function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/).filter((p) => p && p !== "—");
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase() || "?";
+}
+
+function PaySection({
+  icon: Icon,
+  title,
+  action,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-sm">
+      <header className="flex items-center gap-2.5 border-b bg-primary/[0.04] px-4 py-2.5">
+        <Icon className="h-4 w-4 text-accent" />
+        <h3 className="font-semibold text-primary">{title}</h3>
+        {action && <div className="ml-auto">{action}</div>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function SummaryLine({
+  label,
+  value,
+  strong,
+  tone,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  tone?: "good" | "bad";
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 px-4 py-2">
+      <span className={cn("min-w-0", strong ? "font-semibold" : "text-muted-foreground")}>{label}</span>
+      <span
+        className={cn(
+          "max-w-[60%] break-words text-right tabular-nums",
+          strong ? "font-semibold" : "font-medium",
+          tone === "good" && "text-emerald-600",
+          tone === "bad" && "text-destructive"
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function PayChip({
+  icon: Icon,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  children: ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/10 bg-primary/[0.06] px-3 py-1 font-medium text-primary">
+      <Icon className="h-3.5 w-3.5" />
+      {children}
+    </span>
+  );
+}
+
 
 function PaymentSlipThumb({ path, onOpen }: { path: string; onOpen: () => void }) {
   const src = resolveUploadUrl(path);
@@ -556,6 +779,14 @@ export default function AcademyFeesManagement({
   /** Resets the pay form only when a different voucher or mode is opened. */
   const payFormKeyRef = useRef("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [adjKind, setAdjKind] = useState<AdjKindChoice>("none");
+  const [adjAmount, setAdjAmount] = useState("");
+  const [adjReason, setAdjReason] = useState("");
+  /** "same" = one adjustment on every selected month; "each" = own adjustment per month. */
+  const [adjMode, setAdjMode] = useState<"same" | "each">("same");
+  const [adjEach, setAdjEach] = useState<Record<string, AdjInput>>({});
+  /** Set when the dialog opens; shown in the footer as the transaction time. */
+  const [payOpenedAt, setPayOpenedAt] = useState(() => new Date());
   const [paymentNotes, setPaymentNotes] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayInputValue);
   const [paymentSlipNumber, setPaymentSlipNumber] = useState("");
@@ -797,6 +1028,12 @@ export default function AcademyFeesManagement({
     if (isNewForm) {
       payFormKeyRef.current = formKey;
       amountTouchedRef.current = new Set();
+      setAdjKind("none");
+      setAdjAmount("");
+      setAdjReason("");
+      setAdjMode("same");
+      setAdjEach({});
+      setPayOpenedAt(new Date());
     }
 
     // Paid edit uses the voucher itself — don't replace with unpaid months.
@@ -888,6 +1125,179 @@ export default function AcademyFeesManagement({
 
   const editingPaid = payModalMode === "edit" && payRecord?.status === "paid";
 
+  const payStudent = payHistory?.student ?? (payRecord ? studentFromRecord(payRecord) : null);
+  const tuitionPart = (fee: AcademyFeeRecord) => {
+    const comps = fee.components || [];
+    if (!comps.length) return fee.feeType === "monthly" ? Number(fee.amount) || 0 : 0;
+    return comps
+      .filter((line) => line.kind === "tuition")
+      .reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+  };
+  const focusFee =
+    unpaidForPay.find((r) => r._id === payRecord?._id) ?? unpaidForPay[0] ?? null;
+  const remainingUnpaid = unpaidForPay.filter((r) => !selectedFeeIds.includes(r._id));
+  const remainingTotal = remainingUnpaid.reduce((sum, r) => sum + feeAmount(r), 0);
+  const originalTotal =
+    editingPaid && payRecord
+      ? Number(amountOverrides[payRecord._id] ?? payRecord.amount) || 0
+      : selectedTotal;
+
+  const adjEnabled = payModalMode === "pay" && !editingPaid;
+  const adjPerMonth = adjMode === "each" && selectedUnpaid.length > 1;
+  const adjInputFor = (fee: AcademyFeeRecord): AdjInput =>
+    adjPerMonth
+      ? adjEach[fee._id] ?? EMPTY_ADJ
+      : { kind: adjKind, amount: adjAmount, reason: adjReason };
+  const setAdjFor = (feeId: string, patch: Partial<AdjInput>) =>
+    setAdjEach((prev) => ({ ...prev, [feeId]: { ...(prev[feeId] ?? EMPTY_ADJ), ...patch } }));
+  /** Problem with one month's adjustment, or "" when it is fine (or not set). */
+  const adjIssue = (fee: AcademyFeeRecord, input: AdjInput) => {
+    if (input.kind === "none") return "";
+    const forMonth = selectedUnpaid.length > 1 ? ` for ${periodLabel(fee)}` : "";
+    const n = Number(input.amount);
+    if (input.amount.trim() === "") return `Enter the adjustment amount${forMonth}.`;
+    if (!Number.isFinite(n) || n <= 0) return `Adjustment amount${forMonth} must be more than 0.`;
+    if (input.kind !== "late_fine" && n > feeAmount(fee) + 0.009) {
+      return `Adjustment can't be more than the ${periodLabel(fee)} fee (${formatPkr(feeAmount(fee))}).`;
+    }
+    if (input.reason.trim().length < 2) return `Enter a reason for the adjustment${forMonth}.`;
+    return "";
+  };
+  const adjEntries = adjEnabled
+    ? selectedUnpaid.flatMap((fee) => {
+        const input = adjInputFor(fee);
+        if (input.kind === "none" || adjIssue(fee, input)) return [];
+        const amount = Number(input.amount);
+        const kind = input.kind as FeeAdjustmentKind;
+        return [
+          {
+            fee,
+            kind,
+            amount,
+            delta: kind === "late_fine" ? amount : -amount,
+            reason: input.reason.trim(),
+          },
+        ];
+      })
+    : [];
+  const adjError = adjEnabled
+    ? selectedUnpaid.map((fee) => adjIssue(fee, adjInputFor(fee))).find(Boolean) ?? ""
+    : "";
+  const adjByFee = new Map(adjEntries.map((entry) => [entry.fee._id, entry]));
+  const adjActive = adjEntries.length > 0;
+  /** Net change across every adjusted month (negative = reduction). */
+  const adjDelta = adjEntries.reduce((sum, entry) => sum + entry.delta, 0);
+  const finalTotal = Math.max(0, originalTotal + adjDelta);
+  const canHalfMonth = (fee: AcademyFeeRecord) =>
+    fee.feeType === "monthly" && tuitionPart(fee) > 0;
+  const switchAdjMode = (mode: "same" | "each") => {
+    if (mode === adjMode) return;
+    if (mode === "each") {
+      // Start every month from the shared values so nothing typed is lost.
+      setAdjEach((prev) => {
+        const next = { ...prev };
+        for (const fee of selectedUnpaid) {
+          if (!next[fee._id] || next[fee._id].kind === "none") {
+            next[fee._id] = { kind: adjKind, amount: adjAmount, reason: adjReason };
+          }
+        }
+        return next;
+      });
+    }
+    setAdjMode(mode);
+  };
+  type SummaryRow = {
+    fee: AcademyFeeRecord;
+    /** Fee before any adjustment. */
+    amount: number;
+    lines: { key: string; name: string; amount: number; kind: string }[];
+    /** True when lines are the real voucher breakdown (not a single fallback line). */
+    detailed: boolean;
+    adjustment: number;
+    adjustmentLabel: string;
+    adjustmentReason: string;
+  };
+  const adjLabel = (kind: string | undefined) =>
+    FEE_ADJUSTMENT_OPTIONS.find((o) => o.value === kind)?.label ?? "Adjustment";
+  const summaryRows: SummaryRow[] = !payRecord
+    ? []
+    : editingPaid
+      ? [payRecord].map((fee) => {
+          const paidNow = Number(amountOverrides[fee._id] ?? fee.amount) || 0;
+          const prior = Number(fee.adjustment?.amount) || 0;
+          return {
+            fee,
+            amount: paidNow - prior,
+            lines: [
+              {
+                key: "voucher",
+                name: prior ? "Original voucher" : "Paid amount",
+                amount: paidNow - prior,
+                kind: "voucher",
+              },
+            ],
+            detailed: false,
+            adjustment: prior,
+            adjustmentLabel: adjLabel(fee.adjustment?.kind),
+            adjustmentReason: fee.adjustment?.reason ?? "",
+          };
+        })
+      : selectedUnpaid.map((fee) => {
+          const amount = feeAmount(fee);
+          const preview =
+            payModalMode === "pay"
+              ? feePreviewLines(fee, payHistory?.student, allCharges, selectedChargeIds)
+              : [];
+          const previewSum = preview.reduce((sum, line) => sum + line.amount, 0);
+          const detailed = preview.length > 0 && Math.abs(previewSum - amount) <= 0.009;
+          const entry = adjByFee.get(fee._id);
+          return {
+            fee,
+            amount,
+            lines: detailed
+              ? preview
+              : [{ key: "voucher", name: "Voucher amount", amount, kind: "voucher" }],
+            detailed,
+            adjustment: entry?.delta ?? 0,
+            adjustmentLabel: adjLabel(entry?.kind),
+            adjustmentReason: entry?.reason ?? "",
+          };
+        });
+  const summaryTotals = summaryRows.every((row) => row.detailed)
+    ? summaryRows
+        .flatMap((row) => row.lines)
+        .reduce(
+          (acc, line) => {
+            if (line.kind === "tuition") acc.tuition += line.amount;
+            else if (line.kind === "admission") acc.admission += line.amount;
+            else acc.charges += line.amount;
+            return acc;
+          },
+          { tuition: 0, admission: 0, charges: 0 }
+        )
+    : { tuition: 0, admission: 0, charges: 0 };
+
+  /** Preset: take half the tuition off; admission and charges stay in full. */
+  const halfMonthOff = (fee: AcademyFeeRecord) => Math.round(tuitionPart(fee) / 2);
+  const isHalfMonthApplied = (fee: AcademyFeeRecord, input: AdjInput) =>
+    input.kind === "partial_month" && Number(input.amount) === halfMonthOff(fee);
+  const applyHalfMonth = (fee: AcademyFeeRecord) => {
+    const amount = String(halfMonthOff(fee));
+    const reason = "Half month (15 days) fee";
+    if (adjPerMonth) {
+      setAdjFor(fee._id, {
+        kind: "partial_month",
+        amount,
+        reason: adjEach[fee._id]?.reason?.trim() || reason,
+      });
+      return;
+    }
+    setAdjKind("partial_month");
+    setAdjAmount(amount);
+    if (!adjReason.trim()) setAdjReason(reason);
+  };
+
+
   const payMut = useMutation({
     mutationFn: async () => {
       if (!payRecord) throw new Error("No fee selected");
@@ -957,8 +1367,17 @@ export default function AcademyFeesManagement({
           }
         }
       }
+      if (adjError) throw new Error(adjError);
       return payAcademyFees({
         feeRecordIds: selectedFeeIds,
+        adjustments: adjActive
+          ? adjEntries.map((entry) => ({
+              feeRecordId: entry.fee._id,
+              kind: entry.kind,
+              amount: entry.amount,
+              reason: entry.reason,
+            }))
+          : undefined,
         paymentMethod,
         paymentSlipNumber: paymentSlipNumber.trim() || undefined,
         notes: paymentNotes.trim() || undefined,
@@ -1967,260 +2386,694 @@ export default function AcademyFeesManagement({
           }
         }}
       >
-        <DialogContent className="min-w-0 sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{payModalMode === "edit" ? "Edit fee payment" : "Record payment"}</DialogTitle>
+        <DialogContent className="flex min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(1400px,calc(100vw-3rem))] sm:p-0 [&>button]:right-5 [&>button]:top-5 [&>button]:text-primary-foreground [&>button]:opacity-90">
+          <DialogHeader className="shrink-0 bg-hero-gradient px-5 py-4 text-left text-primary-foreground sm:px-6">
+            <div className="flex items-center gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold-gradient text-accent-foreground shadow-gold">
+                <Wallet className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-xl text-primary-foreground">
+                  {payModalMode === "edit" ? "Edit Fee Payment" : "Collect Student Fee"}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-primary-foreground/75">
+                  {payModalMode === "edit"
+                    ? "Correct the amount or payment details of this fee"
+                    : "Edit adjustment if required and collect payment"}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
+
           {payRecord && (
-            <div className="min-w-0 max-w-full space-y-3 text-sm">
-              <p>
-                <span className="text-muted-foreground">Student:</span>{" "}
-                <span className="font-medium">{studentName(payRecord)}</span>
-              </p>
-              {!editingPaid && payModalMode === "pay" && (
-                <div className="rounded-md border">
-                  <div className="px-3 py-2 border-b text-xs font-medium text-muted-foreground">
-                    Additional charges (optional)
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <div className="grid min-w-0 gap-5 p-4 text-sm sm:p-6 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_420px]">
+                {/* ---------- Left column ---------- */}
+                <div className="min-w-0 space-y-4">
+                  <div className="flex min-w-0 items-center gap-4">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-accent/60 bg-primary/10 text-lg font-semibold text-primary">
+                      {payStudent?.photoImage ? (
+                        <img
+                          src={resolveUploadUrl(payStudent.photoImage)}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        initialsOf(studentName(payRecord))
+                      )}
+                    </div>
+                    <div className="min-w-0 space-y-2">
+                      <p className="truncate text-xl font-semibold text-primary">
+                        {studentName(payRecord)}
+                      </p>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {(payStudent?.rollNumber || studentCode(payRecord)) && (
+                          <PayChip icon={Hash}>
+                            Roll No: {payStudent?.rollNumber || studentCode(payRecord)}
+                          </PayChip>
+                        )}
+                        {classNameFromRecord(payRecord) !== "—" && (
+                          <PayChip icon={GraduationCap}>{classNameFromRecord(payRecord)}</PayChip>
+                        )}
+                        <PayChip icon={CalendarDays}>{periodLabel(payRecord)}</PayChip>
+                      </div>
+                    </div>
                   </div>
-                  <AdditionalChargesChecklist
-                    charges={payApplicableCharges}
-                    selectedIds={selectedChargeIds}
-                    onChange={setSelectedChargeIds}
-                  />
-                </div>
-              )}
-              <div className="rounded-md border">
-                <div className="px-3 py-2 border-b text-xs text-muted-foreground">
-                  <p className="font-medium">
-                    {editingPaid
-                      ? "Paid fee"
-                      : payModalMode === "edit"
-                        ? "Fee months (edit amount & select)"
-                        : "Unpaid months"}
-                  </p>
-                  {payModalMode === "pay" && !editingPaid && (
-                    <p className="mt-0.5">
-                      Change the amount for this visit. Charge checkboxes update it until you type your own figure.
-                    </p>
+
+                  <PaySection
+                    icon={Calculator}
+                    title="Fee Breakdown"
+                    action={
+                      <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                        {editingPaid
+                          ? "Paid fee"
+                          : payModalMode === "edit"
+                            ? "Edit amount & select"
+                            : "Original voucher"}
+                      </span>
+                    }
+                  >
+                    {editingPaid ? (
+                      <div className="flex items-center gap-3 px-4 py-3">
+                        <span className="min-w-0 flex-1">
+                          <span className="font-medium">{periodLabel(payRecord)}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {feeTypeLabel(payRecord.feeType)} · paid
+                          </span>
+                          {payRecord.adjustment && (
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              Original {formatPkr(payRecord.originalAmount ?? 0)} · adjusted{" "}
+                              {formatSignedPkr(payRecord.adjustment.amount)}
+                              {payRecord.adjustment.reason ? ` — ${payRecord.adjustment.reason}` : ""}
+                            </span>
+                          )}
+                        </span>
+                        <Input
+                          type="number"
+                          min={0}
+                          aria-label={`Amount for ${periodLabel(payRecord)}`}
+                          className="h-9 w-32 text-right tabular-nums"
+                          value={amountOverrides[payRecord._id] ?? String(payRecord.amount ?? "")}
+                          onChange={(e) =>
+                            setAmountOverrides((prev) => ({
+                              ...prev,
+                              [payRecord._id]: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        {payHistoryLoading && (
+                          <p className="flex items-center gap-2 px-4 py-5 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading remaining fees…
+                          </p>
+                        )}
+                        {!payHistoryLoading && unpaidForPay.length === 0 && (
+                          <p className="px-4 py-5 text-muted-foreground">No unpaid months left.</p>
+                        )}
+                        {!payHistoryLoading && unpaidForPay.length > 0 && (
+                          <ul className="max-h-72 divide-y overflow-y-auto">
+                            {unpaidForPay.map((fee) => {
+                              const checked = selectedFeeIds.includes(fee._id);
+                              const lines =
+                                payModalMode === "pay"
+                                  ? feePreviewLines(fee, payHistory?.student, allCharges, selectedChargeIds)
+                                  : [];
+                              const previewTotal = lines.reduce((sum, line) => sum + line.amount, 0);
+                              const typed = parsedFeeAmount(fee);
+                              const showLines =
+                                checked &&
+                                lines.length > 0 &&
+                                (typed === null || Math.abs(typed - previewTotal) <= 0.009);
+                              return (
+                                <li
+                                  key={fee._id}
+                                  className={cn(
+                                    "px-4 py-2.5 transition-colors",
+                                    checked ? "bg-primary/[0.04]" : "hover:bg-muted/40"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 shrink-0 accent-primary"
+                                        checked={checked}
+                                        onChange={() =>
+                                          setSelectedFeeIds((current) =>
+                                            checked
+                                              ? current.filter((id) => id !== fee._id)
+                                              : [...current, fee._id]
+                                          )
+                                        }
+                                      />
+                                      <span className="min-w-0 flex-1">
+                                        <span className="font-medium">{periodLabel(fee)}</span>
+                                        <span className="ml-2 text-xs text-muted-foreground">
+                                          {feeTypeLabel(fee.feeType)} · {fee.status}
+                                        </span>
+                                      </span>
+                                    </label>
+                                    {payModalMode === "edit" ? (
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        aria-label={`Amount for ${periodLabel(fee)}`}
+                                        className="h-9 w-32 text-right font-medium tabular-nums"
+                                        value={amountOverrides[fee._id] ?? String(fee.amount ?? "")}
+                                        onChange={(e) => setFeeAmount(fee._id, e.target.value, false)}
+                                      />
+                                    ) : (
+                                      <span
+                                        className={cn(
+                                          "font-semibold tabular-nums",
+                                          !checked && "text-muted-foreground"
+                                        )}
+                                      >
+                                        {formatPkr(feeAmount(fee))}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {showLines && (
+                                    <ul className="ml-7 mt-1.5 space-y-1 text-xs text-muted-foreground">
+                                      {lines.map((line) => (
+                                        <li key={line.key} className="flex items-baseline justify-between gap-3">
+                                          <span className="flex items-center gap-1.5">
+                                            {line.kind === "tuition" ? (
+                                              <GraduationCap className="h-3.5 w-3.5 text-primary/70" />
+                                            ) : line.kind === "admission" ? (
+                                              <Receipt className="h-3.5 w-3.5 text-primary/70" />
+                                            ) : (
+                                              <Plus className="h-3.5 w-3.5 text-primary/70" />
+                                            )}
+                                            <span
+                                              className={
+                                                line.kind === "tuition" || line.kind === "admission"
+                                                  ? "text-foreground/80"
+                                                  : undefined
+                                              }
+                                            >
+                                              {line.name}
+                                            </span>
+                                          </span>
+                                          <span className="font-medium tabular-nums text-foreground/90">
+                                            {formatPkr(line.amount)}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </>
+                    )}
+                    <div className="flex items-center justify-between gap-3 border-t bg-primary/[0.06] px-4 py-3">
+                      <span className="flex items-center gap-2 font-semibold text-primary">
+                        <Calculator className="h-4 w-4" />
+                        {editingPaid
+                          ? "Paid amount"
+                          : `Original Payable (${selectedUnpaid.length} item${selectedUnpaid.length === 1 ? "" : "s"})`}
+                      </span>
+                      <span className="text-lg font-bold tabular-nums text-primary">
+                        {formatPkr(originalTotal)}
+                      </span>
+                    </div>
+                  </PaySection>
+
+                  {!editingPaid && payModalMode === "pay" && payApplicableCharges.length > 0 && (
+                    <PaySection icon={PlusCircle} title="Additional Charges">
+                      <AdditionalChargesChecklist
+                        charges={payApplicableCharges}
+                        selectedIds={selectedChargeIds}
+                        onChange={setSelectedChargeIds}
+                      />
+                    </PaySection>
+                  )}
+
+                  {adjEnabled && selectedUnpaid.length > 0 && (
+                    <section
+                      className={cn(
+                        "min-w-0 overflow-hidden rounded-xl border-2 bg-card shadow-sm",
+                        adjActive ? "border-primary/60" : "border-border"
+                      )}
+                    >
+                      <header className="flex flex-wrap items-center gap-2.5 border-b bg-primary/[0.04] px-4 py-2.5">
+                        <Settings2 className="h-4 w-4 text-accent" />
+                        <h3 className="font-semibold text-primary">Fee Adjustment</h3>
+                        <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs text-primary">
+                          <Info className="h-3.5 w-3.5" />
+                          Saved separately — the original fee stays safe
+                        </span>
+                      </header>
+                      <div className="space-y-3 p-4">
+                        {selectedUnpaid.length > 1 && (
+                          <div
+                            role="radiogroup"
+                            aria-label="How to adjust the selected months"
+                            className="inline-flex flex-wrap rounded-lg border bg-muted/40 p-0.5 text-xs"
+                          >
+                            {(
+                              [
+                                ["same", "Same for all selected months"],
+                                ["each", "Different for each month"],
+                              ] as const
+                            ).map(([value, label]) => (
+                              <button
+                                key={value}
+                                type="button"
+                                role="radio"
+                                aria-checked={adjMode === value}
+                                onClick={() => switchAdjMode(value)}
+                                className={cn(
+                                  "rounded-md px-3 py-1.5 font-medium transition-colors",
+                                  adjMode === value
+                                    ? "bg-background text-primary shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground"
+                                )}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {adjPerMonth ? (
+                          <div className="divide-y rounded-lg border">
+                            {selectedUnpaid.map((fee) => {
+                              const input = adjEach[fee._id] ?? EMPTY_ADJ;
+                              const issue = adjIssue(fee, input);
+                              return (
+                                <div key={fee._id} className="space-y-2 p-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium text-primary">
+                                      {periodLabel(fee)}{" "}
+                                      <span className="text-xs font-normal text-muted-foreground">
+                                        ({formatPkr(feeAmount(fee))})
+                                      </span>
+                                    </span>
+                                    {canHalfMonth(fee) && (
+                                      <HalfMonthButton
+                                        amountOff={halfMonthOff(fee)}
+                                        applied={isHalfMonthApplied(fee, input)}
+                                        onClick={() => applyHalfMonth(fee)}
+                                      />
+                                    )}
+                                  </div>
+                                  <AdjFields
+                                    idPrefix={`adj-${fee._id}`}
+                                    value={input}
+                                    onChange={(patch) => setAdjFor(fee._id, patch)}
+                                  />
+                                  {issue && <p className="text-xs text-destructive">{issue}</p>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <>
+                            {selectedUnpaid.length === 1 && canHalfMonth(selectedUnpaid[0]) && (
+                              <HalfMonthButton
+                                large
+                                amountOff={halfMonthOff(selectedUnpaid[0])}
+                                applied={isHalfMonthApplied(selectedUnpaid[0], {
+                                  kind: adjKind,
+                                  amount: adjAmount,
+                                  reason: adjReason,
+                                })}
+                                onClick={() => applyHalfMonth(selectedUnpaid[0])}
+                              />
+                            )}
+                            <AdjFields
+                              idPrefix="adj"
+                              value={{ kind: adjKind, amount: adjAmount, reason: adjReason }}
+                              onChange={(patch) => {
+                                if (patch.kind !== undefined) setAdjKind(patch.kind);
+                                if (patch.amount !== undefined) setAdjAmount(patch.amount);
+                                if (patch.reason !== undefined) setAdjReason(patch.reason);
+                              }}
+                            />
+                            {selectedUnpaid.length > 1 && (
+                              <p className="text-xs text-muted-foreground">
+                                Need a half-month fee for one month? Switch to{" "}
+                                <button
+                                  type="button"
+                                  className="font-semibold text-primary underline underline-offset-2"
+                                  onClick={() => switchAdjMode("each")}
+                                >
+                                  Different for each month
+                                </button>
+                                .
+                              </p>
+                            )}
+                            {selectedUnpaid.length > 1 && adjKind !== "none" && (
+                              <p className="text-xs text-muted-foreground">
+                                Applied to each of the {selectedUnpaid.length} selected months.
+                              </p>
+                            )}
+                          </>
+                        )}
+
+                        {adjError && !adjPerMonth ? (
+                          <p className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-destructive">
+                            <Info className="h-4 w-4 shrink-0" />
+                            {adjError}
+                          </p>
+                        ) : adjActive && !adjError ? (
+                          <p className="flex items-center gap-2 rounded-lg bg-primary/[0.06] px-3 py-2 text-primary">
+                            <Info className="h-4 w-4 shrink-0" />
+                            <span>
+                              {adjEntries.length === 1 ? (
+                                <>
+                                  This will {adjDelta < 0 ? "reduce" : "increase"} the{" "}
+                                  {periodLabel(adjEntries[0].fee)} fee by{" "}
+                                  <span className="font-semibold">{formatPkr(Math.abs(adjDelta))}</span>.
+                                </>
+                              ) : (
+                                <>
+                                  {adjEntries.length} months adjusted · net change{" "}
+                                  <span className="font-semibold">{formatSignedPkr(adjDelta)}</span>.
+                                </>
+                              )}
+                            </span>
+                          </p>
+                        ) : null}
+                      </div>
+                    </section>
+                  )}
+
+                  {!editingPaid && payModalMode === "pay" && (
+                    <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 px-5 py-4 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+                      <p className="flex items-center gap-2 font-semibold">
+                        <Banknote className="h-4 w-4 text-emerald-600" />
+                        Amount to Collect
+                      </p>
+                      <p className="mt-1 text-3xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+                        {formatPkr(finalTotal)}
+                      </p>
+                      {adjActive && (
+                        <p className="mt-0.5 text-xs text-emerald-800/80 dark:text-emerald-200/80">
+                          (Original {formatPkr(originalTotal)} {adjDelta < 0 ? "−" : "+"} Adjustment{" "}
+                          {formatPkr(Math.abs(adjDelta))})
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
-                {editingPaid && payRecord ? (
-                  <div className="flex items-center gap-3 px-3 py-2">
-                    <span className="flex-1 min-w-0">
-                      <span className="font-medium">{periodLabel(payRecord)}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {feeTypeLabel(payRecord.feeType)} · paid
+
+                {/* ---------- Right column ---------- */}
+                <div className="min-w-0 space-y-4">
+                  <PaySection
+                    icon={FileText}
+                    title="Summary"
+                    action={
+                      <span className="text-xs text-muted-foreground">
+                        {summaryRows.length} item{summaryRows.length === 1 ? "" : "s"}
                       </span>
-                    </span>
-                    <Input
-                      type="number"
-                      min={0}
-                      className="h-8 w-28 text-right tabular-nums"
-                      value={amountOverrides[payRecord._id] ?? String(payRecord.amount ?? "")}
-                      onChange={(e) =>
-                        setAmountOverrides((prev) => ({
-                          ...prev,
-                          [payRecord._id]: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                ) : (
-                  <>
-                    {payHistoryLoading && (
-                      <p className="px-3 py-4 text-muted-foreground">Loading remaining fees…</p>
-                    )}
-                    {!payHistoryLoading && unpaidForPay.length === 0 && (
-                      <p className="px-3 py-4 text-muted-foreground">No unpaid months left.</p>
-                    )}
-                    {!payHistoryLoading && unpaidForPay.length > 0 && (
-                      <ul className="max-h-64 overflow-y-auto divide-y">
-                        {unpaidForPay.map((fee) => {
-                          const checked = selectedFeeIds.includes(fee._id);
-                          const lines =
-                            payModalMode === "pay"
-                              ? feePreviewLines(
-                                fee,
-                                payHistory?.student,
-                                allCharges,
-                                selectedChargeIds
-                              )
-                              : [];
-                          const previewTotal = lines.reduce((sum, line) => sum + line.amount, 0);
-                          const typed = parsedFeeAmount(fee);
-                          const showLines =
-                            lines.length > 0 &&
-                            (typed === null || Math.abs(typed - previewTotal) <= 0.009);
-                          return (
-                            <li key={fee._id} className="px-3 py-2 hover:bg-muted/40">
-                              <div className="flex items-center gap-3">
-                                <label className="flex flex-1 min-w-0 items-center gap-3 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 shrink-0"
-                                    checked={checked}
-                                    onChange={() =>
-                                      setSelectedFeeIds((current) =>
-                                        checked
-                                          ? current.filter((id) => id !== fee._id)
-                                          : [...current, fee._id]
-                                      )
-                                    }
-                                  />
-                                  <span className="flex-1 min-w-0">
-                                    <span className="font-medium">{periodLabel(fee)}</span>
-                                    <span className="ml-2 text-xs text-muted-foreground">
-                                      {feeTypeLabel(fee.feeType)} · {fee.status}
-                                    </span>
-                                  </span>
-                                </label>
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  aria-label={`Amount for ${periodLabel(fee)}`}
-                                  className="h-8 w-28 text-right tabular-nums"
-                                  value={amountOverrides[fee._id] ?? String(fee.amount ?? "")}
-                                  onChange={(e) =>
-                                    setFeeAmount(fee._id, e.target.value, payModalMode === "pay")
-                                  }
-                                />
-                              </div>
-                              {payModalMode === "pay" && lines.length > 0 && (
-                                <ul className="mt-1.5 ml-7 space-y-1 text-xs text-muted-foreground">
-                                  {lines.map((line) => (
-                                    <li
-                                      key={line.key}
-                                      className="flex items-baseline justify-between gap-3"
-                                    >
-                                      <span
-                                        className={
-                                          line.kind === "tuition" || line.kind === "admission"
-                                            ? "text-foreground/80"
-                                            : undefined
-                                        }
-                                      >
-                                        {line.name}
-                                      </span>
-                                      <span className="tabular-nums font-medium text-foreground/90">
-                                        {formatPkr(line.amount)}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </>
-                )}
-                <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/30">
-                  <span className="text-muted-foreground">
-                    {editingPaid
-                      ? "1 item"
-                      : `${selectedUnpaid.length} item${selectedUnpaid.length === 1 ? "" : "s"} selected`}
-                  </span>
-                  <span className="font-semibold">
-                    {formatPkr(
-                      editingPaid && payRecord
-                        ? Number(amountOverrides[payRecord._id] ?? payRecord.amount) || 0
-                        : selectedTotal
-                    )}
-                  </span>
-                </div>
-              </div>
-              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="min-w-0 space-y-1.5">
-                  <Label htmlFor="payment-date">Payment date</Label>
-                  <Input
-                    id="payment-date"
-                    type="date"
-                    className="min-w-0 w-full"
-                    value={paymentDate}
-                    max={todayInputValue()}
-                    onChange={(e) => setPaymentDate(e.target.value)}
-                  />
-                </div>
-                <div className="min-w-0 space-y-1.5">
-                  <Label>Payment method</Label>
-                  <select
-                    className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm"
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    }
                   >
-                    <option value="cash">Cash</option>
-                    <option value="bank_transfer">Bank Transfer</option>
-                    <option value="online">Online</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div className="min-w-0 space-y-1.5">
-                  <Label htmlFor="payment-slip-number">Payment slip number</Label>
-                  <Input
-                    id="payment-slip-number"
-                    value={paymentSlipNumber}
-                    onChange={(e) => setPaymentSlipNumber(e.target.value)}
-                    placeholder="Bank / cash slip number"
-                    maxLength={100}
-                  />
-                </div>
-                <div className="min-w-0 space-y-1.5">
-                  <Label>Notes (optional)</Label>
-                  <Input
-                    value={paymentNotes}
-                    onChange={(e) => setPaymentNotes(e.target.value)}
-                    placeholder="Reference or remarks"
-                  />
+                    {/* Per month: every line on the voucher, plus its adjustment */}
+                    <div className="max-h-[22rem] divide-y overflow-y-auto">
+                      {summaryRows.length === 0 && (
+                        <p className="px-4 py-3 text-muted-foreground">Select at least one month.</p>
+                      )}
+                      {summaryRows.map((row) => (
+                        <div key={row.fee._id} className="px-4 py-2.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-semibold text-primary">
+                              {periodLabel(row.fee)}
+                              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                                {feeTypeLabel(row.fee.feeType)}
+                                {row.fee.dueDate ? ` · due ${formatDate(row.fee.dueDate)}` : ""}
+                              </span>
+                            </span>
+                            {row.adjustment !== 0 && (
+                              <span className="text-xs text-muted-foreground line-through tabular-nums">
+                                {formatPkr(row.amount)}
+                              </span>
+                            )}
+                          </div>
+                          <ul className="mt-1 space-y-0.5 text-xs">
+                            {row.lines.map((line) => (
+                              <li key={line.key} className="flex items-baseline justify-between gap-3">
+                                <span className="text-muted-foreground">{line.name}</span>
+                                <span className="tabular-nums">{formatPkr(line.amount)}</span>
+                              </li>
+                            ))}
+                            {row.adjustment !== 0 && (
+                              <li className="flex items-baseline justify-between gap-3">
+                                <span
+                                  className={row.adjustment < 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}
+                                >
+                                  {row.adjustmentLabel}
+                                  {row.adjustmentReason ? ` — ${row.adjustmentReason}` : ""}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "font-medium tabular-nums",
+                                    row.adjustment < 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"
+                                  )}
+                                >
+                                  {formatSignedPkr(row.adjustment)}
+                                </span>
+                              </li>
+                            )}
+                          </ul>
+                          <div className="mt-1 flex items-center justify-between gap-3 border-t border-dashed pt-1 text-xs">
+                            <span className="font-medium">Month total</span>
+                            <span className="font-semibold tabular-nums">
+                              {formatPkr(row.amount + row.adjustment)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Totals by category */}
+                    <div className="divide-y border-t bg-muted/20 text-sm">
+                      {summaryTotals.tuition > 0 && (
+                        <SummaryLine label="Tuition" value={formatPkr(summaryTotals.tuition)} />
+                      )}
+                      {summaryTotals.admission > 0 && (
+                        <SummaryLine label="Admission" value={formatPkr(summaryTotals.admission)} />
+                      )}
+                      {summaryTotals.charges > 0 && (
+                        <SummaryLine
+                          label="Additional charges / stationery"
+                          value={formatPkr(summaryTotals.charges)}
+                        />
+                      )}
+                      <SummaryLine label="Original Payable" value={formatPkr(originalTotal)} strong />
+                      {adjEnabled && (
+                        <SummaryLine
+                          label={
+                            adjEntries.length > 1
+                              ? `Adjustments (${adjEntries.length} months)`
+                              : adjEntries.length === 1
+                                ? `Adjustment (${periodLabel(adjEntries[0].fee)})`
+                                : "Adjustment"
+                          }
+                          value={adjActive ? formatSignedPkr(adjDelta) : formatPkr(0)}
+                          tone={!adjActive ? undefined : adjDelta < 0 ? "good" : "bad"}
+                        />
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t bg-primary/[0.06] px-4 py-3">
+                      <span className="font-semibold text-primary">Final Payable</span>
+                      <span className="text-2xl font-bold tabular-nums text-primary">
+                        {formatPkr(finalTotal)}
+                      </span>
+                    </div>
+
+                    {/* Payment details as entered */}
+                    <div className="divide-y border-t text-sm">
+                      {paymentNotes.trim() && <SummaryLine label="Notes" value={paymentNotes.trim()} />}
+                      {!editingPaid && !payHistoryLoading && (
+                        <SummaryLine
+                          label={`Still unpaid after this (${remainingUnpaid.length} month${remainingUnpaid.length === 1 ? "" : "s"})`}
+                          value={formatPkr(remainingTotal)}
+                          tone={remainingUnpaid.length === 0 ? "good" : undefined}
+                        />
+                      )}
+                    </div>
+                  </PaySection>
+
+                  <PaySection icon={CreditCard} title="Payment Details">
+                    <div className="space-y-3.5 p-4">
+                      <div className="space-y-1.5">
+                        <Label>
+                          Payment method <span className="text-destructive">*</span>
+                        </Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {PAYMENT_METHOD_OPTIONS.map(({ value, label, icon: Icon }) => (
+                            <button
+                              key={value}
+                              type="button"
+                              aria-pressed={paymentMethod === value}
+                              onClick={() => setPaymentMethod(value)}
+                              className={cn(
+                                "flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition-colors",
+                                paymentMethod === value
+                                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                                  : "border-border bg-background hover:border-primary/40 hover:bg-primary/5"
+                              )}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="min-w-0 space-y-1.5">
+                          <Label htmlFor="payment-date">
+                            Payment date <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            id="payment-date"
+                            type="date"
+                            className="w-full min-w-0"
+                            value={paymentDate}
+                            max={todayInputValue()}
+                            onChange={(e) => setPaymentDate(e.target.value)}
+                          />
+                        </div>
+                        <div className="min-w-0 space-y-1.5">
+                          <Label htmlFor="payment-slip-number">Slip number</Label>
+                          <Input
+                            id="payment-slip-number"
+                            value={paymentSlipNumber}
+                            onChange={(e) => setPaymentSlipNumber(e.target.value)}
+                            placeholder="Bank / cash slip"
+                            maxLength={100}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="payment-notes">Notes (optional)</Label>
+                        <Input
+                          id="payment-notes"
+                          value={paymentNotes}
+                          onChange={(e) => setPaymentNotes(e.target.value)}
+                          placeholder="Reference or remarks"
+                        />
+                      </div>
+                      <PaymentSlipUploadBox
+                        file={paymentSlip}
+                        existingPath={
+                          payModalMode === "edit" && payRecord?.status === "paid"
+                            ? payRecord.paymentSlip
+                            : null
+                        }
+                        inputKey={slipInputKey}
+                        onFileChange={setPaymentSlip}
+                        onClear={() => {
+                          setPaymentSlip(null);
+                          setSlipInputKey((key) => key + 1);
+                        }}
+                        onPreview={setSlipPreview}
+                        onTooLarge={() =>
+                          toast({
+                            title: "Slip is too large",
+                            description: "Upload an image or PDF up to 5 MB.",
+                            variant: "destructive",
+                          })
+                        }
+                      />
+                      {!editingPaid && payModalMode === "pay" && (
+                        <div className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                          <span>
+                            {selectedUnpaid.length === 1 ? "Voucher" : `${selectedUnpaid.length} vouchers`} will be
+                            marked as <span className="font-semibold">Paid</span> once{" "}
+                            {formatPkr(finalTotal)} is collected.
+                          </span>
+                        </div>
+                      )}
+                      {!editingPaid && !payHistoryLoading && (
+                        <div className="flex items-center gap-2.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
+                          <Info className="h-4 w-4 shrink-0 text-sky-600" />
+                          <span className="min-w-0 flex-1">
+                            <span className="font-semibold">Still unpaid after this:</span>{" "}
+                            {formatPkr(remainingTotal)}
+                            {remainingUnpaid.length > 0 && (
+                              <span className="text-xs">
+                                {" "}
+                                ({remainingUnpaid.length} month{remainingUnpaid.length === 1 ? "" : "s"})
+                              </span>
+                            )}
+                          </span>
+                          {remainingUnpaid.length === 0 && (
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </PaySection>
                 </div>
               </div>
-              <PaymentSlipUploadBox
-                file={paymentSlip}
-                existingPath={
-                  payModalMode === "edit" && payRecord?.status === "paid"
-                    ? payRecord.paymentSlip
-                    : null
-                }
-                inputKey={slipInputKey}
-                onFileChange={setPaymentSlip}
-                onClear={() => {
-                  setPaymentSlip(null);
-                  setSlipInputKey((key) => key + 1);
-                }}
-                onPreview={setSlipPreview}
-                onTooLarge={() =>
-                  toast({
-                    title: "Slip is too large",
-                    description: "Upload an image or PDF up to 5 MB.",
-                    variant: "destructive",
-                  })
-                }
-              />
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPayRecord(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="hero"
-              disabled={
-                payMut.isPending ||
-                !paymentDate ||
-                (editingPaid
-                  ? parsedFeeAmount(payRecord!) === null
-                  : selectedUnpaid.length === 0 ||
-                    selectedUnpaid.some((fee) => parsedFeeAmount(fee) === null))
-              }
-              onClick={() => payMut.mutate()}
-            >
-              {payMut.isPending
-                ? "Saving…"
-                : payModalMode === "edit"
-                  ? "Save changes"
-                  : "Confirm payment"}
-            </Button>
-          </DialogFooter>
+
+          <div className="flex shrink-0 flex-col gap-3 border-t bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                {payOpenedAt.toLocaleString(undefined, {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </span>
+              {user?.name && (
+                <span className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5" />
+                  By: {user.name}
+                </span>
+              )}
+              {adjActive && (
+                <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Adjustment is saved with your name and reason
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button variant="outline" onClick={() => setPayRecord(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="hero"
+                className="gap-2"
+                disabled={
+                  payMut.isPending ||
+                  !paymentDate ||
+                  Boolean(adjError) ||
+                  (editingPaid
+                    ? parsedFeeAmount(payRecord!) === null
+                    : selectedUnpaid.length === 0 ||
+                      selectedUnpaid.some((fee) => parsedFeeAmount(fee) === null))
+                }
+                onClick={() => payMut.mutate()}
+              >
+                {payMut.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                {payMut.isPending
+                  ? "Saving…"
+                  : payModalMode === "edit"
+                    ? "Save changes"
+                    : `Collect ${formatPkr(finalTotal)}`}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

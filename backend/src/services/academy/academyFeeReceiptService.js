@@ -140,7 +140,42 @@ function particularRank(name) {
   if (/^Admission/i.test(name)) return 0;
   if (/^Tuition/i.test(name)) return 1;
   if (/^station[ae]r/i.test(name)) return 2;
+  if (ADJUSTMENT_LABEL_SET.has(name)) return 4;
   return 3;
+}
+
+const ADJUSTMENT_LABELS = {
+  discount: 'Concession',
+  partial_month: 'Part month',
+  late_fine: 'Late fine',
+  other: 'Adjustment',
+};
+const ADJUSTMENT_LABEL_SET = new Set(Object.values(ADJUSTMENT_LABELS));
+
+/** Signed receipt line for a collection-time adjustment, or null. */
+function adjustmentItem(record, month, period) {
+  const hasOriginal = record?.originalAmount !== undefined && record?.originalAmount !== null;
+  const amount = roundMoney(Number(record?.adjustment?.amount) || 0);
+  if (!hasOriginal || Math.abs(amount) < 0.005) return null;
+  const label =
+    ADJUSTMENT_LABELS[record.adjustment.kind] ||
+    'Adjustment';
+  return {
+    name: label,
+    month,
+    amount,
+    period,
+  };
+}
+
+/** "Nov 2026: Parent request" lines for adjusted records (printed under the total). */
+function adjustmentReasons(records) {
+  return (Array.isArray(records) ? records : [])
+    .filter((r) => r?.adjustment?.reason && r.originalAmount !== undefined && r.originalAmount !== null)
+    .map((r) => {
+      const many = Array.isArray(records) && records.length > 1;
+      return `${many ? `${monthPeriodLabel(r)}: ` : ''}${String(r.adjustment.reason).trim()}`;
+    });
 }
 
 function challanItemLines(records) {
@@ -148,12 +183,19 @@ function challanItemLines(records) {
   const items = [];
 
   for (const record of list) {
+    const adjustmentMonth = monthPeriodLabel(record) || '—';
+    const adjustmentPeriod = (Number(record.year) || 0) * 12 + (Number(record.month) || 0);
+    const adjustment = adjustmentItem(record, adjustmentMonth, adjustmentPeriod);
+    if (adjustment) items.push(adjustment);
     const parts = feeComponents(record);
     const month = monthPeriodLabel(record) || '—';
     const period = (Number(record.year) || 0) * 12 + (Number(record.month) || 0);
 
     if (!parts.length) {
-      const amount = roundMoney(Number(record.amount) || 0);
+      // Without component lines, show the fee before the adjustment so the lines add up.
+      const amount = roundMoney(
+        Number(adjustment ? record.originalAmount : record.amount) || 0
+      );
       if (amount <= 0) continue;
       let name;
       if (record.feeType === 'stationery') name = 'Stationery';
@@ -415,6 +457,17 @@ function drawThermalReceipt(doc, record, brand, logoPath, meta = {}) {
   doc.fillColor('#222222').font('Helvetica').fontSize(7);
   y = pdfWrapCenter(doc, amountInWords(breakdownTotal), x, y, w, 10);
   y += 4;
+
+  const thermalReasons = adjustmentReasons([record]);
+  if (thermalReasons.length) {
+    dashLine(doc, x, y, w);
+    y += 8;
+    doc.fillColor('#333333').font('Helvetica').fontSize(7);
+    pdfLine(doc, 'Adjustment reason', x, y, { width: w, align: 'center' });
+    y += 10;
+    y = pdfWrapCenter(doc, thermalReasons.join(' · '), x, y, w, 10);
+    y += 2;
+  }
 
   if (record.notes) {
     dashLine(doc, x, y, w);
@@ -761,6 +814,14 @@ function drawChallanCopy(doc, box, copy, records, brand, logoPath, options = {})
   doc.fillColor('#10244A').font('Helvetica-Oblique').fontSize(9);
   doc.text(amountInWords(total), innerX, cy, { width: innerW, align: 'center', lineGap: 0 });
   cy += 16;
+  const reasons = adjustmentReasons(records);
+  if (reasons.length) {
+    const reasonText = `Adjustment reason — ${reasons.join(' · ')}`;
+    doc.fillColor('#10244A').font('Helvetica').fontSize(8);
+    const reasonH = Math.min(30, doc.heightOfString(reasonText, { width: innerW, lineGap: 1 }));
+    doc.text(reasonText, innerX, cy, { width: innerW, height: reasonH, align: 'center', lineGap: 1, ellipsis: true });
+    cy += reasonH + 4;
+  }
 
   const rulesTop = Math.max(cy, footerTop);
   const rulesBottom = y + h - 36;

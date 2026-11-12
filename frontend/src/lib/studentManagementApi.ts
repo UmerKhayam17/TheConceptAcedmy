@@ -260,6 +260,16 @@ export interface AcademyFeeRecord {
   paymentSlip?: string;
   paymentSlipNumber?: string;
   notes?: string;
+  /** Voucher amount before a collection-time adjustment (amount is the final payable). */
+  originalAmount?: number;
+  adjustment?: {
+    kind: FeeAdjustmentKind;
+    /** Signed change: negative reduced the fee, positive added to it. */
+    amount: number;
+    reason?: string;
+    by?: string;
+    at?: string;
+  };
   components?: {
     name: string;
     amount: number;
@@ -1389,7 +1399,40 @@ export interface DiscountReportStaffSummary {
   totalDiscount: number;
 }
 
+export interface CollectionAdjustmentRow {
+  feeRecordId: string;
+  studentId?: string;
+  studentCode: string;
+  studentName: string;
+  className: string;
+  month: number;
+  year: number;
+  feeType: AcademyFeeRecord["feeType"];
+  status: AcademyFeeRecord["status"];
+  kind: FeeAdjustmentKind;
+  kindLabel: string;
+  reason: string;
+  originalAmount: number;
+  /** Signed: negative reduced the fee. */
+  adjustmentAmount: number;
+  finalAmount: number;
+  by: { name: string; email: string } | null;
+  at?: string;
+}
+
+/** Adjustments given in the Collect Fee modal (stored on fee records). */
+export interface CollectionAdjustmentsReport {
+  count: number;
+  totalReduced: number;
+  totalAdded: number;
+  netChange: number;
+  byKind: { kind: FeeAdjustmentKind; label: string; count: number; amount: number }[];
+  byStaff: { staffName: string; staffEmail: string; count: number; amount: number }[];
+  items: CollectionAdjustmentRow[];
+}
+
 export interface DiscountReportSummary {
+  collectionAdjustments?: CollectionAdjustmentsReport;
   studentCount: number;
   totalMonthlyDiscount: number;
   totalAdmissionDiscount: number;
@@ -1562,8 +1605,19 @@ export async function updateAcademyFee(
   return parsed.data;
 }
 
+export type FeeAdjustmentKind = "discount" | "partial_month" | "late_fine" | "other";
+
+export interface FeePaymentAdjustment {
+  feeRecordId: string;
+  kind: FeeAdjustmentKind;
+  /** Always positive; late_fine adds it, every other kind subtracts it. */
+  amount: number;
+  reason: string;
+}
+
 export async function payAcademyFees(body: {
   feeRecordIds: string[];
+  adjustments?: FeePaymentAdjustment[];
   paymentMethod?: string;
   paymentSlipNumber?: string;
   notes?: string;
@@ -1572,6 +1626,7 @@ export async function payAcademyFees(body: {
 }) {
   const fd = new FormData();
   fd.append("feeRecordIds", JSON.stringify(body.feeRecordIds));
+  if (body.adjustments?.length) fd.append("adjustments", JSON.stringify(body.adjustments));
   if (body.paymentMethod) fd.append("paymentMethod", body.paymentMethod);
   if (body.paymentSlipNumber !== undefined) fd.append("paymentSlipNumber", body.paymentSlipNumber);
   if (body.notes) fd.append("notes", body.notes);

@@ -372,8 +372,21 @@ const academyFeePay = Joi.object({
   paidAt: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+const FEE_ADJUSTMENT_KINDS = ['discount', 'partial_month', 'late_fine', 'other'];
+
 const academyFeePayMany = Joi.object({
   feeRecordIds: Joi.array().items(objectId).min(1).max(24).required(),
+  adjustments: Joi.array()
+    .items(
+      Joi.object({
+        feeRecordId: objectId.required(),
+        kind: Joi.string().valid(...FEE_ADJUSTMENT_KINDS).required(),
+        amount: Joi.number().positive().max(10000000).required(),
+        reason: Joi.string().trim().min(2).max(300).required(),
+      })
+    )
+    .max(24)
+    .default([]),
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').default('cash'),
   paymentSlipNumber: Joi.string().trim().allow('').max(100).optional(),
   notes: Joi.string().allow('').optional(),

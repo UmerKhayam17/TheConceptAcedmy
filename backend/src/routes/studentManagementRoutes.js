@@ -43,6 +43,15 @@ function normalizeFeePayBody(req, _res, next) {
       req.body.feeRecordIds = trimmed ? [trimmed] : [];
     }
   }
+  const rawAdjustments = req.body?.adjustments;
+  if (typeof rawAdjustments === 'string') {
+    try {
+      const parsed = JSON.parse(rawAdjustments || '[]');
+      req.body.adjustments = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      req.body.adjustments = [];
+    }
+  }
   next();
 }
 

@@ -836,6 +836,110 @@ function buildDiscountReportQuery({ classId, search, from, to, reliefType, conce
   return { $and: and };
 }
 
+const COLLECTION_ADJUSTMENT_LABELS = {
+  discount: 'Discount / Concession',
+  partial_month: 'Partial month',
+  late_fine: 'Late fine',
+  other: 'Other reduction',
+};
+
+/**
+ * Adjustments given while collecting fees (Collect Fee modal). These live on fee
+ * records, not the student profile, so they are reported separately.
+ */
+async function getCollectionAdjustments({ classId, search, from, to } = {}) {
+  const q = {
+    originalAmount: { $ne: null },
+    'adjustment.amount': { $ne: null },
+  };
+  if (from || to) {
+    const at = {};
+    if (from) at.$gte = new Date(from);
+    if (to) {
+      const end = new Date(to);
+      end.setHours(23, 59, 59, 999);
+      at.$lte = end;
+    }
+    q['adjustment.at'] = at;
+  }
+  if (classId || search?.trim()) {
+    const studentQ = {};
+    if (classId) studentQ.classId = classId;
+    if (search?.trim()) {
+      const term = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      studentQ.$or = [
+        { studentName: { $regex: term, $options: 'i' } },
+        { fatherName: { $regex: term, $options: 'i' } },
+        { phone: { $regex: term, $options: 'i' } },
+        { studentId: { $regex: term, $options: 'i' } },
+      ];
+    }
+    const ids = await AcademyStudent.find(studentQ).distinct('_id');
+    q.studentId = { $in: ids };
+  }
+
+  const records = await AcademyFeeRecord.find(q)
+    .select('studentId month year feeType amount originalAmount adjustment status')
+    .populate({ path: 'studentId', select: 'studentId studentName classId', populate: { path: 'classId', select: 'className' } })
+    .populate('adjustment.by', 'name email')
+    .sort({ 'adjustment.at': -1 })
+    .limit(500)
+    .lean();
+
+  let totalReduced = 0;
+  let totalAdded = 0;
+  const byKind = new Map();
+  const byStaff = new Map();
+  const items = records
+    .filter((r) => Math.abs(Number(r.adjustment?.amount) || 0) > 0.005)
+    .map((r) => {
+      const amount = Number(r.adjustment.amount) || 0;
+      if (amount < 0) totalReduced += -amount;
+      else totalAdded += amount;
+      const kind = r.adjustment.kind || 'other';
+      const k = byKind.get(kind) || { kind, label: COLLECTION_ADJUSTMENT_LABELS[kind] || kind, count: 0, amount: 0 };
+      k.count += 1;
+      k.amount += amount;
+      byKind.set(kind, k);
+      const by = r.adjustment.by;
+      const staffKey = by?._id ? String(by._id) : 'unknown';
+      const st = byStaff.get(staffKey) || { staffName: by?.name || 'Unknown', staffEmail: by?.email || '', count: 0, amount: 0 };
+      st.count += 1;
+      st.amount += amount;
+      byStaff.set(staffKey, st);
+      const student = r.studentId || {};
+      return {
+        feeRecordId: r._id,
+        studentId: student._id,
+        studentCode: student.studentId || '',
+        studentName: student.studentName || '—',
+        className: student.classId?.className || '',
+        month: r.month,
+        year: r.year,
+        feeType: r.feeType,
+        status: r.status,
+        kind,
+        kindLabel: COLLECTION_ADJUSTMENT_LABELS[kind] || kind,
+        reason: r.adjustment.reason || '',
+        originalAmount: Number(r.originalAmount) || 0,
+        adjustmentAmount: amount,
+        finalAmount: Number(r.amount) || 0,
+        by: by ? { name: by.name || '', email: by.email || '' } : null,
+        at: r.adjustment.at,
+      };
+    });
+
+  return {
+    count: items.length,
+    totalReduced,
+    totalAdded,
+    netChange: totalAdded - totalReduced,
+    byKind: [...byKind.values()].sort((a, b) => a.amount - b.amount),
+    byStaff: [...byStaff.values()].sort((a, b) => a.amount - b.amount),
+    items,
+  };
+}
+
 async function getDiscountReport({
   page = 1,
   limit = 20,
@@ -850,7 +954,7 @@ async function getDiscountReport({
   const perPage = Math.min(100, Math.max(1, limit));
   const skip = (Math.max(1, page) - 1) * perPage;
 
-  const [rows, total, allDiscountStudents, categoryNames] = await Promise.all([
+  const [rows, total, allDiscountStudents, categoryNames, collectionAdjustments] = await Promise.all([
     AcademyStudent.find(q)
       .populate('classId', 'className')
       .populate('createdBy', 'name email')
@@ -865,6 +969,7 @@ async function getDiscountReport({
       )
       .lean(),
     concessionCategoryNameMap(),
+    getCollectionAdjustments({ classId, search, from, to }),
   ]);
 
   let totalMonthlyDiscount = 0;
@@ -1007,6 +1112,7 @@ async function getDiscountReport({
       legacyReliefCount,
       totalLegacyReliefAmount,
       byCategory: [...byCategoryMap.values()].sort((a, b) => b.monthlyAmount - a.monthlyAmount),
+      collectionAdjustments,
     },
     items,
     pagination: {

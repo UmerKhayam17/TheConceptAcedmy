@@ -909,8 +909,36 @@ async function updateFeeRecord(id, payload = {}, slipFile) {
     if (!Number.isFinite(amount) || amount < 0) {
       throw new ApiError(400, 'Amount must be a non-negative number');
     }
+    const hasAdjustment =
+      record.originalAmount !== undefined && record.originalAmount !== null;
+    if (hasAdjustment && Math.abs(amount - Number(record.amount)) > 0.009) {
+      // Keep original + adjustment = amount. The edit changes the adjustment, not the original fee.
+      const original = roundMoney(Number(record.originalAmount) || 0);
+      const delta = roundMoney(amount - original);
+      if (Math.abs(delta) <= 0.009) {
+        record.originalAmount = undefined;
+        record.adjustment = undefined;
+      } else {
+        const prevKind = record.adjustment?.kind;
+        const kind =
+          delta > 0
+            ? 'late_fine'
+            : prevKind && prevKind !== 'late_fine'
+              ? prevKind
+              : 'other';
+        const prevReason = String(record.adjustment?.reason || '').trim();
+        record.adjustment = {
+          kind,
+          amount: delta,
+          reason: `${prevReason ? `${prevReason} · ` : ''}amount edited to ${amount}`.slice(0, 300),
+          by: record.adjustment?.by,
+          at: new Date(),
+        };
+      }
+    }
     record.amount = amount;
-    if (Array.isArray(record.components) && record.components.length > 0) {
+    // The original voucher lines stay intact when an adjustment explains the difference.
+    if (!hasAdjustment && Array.isArray(record.components) && record.components.length > 0) {
       record.components = [
         {
           name: record.feeType === 'admission' ? 'Admission' : record.feeType === 'stationery' ? 'Stationery' : 'Tuition',
@@ -1850,18 +1878,50 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
   if (records.some((r) => r.status === 'paid')) throw new ApiError(400, 'One of the selected fees is already paid');
 
   const paidAt = resolvePaidAt(payload.paidAt);
+  const adjustmentByFee = new Map();
+  for (const adj of payload.adjustments || []) {
+    const key = String(adj.feeRecordId);
+    if (!ids.includes(key)) throw new ApiError(400, 'Adjustment is for a fee that is not selected');
+    if (adjustmentByFee.has(key)) throw new ApiError(400, 'Only one adjustment per fee is allowed');
+    adjustmentByFee.set(key, adj);
+  }
   const paymentSlip = savePaymentSlip(slipFile);
   const slipNumber = String(payload.paymentSlipNumber || '').trim();
   const paid = [];
   for (const record of records) {
+    const adj = adjustmentByFee.get(String(record._id));
+    const original = roundMoney(Number(record.amount) || 0);
+    let adjustmentSet = {};
+    if (adj) {
+      const size = roundMoney(Math.abs(Number(adj.amount) || 0));
+      const delta = adj.kind === 'late_fine' ? size : -size;
+      const finalAmount = roundMoney(original + delta);
+      if (finalAmount < 0) {
+        throw new ApiError(400, 'Adjustment is larger than the fee amount');
+      }
+      adjustmentSet = {
+        amount: finalAmount,
+        originalAmount: original,
+        adjustment: {
+          kind: adj.kind,
+          amount: delta,
+          reason: String(adj.reason || '').trim(),
+          by: userId,
+          at: new Date(),
+        },
+      };
+    }
     // eslint-disable-next-line no-await-in-loop
     const updated = await AcademyFeeRecord.findOneAndUpdate(
       {
         _id: record._id,
         status: { $in: ['pending', 'overdue'] },
+        // The adjustment was worked out from this amount; refuse if it changed meanwhile.
+        ...(adj ? { amount: record.amount } : {}),
       },
       {
         $set: {
+          ...adjustmentSet,
           status: 'paid',
           paidAt,
           paymentMethod: payload.paymentMethod || 'cash',
@@ -1877,7 +1937,12 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
       { new: true }
     );
     if (!updated) {
-      throw new ApiError(400, 'One of the selected fees is already paid');
+      throw new ApiError(
+        adj ? 409 : 400,
+        adj
+          ? 'The fee amount changed while collecting — reopen the payment and try again'
+          : 'One of the selected fees is already paid'
+      );
     }
     paid.push(updated);
   }
@@ -1930,7 +1995,11 @@ async function reversePayment(id, { reason, kind = 'reverse' } = {}, userId) {
   const label = action === 'refund' ? 'Refunded' : 'Payment reversed';
   const when = todayYmd();
   const prevPaid = record.paidAt ? formatDateInTz(record.paidAt) : '—';
-  const noteLine = `${label} ${when} (was paid ${prevPaid}; ₨${Number(record.amount || 0).toLocaleString()}): ${why}`;
+  const hadAdjustment = record.originalAmount !== undefined && record.originalAmount !== null;
+  const adjustmentNote = hadAdjustment
+    ? `; adjustment ₨${Number(record.adjustment?.amount || 0).toLocaleString()} removed`
+    : '';
+  const noteLine = `${label} ${when} (was paid ${prevPaid}; ₨${Number(record.amount || 0).toLocaleString()}${adjustmentNote}): ${why}`;
 
   const updated = await AcademyFeeRecord.findOneAndUpdate(
     { _id: record._id, status: 'paid' },
@@ -1940,12 +2009,15 @@ async function reversePayment(id, { reason, kind = 'reverse' } = {}, userId) {
         paymentMethod: 'cash',
         notes: appendFeeNote(record.notes, noteLine),
         ...(userId && !record.createdBy ? { createdBy: userId } : {}),
+        // Undo a collection-time adjustment so the voucher is back to its original fee.
+        ...(hadAdjustment ? { amount: record.originalAmount } : {}),
       },
       $unset: {
         paidAt: 1,
         paymentSlip: 1,
         paymentSlipNumber: 1,
         recordedBy: 1,
+        ...(hadAdjustment ? { originalAmount: 1, adjustment: 1 } : {}),
       },
     },
     { new: true }
@@ -2021,8 +2093,15 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
   const sourceNote = `Payment transferred to student ${targetStudent.studentId || targetStudent._id} on ${when}: ${why}`;
   const targetNote = `Payment transferred from fee ${source._id} on ${when}: ${why}`;
 
+  // An adjustment belonged to this payment; once it moves away the voucher is back to its original fee.
+  const sourceHadAdjustment =
+    source.originalAmount !== undefined && source.originalAmount !== null;
+
   // Snapshot for rollback if the target update fails.
   const sourceSnapshot = {
+    amount: source.amount,
+    originalAmount: source.originalAmount,
+    adjustment: source.adjustment,
     status: source.status,
     paidAt: source.paidAt,
     paymentMethod: source.paymentMethod,
@@ -2039,12 +2118,14 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
         status: unpaidStatusFromDueDate(source.dueDate),
         paymentMethod: 'cash',
         notes: appendFeeNote(source.notes, sourceNote),
+        ...(sourceHadAdjustment ? { amount: source.originalAmount } : {}),
       },
       $unset: {
         paidAt: 1,
         paymentSlip: 1,
         paymentSlipNumber: 1,
         recordedBy: 1,
+        ...(sourceHadAdjustment ? { originalAmount: 1, adjustment: 1 } : {}),
       },
     },
     { new: true }
@@ -2074,6 +2155,10 @@ async function transferPayment(id, { targetStudentId, targetFeeRecordId, reason 
   if (!paid) {
     await AcademyFeeRecord.findByIdAndUpdate(source._id, {
       $set: {
+        amount: sourceSnapshot.amount,
+        ...(sourceHadAdjustment
+          ? { originalAmount: sourceSnapshot.originalAmount, adjustment: sourceSnapshot.adjustment }
+          : {}),
         status: sourceSnapshot.status,
         paidAt: sourceSnapshot.paidAt,
         paymentMethod: sourceSnapshot.paymentMethod || 'cash',

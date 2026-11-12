@@ -23,6 +23,20 @@ const academyFeeRecordSchema = new mongoose.Schema(
     paymentSlipNumber: { type: String, trim: true },
     notes: { type: String, trim: true },
     /**
+     * Voucher amount before a collection-time adjustment. `amount` holds the
+     * final payable, so reports stay correct; this keeps the original for audit.
+     */
+    originalAmount: { type: Number, min: 0 },
+    /** Collection-time adjustment (discount, partial month, late fine…). */
+    adjustment: {
+      kind: { type: String, enum: ['discount', 'partial_month', 'late_fine', 'other'] },
+      /** Signed change applied to originalAmount (negative reduces the fee). */
+      amount: { type: Number },
+      reason: { type: String, trim: true },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at: { type: Date },
+    },
+    /**
      * Optional breakdown of `amount` (tuition, admission, additional charges).
      * Older records omit this and keep their original amount unchanged.
      */
