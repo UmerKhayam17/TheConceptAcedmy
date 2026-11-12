@@ -14,6 +14,8 @@ const FeesModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleAction
   const { user } = useAuth();
   const isParent = user?.role === "parent";
   const [view, setView] = useState<FeesView>("records");
+  /** Student whose Collect Fee window should open on the Fee records tab. */
+  const [collectStudentId, setCollectStudentId] = useState<string | null>(null);
   const { sessionId } = usePanelSession();
 
   return (
@@ -62,11 +64,23 @@ const FeesModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleAction
           )}
         </div>
         {view === "defaulters" && !isParent ? (
-          <FeeDefaultersTab caps={caps} sessionId={sessionId} />
+          <FeeDefaultersTab
+            caps={caps}
+            sessionId={sessionId}
+            onCollectFee={(id) => {
+              setCollectStudentId(id);
+              setView("records");
+            }}
+          />
         ) : view === "paid" && !isParent ? (
           <FeePaidTab caps={caps} sessionId={sessionId} />
         ) : (
-          <AcademyFeesManagement caps={caps} sessionId={isParent ? undefined : sessionId} />
+          <AcademyFeesManagement
+            caps={caps}
+            sessionId={isParent ? undefined : sessionId}
+            collectStudentId={isParent ? null : collectStudentId}
+            onCollectHandled={() => setCollectStudentId(null)}
+          />
         )}
       </div>
     </div>

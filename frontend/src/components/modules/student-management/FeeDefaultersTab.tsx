@@ -84,9 +84,12 @@ function SeverityBadge({ days }: { days: number }) {
 export default function FeeDefaultersTab({
   caps,
   sessionId = "",
+  onCollectFee,
 }: {
   caps: ModuleActionCaps;
   sessionId?: string;
+  /** Opens the Collect Student Fee window for this student (falls back to the student page). */
+  onCollectFee?: (studentId: string) => void;
 }) {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -430,11 +433,15 @@ export default function FeeDefaultersTab({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        {(caps.canEdit || caps.canCreate) && detailHref && (
+                        {(caps.canEdit || caps.canCreate) && onCollectFee ? (
+                          <Button size="sm" variant="outline" onClick={() => onCollectFee(d.student._id)}>
+                            Collect fee
+                          </Button>
+                        ) : (caps.canEdit || caps.canCreate) && detailHref ? (
                           <Button size="sm" variant="outline" asChild>
                             <Link to={detailHref}>Collect fee</Link>
                           </Button>
-                        )}
+                        ) : null}
                       </div>
                     </td>
                   </tr>

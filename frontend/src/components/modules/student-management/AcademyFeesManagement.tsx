@@ -727,6 +727,8 @@ export default function AcademyFeesManagement({
   /** Lock status filter (e.g. "paid" for the Paid tab) */
   lockedStatus,
   sessionId = "",
+  collectStudentId = null,
+  onCollectHandled,
 }: {
   caps: ModuleActionCaps;
   /** When set, only this student's fee history is shown */
@@ -738,6 +740,10 @@ export default function AcademyFeesManagement({
   lockedStatus?: "" | "paid" | "pending" | "overdue" | "waived";
   /** Academic session scope from SessionBar (ignored for parents / student detail). */
   sessionId?: string;
+  /** Open the Collect Student Fee window for this student (e.g. from the defaulter list). */
+  collectStudentId?: string | null;
+  /** Called once the request in `collectStudentId` has been handled. */
+  onCollectHandled?: () => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -1142,8 +1148,6 @@ export default function AcademyFeesManagement({
       .filter((line) => line.kind === "tuition")
       .reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
   };
-  const focusFee =
-    unpaidForPay.find((r) => r._id === payRecord?._id) ?? unpaidForPay[0] ?? null;
   const remainingUnpaid = unpaidForPay.filter((r) => !selectedFeeIds.includes(r._id));
   /** Installments already received on a voucher that is not fully paid. */
   const received = (fee: AcademyFeeRecord) => Number(fee.paidAmount) || 0;
@@ -1644,6 +1648,46 @@ export default function AcademyFeesManagement({
     setSelectedFeeIds(mode === "edit" && r.status === "paid" ? [r._id] : []);
     setSlipInputKey((key) => key + 1);
   };
+
+  // Opened from another tab (defaulter list): load the student's fees, then open Collect Fee
+  // on their oldest unpaid voucher. The window ticks every overdue month by default.
+  const { data: collectHistory, isError: collectHistoryError } = useQuery({
+    queryKey: ["academy-fee-history", collectStudentId],
+    queryFn: () => fetchStudentFeeHistory(collectStudentId as string),
+    enabled: Boolean(collectStudentId),
+  });
+  const collectHandledRef = useRef<string | null>(null);
+  /** Latest openPayModal, so the effect below doesn't rerun on every render. */
+  const openPayModalRef = useRef(openPayModal);
+  useEffect(() => {
+    openPayModalRef.current = openPayModal;
+  });
+  useEffect(() => {
+    if (!collectStudentId) {
+      collectHandledRef.current = null;
+      return;
+    }
+    if (collectHandledRef.current === collectStudentId) return;
+    if (collectHistoryError) {
+      collectHandledRef.current = collectStudentId;
+      toast({ title: "Could not load fees", description: "Try again from the fee list.", variant: "destructive" });
+      onCollectHandled?.();
+      return;
+    }
+    if (!collectHistory) return;
+    collectHandledRef.current = collectStudentId;
+    const unpaid = (collectHistory.records || [])
+      .filter((r) => r.status === "pending" || r.status === "overdue")
+      .sort((a, b) => a.year - b.year || a.month - b.month);
+    const first = unpaid.find((r) => r.status === "overdue") ?? unpaid[0];
+    if (!first) {
+      toast({ title: "Nothing to collect", description: "This student has no unpaid fees." });
+    } else {
+      // History rows carry only the student id; attach the student so the window shows their name.
+      openPayModalRef.current({ ...first, studentId: collectHistory.student });
+    }
+    onCollectHandled?.();
+  }, [collectStudentId, collectHistory, collectHistoryError, onCollectHandled, toast]);
 
   const records = data?.records ?? [];
   const pagination = data?.pagination;
