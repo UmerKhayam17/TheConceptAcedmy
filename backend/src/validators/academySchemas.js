@@ -429,13 +429,20 @@ const academyFeePatch = Joi.object({
     Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
     Joi.valid(null, '')
   ),
-  status: Joi.string().valid('pending', 'overdue', 'waived'),
+  status: Joi.string().valid('pending', 'overdue'),
   paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other'),
   paymentSlipNumber: Joi.string().trim().allow('').max(100),
   paidAt: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
 }).min(1);
 
 const academyFeeReverse = Joi.object({
+  reason: Joi.string().trim().min(3).max(500).required(),
+});
+
+const academyFeeWaive = Joi.object({
+  reason: Joi.string().trim().min(3).max(500).required(),
+});
+const academyFeeUnwaive = Joi.object({
   reason: Joi.string().trim().min(3).max(500).required(),
 });
 
@@ -733,6 +740,8 @@ module.exports = {
   academyFeeStationery,
   academyFeePatch,
   academyFeeReverse,
+  academyFeeWaive,
+  academyFeeUnwaive,
   academyFeeTransfer,
   feeDefaultersQuery,
   feePaidExportQuery,

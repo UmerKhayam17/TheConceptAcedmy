@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CalendarClock,
+  CalendarX,
   FileText,
   Loader2,
   Phone,
@@ -18,6 +19,15 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +41,9 @@ import {
   exportFeeDefaultersMonthWise,
   type DefaulterReportFormat,
   fetchAcademyClasses,
+  fetchAcademyFees,
+  waiveAcademyFee,
+  type AcademyFeeRecord,
   fetchFeeDefaulters,
   fetchFeeDefaultersSummary,
   printFeeChallan,
@@ -51,6 +64,133 @@ import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { formatDate, formatPkr } from "./studentDisplayUtils";
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function feePeriod(r: AcademyFeeRecord) {
+  if (r.feeType === "admission") return "Admission";
+  return `${MONTHS[(r.month || 1) - 1]} ${r.year}`;
+}
+
+/** Pick one of a defaulter's unpaid months and waive it with a reason (same rules as Fees Management). */
+function WaiveDefaulterMonthDialog({
+  defaulter,
+  onClose,
+}: {
+  defaulter: FeeDefaulter | null;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const studentId = defaulter?.student._id ?? "";
+  const [feeId, setFeeId] = useState("");
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    setFeeId("");
+    setReason("");
+  }, [studentId]);
+
+  const { data: months = [], isLoading } = useQuery({
+    queryKey: ["defaulter-waivable-months", studentId],
+    enabled: Boolean(studentId),
+    queryFn: async () => {
+      const [pending, overdue] = await Promise.all([
+        fetchAcademyFees({ studentId, status: "pending", limit: 100 }),
+        fetchAcademyFees({ studentId, status: "overdue", limit: 100 }),
+      ]);
+      return [...overdue.records, ...pending.records]
+        .filter((r) => r.feeType !== "admission")
+        .sort((a, b) => a.year - b.year || a.month - b.month);
+    },
+  });
+
+  const waiveMut = useMutation({
+    mutationFn: () => waiveAcademyFee(feeId, reason.trim()),
+    onSuccess: (updated) => {
+      ["academy-fees", "academy-fees-summary", "academy-fee-history", "academy-student-record",
+        "fee-defaulters", "fee-defaulters-summary", "defaulter-waivable-months"].forEach((k) =>
+        qc.invalidateQueries({ queryKey: [k] })
+      );
+      toast({
+        title: "Month waived",
+        description: `${feePeriod(updated)} is no longer counted as a defaulter.`,
+      });
+      onClose();
+    },
+    onError: (e: Error) => toast({ title: "Could not waive fee", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog
+      open={Boolean(defaulter)}
+      onOpenChange={(open) => {
+        if (!open && !waiveMut.isPending) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Waive a month</DialogTitle>
+          <DialogDescription>
+            {defaulter ? `${defaulter.student.studentName} — ` : ""}
+            the month stays in the fee history and is not counted as a defaulter. Use this for a month the
+            student was away. A month they attended and did not pay should stay unpaid.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label>Month</Label>
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading unpaid months…</p>
+          ) : months.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No unpaid monthly fees that can be waived.</p>
+          ) : (
+            <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border p-2">
+              {months.map((m) => (
+                <label key={m._id} className="flex cursor-pointer items-center justify-between gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted/50">
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="waive-month"
+                      className="h-4 w-4"
+                      checked={feeId === m._id}
+                      onChange={() => setFeeId(m._id)}
+                    />
+                    {feePeriod(m)}
+                    <span className="text-xs text-muted-foreground">({m.status})</span>
+                  </span>
+                  <span className="text-muted-foreground">{formatPkr(m.amount)}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="defaulter-waive-reason">Reason</Label>
+          <Input
+            id="defaulter-waive-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Away in village for the whole month"
+            maxLength={500}
+          />
+          <p className="text-xs text-muted-foreground">Required, at least 3 characters.</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={waiveMut.isPending} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="hero"
+            disabled={waiveMut.isPending || !feeId || reason.trim().length < 3}
+            onClick={() => waiveMut.mutate()}
+          >
+            {waiveMut.isPending ? "Saving…" : "Waive month"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function SeverityBadge({ days }: { days: number }) {
   if (days >= 30) {
@@ -105,6 +245,8 @@ export default function FeeDefaultersTab({
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [exportingMonthWise, setExportingMonthWise] = useState<DefaulterReportFormat | null>(null);
   const [challanPrint, setChallanPrint] = useState<ChallanPrintRequest | null>(null);
+  const [waiveDefaulter, setWaiveDefaulter] = useState<FeeDefaulter | null>(null);
+  const canWaive = caps.canEdit || caps.canCreate;
 
   const printMut = useMutation({
     mutationFn: ({
@@ -398,13 +540,27 @@ export default function FeeDefaultersTab({
                       <SeverityBadge days={d.daysOverdue} />
                     </td>
                     <td className="p-2.5 text-right">
-                      <div className="inline-flex items-center justify-end gap-1.5">
+                      <div className="inline-flex flex-nowrap items-center justify-end gap-1">
+                        {(caps.canEdit || caps.canCreate) && onCollectFee ? (
+                          <Button
+                            size="sm"
+                            variant="hero"
+                            className="mr-1 shrink-0"
+                            onClick={() => onCollectFee(d.student._id)}
+                          >
+                            Collect fee
+                          </Button>
+                        ) : (caps.canEdit || caps.canCreate) && detailHref ? (
+                          <Button size="sm" variant="hero" className="mr-1 shrink-0" asChild>
+                            <Link to={detailHref}>Collect fee</Link>
+                          </Button>
+                        ) : null}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               size="icon"
-                              variant="outline"
-                              className="h-8 w-8"
+                              variant="ghost"
+                              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-primary"
                               disabled={printMut.isPending && printMut.variables?.studentId === d.student._id}
                               aria-label="Print challan"
                               title="Print challan"
@@ -433,15 +589,18 @@ export default function FeeDefaultersTab({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        {(caps.canEdit || caps.canCreate) && onCollectFee ? (
-                          <Button size="sm" variant="outline" onClick={() => onCollectFee(d.student._id)}>
-                            Collect fee
+                        {canWaive && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-violet-600 hover:text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-500/10"
+                            aria-label="Waive month"
+                            title="Waive month"
+                            onClick={() => setWaiveDefaulter(d)}
+                          >
+                            <CalendarX className="h-4 w-4" />
                           </Button>
-                        ) : (caps.canEdit || caps.canCreate) && detailHref ? (
-                          <Button size="sm" variant="outline" asChild>
-                            <Link to={detailHref}>Collect fee</Link>
-                          </Button>
-                        ) : null}
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -475,6 +634,8 @@ export default function FeeDefaultersTab({
           printMut.mutate({ ...challanPrint, chargeIds });
         }}
       />
+
+      <WaiveDefaulterMonthDialog defaulter={waiveDefaulter} onClose={() => setWaiveDefaulter(null)} />
     </div>
   );
 }

@@ -44,6 +44,12 @@ const academyFeeRecordSchema = new mongoose.Schema(
      * final payable, so reports stay correct; this keeps the original for audit.
      */
     originalAmount: { type: Number, min: 0 },
+    /** Set when staff waive a month by hand (not the automatic leave waiver). */
+    waiver: {
+      reason: { type: String, trim: true },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      at: { type: Date },
+    },
     /** Collection-time adjustment (discount, partial month, late fine…). */
     adjustment: {
       kind: { type: String, enum: ['discount', 'partial_month', 'late_fine', 'other'] },

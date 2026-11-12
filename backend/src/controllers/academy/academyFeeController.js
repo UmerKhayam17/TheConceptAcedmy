@@ -194,6 +194,18 @@ const payMany = catchAsync(async (req, res) => {
   });
 });
 
+const waive = catchAsync(async (req, res) => {
+  const data = await feeService.waiveFee(req.params.id, { reason: req.body.reason }, req.user._id);
+  rt.feeCrud('updated', req.params.id);
+  res.json({ success: true, data });
+});
+
+const unwaive = catchAsync(async (req, res) => {
+  const data = await feeService.unwaiveFee(req.params.id, { reason: req.body.reason }, req.user._id);
+  rt.feeCrud('updated', req.params.id);
+  res.json({ success: true, data });
+});
+
 const reverse = catchAsync(async (req, res) => {
   const data = await feeService.reversePayment(
     req.params.id,
@@ -436,6 +448,8 @@ module.exports = {
   payMany,
   reverse,
   refund,
+  waive,
+  unwaive,
   transfer,
   applyCharges,
   receipt,

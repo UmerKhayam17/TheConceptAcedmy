@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
+  CalendarX,
   Banknote,
+  Undo2,
   Calculator,
   CalendarDays,
   CalendarRange,
@@ -89,7 +91,9 @@ import {
   resyncSeparateFeeCharges,
   reverseAcademyFeePayment,
   transferAcademyFeePayment,
+  unwaiveAcademyFee,
   updateAcademyFee,
+  waiveAcademyFee,
   type AcademyFeeRecord,
   type AcademyStudent,
   type FeeReceiptSize,
@@ -223,6 +227,18 @@ function isUnpaid(status: string) {
 
 /** Manual gap-month waive. Must not match the automatic "student marked inactive" note, or a later return would bill it again. */
 const ABSENCE_WAIVER_NOTE = "Waived: month not attended";
+
+/** Staff waive (can be undone). System waives (student left, duplicates) cannot. */
+function isManualWaiver(r: AcademyFeeRecord) {
+  if (r.status !== "waived") return false;
+  return Boolean(r.waiver?.at) || String(r.notes || "").includes(ABSENCE_WAIVER_NOTE);
+}
+
+function waiverByName(r: AcademyFeeRecord) {
+  const by = r.waiver?.by;
+  if (!by) return "";
+  return typeof by === "string" ? "" : by.name || by.email || "";
+}
 
 function isPdfSlip(path: string) {
   return /\.pdf$/i.test(path.split("?")[0] || "");
@@ -782,7 +798,13 @@ export default function AcademyFeesManagement({
   const [search, setSearch] = useState("");
   const [payRecord, setPayRecord] = useState<AcademyFeeRecord | null>(null);
   const [waiveRecord, setWaiveRecord] = useState<AcademyFeeRecord | null>(null);
-  const [payModalMode, setPayModalMode] = useState<"pay" | "edit">("pay");
+  const [waiveMode, setWaiveMode] = useState<"waive" | "unwaive">("waive");
+  const [waiveReason, setWaiveReason] = useState("");
+  const openWaive = (r: AcademyFeeRecord, mode: "waive" | "unwaive") => {
+    setWaiveMode(mode);
+    setWaiveReason("");
+    setWaiveRecord(r);
+  };  const [payModalMode, setPayModalMode] = useState<"pay" | "edit">("pay");
   const [selectedFeeIds, setSelectedFeeIds] = useState<string[]>([]);
   const [selectedChargeIds, setSelectedChargeIds] = useState<string[]>([]);
   const [amountOverrides, setAmountOverrides] = useState<Record<string, string>>({});
@@ -1456,11 +1478,17 @@ export default function AcademyFeesManagement({
   });
 
   const waiveMut = useMutation({
-    mutationFn: async (record: AcademyFeeRecord) => {
-      const notes = [record.notes?.trim(), ABSENCE_WAIVER_NOTE].filter(Boolean).join(" · ");
-      return updateAcademyFee(record._id, { status: "waived", notes });
-    },
-    onSuccess: (_updated, record) => {
+    mutationFn: async ({
+      record,
+      mode,
+      reason,
+    }: {
+      record: AcademyFeeRecord;
+      mode: "waive" | "unwaive";
+      reason: string;
+    }) =>
+      mode === "waive" ? waiveAcademyFee(record._id, reason) : unwaiveAcademyFee(record._id, reason),
+    onSuccess: (_updated, { record, mode }) => {
       qc.invalidateQueries({ queryKey: ["academy-fees"] });
       qc.invalidateQueries({ queryKey: ["academy-fees-summary"] });
       qc.invalidateQueries({ queryKey: ["academy-fee-history"] });
@@ -1468,12 +1496,25 @@ export default function AcademyFeesManagement({
       qc.invalidateQueries({ queryKey: ["fee-defaulters"] });
       qc.invalidateQueries({ queryKey: ["fee-defaulters-summary"] });
       setWaiveRecord(null);
-      toast({
-        title: "Month waived",
-        description: `${periodLabel(record)} is no longer counted as a defaulter.`,
-      });
+      setWaiveReason("");
+      toast(
+        mode === "waive"
+          ? {
+              title: "Month waived",
+              description: `${periodLabel(record)} is no longer counted as a defaulter.`,
+            }
+          : {
+              title: "Waive undone",
+              description: `${periodLabel(record)} is unpaid again.`,
+            }
+      );
     },
-    onError: (e: Error) => toast({ title: "Could not waive fee", description: e.message, variant: "destructive" }),
+    onError: (e: Error, { mode }) =>
+      toast({
+        title: mode === "waive" ? "Could not waive fee" : "Could not undo waive",
+        description: e.message,
+        variant: "destructive",
+      }),
   });
 
   const printMut = useMutation({
@@ -2239,6 +2280,16 @@ export default function AcademyFeesManagement({
                     )}
                     <td className="p-2.5">
                       <StatusPill status={r.status} />
+                      {r.status === "waived" && r.waiver?.at && (
+                        <p
+                          className="mt-1 max-w-[14rem] truncate text-xs text-muted-foreground"
+                          title={r.waiver.reason || undefined}
+                        >
+                          {waiverByName(r) ? `by ${waiverByName(r)}` : "Waived"} ·{" "}
+                          {new Date(r.waiver.at).toLocaleDateString()}
+                          {r.waiver.reason ? ` · ${r.waiver.reason}` : ""}
+                        </p>
+                      )}
                     </td>
                     {showPaidPaymentCols && (
                       <td className="p-2.5 align-middle">
@@ -2283,34 +2334,23 @@ export default function AcademyFeesManagement({
                       </td>
                     )}
                     <td className="p-2.5 text-right whitespace-nowrap">
-                      <div className="inline-flex flex-nowrap items-center justify-end gap-1.5">
+                      <div className="inline-flex flex-nowrap items-center justify-end gap-1">
                         {payable && canPay && (
                           <Button
                             size="sm"
                             variant="hero"
-                            className="shrink-0"
+                            className="mr-1 shrink-0"
                             disabled={payMut.isPending}
                             onClick={() => openPayModal(r, "pay")}
                           >
                             Record payment
                           </Button>
                         )}
-                        {canEditFee && payable && r.feeType !== "admission" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="shrink-0"
-                            disabled={waiveMut.isPending}
-                            onClick={() => setWaiveRecord(r)}
-                          >
-                            Waive
-                          </Button>
-                        )}
                         {canEditFee && (payable || r.status === "paid") && (
                           <Button
+                            variant="ghost"
                             size="icon"
-                            variant="outline"
-                            className="h-8 w-8 shrink-0"
+                            className="h-8 w-8 shrink-0 text-sky-600 hover:text-sky-700"
                             aria-label="Edit fee"
                             title="Edit fee"
                             onClick={() => openPayModal(r, "edit")}
@@ -2324,8 +2364,8 @@ export default function AcademyFeesManagement({
                               <DropdownMenuTrigger asChild>
                                 <Button
                                   size="icon"
-                                  variant="outline"
-                                  className="h-8 w-8 shrink-0"
+                                  variant="ghost"
+                                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-primary"
                                   disabled={printing}
                                   aria-label="Print challan"
                                   title="Print challan"
@@ -2359,8 +2399,8 @@ export default function AcademyFeesManagement({
                               <DropdownMenuTrigger asChild>
                                 <Button
                                   size="icon"
-                                  variant="outline"
-                                  className="h-8 w-8 shrink-0"
+                                  variant="ghost"
+                                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-primary"
                                   disabled={printing}
                                   aria-label="Print receipt"
                                   title="Print receipt"
@@ -2391,13 +2431,39 @@ export default function AcademyFeesManagement({
                             </DropdownMenu>
                           )
                         )}
+                        {canEditFee && payable && r.feeType !== "admission" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-violet-600 hover:text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-500/10"
+                            aria-label="Waive month"
+                            title="Waive month"
+                            disabled={waiveMut.isPending}
+                            onClick={() => openWaive(r, "waive")}
+                          >
+                            <CalendarX className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {canEditFee && isManualWaiver(r) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-500/10"
+                            aria-label="Undo waive"
+                            title="Undo waive"
+                            disabled={waiveMut.isPending}
+                            onClick={() => openWaive(r, "unwaive")}
+                          >
+                            <Undo2 className="h-4 w-4" />
+                          </Button>
+                        )}
                         {canEditFee && r.status === "paid" && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
                                 size="icon"
-                                variant="outline"
-                                className="h-8 w-8 shrink-0"
+                                variant="ghost"
+                                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-primary"
                                 aria-label="Payment corrections"
                                 title="Payment corrections"
                               >
@@ -3169,23 +3235,48 @@ export default function AcademyFeesManagement({
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Waive this month</DialogTitle>
+            <DialogTitle>{waiveMode === "waive" ? "Waive this month" : "Undo waive"}</DialogTitle>
             <DialogDescription>
-              {waiveRecord
-                ? `${periodLabel(waiveRecord)} stays in the fee history and is not counted as a defaulter. Use this for a month the student was away. A month they attended and did not pay should stay unpaid.`
-                : ""}
+              {!waiveRecord
+                ? ""
+                : waiveMode === "waive"
+                  ? `${periodLabel(waiveRecord)} stays in the fee history and is not counted as a defaulter. Use this for a month the student was away. A month they attended and did not pay should stay unpaid.`
+                  : `${periodLabel(waiveRecord)} will be unpaid again and count toward dues.`}
             </DialogDescription>
           </DialogHeader>
+          {waiveMode === "unwaive" && waiveRecord?.waiver?.at && (
+            <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+              Waived{waiverByName(waiveRecord) ? ` by ${waiverByName(waiveRecord)}` : ""} on{" "}
+              {new Date(waiveRecord.waiver.at).toLocaleDateString()}
+              {waiveRecord.waiver.reason ? ` — “${waiveRecord.waiver.reason}”` : ""}
+            </p>
+          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="waive-reason">Reason</Label>
+            <Input
+              id="waive-reason"
+              value={waiveReason}
+              onChange={(e) => setWaiveReason(e.target.value)}
+              placeholder={
+                waiveMode === "waive" ? "e.g. Away in village for the whole month" : "e.g. Waived by mistake"
+              }
+              maxLength={500}
+            />
+            <p className="text-xs text-muted-foreground">Required, at least 3 characters.</p>
+          </div>
           <DialogFooter>
             <Button variant="outline" disabled={waiveMut.isPending} onClick={() => setWaiveRecord(null)}>
               Cancel
             </Button>
             <Button
               variant="hero"
-              disabled={waiveMut.isPending || !waiveRecord}
-              onClick={() => waiveRecord && waiveMut.mutate(waiveRecord)}
+              disabled={waiveMut.isPending || !waiveRecord || waiveReason.trim().length < 3}
+              onClick={() =>
+                waiveRecord &&
+                waiveMut.mutate({ record: waiveRecord, mode: waiveMode, reason: waiveReason.trim() })
+              }
             >
-              {waiveMut.isPending ? "Saving…" : "Waive month"}
+              {waiveMut.isPending ? "Saving…" : waiveMode === "waive" ? "Waive month" : "Undo waive"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -590,6 +590,18 @@ router.post(
   feeCtrl.reverse
 );
 router.post(
+  '/fees/:id/waive',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeeWaive),
+  feeCtrl.waive
+);
+router.post(
+  '/fees/:id/unwaive',
+  requirePermission('manage_academy_fees'),
+  validate(schemas.academyFeeUnwaive),
+  feeCtrl.unwaive
+);
+router.post(
   '/fees/:id/refund',
   requirePermission('manage_academy_fees'),
   validate(schemas.academyFeeReverse),

@@ -883,7 +883,8 @@ async function getFeeRecordById(id) {
         populate: { path: 'sessionId', select: 'name status' },
       },
     })
-    .populate('recordedBy', 'name email');
+    .populate('recordedBy', 'name email')
+    .populate('waiver.by', 'name email');
   if (!record) throw new ApiError(404, 'Fee record not found');
   return record;
 }
@@ -988,11 +989,11 @@ async function updateFeeRecord(id, payload = {}, slipFile) {
 
     if (payload.status !== undefined) {
       const next = String(payload.status);
-      if (!['pending', 'overdue', 'waived'].includes(next)) {
-        throw new ApiError(400, 'Status must be pending, overdue, or waived');
+      if (next === 'waived') {
+        throw new ApiError(400, 'Use the Waive action (a reason is required) to waive a fee');
       }
-      if (next === 'waived' && receivedSoFar(record) > 0) {
-        throw new ApiError(400, 'This fee has installments received — reverse them before waiving');
+      if (!['pending', 'overdue'].includes(next)) {
+        throw new ApiError(400, 'Status must be pending or overdue');
       }
       record.status = next;
     }
@@ -1105,7 +1106,7 @@ async function listFeeRecords({
             select: 'className sessionId',
             populate: { path: 'sessionId', select: 'name status' },
           },
-        })
+        }).populate('waiver.by', 'name email')
       )
       : [],
     AcademyFeeRecord.countDocuments(q),
@@ -1185,6 +1186,79 @@ function currentPeriodIndex() {
 
 function isLeaveFeeWaiver(record) {
   return String(record?.notes || '').includes(LEAVE_FEE_WAIVER_NOTE);
+}
+
+/** Note kept on manually waived months (the frontend used this text before waivers were recorded). */
+const ABSENCE_WAIVER_NOTE = 'Waived: month not attended';
+
+/** A waive done by staff (recorded now, or the older note-only form) — not a system waive. */
+function isManualWaiver(record) {
+  if (record?.status !== 'waived') return false;
+  if (record.waiver?.at) return true;
+  return String(record.notes || '').includes(ABSENCE_WAIVER_NOTE);
+}
+
+/** Waive one unpaid month by hand: kept in history, not counted as due. */
+async function waiveFee(id, { reason } = {}, userId) {
+  const record = await AcademyFeeRecord.findById(id);
+  if (!record) throw new ApiError(404, 'Fee record not found');
+  if (!['pending', 'overdue'].includes(record.status)) {
+    throw new ApiError(400, 'Only unpaid fees can be waived');
+  }
+  if (record.feeType === 'admission') {
+    throw new ApiError(400, 'Admission fees cannot be waived here');
+  }
+  if (receivedSoFar(record) > 0) {
+    throw new ApiError(400, 'This fee has money received — reverse it before waiving');
+  }
+  const why = String(reason || '').trim();
+  if (why.length < 3) throw new ApiError(400, 'Reason is required');
+
+  const updated = await AcademyFeeRecord.findOneAndUpdate(
+    { _id: record._id, status: record.status },
+    {
+      $set: {
+        status: 'waived',
+        waiver: { reason: why, by: userId, at: new Date() },
+        notes: appendFeeNote(record.notes, `${ABSENCE_WAIVER_NOTE} ${todayYmd()}: ${why}`),
+      },
+    },
+    { new: true }
+  );
+  if (!updated) throw new ApiError(409, 'This fee changed — please retry');
+  return getFeeRecordById(updated._id);
+}
+
+/** Undo a manual waive: the month becomes pending/overdue again. */
+async function unwaiveFee(id, { reason } = {}, userId) {
+  const record = await AcademyFeeRecord.findById(id);
+  if (!record) throw new ApiError(404, 'Fee record not found');
+  if (record.status !== 'waived') throw new ApiError(400, 'This fee is not waived');
+  if (!isManualWaiver(record)) {
+    throw new ApiError(
+      400,
+      isLeaveFeeWaiver(record)
+        ? 'This month was waived automatically because the student left — reactivate the student instead'
+        : 'This month was waived automatically by the system and cannot be undone here'
+    );
+  }
+  const why = String(reason || '').trim();
+  if (why.length < 3) throw new ApiError(400, 'Reason is required');
+
+  const updated = await AcademyFeeRecord.findOneAndUpdate(
+    { _id: record._id, status: 'waived' },
+    {
+      $set: {
+        status: unpaidStatusFromDueDate(record.dueDate),
+        notes: appendFeeNote(record.notes, `Waive undone ${todayYmd()}: ${why}`),
+        ...(userId ? { recordedBy: userId } : {}),
+      },
+      $unset: { waiver: 1 },
+    },
+    { new: true }
+  );
+  if (!updated) throw new ApiError(409, 'This fee changed — please retry');
+  return getFeeRecordById(updated._id);
 }
 
 async function reopenLeaveFeeWaiver(record, userId) {
@@ -3799,6 +3873,8 @@ module.exports = {
   syncUnpaidChallansForStudent,
   isStudentFullFeeWaiver,
   waiveUnpaidFeesOnLeave,
+  waiveFee,
+  unwaiveFee,
   syncFeesForReturningStudent,
   monthlyBillAmount,
   recordPayment,

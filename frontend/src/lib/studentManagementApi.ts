@@ -262,6 +262,12 @@ export interface AcademyFeeRecord {
   notes?: string;
   /** Voucher amount before a collection-time adjustment (amount is the final payable). */
   originalAmount?: number;
+  /** Set when staff waived this month by hand. */
+  waiver?: {
+    reason?: string;
+    by?: { _id: string; name?: string; email?: string } | string;
+    at?: string;
+  };
   /** Money received so far; below `amount` while being paid in installments. */
   paidAmount?: number;
   /** Every payment (installment) received against this voucher. */
@@ -1674,6 +1680,18 @@ export async function payAcademyFees(body: {
     studentId: parsed.studentId ? String(parsed.studentId) : undefined,
   };
 }
+
+export const waiveAcademyFee = (id: string, reason: string) =>
+  api<AcademyFeeRecord>(`/fees/${id}/waive`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+export const unwaiveAcademyFee = (id: string, reason: string) =>
+  api<AcademyFeeRecord>(`/fees/${id}/unwaive`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 
 export const reverseAcademyFeePayment = (id: string, reason: string) =>
   api<AcademyFeeRecord>(`/fees/${id}/reverse`, {
