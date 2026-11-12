@@ -369,7 +369,7 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
           <div className="space-y-4 min-w-0">
             {/* Filter bar — same structure as Timetable Builder */}
-            <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
+            <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex-row sm:flex-wrap sm:items-end">
               {isParent && children.length > 1 && (
                 <div className="min-w-[160px]">
                   <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -422,8 +422,8 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
                 </Badge>
               )}
 
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 rounded-full border bg-background px-1 py-0.5">
+              <div className="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                <div className="flex w-full items-center gap-1 rounded-full border bg-background px-1 py-0.5 sm:w-auto">
                   <Button
                     type="button"
                     variant="ghost"
@@ -434,7 +434,7 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="min-w-[9.5rem] text-center text-xs font-medium tabular-nums">
+                  <span className="min-w-0 flex-1 px-1 text-center text-xs font-medium tabular-nums sm:min-w-[9.5rem] sm:flex-none">
                     {formatWeekRange(weekStart, dayOptions.length || 6)}
                   </span>
                   <Button
@@ -448,11 +448,11 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="flex rounded-full border bg-muted/40 p-1">
+                <div className="grid w-full grid-cols-2 rounded-full border bg-muted/40 p-1 sm:flex sm:w-auto">
                   <button
                     type="button"
                     className={cn(
-                      "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                      "rounded-full px-3 py-1.5 text-center text-xs font-medium transition-colors",
                       viewMode === "week"
                         ? "bg-primary text-primary-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground",
@@ -464,7 +464,7 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
                   <button
                     type="button"
                     className={cn(
-                      "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                      "rounded-full px-3 py-1.5 text-center text-xs font-medium transition-colors",
                       viewMode === "day"
                         ? "bg-primary text-primary-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground",
@@ -478,14 +478,14 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
             </div>
 
             {viewMode === "day" && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
                 {dayOptions.map((d) => (
                   <button
                     key={d}
                     type="button"
                     onClick={() => setDayFocus(d)}
                     className={cn(
-                      "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                      "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                       dayFocus === d
                         ? "border-primary bg-primary text-primary-foreground"
                         : "bg-background text-muted-foreground hover:bg-muted",
@@ -525,6 +525,7 @@ export default function ParentChildScheduleTab({ sessionId }: { sessionId: strin
                     rows={sheetRows}
                     firstColumnHeader="DAY"
                     emptyMessage="No lessons in the published timetable."
+                    responsive
                   />
                 </Card>
 
