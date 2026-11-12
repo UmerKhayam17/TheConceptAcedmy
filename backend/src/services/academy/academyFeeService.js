@@ -1288,11 +1288,13 @@ async function reopenLeaveWaivedStationery(studentId, month, year, userId) {
 }
 
 /**
- * Student left. Waive unpaid monthly (and legacy stationery) vouchers from this
- * month onward. Earlier unpaid months stay due — that is real debt.
+ * Student left. Waive only this month's unpaid monthly (and legacy stationery)
+ * voucher — the month they are away. A later month that is already issued stays
+ * unpaid, so coming back next month (October left, November back) does not wipe
+ * November. Earlier unpaid months stay due too — that is real debt.
  */
 async function waiveUnpaidFeesOnLeave(studentId, userId) {
-  const from = currentPeriodIndex();
+  const leaveMonth = currentPeriodIndex();
   const records = await AcademyFeeRecord.find({
     studentId,
     status: { $in: ['pending', 'overdue'] },
@@ -1300,7 +1302,7 @@ async function waiveUnpaidFeesOnLeave(studentId, userId) {
   });
   let waived = 0;
   for (const record of records) {
-    if (periodIndex(record.month, record.year) < from) continue;
+    if (periodIndex(record.month, record.year) !== leaveMonth) continue;
     record.status = 'waived';
     if (userId) record.recordedBy = userId;
     if (!isLeaveFeeWaiver(record)) {
@@ -1314,8 +1316,9 @@ async function waiveUnpaidFeesOnLeave(studentId, userId) {
 }
 
 /**
- * Student came back. Re-open this month's leave waiver, or create it if the
- * monthly job ran while they were inactive. Older leave waivers stay waived.
+ * Student came back. Bill this month only: reopen its leave waiver, or create
+ * the challan if none exists. Months they were away stay waived. An admission
+ * voucher for this month already covers it, so do not add a second monthly row.
  */
 async function syncFeesForReturningStudent(student, userId) {
   const [year, month] = todayYmd().split('-').map(Number);
@@ -1325,7 +1328,6 @@ async function syncFeesForReturningStudent(student, userId) {
     year,
     feeType: 'admission',
   });
-  if (admission) return { restored: 0, created: false };
 
   const monthly = await AcademyFeeRecord.findOne({
     studentId: student._id,
@@ -1339,7 +1341,7 @@ async function syncFeesForReturningStudent(student, userId) {
   if (monthly && monthly.status === 'waived' && isLeaveFeeWaiver(monthly)) {
     await reopenLeaveFeeWaiver(monthly, userId);
     restored += 1;
-  } else if (!monthly) {
+  } else if (!monthly && !admission) {
     const dueDate = resolveMonthlyDueDate(month, year);
     const { amount, components } = composeMonthlyComponents(
       student,

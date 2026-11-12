@@ -199,8 +199,10 @@ function studentCode(rec: AcademyFeeRecord) {
 }
 
 function studentMongoId(rec: AcademyFeeRecord) {
-  const s = studentFromRecord(rec);
-  return s?._id ?? "";
+  const s = rec.studentId;
+  if (!s) return "";
+  if (typeof s === "string") return s;
+  return s._id ?? "";
 }
 
 function classNameFromRecord(rec: AcademyFeeRecord) {
@@ -1022,6 +1024,22 @@ export default function AcademyFeesManagement({
   });
 
   const payStudentId = payRecord ? studentMongoId(payRecord) : "";
+  const waiveStudentId =
+    waiveRecord && waiveMode === "waive" ? studentMongoId(waiveRecord) : "";
+  const { data: waiveHistory, isLoading: waiveHistoryLoading } = useQuery({
+    queryKey: ["academy-fee-history", waiveStudentId],
+    queryFn: () => fetchStudentFeeHistory(waiveStudentId),
+    enabled: Boolean(waiveStudentId),
+  });
+  const waiveMonthOptions = useMemo(() => {
+    const rows = (waiveHistory?.records || []).filter(
+      (r) => (r.status === "pending" || r.status === "overdue") && r.feeType !== "admission"
+    );
+    if (waiveRecord && waiveMode === "waive" && !rows.some((r) => r._id === waiveRecord._id)) {
+      rows.push(waiveRecord);
+    }
+    return rows.sort((a, b) => a.year - b.year || a.month - b.month || a.feeType.localeCompare(b.feeType));
+  }, [waiveHistory, waiveRecord, waiveMode]);
   const { data: payHistory, isLoading: payHistoryLoading } = useQuery({
     queryKey: ["academy-fee-history", payStudentId],
     queryFn: () => fetchStudentFeeHistory(payStudentId),
@@ -3236,15 +3254,43 @@ export default function AcademyFeesManagement({
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{waiveMode === "waive" ? "Waive this month" : "Undo waive"}</DialogTitle>
+            <DialogTitle>{waiveMode === "waive" ? "Waive a month" : "Undo waive"}</DialogTitle>
             <DialogDescription>
               {!waiveRecord
                 ? ""
                 : waiveMode === "waive"
-                  ? `${periodLabel(waiveRecord)} stays in the fee history and is not counted as a defaulter. Use this for a month the student was away. A month they attended and did not pay should stay unpaid.`
+                  ? "Choose the unpaid month to waive. It stays in the fee history and is not counted as a defaulter. A month they attended and did not pay should stay unpaid."
                   : `${periodLabel(waiveRecord)} will be unpaid again and count toward dues.`}
             </DialogDescription>
           </DialogHeader>
+          {waiveMode === "waive" && waiveRecord && (
+            <div className="space-y-1.5">
+              <Label htmlFor="waive-month">Month</Label>
+              <select
+                id="waive-month"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={waiveRecord._id}
+                disabled={waiveMut.isPending || waiveHistoryLoading}
+                onChange={(e) => {
+                  const next = waiveMonthOptions.find((r) => r._id === e.target.value);
+                  if (next) setWaiveRecord(next);
+                }}
+              >
+                {waiveMonthOptions.map((r) => (
+                  <option key={r._id} value={r._id}>
+                    {periodLabel(r)}
+                    {r.feeType !== "monthly" ? ` · ${feeTypeLabel(r.feeType)}` : ""}
+                    {r.status === "overdue" ? " · overdue" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {waiveHistoryLoading
+                  ? "Loading unpaid months…"
+                  : "Only this month is waived. Other unpaid months stay due."}
+              </p>
+            </div>
+          )}
           {waiveMode === "unwaive" && waiveRecord?.waiver?.at && (
             <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
               Waived{waiverByName(waiveRecord) ? ` by ${waiverByName(waiveRecord)}` : ""} on{" "}

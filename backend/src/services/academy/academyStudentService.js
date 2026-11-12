@@ -503,8 +503,8 @@ async function updateStudent(id, payload) {
 
   await student.save();
 
-  // Leaving waives unpaid vouchers from this month on. Coming back bills the
-  // return month only; months they were away stay waived.
+  // Leaving waives only this month. Coming back bills the return month;
+  // the month they were away stays waived.
   if (payload.status && payload.status !== previousStatus) {
     if (student.status === 'inactive') {
       await waiveUnpaidFeesOnLeave(student._id);
