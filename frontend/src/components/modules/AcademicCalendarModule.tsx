@@ -34,6 +34,7 @@ import {
   type CalendarEvent,
   type CalendarEventKind,
 } from "@/lib/academicCalendarApi";
+import { holidayIconFor } from "@/lib/holidayIcons";
 import { localTodayYmd } from "@/lib/localDate";
 import { cn } from "@/lib/utils";
 
@@ -152,6 +153,14 @@ const KIND_META: Record<
     icon: PartyPopper,
   },
 };
+
+/** Holidays/vacations get their own icon (Eid → moon, Kashmir Day → mountain…); others use the kind icon. */
+function eventIcon(e: Pick<CalendarEvent, "kind" | "title" | "category">) {
+  if (e.kind === "holiday" || e.kind === "vacation") {
+    return holidayIconFor({ name: e.title, category: e.kind === "vacation" ? "vacation" : e.category });
+  }
+  return (KIND_META[e.kind] || KIND_META.event).icon;
+}
 
 type ViewMode = "month" | "year" | "list";
 
@@ -745,7 +754,7 @@ function EventCard({
   hideLessonPlanNote?: boolean;
 }) {
   const meta = KIND_META[e.kind] || KIND_META.event;
-  const Icon = meta.icon;
+  const Icon = eventIcon(e);
   const timeLabel = [e.startTime, e.endTime].filter(Boolean).join(" – ");
   return (
     <div className={cn("rounded-lg border p-3", e.tentative ? "border-dashed border-slate-300" : "border-slate-200")}>
@@ -889,14 +898,18 @@ function MonthView({
           const offDay = !workingDays.has(WEEKDAY_KEYS[weekdayIdx(ymd)]);
           const outside = ymd < sessionStart || ymd > sessionEnd;
           const day = Number(ymd.slice(8));
+          // Fill the whole day box with the colour of its most important event.
+          const topKind = groups[0]?.kind;
           return (
             <button
               key={ymd}
               type="button"
               onClick={() => onOpenDay(ymd)}
               className={cn(
-                "flex min-h-[3.5rem] flex-col items-stretch gap-1 border-b border-r border-slate-100 p-1 text-left transition-colors hover:bg-primary/5 sm:min-h-[6.5rem] sm:p-1.5",
-                (offDay || outside) && "bg-slate-50",
+                "flex min-h-[3.5rem] flex-col items-stretch gap-1 border-b border-r border-slate-100 p-1 text-left transition-colors sm:min-h-[7.5rem] sm:p-1.5",
+                topKind
+                  ? cn(KIND_META[topKind].cell, "hover:brightness-95")
+                  : cn("hover:bg-primary/5", (offDay || outside) && "bg-slate-50"),
               )}
             >
               <span
@@ -915,21 +928,26 @@ function MonthView({
               </span>
               {/* Tablet+: chips */}
               <span className="hidden flex-col gap-0.5 sm:flex">
-                {groups.slice(0, 3).map((g, gi) => (
-                  <span
-                    key={gi}
-                    className={cn(
-                      "truncate rounded px-1.5 py-0.5 text-[11px] font-medium leading-tight",
-                      KIND_META[g.kind].chip,
-                      g.tentative && "border border-dashed border-current ring-0",
-                    )}
-                    title={g.label}
-                  >
-                    {g.label}
-                  </span>
-                ))}
+                {groups.slice(0, 3).map((g, gi) => {
+                  const isOff = g.kind === "holiday" || g.kind === "vacation";
+                  const ChipIcon = isOff && g.items[0] ? eventIcon(g.items[0]) : null;
+                  return (
+                    <span
+                      key={gi}
+                      className={cn(
+                        "flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-semibold leading-tight lg:text-sm",
+                        KIND_META[g.kind].chip,
+                        g.tentative && "border border-dashed border-current ring-0",
+                      )}
+                      title={g.label}
+                    >
+                      {ChipIcon && <ChipIcon className="h-4 w-4 shrink-0 lg:h-5 lg:w-5" />}
+                      <span className="truncate">{g.label}</span>
+                    </span>
+                  );
+                })}
                 {groups.length > 3 && (
-                  <span className="px-1 text-[11px] font-medium text-slate-500">+{groups.length - 3} more</span>
+                  <span className="px-1 text-xs font-semibold text-slate-600">+{groups.length - 3} more</span>
                 )}
               </span>
             </button>

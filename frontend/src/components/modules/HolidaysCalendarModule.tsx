@@ -1,27 +1,14 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Atom,
-  BookOpen,
-  Building2,
   CalendarDays,
   CalendarRange,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Flag,
-  Flame,
-  HardHat,
-  Landmark,
-  Moon,
-  MoonStar,
-  Mountain,
-  Palmtree,
   Pencil,
   Plus,
-  Sparkles,
-  Star,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -55,6 +42,7 @@ import {
   type HolidayStatus,
   type SchoolHoliday,
 } from "@/lib/holidayApi";
+import { holidayIconFor } from "@/lib/holidayIcons";
 import { localTodayYmd } from "@/lib/localDate";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -160,28 +148,8 @@ function calendarLabel(holiday: SchoolHoliday) {
   return holiday.status === "pending" ? `${name} (Expected)` : name;
 }
 
-const HOLIDAY_ICONS: { match: RegExp; icon: LucideIcon }[] = [
-  { match: /kashmir/i, icon: Mountain },
-  { match: /pakistan/i, icon: Flag },
-  { match: /labour|labor/i, icon: HardHat },
-  { match: /takbeer/i, icon: Atom },
-  { match: /independence/i, icon: Sparkles },
-  { match: /iqbal/i, icon: BookOpen },
-  { match: /quaid/i, icon: Landmark },
-  { match: /fitr/i, icon: Moon },
-  { match: /adha/i, icon: MoonStar },
-  { match: /ashura/i, icon: Flame },
-  { match: /milad/i, icon: Star },
-];
-
 function holidayIcon(holiday: SchoolHoliday): LucideIcon {
-  const key = `${holiday.code || ""} ${holiday.name || ""} ${holiday.shortName || ""}`;
-  const found = HOLIDAY_ICONS.find((row) => row.match.test(key));
-  if (found) return found.icon;
-  if (holiday.category === "vacation") return Palmtree;
-  if (holiday.category === "islamic") return Moon;
-  if (holiday.category === "government") return Building2;
-  return Flag;
+  return holidayIconFor(holiday);
 }
 
 function HolidayGlyph({ holiday, className }: { holiday: SchoolHoliday; className?: string }) {
