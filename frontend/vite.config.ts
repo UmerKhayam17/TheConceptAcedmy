@@ -5,6 +5,21 @@ import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
+// Unique id per build. The running app polls /version.json and reloads when it changes.
+const BUILD_ID = new Date().toISOString();
+
+const versionFilePlugin = () => ({
+  name: "app-version-file",
+  apply: "build" as const,
+  generateBundle(this: { emitFile: (file: { type: "asset"; fileName: string; source: string }) => void }) {
+    this.emitFile({
+      type: "asset",
+      fileName: "version.json",
+      source: JSON.stringify({ buildId: BUILD_ID }),
+    });
+  },
+});
+
 // https://vitejs.dev/config/
 // HTTPS is required so webcam (getUserMedia) works on LAN IPs, not only localhost.
 export default defineConfig(({ mode }) => ({
@@ -54,7 +69,11 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
+  define: {
+    __APP_BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   plugins: [
+    versionFilePlugin(),
     basicSsl(),
     react(),
     mode === "development" && componentTagger(),
@@ -81,7 +100,6 @@ export default defineConfig(({ mode }) => ({
         scope: "/",
         display: "standalone",
         orientation: "any",
-        background_color: "#041e6e",
         theme_color: "#041e6e",
         categories: ["education"],
         icons: [
