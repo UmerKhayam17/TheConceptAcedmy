@@ -5,18 +5,14 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   BarChart3,
-  BookOpen,
   Brain,
   CalendarDays,
   Check,
   ChevronRight,
-  ClipboardList,
   FileText,
   GraduationCap,
   Home,
-  Lightbulb,
   Megaphone,
-  NotebookPen,
   Receipt,
   UserRound,
 } from "lucide-react";
@@ -24,7 +20,6 @@ import { moduleHref } from "@/lib/panelMenus";
 import { timetableHref } from "@/lib/timetableMenus";
 import { testExamsHref } from "@/lib/testExamsMenus";
 import { resolveUploadUrl, type AcademyStudent, type AcademyStudentRecord } from "@/lib/studentManagementApi";
-import type { Announcement } from "@/lib/announcementApi";
 import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
 import { cn } from "@/lib/utils";
 
@@ -61,12 +56,10 @@ const TILES: {
   tone: Tone;
 }[] = [
   { label: "Online Quiz", to: testExamsHref(ROLE, "enter-tests"), Icon: Brain, tone: { wrap: "bg-[#F3E8FF]", icon: "text-[#7C3AED]" } },
-  { label: "Homework", view: "homework", Icon: BookOpen, tone: { wrap: "bg-[#E7F8EF]", icon: "text-[#16A34A]" } },
   { label: "Academics", view: "academics", Icon: GraduationCap, tone: { wrap: "bg-[#E6F7F4]", icon: "text-[#0F766E]" } },
   { label: "Attendance", to: moduleHref(ROLE, "attendance"), Icon: CalendarDays, tone: { wrap: "bg-[#FFF4E5]", icon: "text-[#EA580C]" } },
   { label: "Notice Board", to: moduleHref(ROLE, "announcements"), Icon: Megaphone, tone: { wrap: "bg-[#FDE8F3]", icon: "text-[#DB2777]" } },
   { label: "Date Sheet", to: testExamsHref(ROLE, "date-sheet"), Icon: FileText, tone: { wrap: "bg-[#E6F7FB]", icon: "text-[#0891B2]" } },
-  { label: "Syllabus", view: "syllabus", Icon: ClipboardList, tone: { wrap: "bg-[#E8F8EE]", icon: "text-[#059669]" } },
   { label: "Results", to: testExamsHref(ROLE, "report-card"), Icon: BarChart3, tone: { wrap: "bg-[#E7F0FF]", icon: "text-[#2563EB]" } },
 ];
 
@@ -79,10 +72,7 @@ const ROWS: {
   tone: Tone;
 }[] = [
   { label: "Fee", hint: "Invoices, dues & payment history", view: "fees", Icon: Receipt, tone: { wrap: "bg-[#E8F8EE]", icon: "text-[#16A34A]" } },
-  { label: "My Leaves", hint: "Apply for & track student leaves", view: "leaves", Icon: UserRound, tone: { wrap: "bg-[#FFF4E5]", icon: "text-[#EA580C]" } },
   { label: "Timetable", hint: "Weekly class schedule", to: timetableHref(ROLE, "view"), Icon: CalendarDays, tone: { wrap: "bg-[#E7F0FF]", icon: "text-[#2563EB]" } },
-  { label: "Suggestions", hint: "Send suggestions to the admin", to: moduleHref(ROLE, "chat"), Icon: Lightbulb, tone: { wrap: "bg-[#F4FBE8]", icon: "text-[#65A30D]" } },
-  { label: "Notebook", hint: "Class notebook work by subject", view: "notebook", Icon: NotebookPen, tone: { wrap: "bg-[#F3E8FF]", icon: "text-[#7C3AED]" } },
 ];
 
 function greeting() {
@@ -212,7 +202,6 @@ export default function ParentMobileHome({
   onSelect,
   record,
   recordLoading,
-  announcements,
 }: {
   parentName: string;
   students: AcademyStudent[];
@@ -221,10 +210,9 @@ export default function ParentMobileHome({
   onSelect: (id: string) => void;
   record?: AcademyStudentRecord;
   recordLoading: boolean;
-  announcements: Announcement[];
 }) {
   const [params, setParams] = useSearchParams();
-  const view = params.get("view") || "";
+  const view = params.get("view") === "fees" ? "fees" : "";
   const student = record?.student || students.find((s) => s._id === selectedId);
   const displayName = student?.studentName || parentName || "Parent";
 
@@ -254,7 +242,6 @@ export default function ParentMobileHome({
         student={student}
         record={record}
         loading={studentsLoading || recordLoading}
-        announcements={announcements}
       />
     );
   }
@@ -359,7 +346,7 @@ export default function ParentMobileHome({
           )}
         </section>
 
-        <section className="grid grid-cols-4 gap-x-2 gap-y-4">
+        <section className="grid grid-cols-3 gap-x-2 gap-y-4">
           {TILES.map((tile) => {
             const academicsTo = tile.label === "Academics" && student
               ? `/panel/parent/students/${student._id}`
@@ -433,29 +420,13 @@ function FeatureScreen({
   student,
   record,
   loading,
-  announcements,
 }: {
   view: string;
   onBack: () => void;
   student?: AcademyStudent;
   record?: AcademyStudentRecord;
   loading: boolean;
-  announcements: Announcement[];
 }) {
-  const titles: Record<string, string> = {
-    homework: "Homework",
-    academics: "Academics",
-    syllabus: "Syllabus",
-    fees: "Fee",
-    leaves: "My Leaves",
-    notebook: "Notebook",
-    etube: "eTube",
-    mentor: "Mentor AI",
-  };
-  const subjects = record?.enrollment.subjects || [];
-  const homework = announcements.filter((item) =>
-    `${item.type || ""} ${item.title}`.toLowerCase().includes("home"),
-  );
   const fees = record?.fees;
 
   return (
@@ -470,7 +441,7 @@ function FeatureScreen({
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-bold text-[#17324A]">{titles[view] || "Parent"}</h1>
+          <h1 className="truncate text-lg font-bold text-[#17324A]">Fee</h1>
           {student ? <p className="truncate text-xs text-[#13A8B8]">{classSectionLine(student)}</p> : null}
         </div>
       </div>
@@ -510,95 +481,6 @@ function FeatureScreen({
               </ul>
             )}
           </>
-        )}
-
-        {view === "leaves" && !loading && (
-          <EmptyNote
-            title={
-              (record?.attendance.summary.leave || 0) > 0
-                ? `${record?.attendance.summary.leave} leave day${record?.attendance.summary.leave === 1 ? "" : "s"} marked`
-                : "No leave requests"
-            }
-            body="Student leave marked by the school appears with attendance. New requests are not open in the app yet."
-          />
-        )}
-
-        {view === "notebook" && !loading && (
-          subjects.length === 0 ? (
-            <EmptyNote title="No subjects yet" body="Notebook work will show here once subjects are assigned." />
-          ) : (
-            <ul className="overflow-hidden rounded-2xl bg-white shadow-sm">
-              {subjects.map((subject, index) => (
-                <li key={subject._id} className={cn("px-4 py-3", index > 0 && "border-t border-[#F1F5F9]")}>
-                  <p className="text-sm font-semibold text-[#17324A]">{subject.subjectName}</p>
-                  <p className="text-xs text-slate-400">Class notebook</p>
-                </li>
-              ))}
-            </ul>
-          )
-        )}
-
-        {view === "syllabus" && !loading && (
-          subjects.length === 0 ? (
-            <EmptyNote title="Syllabus not published" body="Subjects for this class will appear here." />
-          ) : (
-            <ul className="overflow-hidden rounded-2xl bg-white shadow-sm">
-              {subjects.map((subject, index) => (
-                <li key={subject._id} className={cn("px-4 py-3", index > 0 && "border-t border-[#F1F5F9]")}>
-                  <p className="text-sm font-semibold text-[#17324A]">{subject.subjectName}</p>
-                  <p className="text-xs text-slate-400">{subject.subjectCode || "Subject"}</p>
-                </li>
-              ))}
-            </ul>
-          )
-        )}
-
-        {view === "homework" && !loading && (
-          homework.length === 0 ? (
-            <EmptyNote title="No homework right now" body="New homework from the school will show on this list." />
-          ) : (
-            <ul className="overflow-hidden rounded-2xl bg-white shadow-sm">
-              {homework.map((item, index) => (
-                <li key={item._id} className={cn("px-4 py-3", index > 0 && "border-t border-[#F1F5F9]")}>
-                  <p className="text-sm font-semibold text-[#17324A]">{item.title}</p>
-                  <p className="text-xs text-slate-400">{item.type || "Homework"}</p>
-                </li>
-              ))}
-            </ul>
-          )
-        )}
-
-        {view === "academics" && !loading && student && (
-          <Link
-            to={`/panel/parent/students/${student._id}`}
-            className="block rounded-2xl bg-white p-4 shadow-sm"
-          >
-            <p className="text-sm font-semibold text-[#17324A]">{student.studentName}</p>
-            <p className="mt-1 text-xs text-[#13A8B8]">{classSectionLine(student)}</p>
-            <p className="mt-3 text-sm text-slate-500">
-              {record?.enrollment.subjectCount || 0} subjects enrolled. Open the full academic record.
-            </p>
-          </Link>
-        )}
-
-        {view === "etube" && (
-          <EmptyNote title="eTube is not live yet" body="Class videos will show here when the school publishes them." />
-        )}
-
-        {view === "mentor" && (
-          <div className="rounded-[22px] bg-[#F8E7C4] p-5 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9A7040]">Mentor</p>
-            <h2 className="mt-2 text-2xl font-bold leading-tight text-[#3F2A14]">Encourage more. Compare less.</h2>
-            <p className="mt-2 text-sm text-[#8A6844]">
-              A mentor chat is not connected yet. You can message the school from Chats.
-            </p>
-            <Link
-              to={moduleHref(ROLE, "chat")}
-              className="mt-4 inline-flex rounded-full bg-[#17324A] px-4 py-2 text-sm font-semibold text-white"
-            >
-              Open chats
-            </Link>
-          </div>
         )}
       </div>
     </div>

@@ -1,11 +1,10 @@
 import { NavLink, useLocation, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, GraduationCap, Home, MessageCircle, Play } from "lucide-react";
+import { Bell, CalendarDays, Home, MessageCircle } from "lucide-react";
 import { moduleHref } from "@/lib/panelMenus";
 import { fetchNotifications } from "@/lib/notificationsApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useConversations, userIdStr } from "@/services/socket/chat.api";
-import { cn } from "@/lib/utils";
 
 const ROLE = "parent" as const;
 const ACTIVE = "#12C5D6";
@@ -51,7 +50,6 @@ export default function ParentMobileTabBar() {
   const view = params.get("view") || "";
   const { user } = useAuth();
   const onHome = pathname === "/panel/parent" || pathname === "/panel/parent/";
-  const mentorOn = onHome && view === "mentor";
 
   const { data: alerts } = useQuery({
     queryKey: ["parent-mobile-alert-count", user?.id],
@@ -96,24 +94,19 @@ export default function ParentMobileTabBar() {
 
         <div className="relative grid h-16 grid-cols-5">
           <Tab to="/panel/parent" label="Home" active={onHome && !view} icon={Home} />
-          <Tab to="/panel/parent?view=etube" label="eTube" active={onHome && view === "etube"} icon={Play} />
+          <Tab
+            to={moduleHref(ROLE, "attendance")}
+            label="Attendance"
+            active={pathname.includes("/attendance")}
+            icon={CalendarDays}
+          />
           <NavLink
-            to="/panel/parent?view=mentor"
-            aria-label="Mentor AI"
-            className="relative flex h-full items-end justify-center pb-2"
+            to="/panel/parent"
+            aria-label="The Concept Academy"
+            className="relative flex h-full items-end justify-center"
           >
-            <span className="absolute left-1/2 top-0 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white shadow-[0_8px_16px_rgba(59,130,246,0.28)] ring-[3px] ring-[#D6F5FB]">
-              <span
-                className={cn(
-                  "grid h-[44px] w-[44px] place-items-center rounded-full bg-gradient-to-b from-[#7AD6FA] to-[#3B82F6] text-white",
-                  mentorOn && "ring-2 ring-[#12C5D6]",
-                )}
-              >
-                <GraduationCap className="h-5 w-5" strokeWidth={2.25} />
-              </span>
-            </span>
-            <span className="text-[11px] font-medium leading-none" style={{ color: mentorOn ? ACTIVE : IDLE }}>
-              Mentor AI
+            <span className="absolute left-1/2 top-0 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full bg-white shadow-[0_8px_16px_rgba(15,23,42,0.16)] ring-[3px] ring-white">
+              <img src="/icons/icon-512.png" alt="" className="h-full w-full object-cover" />
             </span>
           </NavLink>
           <Tab

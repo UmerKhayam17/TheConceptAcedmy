@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import type { ModuleActionCaps, PermLevel } from "@/lib/permissions";
@@ -22,7 +23,9 @@ import ReportCardPanel from "./exams/ReportCardPanel";
 import ReportCardDetailPage from "./exams/ReportCardDetailPage";
 import ParentExamsPanel from "./parent/ParentExamsPanel";
 import ParentDateSheetPanel from "./parent/ParentDateSheetPanel";
+import ParentMobileDateSheet from "./parent/ParentMobileDateSheet";
 import ParentReportCardPanel from "./parent/ParentReportCardPanel";
+import ParentMobileReportCard from "./parent/ParentMobileReportCard";
 
 const ExamsModule = ({
   perm: _perm,
@@ -40,6 +43,7 @@ const ExamsModule = ({
   const { user } = useAuth();
   const role = user?.role;
   const isParent = role === "parent";
+  const phone = usePhoneLayout();
 
   if (!sectionParam || sectionParam === "assign") {
     return <Navigate to={DEFAULT_TEST_EXAMS_SECTION} replace />;
@@ -52,10 +56,10 @@ const ExamsModule = ({
     }
     const section: TestExamsSection = findTestExamsSection(sectionParam);
     if (section === "date-sheet") {
-      return <ParentDateSheetPanel />;
+      return phone ? <ParentMobileDateSheet /> : <ParentDateSheetPanel />;
     }
     if (section === "report-card") {
-      return <ParentReportCardPanel />;
+      return phone ? <ParentMobileReportCard /> : <ParentReportCardPanel />;
     }
     // ParentExamsPanel owns its own page padding.
     return <ParentExamsPanel section={section} />;
@@ -147,5 +151,19 @@ const ExamsModule = ({
     </div>
   );
 };
+
+function usePhoneLayout() {
+  const [phone, setPhone] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const sync = () => setPhone(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  return phone;
+}
 
 export default ExamsModule;

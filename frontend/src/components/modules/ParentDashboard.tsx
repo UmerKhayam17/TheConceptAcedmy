@@ -489,7 +489,6 @@ export default function ParentDashboard({
           onSelect={setSelectedId}
           record={record}
           recordLoading={Boolean(selectedId) && recordLoading}
-          announcements={announcements}
         />
       </div>
       <div className="hidden md:block">
