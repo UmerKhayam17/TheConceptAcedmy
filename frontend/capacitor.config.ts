@@ -25,9 +25,9 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      // Native launch screen (plain blue, no logo). index.html hides it as soon as
-      // your web splash (public/splash.jpg) is on screen; 6s is only a fallback.
-      launchShowDuration: 6000,
+      // 0 = don't hold Android's plain launch screen. The splash image is shown by
+      // MainActivity.java straight from the APK and fades out when the site has loaded.
+      launchShowDuration: 0,
       launchAutoHide: true,
       launchFadeOutDuration: 200,
       backgroundColor: SPLASH_BG,

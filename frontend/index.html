@@ -55,11 +55,49 @@
         z-index: 2147483646;
         background: #0047da url("/splash.jpg") center center / cover no-repeat;
       }
+      /* Loader on the splash: 12 gold bars + white LOADING... (matches the Android app's loader). */
+      #boot-splash .boot-loader {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 5%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+      #boot-splash .boot-spokes {
+        position: relative;
+        width: 44px;
+        height: 44px;
+        animation: boot-spin 1s steps(12) infinite;
+      }
+      #boot-splash .boot-spokes i {
+        position: absolute;
+        left: 20px;
+        top: 0;
+        width: 4px;
+        height: 12px;
+        border-radius: 2px;
+        background: #f5b301;
+        transform-origin: 2px 22px;
+      }
+      #boot-splash .boot-label {
+        color: #ffffff;
+        font: 600 13px/18px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        letter-spacing: 2px;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+      }
+      @keyframes boot-spin {
+        to { transform: rotate(360deg); }
+      }
     </style>
   </head>
 
   <body>
-    <div id="boot-splash" role="status" aria-label="Loading the academy portal"></div>
+    <div id="boot-splash" role="status" aria-label="Loading the academy portal">
+      <div class="boot-loader"><div class="boot-spokes"><i style="transform:rotate(0deg);opacity:1.000"></i><i style="transform:rotate(-30deg);opacity:0.925"></i><i style="transform:rotate(-60deg);opacity:0.850"></i><i style="transform:rotate(-90deg);opacity:0.775"></i><i style="transform:rotate(-120deg);opacity:0.700"></i><i style="transform:rotate(-150deg);opacity:0.625"></i><i style="transform:rotate(-180deg);opacity:0.550"></i><i style="transform:rotate(-210deg);opacity:0.475"></i><i style="transform:rotate(-240deg);opacity:0.400"></i><i style="transform:rotate(-270deg);opacity:0.325"></i><i style="transform:rotate(-300deg);opacity:0.250"></i><i style="transform:rotate(-330deg);opacity:0.175"></i></div><div class="boot-label">LOADING...</div></div>
+    </div>
     <script>
       (function () {
         var path = location.pathname;

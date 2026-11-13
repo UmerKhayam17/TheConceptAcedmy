@@ -17,13 +17,14 @@
 
 
     <!--
-      Launch screen. Android 12+ always shows a short system launch screen for every app;
-      here it is a plain blue (no logo), then splash.jpg appears full screen.
+      Launch theme. Translucent = Android skips its own launch screen (the plain color /
+      logo screen), so the first thing shown is splash.jpg drawn by MainActivity.java.
+      (BridgeActivity switches to AppTheme.NoActionBar before the app window is created.)
     -->
-    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/splash_bg</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/transparent_icon</item>
-        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
-        <item name="android:windowBackground">@drawable/splash</item>
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="windowActionBar">false</item>
     </style>
 </resources>

@@ -109,6 +109,8 @@ if (!fs.existsSync(keystoreProps)) {
 // ---- 2. web build + sync -----------------------------------------------
 run("npm run build");
 run("npx cap sync android", { env });
+// The app loads the live site, so don't pack the previous APK (dist/downloads) inside the new one.
+fs.rmSync(path.join(androidDir, "app", "src", "main", "assets", "public", "downloads"), { recursive: true, force: true });
 
 // ---- 3. signed release APK ---------------------------------------------
 // Minutes since 2020: always increases, so every new APK installs as an update.
