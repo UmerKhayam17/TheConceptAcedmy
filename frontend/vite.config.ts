@@ -80,6 +80,8 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: false,
+      // Manifest icons are big PNGs; don't precache them (the browser fetches them itself).
+      includeManifestIcons: false,
       includeAssets: [
         "favicon.png",
         "favicon.ico",
@@ -113,7 +115,10 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         // index.html is not precached: page loads go network-first (below) so a new
         // deploy shows up on the next open instead of after a background update.
-        globPatterns: ["**/*.{js,css,ico,png,svg,woff2}"],
+        // Only app code is cached in the background on first visit (was ~7.8 MB incl. big
+        // images). Images and the heavy PDF/export libraries load normally when needed.
+        globPatterns: ["**/*.{js,css,ico,svg,woff2}"],
+        globIgnores: ["**/jspdf*.js", "**/html2canvas*.js", "**/index.es-*.js", "**/purify.es-*.js"],
         navigateFallback: null,
         cleanupOutdatedCaches: true,
         clientsClaim: true,

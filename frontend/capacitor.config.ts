@@ -19,6 +19,8 @@ const config: CapacitorConfig = {
   server: {
     url: LIVE_URL,
     androidScheme: "https",
+    // Only for local testing with an http:// address; the live site is https.
+    cleartext: LIVE_URL.startsWith("http://"),
   },
   android: {
     backgroundColor: SPLASH_BG,

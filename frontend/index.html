@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#041e6e" />
+    <meta name="theme-color" content="#0E2A4E" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -19,7 +19,6 @@
     <link rel="apple-touch-icon" sizes="167x167" href="/icons/apple-touch-icon-167.png" />
     <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon-152.png" />
     <link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon-120.png" />
-    <link rel="preload" as="image" href="/splash.jpg" />
     <link rel="apple-touch-startup-image" href="/splash.jpg" />
 
     <!-- Non-blocking fonts (critical for LCP / performance) -->
@@ -47,9 +46,37 @@
     <meta name="twitter:image" content="/favicon.png">
     <meta name="twitter:title" content="The Concept Academy">
     <meta name="twitter:description" content="The Concept Academy — focused coaching for MDCAT, ECAT, O/A Levels and CSS in Islamabad.">
+    <script>
+      // Installed app only (Android APK, or PWA opened from the home screen): mark <html>
+      // so the splash below is shown. In a normal browser tab there is no splash.
+      (function () {
+        var app =
+          !!window.Capacitor ||
+          /; wv\)/.test(navigator.userAgent) ||
+          window.navigator.standalone === true ||
+          (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+        if (app) {
+          document.documentElement.className += " is-app";
+          // App only: splash colour for the status bar, and fetch the splash image early.
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", "#041e6e");
+          var pre = document.createElement("link");
+          pre.rel = "preload";
+          pre.as = "image";
+          pre.href = "/splash.jpg";
+          document.head.appendChild(pre);
+        }
+      })();
+    </script>
     <style>
-      html, body { margin: 0; background: #0047da; }
-      #boot-splash {
+      html, body { margin: 0; background: #ffffff; }
+      /* Blue only behind the startup splash; after startup the app is white like the website. */
+      html.is-app:not(.boot-done), html.is-app:not(.boot-done) body { background: #0047da; }
+      /* Browser tab (Chrome/Safari website): no splash and no loader. */
+      #boot-splash { display: none; }
+      /* Installed app only: full splash picture with the loader near the bottom. */
+      html.is-app #boot-splash {
+        display: block;
         position: fixed;
         inset: 0;
         z-index: 2147483646;
@@ -60,7 +87,8 @@
         position: absolute;
         left: 0;
         right: 0;
-        bottom: 5%;
+        top: 50%;
+        transform: translateY(-50%);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -82,7 +110,14 @@
         background: #f5b301;
         transform-origin: 2px 22px;
       }
-      #boot-splash .boot-label {
+      html.is-app #boot-splash .boot-loader {
+        top: auto;
+        bottom: 5%;
+        transform: none;
+      }
+      #boot-splash .boot-label { display: none; }
+      html.is-app #boot-splash .boot-label {
+        display: block;
         color: #ffffff;
         font: 600 13px/18px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         letter-spacing: 2px;

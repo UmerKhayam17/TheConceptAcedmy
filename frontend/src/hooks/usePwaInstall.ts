@@ -3,7 +3,9 @@ import { getInstallPrompt, isStandaloneApp, subscribePwa } from "@/pwa";
 
 function isIosBrowser() {
   if (typeof navigator === "undefined") return false;
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent)) return true;
+  // iPadOS 13+ reports itself as a Mac; a touch screen gives it away.
+  return /macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
 }
 
 export function usePwaInstall() {

@@ -25,7 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import SEO from "@/components/SEO";
 import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 import campus from "@/assets/login-campus.jpg";
-import AcademyLoader from "@/components/AcademyLoader";
+import AcademyLoader, { Spokes } from "@/components/AcademyLoader";
 import { hideBootSplash } from "@/lib/bootSplash";
 
 const schema = z.object({
@@ -80,7 +80,29 @@ const Login = () => {
     if (!loading && !user) hideBootSplash();
   }, [loading, user]);
 
-  if (loading) return <AcademyLoader />;
+  if (loading) {
+    return (
+      <AcademyLoader
+        web={
+          <div
+            className="flex min-h-screen flex-col items-center justify-center bg-[#071426]"
+            role="status"
+            aria-live="polite"
+            aria-label="Loading the academy portal"
+          >
+            <div className="relative grid h-20 w-20 place-items-center">
+              <span className="absolute inset-0">
+                <Spokes size={80} color="#F4B72A" />
+              </span>
+              <GraduationCap className="h-8 w-8 text-[#F4B72A]" strokeWidth={1.75} />
+            </div>
+            <p className="mt-6 text-sm font-semibold tracking-[0.22em] text-white">THE CONCEPT ACADEMY</p>
+            <p className="mt-2 text-[11px] tracking-[0.28em] text-[#D9A441]">LEARN • GROW • SUCCEED</p>
+          </div>
+        }
+      />
+    );
+  }
 
   if (user) return <Navigate to={panelPathFor(user.role)} replace />;
 

@@ -14,6 +14,7 @@ import {
 } from "@/components/panel-header/PanelSessionContext";
 import SessionScopeBanner from "@/components/panel-header/SessionScopeBanner";
 import { hideBootSplash } from "@/lib/bootSplash";
+import AcademyLoader from "@/components/AcademyLoader";
 
 function PanelChrome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["user"]> }) {
   const { pathname } = useLocation();
@@ -79,10 +80,14 @@ const PanelLayout = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-2 bg-secondary/30 text-muted-foreground text-sm">
-        <span>Restoring your session…</span>
-        <span className="text-xs text-muted-foreground/80">Please wait — do not refresh</span>
-      </div>
+      <AcademyLoader
+        web={
+          <div className="min-h-screen flex flex-col items-center justify-center gap-2 bg-secondary/30 text-muted-foreground text-sm">
+            <span>Restoring your session…</span>
+            <span className="text-xs text-muted-foreground/80">Please wait — do not refresh</span>
+          </div>
+        }
+      />
     );
   }
 

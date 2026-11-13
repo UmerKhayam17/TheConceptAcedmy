@@ -34,7 +34,15 @@ const queryClient = new QueryClient({
 });
 
 function RouteFallback() {
-  return <AcademyLoader />;
+  return (
+    <AcademyLoader
+      web={
+        <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
+          Loading…
+        </div>
+      }
+    />
+  );
 }
 
 /**
