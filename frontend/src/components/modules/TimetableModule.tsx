@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import type { Role } from "@/lib/auth";
@@ -15,6 +16,7 @@ import ClassBoardTab from "@/components/modules/timetable/ClassBoardTab";
 import MyScheduleTab from "@/components/modules/timetable/MyScheduleTab";
 import SectionDashboardTab from "@/components/modules/timetable/SectionDashboardTab";
 import ParentChildScheduleTab from "@/components/modules/timetable/ParentChildScheduleTab";
+import ParentMobileTimetable from "@/components/modules/parent/ParentMobileTimetable";
 
 const TimetableModule = ({
   caps,
@@ -27,6 +29,7 @@ const TimetableModule = ({
 }) => {
   const { user } = useAuth();
   const { sessionId } = usePanelSession();
+  const phone = usePhoneLayout();
   const { isAll, writable } = useSessionScope(sessionId);
 
   const canManage = (caps.canEdit || caps.canCreate) && writable;
@@ -66,7 +69,10 @@ const TimetableModule = ({
               }}
             />
           )}
-          {section === "view" && isParentOrStudent && (
+          {section === "view" && role === "parent" && phone && (
+            <ParentMobileTimetable sessionId={sessionId} />
+          )}
+          {section === "view" && isParentOrStudent && !(role === "parent" && phone) && (
             <ParentChildScheduleTab sessionId={sessionId} />
           )}
           {section === "view" && !isParentOrStudent && (
@@ -80,5 +86,19 @@ const TimetableModule = ({
     </>
   );
 };
+
+function usePhoneLayout() {
+  const [phone, setPhone] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const sync = () => setPhone(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  return phone;
+}
 
 export default TimetableModule;

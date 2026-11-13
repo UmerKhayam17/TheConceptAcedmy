@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ChevronDown, Download, UserRound } from "lucide-react";
+import { ArrowLeft, Download, UserRound } from "lucide-react";
+import { ParentOptionField } from "@/components/modules/parent/ParentOptionSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { fetchResultCardPdf, fetchStudentExamResults, type ExamResult } from "@/lib/examApi";
@@ -316,20 +317,17 @@ export default function ParentMobileReportCard() {
         </span>
         <div className="min-w-0 flex-1">
           {children.length > 1 && !viewing ? (
-            <select
+            <ParentOptionField
+              sheetTitle="Child"
               value={childId}
-              onChange={(event) => {
-                setChildId(event.target.value);
+              valueClassName="text-[16px] text-[#1A1A1A]"
+              options={children.map((child) => ({ value: child._id, label: child.studentName }))}
+              onChange={(id) => {
+                setChildId(id);
                 setExamId("");
                 setViewing(false);
               }}
-              aria-label="Select child"
-              className="w-full truncate bg-transparent text-[16px] font-bold text-[#1A1A1A] outline-none"
-            >
-              {children.map((child) => (
-                <option key={child._id} value={child._id}>{child.studentName}</option>
-              ))}
-            </select>
+            />
           ) : (
             <p className="truncate text-[16px] font-bold text-[#1A1A1A]">
               {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
@@ -381,40 +379,25 @@ export default function ParentMobileReportCard() {
       ) : (
         <section className="mx-4 mt-4 rounded-[22px] bg-white px-4 pb-4 pt-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Term">
-              <select
-                value={term}
-                onChange={(event) => {
-                  setTerm(event.target.value);
-                  setExamId("");
-                }}
-                disabled={!terms.length}
-                aria-label="Term"
-                className="w-full appearance-none bg-transparent py-2 pr-5 text-[15px] font-bold capitalize text-[#1A1A2E] outline-none disabled:text-[#C5CED6]"
-              >
-                {terms.length === 0 ? <option value="">{loading ? "Loading…" : "No term yet"}</option> : null}
-                {terms.map((item) => (
-                  <option key={item} value={item}>{item}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Exam name">
-              <select
-                value={examId}
-                onChange={(event) => setExamId(event.target.value)}
-                disabled={!exams.length}
-                aria-label="Exam name"
-                className={cn(
-                  "w-full appearance-none bg-transparent py-2 pr-5 text-[15px] font-bold outline-none disabled:text-[#C5CED6]",
-                  examId ? "text-[#1A1A2E]" : "text-[#C5CED6]",
-                )}
-              >
-                <option value="">{exams.length ? "" : loading ? "Loading…" : "No exam yet"}</option>
-                {exams.map((row) => (
-                  <option key={row.id} value={row.id}>{row.name}</option>
-                ))}
-              </select>
-            </Field>
+            <ParentOptionField
+              label="TERM"
+              sheetTitle="Term"
+              value={term}
+              placeholder={loading ? "Loading…" : "No term yet"}
+              options={terms.map((item) => ({ value: item, label: item }))}
+              onChange={(next) => {
+                setTerm(next);
+                setExamId("");
+              }}
+            />
+            <ParentOptionField
+              label="EXAM NAME"
+              sheetTitle="Exam name"
+              value={examId}
+              placeholder={loading ? "Loading…" : "No exam yet"}
+              options={exams.map((row) => ({ value: row.id, label: row.name }))}
+              onChange={setExamId}
+            />
           </div>
 
           <button
@@ -433,17 +416,5 @@ export default function ParentMobileReportCard() {
         </section>
       )}
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block min-w-0">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#A3ADB8]">{label}</span>
-      <span className="relative mt-1 flex items-center border-b border-[#E6EDF2]">
-        {children}
-        <ChevronDown className="pointer-events-none absolute right-0 h-4 w-4 text-[#94A3B8]" />
-      </span>
-    </label>
   );
 }

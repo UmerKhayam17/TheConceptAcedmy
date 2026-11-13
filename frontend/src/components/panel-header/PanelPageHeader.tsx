@@ -93,7 +93,8 @@ export default function PanelPageHeader({
       pathname.startsWith("/panel/parent/notifications") ||
       pathname.startsWith("/panel/parent/attendance") ||
       pathname.startsWith("/panel/parent/exams/date-sheet") ||
-      pathname.startsWith("/panel/parent/exams/report-card"));
+      pathname.startsWith("/panel/parent/exams/report-card") ||
+      pathname.startsWith("/panel/parent/timetable"));
 
   return (
     <header

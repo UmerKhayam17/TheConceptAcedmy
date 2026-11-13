@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ChevronDown, UserRound } from "lucide-react";
+import { ArrowLeft, UserRound } from "lucide-react";
+import { ParentOptionField } from "@/components/modules/parent/ParentOptionSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { recordDayYmd, schoolDayYmd } from "@/lib/localDate";
 import {
@@ -242,16 +243,13 @@ export default function ParentMobileAttendance() {
         </span>
         <div className="min-w-0 flex-1">
           {children.length > 1 ? (
-            <select
+            <ParentOptionField
+              sheetTitle="Child"
               value={selectedStudentId}
-              onChange={(event) => setSelectedStudentId(event.target.value)}
-              aria-label="Select child"
-              className="w-full truncate bg-transparent text-[15px] font-bold text-[#1A1A1A] outline-none"
-            >
-              {children.map((child) => (
-                <option key={child._id} value={child._id}>{child.studentName}</option>
-              ))}
-            </select>
+              onChange={setSelectedStudentId}
+              options={children.map((child) => ({ value: child._id, label: child.studentName }))}
+              valueClassName="text-[15px] text-[#1A1A1A]"
+            />
           ) : (
             <p className="truncate text-[15px] font-bold text-[#1A1A1A]">
               {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
@@ -333,36 +331,20 @@ export default function ParentMobileAttendance() {
         <div className="space-y-3 px-4 pt-4">
           <section className="rounded-[20px] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
             <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-[11px] font-semibold tracking-wide text-[#94A3B8]">MONTH</span>
-                <span className="relative mt-1 flex items-center">
-                  <select
-                    value={draftKey}
-                    onChange={(event) => setDraftKey(event.target.value)}
-                    className="w-full appearance-none bg-transparent pr-6 text-[15px] font-bold text-[#111827] outline-none"
-                  >
-                    {options.map((option) => (
-                      <option key={option.key} value={option.key}>{option.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-0 h-4 w-4 text-[#111827]" />
-                </span>
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold tracking-wide text-[#94A3B8]">STATUS</span>
-                <span className="relative mt-1 flex items-center">
-                  <select
-                    value={draftStatus}
-                    onChange={(event) => setDraftStatus(event.target.value)}
-                    className="w-full appearance-none bg-transparent pr-6 text-[15px] font-bold text-[#111827] outline-none"
-                  >
-                    {STATUSES.map((status) => (
-                      <option key={status.value} value={status.value}>{status.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-0 h-4 w-4 text-[#111827]" />
-                </span>
-              </label>
+              <ParentOptionField
+                label="MONTH"
+                sheetTitle="Month"
+                value={draftKey}
+                onChange={setDraftKey}
+                options={options.map((option) => ({ value: option.key, label: option.label }))}
+              />
+              <ParentOptionField
+                label="STATUS"
+                sheetTitle="Status"
+                value={draftStatus}
+                onChange={setDraftStatus}
+                options={STATUSES}
+              />
             </div>
             <button
               type="button"

@@ -105,9 +105,23 @@ export default function ParentMobileTabBar() {
             aria-label="The Concept Academy"
             className="relative flex h-full items-end justify-center"
           >
-            <span className="absolute left-1/2 top-0 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full bg-white shadow-[0_8px_16px_rgba(15,23,42,0.16)] ring-[3px] ring-white">
-              <img src="/icons/icon-512.png" alt="" className="h-full w-full object-cover" />
+            <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-[42%]">
+              <span
+                className="academy-icon-pulse grid h-14 w-14 place-items-center overflow-hidden rounded-full bg-white shadow-[0_8px_16px_rgba(15,23,42,0.16)] ring-[3px] ring-white"
+                style={{ animation: "academyIconPulse 1.8s ease-in-out infinite" }}
+              >
+                <img src="/icons/icon-512.png" alt="" className="h-full w-full object-cover" />
+              </span>
             </span>
+            <style>{`
+              @keyframes academyIconPulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.14); }
+              }
+              @media (prefers-reduced-motion: reduce) {
+                .academy-icon-pulse { animation: none !important; }
+              }
+            `}</style>
           </NavLink>
           <Tab
             to={moduleHref(ROLE, "notifications")}

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, ChevronDown, Download, UserRound } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, UserRound } from "lucide-react";
+import { ParentOptionField } from "@/components/modules/parent/ParentOptionSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -348,16 +349,13 @@ export default function ParentMobileDateSheet() {
         </span>
         <div className="min-w-0 flex-1">
           {children.length > 1 ? (
-            <select
+            <ParentOptionField
+              sheetTitle="Child"
               value={childId}
-              onChange={(event) => setChildId(event.target.value)}
-              aria-label="Select child"
-              className="w-full truncate bg-transparent text-[15px] font-bold text-[#1A1A1A] outline-none"
-            >
-              {children.map((child) => (
-                <option key={child._id} value={child._id}>{child.studentName}</option>
-              ))}
-            </select>
+              onChange={setChildId}
+              options={children.map((child) => ({ value: child._id, label: child.studentName }))}
+              valueClassName="text-[15px] text-[#1A1A1A]"
+            />
           ) : (
             <p className="truncate text-[15px] font-bold text-[#1A1A1A]">
               {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
@@ -371,41 +369,28 @@ export default function ParentMobileDateSheet() {
 
       <section className="mx-4 mt-3 rounded-[22px] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
         <div className="grid grid-cols-2 gap-4">
-          <label className="block">
-            <span className="text-[11px] font-semibold tracking-wide text-[#A8B3C0]">TERM</span>
-            <span className="relative mt-1 flex items-center">
-              <select
-                value={draftTerm}
-                onChange={(event) => {
-                  const term = event.target.value;
-                  const exams = examsFor(term);
-                  setDraftTerm(term);
-                  if (!exams.includes(draftExam)) setDraftExam(exams[0] || "");
-                }}
-                className="w-full appearance-none bg-transparent pr-6 text-[15px] font-bold text-[#111827] outline-none"
-              >
-                {terms.length === 0 ? <option value="">No term</option> : null}
-                {terms.map((term) => <option key={term} value={term}>{term}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-0 h-4 w-4 text-[#111827]" />
-            </span>
-            <span className="mt-1 block h-0.5 w-14 rounded-full bg-[#22C5D6]" />
-          </label>
-          <label className="block">
-            <span className="text-[11px] font-semibold tracking-wide text-[#A8B3C0]">EXAM</span>
-            <span className="relative mt-1 flex items-center">
-              <select
-                value={draftExam}
-                onChange={(event) => setDraftExam(event.target.value)}
-                className="w-full appearance-none bg-transparent pr-6 text-[15px] font-bold text-[#111827] outline-none"
-              >
-                {draftExams.length === 0 ? <option value="">No exam</option> : null}
-                {draftExams.map((exam) => <option key={exam} value={exam}>{exam}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-0 h-4 w-4 text-[#111827]" />
-            </span>
-            <span className="mt-1 block h-0.5 w-16 rounded-full bg-[#22C5D6]" />
-          </label>
+          <ParentOptionField
+            label="TERM"
+            sheetTitle="Term"
+            accent
+            value={draftTerm}
+            placeholder="No term"
+            options={terms.map((term) => ({ value: term, label: term }))}
+            onChange={(term) => {
+              const exams = examsFor(term);
+              setDraftTerm(term);
+              if (!exams.includes(draftExam)) setDraftExam(exams[0] || "");
+            }}
+          />
+          <ParentOptionField
+            label="EXAM"
+            sheetTitle="Exam"
+            accent
+            value={draftExam}
+            placeholder="No exam"
+            options={draftExams.map((exam) => ({ value: exam, label: exam }))}
+            onChange={setDraftExam}
+          />
         </div>
         <button
           type="button"

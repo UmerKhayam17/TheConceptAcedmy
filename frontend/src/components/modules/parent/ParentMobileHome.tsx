@@ -260,13 +260,12 @@ export default function ParentMobileHome({
           >
             <ArrowLeftRight className="h-5 w-5" />
           </button>
-          <Link
-            to={student ? `/panel/parent/students/${student._id}` : "/panel/parent/students"}
-            aria-label="Open child profile"
-            className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-[#7DD3FC] to-[#2563EB] shadow-md ring-2 ring-white/70"
+          <span
+            aria-hidden
+            className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-[#7DD3FC] to-[#2563EB] text-white shadow-md ring-2 ring-white/70"
           >
             <GraduationCap className="h-6 w-6" />
-          </Link>
+          </span>
         </div>
         <p className="relative mt-5 text-[11px] font-semibold tracking-[0.22em] text-white/90">
           {greeting()}
