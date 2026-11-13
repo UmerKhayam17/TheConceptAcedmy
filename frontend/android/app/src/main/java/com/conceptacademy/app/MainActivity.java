@@ -1,6 +1,10 @@
 package com.conceptacademy.app;
 
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Color;
@@ -9,6 +13,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -20,10 +25,20 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 /**
- * Shows res/drawable-nodpi/splash.jpg (bundled in the APK, so no download) with a loader
- * on top of the app the moment it opens, and fades it out once the website has loaded.
+ * Shows the splash picture with a loader on top of the app the moment it opens, and fades
+ * it out once the website has loaded.
+ *
+ * The picture auto-updates: each launch quietly downloads /splash.jpg from the server (only
+ * if it changed) and keeps it on the phone. The next launch shows that copy. The picture
+ * bundled in the APK (res/drawable-nodpi/splash.jpg) is used only until the first download.
  */
 public class MainActivity extends BridgeActivity {
 
@@ -36,6 +51,9 @@ public class MainActivity extends BridgeActivity {
     /** Loader color (gold) and text under it. */
     private static final int LOADER_COLOR = Color.parseColor("#F5B301");
     private static final String LOADER_TEXT = "LOADING...";
+    /** Used if the server address can't be read from the Capacitor config. */
+    private static final String DEFAULT_ORIGIN = "https://theconcept.ac.pk";
+    private static final String SPLASH_FILE = "splash.jpg";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private View splashView;
@@ -71,7 +89,9 @@ public class MainActivity extends BridgeActivity {
         container.setClickable(true); // block taps on the page underneath
 
         ImageView image = new ImageView(this);
-        image.setImageResource(R.drawable.splash);
+        Bitmap saved = loadSavedSplash();
+        if (saved != null) image.setImageBitmap(saved);
+        else image.setImageResource(R.drawable.splash);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);
         container.addView(
             image,
@@ -113,6 +133,70 @@ public class MainActivity extends BridgeActivity {
         splashView = container;
         shownAt = SystemClock.uptimeMillis();
         handler.postDelayed(this::removeSplashNow, MAX_SPLASH_MS);
+        new Thread(this::refreshSplashFromServer, "splash-update").start();
+    }
+
+    /** The picture downloaded from the server on an earlier launch, or null. */
+    private Bitmap loadSavedSplash() {
+        try {
+            File f = new File(getFilesDir(), SPLASH_FILE);
+            return f.isFile() ? BitmapFactory.decodeFile(f.getAbsolutePath()) : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private String serverOrigin() {
+        try {
+            String url = bridge != null ? bridge.getServerUrl() : null;
+            if (url != null) {
+                Uri u = Uri.parse(url);
+                if (u.getScheme() != null && u.getHost() != null) {
+                    return u.getScheme() + "://" + u.getHost() + (u.getPort() > 0 ? ":" + u.getPort() : "");
+                }
+            }
+        } catch (Throwable ignored) {}
+        return DEFAULT_ORIGIN;
+    }
+
+    /** Downloads /splash.jpg if it changed on the server and saves it for the next launch. */
+    private void refreshSplashFromServer() {
+        HttpURLConnection conn = null;
+        try {
+            SharedPreferences prefs = getSharedPreferences("splash", MODE_PRIVATE);
+            File target = new File(getFilesDir(), SPLASH_FILE);
+            conn = (HttpURLConnection) new URL(serverOrigin() + "/" + SPLASH_FILE).openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(15000);
+            conn.setUseCaches(false);
+            String etag = prefs.getString("etag", null);
+            if (etag != null && target.isFile()) conn.setRequestProperty("If-None-Match", etag);
+            int code = conn.getResponseCode();
+            if (code != HttpURLConnection.HTTP_OK) { // 304 = unchanged
+                Log.i("TCASplash", "splash check: HTTP " + code);
+                return;
+            }
+
+            File tmp = new File(getFilesDir(), SPLASH_FILE + ".tmp");
+            try (InputStream in = conn.getInputStream(); OutputStream out = new FileOutputStream(tmp)) {
+                byte[] buf = new byte[16384];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            }
+            BitmapFactory.Options check = new BitmapFactory.Options();
+            check.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(tmp.getAbsolutePath(), check);
+            if (check.outWidth <= 0 || !tmp.renameTo(target)) { // not a picture: keep the old one
+                tmp.delete();
+                return;
+            }
+            prefs.edit().putString("etag", conn.getHeaderField("ETag")).apply();
+            Log.i("TCASplash", "splash updated from server (" + target.length() + " bytes)");
+        } catch (Throwable ignored) {
+            // Offline or server error: keep the current picture.
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     private void hideSplash() {
