@@ -7,10 +7,24 @@ const { renderBrandedExcel } = require('./academyReportDocument');
 const { renderDualTablePdf } = require('./academyStudentExportService');
 
 const COLUMNS = [
-  { key: 'name', header: 'Full Name', excelWidth: 28, pdfWidth: 120, align: 'left', wrap: true },
-  { key: 'email', header: 'Email', excelWidth: 42, pdfWidth: 180, align: 'left', wrap: true },
-  { key: 'password', header: 'Password', excelWidth: 20, pdfWidth: 90, align: 'left', wrap: false },
+  { key: 'name', header: 'Full Name', excelWidth: 18, pdfWidth: 72, align: 'left', wrap: true },
+  { key: 'className', header: 'Class', excelWidth: 12, pdfWidth: 40, align: 'center', wrap: false },
+  { key: 'sectionName', header: 'Section', excelWidth: 10, pdfWidth: 36, align: 'center', wrap: false },
+  { key: 'email', header: 'Email', excelWidth: 56, pdfWidth: 200, align: 'left', wrap: true },
+  { key: 'password', header: 'Password', excelWidth: 18, pdfWidth: 72, align: 'left', wrap: false },
 ];
+
+function uniqueJoined(linked, key) {
+  const seen = new Set();
+  const parts = [];
+  (linked || []).forEach((s) => {
+    const value = String(s[key] || '').trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    parts.push(value);
+  });
+  return parts.join(', ');
+}
 
 function todayLabel() {
   const d = new Date();
@@ -129,6 +143,8 @@ async function loadParentRows(query = {}) {
     .filter((row) => matchesFilters(row, query))
     .map((row) => ({
       name: row.name,
+      className: uniqueJoined(row.linked, 'className'),
+      sectionName: uniqueJoined(row.linked, 'sectionName'),
       email: row.email,
       password: row.password,
     }))
@@ -136,13 +152,18 @@ async function loadParentRows(query = {}) {
 }
 
 function buildCols(tableW) {
-  const name = Math.round(tableW * 0.3);
-  const password = Math.round(tableW * 0.24);
-  const email = tableW - name - password;
+  const name = Math.round(tableW * 0.16);
+  const classW = Math.max(26, Math.round(tableW * 0.1));
+  const section = Math.max(30, Math.round(tableW * 0.11));
+  // Default password "Concept@1234" is ~45pt at the cell font; keep it on one line.
+  const password = Math.max(54, Math.round(tableW * 0.2));
+  const email = tableW - name - classW - section - password;
   return [
     { key: 'name', label: 'Full Name', w: name, align: 'left', wrap: true },
+    { key: 'className', label: 'Class', w: classW, align: 'center', wrap: true },
+    { key: 'sectionName', label: 'Section', w: section, align: 'center', wrap: true },
     { key: 'email', label: 'Email', w: email, align: 'left', wrap: true },
-    { key: 'password', label: 'Password', w: password, align: 'left', wrap: true },
+    { key: 'password', label: 'Password', w: password, align: 'left', wrap: false },
   ];
 }
 
@@ -172,7 +193,7 @@ async function exportParentCredentials(format, query = {}) {
 
   const buffer = await renderDualTablePdf({
     title: 'Parent Portal Logins',
-    subject: 'Parent full name, email, and password',
+    subject: 'Parent full name, class, section, email, and password',
     emptyMessage: 'No parent accounts match this list.',
     rows,
     meta,
