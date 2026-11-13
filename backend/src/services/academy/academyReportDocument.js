@@ -271,10 +271,17 @@ function plainCellAlign(col) {
   return 'left';
 }
 
-function drawPdfTableHeader(doc, columns, startX, y, brand, { plain = false, lightHeader = false } = {}) {
+function drawPdfTableHeader(
+  doc,
+  columns,
+  startX,
+  y,
+  brand,
+  { plain = false, lightHeader = false, headerFill = null } = {}
+) {
   const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
-  const headerPad = 3;
-  const headerFontSize = plain ? 7 : 7.5;
+  const headerPad = headerFill ? 2 : 3;
+  const headerFontSize = plain ? (headerFill ? 6 : 7) : 7.5;
   doc.font('Helvetica-Bold').fontSize(headerFontSize);
 
   let headerH = plain ? 22 : 20;
@@ -287,7 +294,10 @@ function drawPdfTableHeader(doc, columns, startX, y, brand, { plain = false, lig
   }
 
   doc.save();
-  if (plain && lightHeader) {
+  if (plain && headerFill) {
+    doc.rect(startX, y, tableWidth, headerH).fill(headerFill);
+    doc.fillColor('#111111').font('Helvetica-Bold').fontSize(headerFontSize);
+  } else if (plain && lightHeader) {
     doc.rect(startX, y, tableWidth, headerH).fill('#FFFFFF');
     doc.fillColor('#111111').font('Helvetica-Bold').fontSize(headerFontSize);
   } else if (plain) {
@@ -610,6 +620,7 @@ async function renderBrandedPdf({
   layout = 'landscape',
   fitOnePage = false,
   lightHeader = false,
+  headerFill = null,
 }) {
   const brand = ACADEMY_BRAND;
   const logoPath = resolveLogoPath();
@@ -677,6 +688,7 @@ async function renderBrandedPdf({
         return drawPdfTableHeader(doc, scaledColumns, startX, nextY, brand, {
           plain,
           lightHeader,
+          headerFill,
         });
       };
 
@@ -771,8 +783,12 @@ function populateExcelSheet(workbook, {
   layout = 'landscape',
   fitOnePage = false,
   lightHeader = false,
+  headerFill = null,
 }) {
   const headerRows = plain ? 6 : 6;
+  const headerFillArgb = headerFill
+    ? `FF${String(headerFill).replace('#', '').toUpperCase().slice(-6)}`
+    : null;
   const orientation = layout === 'portrait' ? 'portrait' : 'landscape';
   const sheet = workbook.addWorksheet(sheetName || 'Report', {
     pageSetup: {
@@ -888,6 +904,14 @@ function populateExcelSheet(workbook, {
 
     const headerRow = sheet.getRow(6);
     headerRow.height = 24;
+    if (headerFillArgb) {
+      // Category headings wrap like the paper sheet; give them room.
+      const lines = columns.reduce((max, col) => {
+        const perLine = Math.max(6, Math.floor((Number(col.excelWidth) || 10) * 1.1));
+        return Math.max(max, Math.ceil(String(col.header || '').length / perLine));
+      }, 1);
+      headerRow.height = Math.max(24, lines * 13 + 6);
+    }
     columns.forEach((col, i) => {
       const cell = headerRow.getCell(i + 1);
       cell.value = col.header;
@@ -895,13 +919,24 @@ function populateExcelSheet(workbook, {
         name: 'Calibri',
         size: 10,
         bold: true,
-        color: { argb: lightHeader ? navy : 'FFFFFFFF' },
+        color: { argb: headerFillArgb ? 'FF111111' : lightHeader ? navy : 'FFFFFFFF' },
       };
-      cell.fill = lightHeader
-        ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }
-        : { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } };
+      cell.fill = headerFillArgb
+        ? { type: 'pattern', pattern: 'solid', fgColor: { argb: headerFillArgb } }
+        : lightHeader
+          ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }
+          : { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } };
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-      cell.border = lightHeader ? gridBorder : headerBorder;
+      cell.border = headerFillArgb
+        ? {
+            top: { style: 'thin', color: { argb: 'FF222222' } },
+            bottom: { style: 'thin', color: { argb: 'FF222222' } },
+            left: { style: 'thin', color: { argb: 'FF222222' } },
+            right: { style: 'thin', color: { argb: 'FF222222' } },
+          }
+        : lightHeader
+          ? gridBorder
+          : headerBorder;
     });
   } else {
     sheet.getRow(1).height = 22;
@@ -1054,6 +1089,7 @@ async function renderBrandedExcel({
   layout = 'landscape',
   fitOnePage = false,
   lightHeader = false,
+  headerFill = null,
 }) {
   const brand = ACADEMY_BRAND;
   const workbook = new ExcelJS.Workbook();
@@ -1074,6 +1110,7 @@ async function renderBrandedExcel({
     layout,
     fitOnePage,
     lightHeader,
+    headerFill,
   });
 
   (Array.isArray(additionalSheets) ? additionalSheets : []).forEach((extra, idx) => {
@@ -1090,6 +1127,7 @@ async function renderBrandedExcel({
       layout: extra.layout || layout,
       fitOnePage: extra.fitOnePage ?? fitOnePage,
       lightHeader: extra.lightHeader ?? lightHeader,
+      headerFill: extra.headerFill === undefined ? headerFill : extra.headerFill,
     });
   });
 

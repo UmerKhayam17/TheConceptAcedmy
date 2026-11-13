@@ -1,6 +1,6 @@
 const AcademyExpense = require('../../models/academy/AcademyExpense');
 const { renderBrandedPdf, renderBrandedExcel, formatDate } = require('./academyReportDocument');
-const { categoryNameMap, displayCategory } = require('./expenseCategoryService');
+const { categoryNameMap, displayCategory, listCategories } = require('./expenseCategoryService');
 
 const MONTHS = [
   'January',
@@ -77,7 +77,7 @@ async function loadExpenseData(filters) {
   const q = buildExpenseQuery(filters);
   const records = await AcademyExpense.find(q)
     .sort({ expenseDate: -1, createdAt: -1 })
-    .limit(2000)
+    .limit(20000)
     .lean();
 
   let totalAmount = 0;
@@ -90,6 +90,8 @@ async function loadExpenseData(filters) {
     if (r.status === 'paid') paidAmount += amount;
     if (r.status === 'planned') plannedAmount += amount;
     return {
+      _expenseDate: r.expenseDate,
+      _categoryName: displayCategory(r, names),
       serial: idx + 1,
       date: formatDate(r.expenseDate),
       title: r.title || '—',
@@ -146,6 +148,131 @@ const COLUMNS = [
   { key: 'notes', header: 'Notes', excelWidth: 24, pdfWidth: 95, wrap: true },
 ];
 
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MAX_FILLED_DAYS = 400;
+
+function dayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** "2-Nov-26" like the paper expense sheet. */
+function sheetDate(d) {
+  return `${d.getDate()}-${SHORT_MONTHS[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
+}
+
+/** Report period used to list every day (including days with no expense). */
+function reportPeriod(filters, rows) {
+  const from = parseYmdStart(filters.from);
+  const to = parseYmdStart(filters.to);
+  if (from && to) return from <= to ? [from, to] : [to, from];
+  if (filters.month && filters.year) {
+    return [new Date(filters.year, filters.month - 1, 1), new Date(filters.year, filters.month, 0)];
+  }
+  if (filters.year) return [new Date(filters.year, 0, 1), new Date(filters.year, 11, 31)];
+  if (!rows.length) return null;
+  const times = rows.map((r) => new Date(r._expenseDate).getTime()).filter(Number.isFinite);
+  if (!times.length) return null;
+  const min = new Date(Math.min(...times));
+  const max = new Date(Math.max(...times));
+  return [
+    new Date(min.getFullYear(), min.getMonth(), min.getDate()),
+    new Date(max.getFullYear(), max.getMonth(), max.getDate()),
+  ];
+}
+
+/** Category columns: configured order first, then any extra names found in the data. */
+async function pivotCategoryNames(rows, filters, names) {
+  if (filters.category) {
+    const used = [...new Set(rows.map((r) => r._categoryName))];
+    return used.length ? used : [names[filters.category] || filters.category];
+  }
+  const configured = await listCategories();
+  const usedNames = new Set(rows.map((r) => r._categoryName));
+  const ordered = configured
+    .filter((c) => c.isActive || usedNames.has(c.name))
+    .map((c) => c.name);
+  const seen = new Set(ordered);
+  const extras = [...usedNames].filter((n) => n && n !== '—' && !seen.has(n)).sort();
+  return [...ordered, ...extras];
+}
+
+function buildPivot(rows, categoryNames, period) {
+  const catKeys = categoryNames.map((name, i) => ({ name, key: `cat${i}` }));
+  const keyByName = Object.fromEntries(catKeys.map((c) => [c.name, c.key]));
+  const byDay = new Map();
+  const ensureDay = (d) => {
+    const k = dayKey(d);
+    if (!byDay.has(k)) byDay.set(k, { date: new Date(d.getFullYear(), d.getMonth(), d.getDate()), sums: {} });
+    return byDay.get(k);
+  };
+
+  if (period) {
+    const [start, end] = period;
+    const spanDays = Math.round((end - start) / 86400000) + 1;
+    if (spanDays <= MAX_FILLED_DAYS) {
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) ensureDay(d);
+    }
+  }
+
+  rows.forEach((r) => {
+    const d = new Date(r._expenseDate);
+    if (Number.isNaN(d.getTime())) return;
+    const key = keyByName[r._categoryName];
+    if (!key) return;
+    const day = ensureDay(d);
+    day.sums[key] = (day.sums[key] || 0) + r.amount;
+  });
+
+  const colTotals = {};
+  let grandTotal = 0;
+  const pivotRows = [...byDay.values()]
+    .sort((a, b) => a.date - b.date)
+    .map(({ date, sums }) => {
+      const out = { date: sheetDate(date) };
+      let dayTotal = 0;
+      catKeys.forEach(({ key }) => {
+        const v = sums[key] || 0;
+        out[key] = v ? v : '';
+        dayTotal += v;
+        colTotals[key] = (colTotals[key] || 0) + v;
+      });
+      grandTotal += dayTotal;
+      out.totalExpenses = dayTotal ? dayTotal : '-';
+      return out;
+    });
+
+  if (pivotRows.length) {
+    const totalRow = { _isTotal: true, date: 'Total' };
+    catKeys.forEach(({ key }) => {
+      totalRow[key] = colTotals[key] ? colTotals[key] : '';
+    });
+    totalRow.totalExpenses = grandTotal;
+    pivotRows.push(totalRow);
+  }
+
+  const columns = [
+    { key: 'date', header: 'Date', excelWidth: 11, pdfWidth: 38, align: 'right' },
+    ...catKeys.map(({ name, key }) => ({
+      key,
+      header: name,
+      excelWidth: 12,
+      pdfWidth: 40,
+      align: 'right',
+      numFmt: '#,##0',
+    })),
+    {
+      key: 'totalExpenses',
+      header: 'Total Expenses',
+      excelWidth: 13,
+      pdfWidth: 40,
+      align: 'right',
+      numFmt: '#,##0',
+    },
+  ];
+
+  return { columns, rows: pivotRows };
+}
+
 async function exportExpenseReport(filters = {}) {
   const format = String(filters.format || 'xlsx').toLowerCase() === 'pdf' ? 'pdf' : 'xlsx';
   const { rows, totalAmount, paidAmount, plannedAmount, count, names } = await loadExpenseData(filters);
@@ -184,9 +311,9 @@ async function exportExpenseReport(filters = {}) {
     generatedAt: new Date(),
   };
 
-  const reportRows = [...rows];
+  const detailRows = [...rows];
   if (rows.length) {
-    reportRows.push({
+    detailRows.push({
       _isTotal: true,
       serial: '',
       date: '',
@@ -201,16 +328,31 @@ async function exportExpenseReport(filters = {}) {
     });
   }
 
+  const categoryNames = await pivotCategoryNames(rows, filters, names);
+  const pivot = buildPivot(rows, categoryNames, reportPeriod(filters, rows));
+
   const payload = {
     title: 'Academy Expenses Report',
     sheetName: 'Expenses',
     confidentialLabel: 'Academy expenses report',
     subject: 'Academy expenses',
-    columns: COLUMNS,
-    rows: reportRows,
+    columns: pivot.columns,
+    rows: pivot.rows,
     meta,
     emptyMessage: 'No expenses match the selected filters.',
     plain: true,
+    headerFill: '#FFFF00',
+    // PDF: squeeze a month onto one page like the paper sheet (falls back to multi-page).
+    fitOnePage: format === 'pdf',
+    additionalSheets: [
+      {
+        title: 'Academy Expenses — Detail',
+        sheetName: 'Detail',
+        columns: COLUMNS,
+        rows: detailRows,
+        headerFill: null,
+      },
+    ],
   };
 
   if (format === 'pdf') {
