@@ -196,7 +196,7 @@ async function pivotCategoryNames(rows, filters, names) {
   return [...ordered, ...extras];
 }
 
-function buildPivot(rows, categoryNames, period) {
+function buildPivot(rows, categoryNames, period, { fillEmptyDays = false } = {}) {
   const catKeys = categoryNames.map((name, i) => ({ name, key: `cat${i}` }));
   const keyByName = Object.fromEntries(catKeys.map((c) => [c.name, c.key]));
   const byDay = new Map();
@@ -206,7 +206,7 @@ function buildPivot(rows, categoryNames, period) {
     return byDay.get(k);
   };
 
-  if (period) {
+  if (fillEmptyDays && period) {
     const [start, end] = period;
     const spanDays = Math.round((end - start) / 86400000) + 1;
     if (spanDays <= MAX_FILLED_DAYS) {
@@ -251,7 +251,7 @@ function buildPivot(rows, categoryNames, period) {
   }
 
   const columns = [
-    { key: 'date', header: 'Date', excelWidth: 11, pdfWidth: 38, align: 'right' },
+    { key: 'date', header: 'Date', excelWidth: 11, pdfWidth: 48, align: 'right' },
     ...catKeys.map(({ name, key }) => ({
       key,
       header: name,
@@ -311,9 +311,9 @@ async function exportExpenseReport(filters = {}) {
     generatedAt: new Date(),
   };
 
-  const detailRows = [...rows];
+  const reportRows = [...rows];
   if (rows.length) {
-    detailRows.push({
+    reportRows.push({
       _isTotal: true,
       serial: '',
       date: '',
@@ -328,32 +328,43 @@ async function exportExpenseReport(filters = {}) {
     });
   }
 
-  const categoryNames = await pivotCategoryNames(rows, filters, names);
-  const pivot = buildPivot(rows, categoryNames, reportPeriod(filters, rows));
-
-  const payload = {
-    title: 'Academy Expenses Report',
-    sheetName: 'Expenses',
-    confidentialLabel: 'Academy expenses report',
-    subject: 'Academy expenses',
-    columns: pivot.columns,
-    rows: pivot.rows,
-    meta,
-    emptyMessage: 'No expenses match the selected filters.',
-    plain: true,
-    headerFill: '#FFFF00',
-    // PDF: squeeze a month onto one page like the paper sheet (falls back to multi-page).
-    fitOnePage: format === 'pdf',
-    additionalSheets: [
-      {
-        title: 'Academy Expenses — Detail',
-        sheetName: 'Detail',
-        columns: COLUMNS,
-        rows: detailRows,
-        headerFill: null,
+  let payload;
+  if (filters.reportKind === 'summary') {
+    // Expense Summary: date × category sheet, only days on which an expense was recorded.
+    const categoryNames = await pivotCategoryNames(rows, filters, names);
+    const pivot = buildPivot(rows, categoryNames, reportPeriod(filters, rows));
+    const days = Math.max(0, pivot.rows.length - 1);
+    payload = {
+      title: 'Academy Expense Summary',
+      sheetName: 'Expense Summary',
+      confidentialLabel: 'Academy expense summary',
+      subject: 'Academy expense summary',
+      columns: pivot.columns,
+      rows: pivot.rows,
+      meta: {
+        ...meta,
+        centerFilter: `Days with expenses: ${days} · Entries: ${count}`,
+        countLabel: `Days with expenses: ${days}`,
       },
-    ],
-  };
+      emptyMessage: 'No expenses match the selected filters.',
+      plain: true,
+      headerFill: '#FFFF00',
+      // PDF: keep a month on one page like the paper sheet (falls back to multi-page).
+      fitOnePage: format === 'pdf',
+    };
+  } else {
+    payload = {
+      title: 'Academy Expenses Report',
+      sheetName: 'Expenses',
+      confidentialLabel: 'Academy expenses report',
+      subject: 'Academy expenses',
+      columns: COLUMNS,
+      rows: reportRows,
+      meta,
+      emptyMessage: 'No expenses match the selected filters.',
+      plain: true,
+    };
+  }
 
   if (format === 'pdf') {
     return renderBrandedPdf(payload);

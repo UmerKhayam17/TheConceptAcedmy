@@ -55,6 +55,7 @@ const exportReport = catchAsync(async (req, res) => {
     category: req.query.category || undefined,
     status: req.query.status || undefined,
     search: req.query.search || undefined,
+    reportKind: req.query.reportKind === 'summary' ? 'summary' : 'list',
   });
   const monthNames = [
     'January',
@@ -78,7 +79,8 @@ const exportReport = catchAsync(async (req, res) => {
   const yearLabel = req.query.year || 'All';
   const periodLabel =
     fromLabel && toLabel ? `${fromLabel}_to_${toLabel}` : `${monthLabel}-${yearLabel}`;
-  const fileName = `Academy-Expenses_${periodLabel}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+  const prefix = req.query.reportKind === 'summary' ? 'Academy-Expense-Summary' : 'Academy-Expenses';
+  const fileName = `${prefix}_${periodLabel}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
   if (format === 'pdf') {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);

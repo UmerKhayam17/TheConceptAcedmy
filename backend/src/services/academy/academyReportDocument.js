@@ -284,10 +284,23 @@ function drawPdfTableHeader(
   const headerFontSize = plain ? (headerFill ? 6 : 7) : 7.5;
   doc.font('Helvetica-Bold').fontSize(headerFontSize);
 
+  /** Yellow-header sheets: shrink a column's heading so no word is split across lines. */
+  const colFontSize = columns.map((col) => {
+    if (!headerFill) return headerFontSize;
+    const innerW = Math.max(8, col.pdfWidth - headerPad * 2);
+    const longest = String(col.header || '')
+      .split(/\s+/)
+      .reduce((max, word) => Math.max(max, doc.fontSize(headerFontSize).widthOfString(word)), 0);
+    if (longest <= innerW) return headerFontSize;
+    return Math.max(4, Math.floor(((headerFontSize * innerW) / longest) * 10) / 10);
+  });
+  doc.fontSize(headerFontSize);
+
   let headerH = plain ? 22 : 20;
   if (plain) {
-    columns.forEach((col) => {
+    columns.forEach((col, i) => {
       const innerW = Math.max(8, col.pdfWidth - headerPad * 2);
+      doc.fontSize(colFontSize[i]);
       const textH = doc.heightOfString(String(col.header || ''), { width: innerW, align: 'center', lineGap: 0 });
       headerH = Math.max(headerH, Math.ceil(textH) + 8);
     });
@@ -309,10 +322,11 @@ function drawPdfTableHeader(
   }
 
   let x = startX;
-  columns.forEach((col) => {
+  columns.forEach((col, i) => {
     const innerW = Math.max(8, col.pdfWidth - headerPad * 2);
     const label = String(col.header || '');
     if (plain) {
+      doc.fontSize(colFontSize[i]);
       const textH = doc.heightOfString(label, { width: innerW, align: 'center', lineGap: 0 });
       const textY = y + Math.max(4, (headerH - textH) / 2);
       doc.text(label, x + headerPad, textY, {

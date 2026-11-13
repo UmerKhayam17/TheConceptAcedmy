@@ -430,7 +430,8 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
     setDialogOpen(true);
   };
 
-  const handleExport = async (format: ExpenseReportFormat) => {
+  const handleExport = async (format: ExpenseReportFormat, reportKind?: string) => {
+    const kind = reportKind === "summary" ? "summary" : "list";
     setExporting(format);
     const preview = openReportPreviewTab(format);
     try {
@@ -443,10 +444,11 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
           search: search.trim() || undefined,
         },
         format,
+        kind,
       );
       const mode = deliverReportBlob(
         blob,
-        `Academy-Expenses_${dateFrom}_to_${dateTo}.${format}`,
+        `${kind === "summary" ? "Academy-Expense-Summary" : "Academy-Expenses"}_${dateFrom}_to_${dateTo}.${format}`,
         format,
         preview,
       );
@@ -455,7 +457,9 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
         description:
           mode === "preview"
             ? "Use Print or Download from the preview window."
-            : "Expense report downloaded.",
+            : kind === "summary"
+              ? "Expense summary downloaded."
+              : "Expense report downloaded.",
       });
     } catch (e) {
       preview?.close();
@@ -650,7 +654,11 @@ export default function AcademyExpensesManagement({ caps }: { caps: ModuleAction
                 label="Print / Export"
                 className="rounded-lg border-slate-200 shadow-none"
                 exporting={exporting}
-                onDownload={(format) => void handleExport(format)}
+                reportKinds={[
+                  { id: "list", label: "Expense Report" },
+                  { id: "summary", label: "Expense Summary" },
+                ]}
+                onDownload={(format, kind) => void handleExport(format, kind)}
               />
             )}
           </div>

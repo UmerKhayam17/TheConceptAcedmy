@@ -2510,6 +2510,8 @@ export const deleteAcademyExpense = (id: string) =>
   api<{ deleted: boolean }>(`/expenses/${id}`, { method: "DELETE" });
 
 export type ExpenseReportFormat = "xlsx" | "pdf";
+/** list = line-by-line expense report; summary = date × category sheet. */
+export type ExpenseReportKind = "list" | "summary";
 
 export const exportAcademyExpenseReport = async (
   params?: {
@@ -2522,9 +2524,11 @@ export const exportAcademyExpenseReport = async (
     search?: string;
   },
   format: ExpenseReportFormat = "xlsx",
+  reportKind: ExpenseReportKind = "list",
 ) => {
   const q = new URLSearchParams();
   q.set("format", format);
+  if (reportKind === "summary") q.set("reportKind", "summary");
   if (params?.month) q.set("month", String(params.month));
   if (params?.year) q.set("year", String(params.year));
   if (params?.from) q.set("from", params.from);
