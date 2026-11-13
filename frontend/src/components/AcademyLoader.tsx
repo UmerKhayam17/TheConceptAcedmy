@@ -51,7 +51,7 @@ export default function AcademyLoader({ web = null }: { web?: ReactNode }) {
         aria-live="polite"
         aria-label="Loading the academy portal"
       >
-        <div className="absolute inset-x-0 bottom-[5%] flex flex-col items-center gap-2.5">
+        <div className="absolute inset-x-0 bottom-[2.5%] flex flex-col items-center gap-2.5">
           <Spokes />
           <span className="text-[13px] font-semibold tracking-[2px] text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.45)]">
             LOADING...

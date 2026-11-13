@@ -32,7 +32,7 @@ public class MainActivity extends BridgeActivity {
     /** Remove it after this long even if the site is slow or offline (ms). */
     private static final long MAX_SPLASH_MS = 10000;
     /** Loader position: distance from the bottom, as a share of screen height (matches index.html). */
-    private static final float LOADER_BOTTOM = 0.05f;
+    private static final float LOADER_BOTTOM = 0.025f;
     /** Loader color (gold) and text under it. */
     private static final int LOADER_COLOR = Color.parseColor("#F5B301");
     private static final String LOADER_TEXT = "LOADING...";
