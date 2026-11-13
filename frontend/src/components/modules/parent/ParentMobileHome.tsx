@@ -55,12 +55,12 @@ const TILES: {
   Icon: LucideIcon;
   tone: Tone;
 }[] = [
-  { label: "Online Quiz", to: testExamsHref(ROLE, "enter-tests"), Icon: Brain, tone: { wrap: "bg-[#F3E8FF]", icon: "text-[#7C3AED]" } },
-  { label: "Academics", view: "academics", Icon: GraduationCap, tone: { wrap: "bg-[#E6F7F4]", icon: "text-[#0F766E]" } },
-  { label: "Attendance", to: moduleHref(ROLE, "attendance"), Icon: CalendarDays, tone: { wrap: "bg-[#FFF4E5]", icon: "text-[#EA580C]" } },
-  { label: "Notice Board", to: moduleHref(ROLE, "announcements"), Icon: Megaphone, tone: { wrap: "bg-[#FDE8F3]", icon: "text-[#DB2777]" } },
-  { label: "Date Sheet", to: testExamsHref(ROLE, "date-sheet"), Icon: FileText, tone: { wrap: "bg-[#E6F7FB]", icon: "text-[#0891B2]" } },
-  { label: "Results", to: testExamsHref(ROLE, "report-card"), Icon: BarChart3, tone: { wrap: "bg-[#E7F0FF]", icon: "text-[#2563EB]" } },
+  { label: "Online Quiz", to: testExamsHref(ROLE, "enter-tests"), Icon: Brain, tone: { wrap: "bg-[#DDD6FE]", icon: "text-[#6D28D9]" } },
+  { label: "Academics", view: "academics", Icon: GraduationCap, tone: { wrap: "bg-[#99F6E4]", icon: "text-[#0F766E]" } },
+  { label: "Attendance", to: moduleHref(ROLE, "attendance"), Icon: CalendarDays, tone: { wrap: "bg-[#FED7AA]", icon: "text-[#EA580C]" } },
+  { label: "Notice Board", to: moduleHref(ROLE, "announcements"), Icon: Megaphone, tone: { wrap: "bg-[#FBCFE8]", icon: "text-[#DB2777]" } },
+  { label: "Date Sheet", to: testExamsHref(ROLE, "date-sheet"), Icon: FileText, tone: { wrap: "bg-[#A5F3FC]", icon: "text-[#0891B2]" } },
+  { label: "Results", to: testExamsHref(ROLE, "report-card"), Icon: BarChart3, tone: { wrap: "bg-[#BFDBFE]", icon: "text-[#2563EB]" } },
 ];
 
 const ROWS: {
@@ -71,8 +71,8 @@ const ROWS: {
   Icon: LucideIcon;
   tone: Tone;
 }[] = [
-  { label: "Fee", hint: "Invoices, dues & payment history", view: "fees", Icon: Receipt, tone: { wrap: "bg-[#E8F8EE]", icon: "text-[#16A34A]" } },
-  { label: "Timetable", hint: "Weekly class schedule", to: timetableHref(ROLE, "view"), Icon: CalendarDays, tone: { wrap: "bg-[#E7F0FF]", icon: "text-[#2563EB]" } },
+  { label: "Fee", hint: "Invoices, dues & payment history", view: "fees", Icon: Receipt, tone: { wrap: "bg-[#BBF7D0]", icon: "text-[#16A34A]" } },
+  { label: "Timetable", hint: "Weekly class schedule", to: timetableHref(ROLE, "view"), Icon: CalendarDays, tone: { wrap: "bg-[#BFDBFE]", icon: "text-[#2563EB]" } },
 ];
 
 function greeting() {
@@ -326,10 +326,10 @@ export default function ParentMobileHome({
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-base font-semibold text-[#17324A]">
+                      <span className="block truncate text-lg font-semibold text-[#17324A]">
                         {shown.studentName}
                       </span>
-                      <span className="mt-0.5 block truncate text-xs text-[#13A8B8]">
+                      <span className="mt-0.5 block truncate text-sm font-semibold text-[#0891B2]">
                         {classSectionLine(shown)}
                       </span>
                     </span>
@@ -352,10 +352,10 @@ export default function ParentMobileHome({
               : tile.to;
             const inner = (
               <>
-                <span className={cn("grid h-14 w-14 place-items-center rounded-2xl", tile.tone.wrap)}>
-                  <tile.Icon className={cn("h-6 w-6", tile.tone.icon)} strokeWidth={1.75} />
+                <span className={cn("grid h-[72px] w-[72px] place-items-center rounded-[20px]", tile.tone.wrap)}>
+                  <tile.Icon className={cn("h-8 w-8", tile.tone.icon)} strokeWidth={1.75} />
                 </span>
-                <span className="text-center text-[11px] font-medium leading-tight text-[#334155]">
+                <span className="text-center text-[15px] font-semibold leading-tight text-[#1E293B]">
                   {tile.label}
                 </span>
               </>
@@ -380,12 +380,12 @@ export default function ParentMobileHome({
           {ROWS.map((row, index) => {
             const inner = (
               <>
-                <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", row.tone.wrap)}>
-                  <row.Icon className={cn("h-5 w-5", row.tone.icon)} strokeWidth={1.75} />
+                <span className={cn("grid h-16 w-16 shrink-0 place-items-center rounded-2xl", row.tone.wrap)}>
+                  <row.Icon className={cn("h-8 w-8", row.tone.icon)} strokeWidth={1.75} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-[#17324A]">{row.label}</span>
-                  <span className="block truncate text-xs text-[#94A3B8]">{row.hint}</span>
+                  <span className="block text-[15px] font-semibold leading-tight text-[#1E293B]">{row.label}</span>
+                  <span className="mt-0.5 block truncate text-[15px] font-medium leading-tight text-[#64748B]">{row.hint}</span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-[#CBD5E1]" />
               </>
