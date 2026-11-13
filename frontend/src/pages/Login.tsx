@@ -27,6 +27,7 @@ import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 import campus from "@/assets/login-campus.jpg";
 import AcademyLoader, { Spokes } from "@/components/AcademyLoader";
 import { hideBootSplash } from "@/lib/bootSplash";
+import { prefetchDashboardFor, prefetchPanelShell } from "@/lib/prefetchPanel";
 
 const schema = z.object({
   email: z.string().trim().email("Enter a valid email").max(255),
@@ -80,6 +81,13 @@ const Login = () => {
     if (!loading && !user) hideBootSplash();
   }, [loading, user]);
 
+  // While the user types, quietly download the panel code so login opens it faster.
+  useEffect(() => {
+    if (loading || user) return;
+    const t = window.setTimeout(prefetchPanelShell, 1500);
+    return () => window.clearTimeout(t);
+  }, [loading, user]);
+
   if (loading) {
     return (
       <AcademyLoader
@@ -121,6 +129,7 @@ const Login = () => {
     setSubmitting(true);
     try {
       const session = await loginWithPassword(parsed.data.email, parsed.data.password);
+      prefetchDashboardFor(session.role);
       toast({ title: `Welcome, ${session.name}`, description: `Signed in as ${session.role}.` });
       navigate(panelPathFor(session.role), { replace: true });
     } catch (err) {
