@@ -8,6 +8,8 @@ import { useConversations, userIdStr } from "@/services/socket/chat.api";
 import { cn } from "@/lib/utils";
 
 const ROLE = "parent" as const;
+const ACTIVE = "#12C5D6";
+const IDLE = "#94A3B8";
 
 function Tab({
   to,
@@ -23,16 +25,22 @@ function Tab({
   badge?: number;
 }) {
   return (
-    <NavLink to={to} className="flex flex-col items-center justify-end gap-1 pb-1" aria-label={label}>
+    <NavLink to={to} className="flex h-full flex-col items-center justify-end gap-1 pb-2" aria-label={label}>
       <span className="relative">
-        <Icon className={cn("h-5 w-5", active ? "text-[#13B6C6]" : "text-[#94A3B8]")} strokeWidth={active ? 2.25 : 1.75} />
+        <Icon
+          className="h-[22px] w-[22px]"
+          style={{ color: active ? ACTIVE : IDLE }}
+          strokeWidth={active ? 2.25 : 1.75}
+        />
         {badge ? (
-          <span className="absolute -right-2 -top-1.5 grid min-w-[16px] place-items-center rounded-full bg-[#F43F5E] px-1 text-[9px] font-bold leading-4 text-white">
+          <span className="absolute -right-2.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#FF3B5C] px-1 text-[10px] font-bold leading-none text-white">
             {badge > 9 ? "9+" : badge}
           </span>
         ) : null}
       </span>
-      <span className={cn("text-[10px] font-semibold", active ? "text-[#13B6C6]" : "text-[#94A3B8]")}>{label}</span>
+      <span className="text-[11px] font-medium leading-none" style={{ color: active ? ACTIVE : IDLE }}>
+        {label}
+      </span>
     </NavLink>
   );
 }
@@ -43,6 +51,7 @@ export default function ParentMobileTabBar() {
   const view = params.get("view") || "";
   const { user } = useAuth();
   const onHome = pathname === "/panel/parent" || pathname === "/panel/parent/";
+  const mentorOn = onHome && view === "mentor";
 
   const { data: alerts } = useQuery({
     queryKey: ["parent-mobile-alert-count", user?.id],
@@ -63,42 +72,65 @@ export default function ParentMobileTabBar() {
   return (
     <nav
       data-panel-mobile-nav
-      className="relative z-40 shrink-0 bg-transparent md:hidden"
+      className="relative z-40 shrink-0 overflow-visible bg-white pb-[max(34px,var(--safe-bottom))] md:hidden"
       aria-label="Parent navigation"
     >
-      <div className="relative mx-auto grid h-[68px] max-w-lg grid-cols-5 items-end border-t border-[#E6EEF3] bg-white px-2 pb-[max(0.35rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.05)]">
-        <Tab to="/panel/parent" label="Home" active={onHome && !view} icon={Home} />
-        <Tab to="/panel/parent?view=etube" label="eTube" active={onHome && view === "etube"} icon={Play} />
-        <div className="relative flex justify-center">
+      <div className="relative mx-auto h-16 max-w-lg overflow-visible">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-[94px] items-end [filter:drop-shadow(0_-4px_10px_rgba(15,23,42,0.06))]">
+          <div className="h-16 flex-1 border-t border-[#E7EEF3] bg-white" />
+          <svg width="160" height="94" viewBox="0 0 160 94" className="-mx-px shrink-0" aria-hidden>
+            <path
+              fill="#ffffff"
+              d="M0 30H40C52 30 56 30 62 18C68 8 74 6 80 6C86 6 92 8 98 18C104 30 108 30 120 30H160V94H0Z"
+            />
+            <path
+              fill="none"
+              stroke="#E7EEF3"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+              d="M0 30H40C52 30 56 30 62 18C68 8 74 6 80 6C86 6 92 8 98 18C104 30 108 30 120 30H160"
+            />
+          </svg>
+          <div className="h-16 flex-1 border-t border-[#E7EEF3] bg-white" />
+        </div>
+
+        <div className="relative grid h-16 grid-cols-5">
+          <Tab to="/panel/parent" label="Home" active={onHome && !view} icon={Home} />
+          <Tab to="/panel/parent?view=etube" label="eTube" active={onHome && view === "etube"} icon={Play} />
           <NavLink
             to="/panel/parent?view=mentor"
             aria-label="Mentor AI"
-            className="absolute -top-6 grid h-[58px] w-[58px] place-items-center rounded-full bg-white shadow-[0_8px_18px_rgba(19,182,198,0.28)] ring-2 ring-[#7FE3EE]"
+            className="relative flex h-full items-end justify-center pb-2"
           >
-            <span
-              className={cn(
-                "grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-[#7DD3FC] to-[#2563EB] text-white",
-                onHome && view === "mentor" && "ring-2 ring-[#13B6C6]",
-              )}
-            >
-              <GraduationCap className="h-5 w-5" />
+            <span className="absolute left-1/2 top-0 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white shadow-[0_8px_16px_rgba(59,130,246,0.28)] ring-[3px] ring-[#D6F5FB]">
+              <span
+                className={cn(
+                  "grid h-[44px] w-[44px] place-items-center rounded-full bg-gradient-to-b from-[#7AD6FA] to-[#3B82F6] text-white",
+                  mentorOn && "ring-2 ring-[#12C5D6]",
+                )}
+              >
+                <GraduationCap className="h-5 w-5" strokeWidth={2.25} />
+              </span>
+            </span>
+            <span className="text-[11px] font-medium leading-none" style={{ color: mentorOn ? ACTIVE : IDLE }}>
+              Mentor AI
             </span>
           </NavLink>
+          <Tab
+            to={moduleHref(ROLE, "notifications")}
+            label="Alerts"
+            active={pathname.includes("/notifications")}
+            icon={Bell}
+            badge={alerts?.unreadCount || 0}
+          />
+          <Tab
+            to={moduleHref(ROLE, "chat")}
+            label="Chats"
+            active={pathname.includes("/chat")}
+            icon={MessageCircle}
+            badge={chatUnread}
+          />
         </div>
-        <Tab
-          to={moduleHref(ROLE, "notifications")}
-          label="Alerts"
-          active={pathname.includes("/notifications")}
-          icon={Bell}
-          badge={alerts?.unreadCount || 0}
-        />
-        <Tab
-          to={moduleHref(ROLE, "chat")}
-          label="Chats"
-          active={pathname.includes("/chat")}
-          icon={MessageCircle}
-          badge={chatUnread}
-        />
       </div>
     </nav>
   );

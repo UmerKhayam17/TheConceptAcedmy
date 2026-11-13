@@ -19,6 +19,9 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -58,17 +61,21 @@ public class MainActivity extends BridgeActivity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private View splashView;
     private long shownAt;
+    private int safeTopPx;
+    private int safeBottomPx;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         showSplash();
+        installSafeArea();
 
         bridge.addWebViewListener(
             new WebViewListener() {
                 @Override
                 public void onPageLoaded(WebView webView) {
                     hideSplash();
+                    pushSafeArea();
                 }
 
                 @Override
@@ -81,6 +88,34 @@ public class MainActivity extends BridgeActivity {
 
     private int dp(float value) {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()));
+    }
+
+    /** Publish the system bar sizes so the site can pad the tab bar above the gesture / 3-button nav. */
+    private void installSafeArea() {
+        View decor = getWindow().getDecorView();
+        ViewCompat.setOnApplyWindowInsetsListener(decor, (view, windowInsets) -> {
+            Insets status = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars());
+            Insets nav = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            safeTopPx = status.top;
+            safeBottomPx = nav.bottom;
+            pushSafeArea();
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(decor);
+    }
+
+    private void pushSafeArea() {
+        if (bridge == null || bridge.getWebView() == null) return;
+        float density = getResources().getDisplayMetrics().density;
+        if (density <= 0f) density = 1f;
+        final String js =
+            "document.documentElement.style.setProperty('--safe-top','" + (safeTopPx / density) + "px');" +
+            "document.documentElement.style.setProperty('--safe-bottom','" + (safeBottomPx / density) + "px');";
+        bridge.getWebView().post(() -> {
+            if (bridge != null && bridge.getWebView() != null) {
+                bridge.getWebView().evaluateJavascript(js, null);
+            }
+        });
     }
 
     private void showSplash() {
