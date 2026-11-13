@@ -82,12 +82,13 @@ const WA_BG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'
 type ChatWindowProps = {
   conversationId: string;
   canParticipate?: boolean;
+  onBack?: () => void;
   /** Passed by ChatPage; not used here yet. */
   collapsed?: boolean;
   setCollapsed?: (value: boolean) => void;
 };
 
-export default function ChatWindow({ conversationId, canParticipate = true }: ChatWindowProps) {
+export default function ChatWindow({ conversationId, canParticipate = true, onBack }: ChatWindowProps) {
   const qc = useQueryClient();
   const { myId, setActiveId } = useChatUi();
   const { data: bucket, isLoading: messagesLoading } = useMessages(conversationId);
@@ -249,6 +250,7 @@ export default function ChatWindow({ conversationId, canParticipate = true }: Ch
           conversation={conv}
           onJumpToMessage={jumpToMessage}
           onSmartJump={smartJump}
+          onBack={onBack}
         />
 
         {pinnedMessages.length > 0 && (

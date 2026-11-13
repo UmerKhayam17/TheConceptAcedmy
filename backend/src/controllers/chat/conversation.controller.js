@@ -44,7 +44,11 @@ exports.getMyConversations = async (req, res) => {
       isDeleted: false,
     })
       .sort({ lastMessageAt: -1 })
-      .populate("participants.userId", "name profileImage email")
+      .populate({
+        path: "participants.userId",
+        select: "name profileImage email designation",
+        populate: { path: "role", select: "name" },
+      })
       .populate("lastMessageId", "text type createdAt senderId status")
       .populate("pinnedMessages.messageId", "text type file deletedForEveryone")
       .lean();
@@ -103,7 +107,11 @@ exports.getOrCreateDirect = async (req, res) => {
         { "participants.userId": targetUserId },
       ],
     })
-      .populate("participants.userId", "name profileImage email")
+      .populate({
+        path: "participants.userId",
+        select: "name profileImage email designation",
+        populate: { path: "role", select: "name" },
+      })
       .populate("lastMessageId", "text type createdAt status")
       .populate("pinnedMessages.messageId", "text type file deletedForEveryone")
       .lean();
@@ -117,7 +125,11 @@ exports.getOrCreateDirect = async (req, res) => {
         ],
       });
       conv = await Conversation.findById(conv._id)
-        .populate("participants.userId", "name profileImage email")
+        .populate({
+        path: "participants.userId",
+        select: "name profileImage email designation",
+        populate: { path: "role", select: "name" },
+      })
         .populate("lastMessageId", "text type createdAt status")
         .populate("pinnedMessages.messageId", "text type file deletedForEveryone")
         .lean();
@@ -159,7 +171,11 @@ exports.createGroup = async (req, res) => {
 
     const populated = enrichConversation(
       await Conversation.findById(conv._id)
-        .populate("participants.userId", "name profileImage email")
+        .populate({
+        path: "participants.userId",
+        select: "name profileImage email designation",
+        populate: { path: "role", select: "name" },
+      })
         .lean()
     );
 
@@ -302,7 +318,11 @@ exports.addParticipants = async (req, res) => {
     await conv.save();
 
     const populated = await Conversation.findById(conv._id)
-      .populate("participants.userId", "name profileImage email")
+      .populate({
+        path: "participants.userId",
+        select: "name profileImage email designation",
+        populate: { path: "role", select: "name" },
+      })
       .lean();
 
     const io = getIO();
@@ -410,7 +430,11 @@ exports.changeParticipantRole = async (req, res) => {
     await conv.save();
 
     const populated = await Conversation.findById(conv._id)
-      .populate("participants.userId", "name profileImage email")
+      .populate({
+        path: "participants.userId",
+        select: "name profileImage email designation",
+        populate: { path: "role", select: "name" },
+      })
       .lean();
 
     const io = getIO();
@@ -493,7 +517,11 @@ exports.leaveGroup = async (req, res) => {
 
     if (newAdminId) {
       const populated = await Conversation.findById(conv._id)
-        .populate("participants.userId", "name profileImage email")
+        .populate({
+        path: "participants.userId",
+        select: "name profileImage email designation",
+        populate: { path: "role", select: "name" },
+      })
         .lean();
       io.of("/chat").to(`conv:${conversationId}`).emit("conversation:role-changed", {
         conversationId,
@@ -562,7 +590,11 @@ exports.getConversation = async (req, res) => {
       "participants.userId": userId,
       isDeleted:             false,
     })
-      .populate("participants.userId", "name profileImage email")
+      .populate({
+        path: "participants.userId",
+        select: "name profileImage email designation",
+        populate: { path: "role", select: "name" },
+      })
       .populate("lastMessageId")
       .populate("pinnedMessages.messageId", "text type file deletedForEveryone")
       .lean();

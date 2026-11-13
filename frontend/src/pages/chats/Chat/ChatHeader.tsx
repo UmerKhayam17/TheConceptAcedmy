@@ -16,7 +16,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { MoreVertical, Search, X, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
+import { ArrowLeft, MoreVertical, Search, X, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
 import UserAvatar from "../Shared/UserAvatar";
 import ConversationInfoDrawer from "../Conversation/ConversationInfoDrawer";
 import api, { useChatUi, userIdStr } from "@/services/socket/chat.api";
@@ -157,7 +157,7 @@ function MessageSearchPanel({ conversationId, onSmartJump, onClose }) {
 /* ─────────────────────────────────────────────────────────────────────────────
    ChatHeader
 ───────────────────────────────────────────────────────────────────────────── */
-export default function ChatHeader({ conversation: conv, onJumpToMessage, onSmartJump }) {
+export default function ChatHeader({ conversation: conv, onJumpToMessage, onSmartJump, onBack }) {
   const { myId, presenceMap, typingMap } = useChatUi();
   const [showInfo,   setShowInfo]   = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -213,6 +213,16 @@ export default function ChatHeader({ conversation: conv, onJumpToMessage, onSmar
           />
         ) : (
           <>
+            {onBack ? (
+              <button
+                type="button"
+                onClick={onBack}
+                aria-label="Back to chats"
+                className="mr-1 grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#17324A] hover:bg-black/[0.06]"
+              >
+                <ArrowLeft size={20} />
+              </button>
+            ) : null}
             {/* Left: avatar + info — clickable */}
             <button
               onClick={() => setShowInfo(true)}

@@ -64,7 +64,8 @@ async function chatFetch(path: string, options: RequestInit = {}): Promise<ChatR
 }
 
 const api = {
-  searchUsers: (q) => chatFetch(`/chat/users/search?q=${encodeURIComponent(q || "")}`),
+  searchUsers: (q, limit?: number) =>
+    chatFetch(`/chat/users/search?q=${encodeURIComponent(q || "")}${limit ? `&limit=${limit}` : ""}`),
   getConversations: () => chatFetch("/chat/conversations"),
   getConversation: (id) => chatFetch(`/chat/conversations/${id}`),
   getOrCreateDirect: (targetUserId) => chatFetch(`/chat/conversations/direct/${targetUserId}`),

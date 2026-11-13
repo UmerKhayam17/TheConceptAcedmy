@@ -19,6 +19,7 @@ import {
   type SidebarNavItem,
 } from "@/lib/sidebarNav";
 import { cn } from "@/lib/utils";
+import ParentMobileTabBar from "@/components/modules/parent/ParentMobileTabBar";
 
 const MAX_ITEM_TABS = 4;
 
@@ -273,8 +274,12 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.role, user.modulePermissions, perms, pathname, isAdmin, parentStudents]);
 
+  if (user.role === "parent") {
+    if (pathname.startsWith("/panel/parent/attendance")) return null;
+    return <ParentMobileTabBar />;
+  }
+
   const primaryActive = tabs.some((t) => t.active);
-  const showMore = true;
 
   return (
     <nav

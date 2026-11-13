@@ -53,6 +53,7 @@ import {
   type AcademySubject,
 } from "@/lib/studentManagementApi";
 import { classLabel, formatDate } from "@/components/modules/student-management/studentDisplayUtils";
+import ParentMobileHome from "@/components/modules/parent/ParentMobileHome";
 import { cn } from "@/lib/utils";
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -475,20 +476,33 @@ export default function ParentDashboard({
     return "bg-violet-50 text-violet-600";
   };
 
-  if (!childrenLoading && children.length === 0) {
-    return (
-      <div className="px-4 sm:px-6 lg:px-8 py-10 bg-background min-h-[calc(100vh-4rem)]">
-        <Card className="rounded-2xl border-0 p-10 text-center bg-white shadow-sm">
-          <p className="text-base font-semibold text-[#0F172A]">No children linked yet</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Ask the school office to link your account to a student registration, {name}.
-          </p>
-        </Card>
-      </div>
-    );
-  }
+  const noChildren = !childrenLoading && children.length === 0;
 
   return (
+    <>
+      <div className="md:hidden">
+        <ParentMobileHome
+          parentName={name}
+          students={children}
+          studentsLoading={childrenLoading}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          record={record}
+          recordLoading={Boolean(selectedId) && recordLoading}
+          announcements={announcements}
+        />
+      </div>
+      <div className="hidden md:block">
+        {noChildren ? (
+          <div className="px-4 sm:px-6 lg:px-8 py-10 bg-background min-h-[calc(100vh-4rem)]">
+            <Card className="rounded-2xl border-0 p-10 text-center bg-white shadow-sm">
+              <p className="text-base font-semibold text-[#0F172A]">No children linked yet</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Ask the school office to link your account to a student registration, {name}.
+              </p>
+            </Card>
+          </div>
+        ) : (
     <div className="px-4 sm:px-6 lg:px-8 py-5 space-y-4 bg-background min-h-[calc(100vh-4rem)]">
       {children.length > 1 && (
         <div className="flex justify-end">
@@ -1047,5 +1061,8 @@ export default function ParentDashboard({
         </Card>
       </div>
     </div>
+        )}
+      </div>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { useLocation } from "react-router-dom";
 import { ChevronRight, Menu } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import NotificationBell from "@/components/NotificationBell";
@@ -80,12 +81,25 @@ export default function PanelPageHeader({
   allowAllSessions?: boolean;
   showSearch?: boolean;
 }) {
+  const { pathname } = useLocation();
   const { sessionId, setSessionId, headerSearch, setHeaderSearch } = usePanelSession();
   const showMobileExtras = showSession || showSearch;
   const showBreadcrumb = user.role !== "parent";
+  const parentPhoneHome =
+    user.role === "parent" &&
+    (pathname === "/panel/parent" ||
+      pathname === "/panel/parent/" ||
+      pathname.startsWith("/panel/parent/chat") ||
+      pathname.startsWith("/panel/parent/notifications") ||
+      pathname.startsWith("/panel/parent/attendance"));
 
   return (
-    <header className="sticky top-0 z-30 w-full shrink-0 border-b border-[#DCE4EF] bg-white">
+    <header
+      className={cn(
+        "sticky top-0 z-30 w-full shrink-0 border-b border-[#DCE4EF] bg-white",
+        parentPhoneHome && "hidden md:block",
+      )}
+    >
       <div className="flex h-[72px] w-full items-center justify-between gap-3 px-4 sm:px-5 lg:px-6">
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <SidebarToggle />

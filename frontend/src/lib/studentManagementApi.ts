@@ -323,7 +323,9 @@ export interface AcademyAttendanceRecord {
   confidence?: number;
   subjectId?: AcademySubject | string;
   notes?: string;
+  markedBy?: string | { _id?: string; name?: string } | null;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AcademyAssessmentRecord {

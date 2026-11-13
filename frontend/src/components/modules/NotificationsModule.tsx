@@ -17,6 +17,7 @@ import {
   type AppNotification,
 } from "@/lib/notificationsApi";
 import { cn } from "@/lib/utils";
+import ParentMobileAlerts from "@/components/modules/parent/ParentMobileAlerts";
 
 function formatWhen(iso: string) {
   const d = new Date(iso);
@@ -82,8 +83,16 @@ export default function NotificationsModule() {
     if (n.path) navigate(notificationHref(role, n.path));
   };
 
+  const isParent = role === "parent";
+
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <>
+    {isParent ? (
+      <div className="min-h-full md:hidden">
+        <ParentMobileAlerts />
+      </div>
+    ) : null}
+    <div className={cn("px-4 sm:px-6 lg:px-8 py-6 space-y-6", isParent && "hidden md:block")}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -181,5 +190,6 @@ export default function NotificationsModule() {
         ))}
       </ul>
     </div>
+    </>
   );
 }

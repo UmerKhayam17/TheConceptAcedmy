@@ -513,6 +513,7 @@ async function listByStudentMonth({ studentId, month, year }) {
     date: { $gte: start, $lte: end },
     $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
   })
+    .populate('markedBy', 'name')
     .sort({ date: 1 })
     .lean();
 

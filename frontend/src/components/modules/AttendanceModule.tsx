@@ -42,6 +42,7 @@ import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
 import { localTodayYmd } from "@/lib/localDate";
 import ParentAttendancePanel from "@/components/modules/parent/ParentAttendancePanel";
+import ParentMobileAttendance from "@/components/modules/parent/ParentMobileAttendance";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
 import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
@@ -821,9 +822,25 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
   );
 }
 
+function usePhoneLayout() {
+  const [phone, setPhone] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const sync = () => setPhone(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  return phone;
+}
+
 const AttendanceModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: ModuleActionCaps }) => {
   const { user } = useAuth();
+  const phone = usePhoneLayout();
   if (user?.role === "parent") {
+    if (phone) return <ParentMobileAttendance />;
     return <ParentAttendancePanel />;
   }
   return <StaffAttendanceModule caps={caps} />;

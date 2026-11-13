@@ -2,19 +2,35 @@ import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import ConversationSidebar from "@/pages/chats/Conversation/ConversationSidebar";
+import ParentMobileChats from "@/pages/chats/Conversation/ParentMobileChats";
 import ChatWindow from "@/pages/chats/Chat/ChatWindow";
 import EmptyChatPlaceholder from "@/pages/chats/Chat/EmptyChatPlaceholder";
+import { useAuth } from "@/hooks/useAuth";
 import {
   ChatUiProvider,
   useChatSocket,
   useChatUi,
   useConversations,
 } from "@/services/socket/chat.api";
+import { cn } from "@/lib/utils";
 
 function ChatPageInner({ canParticipate }: { canParticipate: boolean }) {
+  const { user } = useAuth();
+  const isParent = user?.role === "parent";
   const { activeId, setActiveId } = useChatUi();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
+
+  const closeParentChat = () => {
+    setActiveId(null);
+    setSearchParams(
+      (prev) => {
+        prev.delete("conversationId");
+        return prev;
+      },
+      { replace: true },
+    );
+  };
 
   useChatSocket();
   useConversations();
@@ -25,7 +41,21 @@ function ChatPageInner({ canParticipate }: { canParticipate: boolean }) {
   }, [searchParams, activeId, setActiveId]);
 
   return (
-    <div className="flex h-full bg-[#f0f2f5] overflow-hidden">
+    <>
+    {isParent && (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden md:hidden">
+        {activeId ? (
+          <ChatWindow
+            conversationId={activeId}
+            canParticipate={canParticipate}
+            onBack={closeParentChat}
+          />
+        ) : (
+          <ParentMobileChats />
+        )}
+      </div>
+    )}
+    <div className={cn("flex h-full bg-[#f0f2f5] overflow-hidden", isParent && "hidden md:flex")}>
       <ConversationSidebar collapsed={collapsed} setCollapsed={setCollapsed} />
       {collapsed && (
         <div className="fixed top-24 -translate-y-1/2 z-50 transition-all duration-500">
@@ -52,6 +82,7 @@ function ChatPageInner({ canParticipate }: { canParticipate: boolean }) {
         )}
       </div>
     </div>
+    </>
   );
 }
 

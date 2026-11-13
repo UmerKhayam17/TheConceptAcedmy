@@ -47,8 +47,10 @@ exports.searchUsers = async (req, res) => {
     }
 
     const users = await User.find(filter)
-      .select(isParentViewer ? "name profileImage designation" : "name email profileImage designation")
-      .limit(limit)
+      .select(isParentViewer ? "name profileImage designation role" : "name email profileImage designation role")
+      .populate("role", "name")
+      .sort({ name: 1 })
+      .limit(isParentViewer && !q ? clampLimit(req.query.limit, 40, 80) : limit)
       .lean();
 
     // Attach presence
@@ -61,6 +63,7 @@ exports.searchUsers = async (req, res) => {
 
     const result = users.map((u) => ({
       ...u,
+      roleName: u.role && typeof u.role === "object" ? u.role.name : "",
       profile_image: u.profileImage,
       onlineStatus: presenceMap[u._id.toString()] || "offline",
     }));
