@@ -5,12 +5,22 @@ import { useToast } from "@/hooks/use-toast";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { promptPwaInstall } from "@/pwa";
 
+/** Android app file. Put the built APK at public/downloads/tca.apk. */
+export const ANDROID_APK_URL = "/downloads/tca.apk";
+
+const isAndroid = () => typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+
+/** True when running inside the Android app (Capacitor), not a browser. */
+const isNativeApp = () =>
+  typeof window !== "undefined" &&
+  Boolean((window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
+
 const PwaInstallPrompt = () => {
   const { canInstall, installed, ios } = usePwaInstall();
   const { toast } = useToast();
   const [showIosSteps, setShowIosSteps] = useState(false);
 
-  if (installed) {
+  if (installed || isNativeApp()) {
     return (
       <p className="mb-6 text-center text-xs text-muted-foreground">
         You are using the installed app. It uses this same login and updates itself when the academy publishes a new version.
@@ -19,6 +29,15 @@ const PwaInstallPrompt = () => {
   }
 
   const onInstall = async () => {
+    if (isAndroid()) {
+      // Android: download the app file (APK) instead of installing the web app.
+      window.location.href = ANDROID_APK_URL;
+      toast({
+        title: "Downloading the app",
+        description: "When it finishes, open the file and tap Install. If asked, allow installs from this browser.",
+      });
+      return;
+    }
     if (canInstall) {
       const outcome = await promptPwaInstall();
       if (outcome === "accepted") {

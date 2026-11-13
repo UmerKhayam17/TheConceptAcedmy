@@ -48,12 +48,12 @@
     <meta name="twitter:title" content="The Concept Academy">
     <meta name="twitter:description" content="The Concept Academy — focused coaching for MDCAT, ECAT, O/A Levels and CSS in Islamabad.">
     <style>
-      html, body { margin: 0; background: #041e6e; }
+      html, body { margin: 0; background: #0047da; }
       #boot-splash {
         position: fixed;
         inset: 0;
         z-index: 2147483646;
-        background: #041e6e url("/splash.jpg") center center / cover no-repeat;
+        background: #0047da url("/splash.jpg") center center / cover no-repeat;
       }
     </style>
   </head>
@@ -67,6 +67,22 @@
           var splash = document.getElementById("boot-splash");
           if (splash) splash.remove();
         }
+      })();
+    </script>
+    <script>
+      // Android app (APK): hide the native launch screen once splash.jpg is ready on
+      // screen, so the user goes straight from the native screen to your splash image.
+      (function () {
+        var cap = window.Capacitor;
+        var native = cap && cap.Plugins && cap.Plugins.SplashScreen;
+        if (!native) return;
+        var hide = function () {
+          try { native.hide(); } catch (e) { /* ignore */ }
+        };
+        if (!document.getElementById("boot-splash")) return hide();
+        var img = new Image();
+        img.onload = img.onerror = function () { requestAnimationFrame(hide); };
+        img.src = "/splash.jpg";
       })();
     </script>
     <div id="root"></div>

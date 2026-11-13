@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#0047da</color>
+    <color name="colorPrimaryDark">#002bad</color>
+    <color name="colorAccent">#f5b301</color>
+    <!-- Launch background: same blue as the top of splash.jpg -->
+    <color name="splash_bg">#0047da</color>
+</resources>
