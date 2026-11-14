@@ -91,54 +91,70 @@ function MessageSearchPanel({ conversationId, onSmartJump, onClose }) {
 
   return (
     <div
-      className="flex items-center gap-2 px-3 flex-1"
+      className="flex min-w-0 flex-1 items-center gap-1.5"
       style={{ animation: "waFadeIn 0.15s ease-out" }}
     >
       <div
-        className="flex items-center flex-1 rounded-lg px-3 gap-2"
-        style={{ background: "#fff", height: 36, border: "1px solid #e9edef" }}
+        className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-3"
+        style={{ background: "#fff", border: "1px solid #e9edef" }}
       >
         {isBusy ? (
-          <Loader2 size={15} className="animate-spin flex-shrink-0" style={{ color: "#8696a0" }} />
+          <Loader2 size={15} className="shrink-0 animate-spin" style={{ color: "#8696a0" }} />
         ) : (
-          <Search size={15} style={{ color: "#8696a0", flexShrink: 0 }} />
+          <Search size={15} className="shrink-0" style={{ color: "#8696a0" }} />
         )}
         <input
           ref={inputRef}
-          type="text"
+          type="search"
+          enterKeyHint="search"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
           value={query}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           placeholder="Search messages…"
-          className="flex-1 bg-transparent text-[13.5px] outline-none"
+          className="min-w-0 flex-1 bg-transparent text-[13.5px] outline-none"
           style={{ color: "#3b4a54" }}
         />
-        {query && (
-          <span className="text-[11px] flex-shrink-0" style={{ color: "#8696a0" }}>
+        {query ? (
+          <span className="shrink-0 text-[11px]" style={{ color: "#8696a0" }}>
             {results.length > 0 ? `${currentIdx + 1}/${results.length}` : "0"}
           </span>
-        )}
+        ) : null}
       </div>
 
+      {/* Prev/next only when there are hits — keeps the input usable on phones. */}
+      {results.length > 0 ? (
+        <>
+          <button
+            type="button"
+            onClick={() => navigate("up")}
+            disabled={isBusy}
+            aria-label="Previous result"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-black/[0.06] disabled:opacity-30"
+            style={{ color: "#54656f" }}
+          >
+            <ChevronUp size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("down")}
+            disabled={isBusy}
+            aria-label="Next result"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-black/[0.06] disabled:opacity-30"
+            style={{ color: "#54656f" }}
+          >
+            <ChevronDown size={18} />
+          </button>
+        </>
+      ) : null}
+
       <button
-        onClick={() => navigate("up")}
-        disabled={results.length === 0 || isBusy}
-        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/[0.06] disabled:opacity-30 transition-colors"
-        style={{ color: "#54656f" }}
-      >
-        <ChevronUp size={18} />
-      </button>
-      <button
-        onClick={() => navigate("down")}
-        disabled={results.length === 0 || isBusy}
-        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/[0.06] disabled:opacity-30 transition-colors"
-        style={{ color: "#54656f" }}
-      >
-        <ChevronDown size={18} />
-      </button>
-      <button
+        type="button"
         onClick={onClose}
-        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/[0.06] transition-colors"
+        aria-label="Close search"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-black/[0.06]"
         style={{ color: "#54656f" }}
       >
         <X size={18} />
