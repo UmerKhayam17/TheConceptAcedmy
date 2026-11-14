@@ -223,12 +223,25 @@ public class MainActivity extends BridgeActivity {
             "if(!document.getElementById('tca-kb-style')){var s=document.createElement('style');s.id='tca-kb-style';" +
             "s.textContent='html.tca-keyboard-open [data-panel-mobile-nav]{display:none!important}';" +
             "(document.head||document.documentElement).appendChild(s);}" +
-            "document.documentElement.classList.toggle('tca-keyboard-open'," + keyboardOpen + ");";
+            "document.documentElement.classList.toggle('tca-keyboard-open'," + keyboardOpen + ");" +
+            // Tells the site this APK updates itself (AppUpdater), so the site's
+            // "Update the app" box (src/components/AppApkUpdateNotice.tsx) stays hidden.
+            "window.__TCA_APK_VERSION=" + installedVersionCode() + ";";
         bridge.getWebView().post(() -> {
             if (bridge != null && bridge.getWebView() != null) {
                 bridge.getWebView().evaluateJavascript(js, null);
             }
         });
+    }
+
+    @SuppressWarnings("deprecation")
+    private long installedVersionCode() {
+        try {
+            android.content.pm.PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return android.os.Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
+        } catch (Throwable t) {
+            return 1;
+        }
     }
 
     private void showSplash() {

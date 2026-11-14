@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect } from "react";
 import AcademyLoader from "@/components/AcademyLoader";
+import AppApkUpdateNotice from "@/components/AppApkUpdateNotice";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getSession, USER_KEY } from "@/lib/auth";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
@@ -79,6 +80,7 @@ const App = () => (
     <TooltipProvider delayDuration={300}>
       <Toaster />
       <Sonner />
+      <AppApkUpdateNotice />
       <BrowserRouter
         future={{
           v7_startTransition: true,
