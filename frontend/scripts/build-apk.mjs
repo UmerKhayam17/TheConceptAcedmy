@@ -7,11 +7,15 @@
  *  3. creates the signing key on the first run (android/keystore/, not in git)
  *  4. builds a signed release APK with a new version number
  *  5. copies it to public/downloads/tca.apk  -> commit & push, the server serves it
+ *  6. writes public/downloads/tca-version.json: installed apps read it and offer the update
+ *     (android/.../AppUpdater.java). Optional:
+ *       TCA_UPDATE_NOTES="What's new text"   shown in the update box
+ *       TCA_FORCE_UPDATE=1                   no "Later" button (for important fixes)
  *
  * Needs (only on the PC that builds the APK): JDK 21 and the Android SDK.
  */
 import { execSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -137,6 +141,25 @@ const built = path.join(androidDir, "app", "build", "outputs", "apk", "release",
 if (!fs.existsSync(built)) fail(`Signed APK not found at ${built}`);
 fs.mkdirSync(path.dirname(outApk), { recursive: true });
 fs.copyFileSync(built, outApk);
+
+// Installed apps compare their own version with this file and offer the new APK.
+const apkBytes = fs.readFileSync(outApk);
+fs.writeFileSync(
+  path.join(path.dirname(outApk), "tca-version.json"),
+  JSON.stringify(
+    {
+      versionCode,
+      versionName,
+      apk: "/downloads/tca.apk",
+      size: apkBytes.length,
+      sha256: createHash("sha256").update(apkBytes).digest("hex"),
+      notes: process.env.TCA_UPDATE_NOTES || "",
+      force: process.env.TCA_FORCE_UPDATE === "1",
+    },
+    null,
+    2,
+  ) + "\n",
+);
 
 const mb = (fs.statSync(outApk).size / 1024 / 1024).toFixed(1);
 console.log(

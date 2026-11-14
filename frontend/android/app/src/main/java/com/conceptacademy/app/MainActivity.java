@@ -82,6 +82,7 @@ public class MainActivity extends BridgeActivity {
     private int safeTopPx;
     private int safeBottomPx;
     private boolean keyboardOpen;
+    private AppUpdater appUpdater;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -115,6 +116,14 @@ public class MainActivity extends BridgeActivity {
         );
 
         installBackButton();
+        appUpdater = new AppUpdater(this, serverOrigin());
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // New APK on the server? Ask to update (also installs one waiting for permission).
+        if (appUpdater != null) appUpdater.onResume();
     }
 
     /**
