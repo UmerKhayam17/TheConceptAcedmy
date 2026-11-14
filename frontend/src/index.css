@@ -95,6 +95,11 @@
   body[data-parent-chat-thread="1"] [data-panel-mobile-nav] {
     display: none !important;
   }
+
+  /* Keyboard open: hide bottom tab bar so adjustResize doesn't lift it above the keys. */
+  body[data-keyboard-open="1"] [data-panel-mobile-nav] {
+    display: none !important;
+  }
   h1, h2, h3, h4, h5 {
     @apply font-display tracking-tight;
   }

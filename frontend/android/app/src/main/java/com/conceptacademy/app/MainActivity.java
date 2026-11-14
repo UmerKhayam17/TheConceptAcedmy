@@ -66,6 +66,7 @@ public class MainActivity extends BridgeActivity {
     private long shownAt;
     private int safeTopPx;
     private int safeBottomPx;
+    private boolean keyboardOpen;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -142,6 +143,7 @@ public class MainActivity extends BridgeActivity {
             safeTopPx = status.top;
             // The page itself now stops above the bottom bar, so the site needs no extra padding.
             safeBottomPx = 0;
+            keyboardOpen = ime.bottom > nav.bottom;
             liftWebView(Math.max(nav.bottom, ime.bottom), nav.left, nav.right);
             pushSafeArea();
             // Children see no bottom bar any more (it is outside the page now), so nothing pads twice.
@@ -177,9 +179,16 @@ public class MainActivity extends BridgeActivity {
         // under the status bar (matches --safe-top in index.css).
         float topCss = Math.max(44f, safeTopPx / density);
         float bottomCss = Math.max(0f, safeBottomPx / density);
+        // While the keyboard is open the bottom tab bar is hidden (like WhatsApp), so it does not
+        // ride up above the keyboard and cover the chat / search box. The tab bars on the site are
+        // marked with data-panel-mobile-nav.
         final String js =
             "document.documentElement.style.setProperty('--safe-top','" + topCss + "px');" +
-            "document.documentElement.style.setProperty('--safe-bottom','" + bottomCss + "px');";
+            "document.documentElement.style.setProperty('--safe-bottom','" + bottomCss + "px');" +
+            "if(!document.getElementById('tca-kb-style')){var s=document.createElement('style');s.id='tca-kb-style';" +
+            "s.textContent='html.tca-keyboard-open [data-panel-mobile-nav]{display:none!important}';" +
+            "(document.head||document.documentElement).appendChild(s);}" +
+            "document.documentElement.classList.toggle('tca-keyboard-open'," + keyboardOpen + ");";
         bridge.getWebView().post(() -> {
             if (bridge != null && bridge.getWebView() != null) {
                 bridge.getWebView().evaluateJavascript(js, null);

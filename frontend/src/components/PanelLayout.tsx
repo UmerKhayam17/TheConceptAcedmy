@@ -72,6 +72,28 @@ const PanelLayout = () => {
     return () => document.body.classList.remove("cms-active");
   }, []);
 
+  // Hide the bottom tab bar while the soft keyboard is open (otherwise
+  // adjustResize lifts the nav up and it sits on top of the keyboard).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const sync = () => {
+      const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      if (covered > 120) document.body.dataset.keyboardOpen = "1";
+      else delete document.body.dataset.keyboardOpen;
+    };
+
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+      delete document.body.dataset.keyboardOpen;
+    };
+  }, []);
+
   usePanelRealtime(Boolean(user));
 
   useEffect(() => {
