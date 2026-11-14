@@ -61,6 +61,21 @@ public class MainActivity extends BridgeActivity {
     private static final String DEFAULT_ORIGIN = "https://theconcept.ac.pk";
     private static final String SPLASH_FILE = "splash.jpg";
 
+    /**
+     * Closes the top open popup on the page, if any, and returns "closed" (else "none").
+     * - Side menu, dialogs, dropdown sheets (Radix): they close on the Escape key.
+     * - The parent screens' own bottom sheets (role=dialog, aria-modal): they close when
+     *   their dimmed background is tapped.
+     */
+    private static final String CLOSE_OPEN_POPUP_JS =
+        "(function(){" +
+            "var r=document.querySelectorAll('[role=dialog][data-state=open],[role=alertdialog][data-state=open],[role=menu][data-state=open],[role=listbox][data-state=open]');" +
+            "if(r.length){document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,which:27,bubbles:true,cancelable:true}));return 'closed';}" +
+            "var m=document.querySelectorAll('[role=dialog][aria-modal=true]');" +
+            "if(m.length){var d=m[m.length-1];(d.parentElement||d).click();return 'closed';}" +
+            "return 'none';" +
+        "})()";
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private View splashView;
     private long shownAt;
@@ -85,8 +100,11 @@ public class MainActivity extends BridgeActivity {
             new WebViewListener() {
                 @Override
                 public void onPageLoaded(WebView webView) {
-                    hideSplash();
                     pushSafeArea();
+                    // Don't hide yet: the page has only started. Wait until the first real
+                    // screen is drawn, otherwise the site's own blue startup screen shows
+                    // (plain blue while its picture is still downloading).
+                    waitForFirstScreen();
                 }
 
                 @Override
@@ -111,11 +129,17 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void handleOnBackPressed() {
                     WebView webView = bridge != null ? bridge.getWebView() : null;
-                    if (webView != null && webView.canGoBack()) {
-                        webView.goBack();
-                    } else {
+                    if (webView == null) {
                         moveTaskToBack(true);
+                        return;
                     }
+                    // An open menu / popup closes first (like every Android app); only when
+                    // nothing is open does Back go to the previous page.
+                    webView.evaluateJavascript(CLOSE_OPEN_POPUP_JS, value -> {
+                        if ("\"closed\"".equals(value)) return;
+                        if (webView.canGoBack()) webView.goBack();
+                        else moveTaskToBack(true);
+                    });
                 }
             }
         );
@@ -141,6 +165,8 @@ public class MainActivity extends BridgeActivity {
             Insets nav = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars());
             Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
             safeTopPx = status.top;
+            // Splash picture sits between the status bar and the navigation buttons, not under them.
+            if (splashView != null) splashView.setPadding(nav.left, status.top, nav.right, nav.bottom);
             // The page itself now stops above the bottom bar, so the site needs no extra padding.
             safeBottomPx = 0;
             keyboardOpen = ime.bottom > nav.bottom;
@@ -310,6 +336,23 @@ public class MainActivity extends BridgeActivity {
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /**
+     * Keeps the splash up until the site has drawn its first screen (login or home). The site
+     * removes its #boot-splash element at that moment (src/lib/bootSplash.ts). Checked every
+     * 150 ms; MAX_SPLASH_MS still removes the splash if the site never reports in.
+     */
+    private void waitForFirstScreen() {
+        if (splashView == null || bridge == null || bridge.getWebView() == null) return;
+        bridge.getWebView().evaluateJavascript(
+            "(function(){return !document.getElementById('boot-splash')||" +
+                "document.documentElement.classList.contains('boot-done');})()",
+            value -> {
+                if ("true".equals(value)) hideSplash();
+                else handler.postDelayed(this::waitForFirstScreen, 150);
+            }
+        );
     }
 
     private void hideSplash() {
