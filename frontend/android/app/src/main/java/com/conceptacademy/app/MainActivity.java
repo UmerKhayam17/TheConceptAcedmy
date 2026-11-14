@@ -124,18 +124,49 @@ public class MainActivity extends BridgeActivity {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()));
     }
 
-    /** Publish the system bar sizes so the site can pad the tab bar above the gesture / 3-button nav. */
+    /**
+     * Keeps the site above the phone's navigation area and the keyboard.
+     *
+     * Android 15+ draws apps behind the navigation bar, so the bottom of every screen (tab bar,
+     * chat box, search fields) ended up under the gesture bar / 3 buttons, and taps there hit
+     * Home instead. The page is now lifted by exactly the height of whatever the phone shows at
+     * the bottom: 3-button bar, 2-button bar, gesture bar, or the keyboard while typing.
+     * The status bar at the top is still handled by the site (--safe-top).
+     */
     private void installSafeArea() {
         View decor = getWindow().getDecorView();
         ViewCompat.setOnApplyWindowInsetsListener(decor, (view, windowInsets) -> {
             Insets status = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars());
             Insets nav = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
             safeTopPx = status.top;
-            safeBottomPx = nav.bottom;
+            // The page itself now stops above the bottom bar, so the site needs no extra padding.
+            safeBottomPx = 0;
+            liftWebView(Math.max(nav.bottom, ime.bottom), nav.left, nav.right);
             pushSafeArea();
-            return windowInsets;
+            // Children see no bottom bar any more (it is outside the page now), so nothing pads twice.
+            return new WindowInsetsCompat.Builder(windowInsets)
+                .setInsets(WindowInsetsCompat.Type.navigationBars(), Insets.of(nav.left, 0, nav.right, 0))
+                .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
+                .build();
         });
         ViewCompat.requestApplyInsets(decor);
+    }
+
+    /** Shrinks the web page so it ends where the navigation bar (or keyboard) begins. */
+    private void liftWebView(int bottomPx, int leftPx, int rightPx) {
+        WebView webView = bridge != null ? bridge.getWebView() : null;
+        if (webView == null || !(webView.getLayoutParams() instanceof ViewGroup.MarginLayoutParams)) return;
+        if (webView.getParent() instanceof View) {
+            // Colour of the strip behind the navigation buttons.
+            ((View) webView.getParent()).setBackgroundColor(Color.WHITE);
+        }
+        ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) webView.getLayoutParams();
+        if (lp.bottomMargin == bottomPx && lp.leftMargin == leftPx && lp.rightMargin == rightPx) return;
+        lp.bottomMargin = bottomPx;
+        lp.leftMargin = leftPx; // landscape 3-button bar sits on the side
+        lp.rightMargin = rightPx;
+        webView.setLayoutParams(lp);
     }
 
     private void pushSafeArea() {
