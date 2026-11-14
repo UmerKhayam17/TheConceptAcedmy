@@ -40,6 +40,36 @@ function ChatPageInner({ canParticipate }: { canParticipate: boolean }) {
     if (urlConvId && !activeId) setActiveId(urlConvId);
   }, [searchParams, activeId, setActiveId]);
 
+  // Hide parent bottom tab bar while a conversation thread is open (composer screen).
+  useEffect(() => {
+    if (!isParent) return;
+    if (activeId) document.body.dataset.parentChatThread = "1";
+    else delete document.body.dataset.parentChatThread;
+    return () => {
+      delete document.body.dataset.parentChatThread;
+    };
+  }, [activeId, isParent]);
+
+  // Deep-link sync (new URLSearchParams so React Router sees a real change).
+  useEffect(() => {
+    if (!isParent) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        const current = next.get("conversationId");
+        if (activeId) {
+          if (current === activeId) return prev;
+          next.set("conversationId", activeId);
+          return next;
+        }
+        if (!current) return prev;
+        next.delete("conversationId");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [activeId, isParent, setSearchParams]);
+
   return (
     <>
     {isParent && (

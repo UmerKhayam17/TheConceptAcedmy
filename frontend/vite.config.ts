@@ -2,8 +2,48 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { VitePWA } from "vite-plugin-pwa";
+import fs from "fs";
 import path from "path";
+import zlib from "zlib";
 import { componentTagger } from "lovable-tagger";
+
+/**
+ * Writes a gzip (.gz) and brotli (.br) copy next to every text file in dist/, so the
+ * server can send the small copy straight away (nginx: gzip_static / brotli_static).
+ * Only adds files; the original files are untouched.
+ */
+const precompressPlugin = () => {
+  let outDir = "dist";
+  const walk = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const p = path.join(dir, e.name);
+      return e.isDirectory() ? walk(p) : [p];
+    });
+  return {
+    name: "precompress-assets",
+    apply: "build" as const,
+    configResolved(config: { root: string; build: { outDir: string } }) {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    closeBundle: {
+      sequential: true,
+      order: "post" as const,
+      handler() {
+        if (!fs.existsSync(outDir)) return;
+        for (const file of walk(outDir)) {
+          if (!/\.(js|mjs|css|html|json|svg|webmanifest|txt|xml)$/i.test(file)) continue;
+          const data = fs.readFileSync(file);
+          if (data.length < 1024) continue;
+          fs.writeFileSync(`${file}.gz`, zlib.gzipSync(data, { level: 9 }));
+          fs.writeFileSync(
+            `${file}.br`,
+            zlib.brotliCompressSync(data, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }),
+          );
+        }
+      },
+    },
+  };
+};
 
 // Unique id per build. The running app polls /version.json and reloads when it changes.
 const BUILD_ID = new Date().toISOString();
@@ -117,7 +157,14 @@ export default defineConfig(({ mode }) => ({
         // deploy shows up on the next open instead of after a background update.
         // Only app code is cached in the background on first visit (was ~7.8 MB incl. big
         // images). Images and the heavy PDF/export libraries load normally when needed.
-        globPatterns: ["**/*.{js,css,ico,svg,woff2}"],
+        // Only the code every screen needs is downloaded up front. Each other screen's code is
+        // saved the first time it is opened (the "app-chunks" rule below), so the first launch
+        // no longer downloads the whole app (~3.4 MB) in the background.
+        globPatterns: [
+          "assets/index-*.{js,css}",
+          "assets/{react-vendor,router,query,ui,icons,utils,socket}-*.js",
+          "**/*.{ico,svg,woff2}",
+        ],
         globIgnores: ["**/jspdf*.js", "**/html2canvas*.js", "**/index.es-*.js", "**/purify.es-*.js"],
         navigateFallback: null,
         cleanupOutdatedCaches: true,
@@ -155,6 +202,16 @@ export default defineConfig(({ mode }) => ({
             handler: "NetworkOnly",
           },
           {
+            // Screen code (file names change on every build, so a saved copy never goes stale).
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && /^\/assets\/.+\.(js|css)$/.test(url.pathname),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "app-chunks",
+              expiration: { maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: "CacheFirst",
             options: {
@@ -180,6 +237,7 @@ export default defineConfig(({ mode }) => ({
         navigateFallback: "index.html",
       },
     }),
+    precompressPlugin(),
   ].filter(Boolean),
   resolve: {
     alias: {

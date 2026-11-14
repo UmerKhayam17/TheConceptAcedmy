@@ -198,11 +198,15 @@ export default function ChatHeader({ conversation: conv, onJumpToMessage, onSmar
   return (
     <>
       <div
-        className="flex items-center px-3 py-[10px] flex-shrink-0"
+        className={
+          onBack
+            ? // Parent mobile: sit below status bar (same safe-top as other parent headers)
+              "flex flex-shrink-0 items-center px-3 pb-[10px] pt-[calc(var(--safe-top)+0.5rem)]"
+            : "flex h-[59px] flex-shrink-0 items-center px-3 py-[10px]"
+        }
         style={{
           background: "#f0f2f5",
           borderBottom: "1px solid #e9edef",
-          height: 59,
         }}
       >
         {showSearch ? (

@@ -90,6 +90,11 @@
     max-height: 100%;
     overflow: hidden;
   }
+
+  /* Parent open-chat screen: hide bottom tab bar so it doesn't cover the composer. */
+  body[data-parent-chat-thread="1"] [data-panel-mobile-nav] {
+    display: none !important;
+  }
   h1, h2, h3, h4, h5 {
     @apply font-display tracking-tight;
   }

@@ -49,7 +49,7 @@ import java.net.URL;
 public class MainActivity extends BridgeActivity {
 
     /** Keep the splash on screen at least this long (ms). */
-    private static final long MIN_SPLASH_MS = 1500;
+    private static final long MIN_SPLASH_MS = 600;
     /** Remove it after this long even if the site is slow or offline (ms). */
     private static final long MAX_SPLASH_MS = 10000;
     /** Loader position: distance from the bottom, as a share of screen height (matches index.html). */
@@ -142,9 +142,13 @@ public class MainActivity extends BridgeActivity {
         if (bridge == null || bridge.getWebView() == null) return;
         float density = getResources().getDisplayMetrics().density;
         if (density <= 0f) density = 1f;
+        // Keep a 44px floor — WebView insets are often 0 while content still draws
+        // under the status bar (matches --safe-top in index.css).
+        float topCss = Math.max(44f, safeTopPx / density);
+        float bottomCss = Math.max(0f, safeBottomPx / density);
         final String js =
-            "document.documentElement.style.setProperty('--safe-top','" + (safeTopPx / density) + "px');" +
-            "document.documentElement.style.setProperty('--safe-bottom','" + (safeBottomPx / density) + "px');";
+            "document.documentElement.style.setProperty('--safe-top','" + topCss + "px');" +
+            "document.documentElement.style.setProperty('--safe-bottom','" + bottomCss + "px');";
         bridge.getWebView().post(() -> {
             if (bridge != null && bridge.getWebView() != null) {
                 bridge.getWebView().evaluateJavascript(js, null);

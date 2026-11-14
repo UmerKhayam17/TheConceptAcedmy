@@ -111,6 +111,16 @@ run("npm run build");
 run("npx cap sync android", { env });
 // The app loads the live site, so don't pack the previous APK (dist/downloads) inside the new one.
 fs.rmSync(path.join(androidDir, "app", "src", "main", "assets", "public", "downloads"), { recursive: true, force: true });
+// The .gz/.br copies are only for the web server; Android treats them as duplicates of the
+// original files and refuses to build.
+(function removeCompressedCopies(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) removeCompressedCopies(p);
+    else if (/\.(gz|br)$/i.test(e.name)) fs.rmSync(p);
+  }
+})(path.join(androidDir, "app", "src", "main", "assets", "public"));
 
 // ---- 3. signed release APK ---------------------------------------------
 // Minutes since 2020: always increases, so every new APK installs as an update.
