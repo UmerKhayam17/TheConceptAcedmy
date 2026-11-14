@@ -264,11 +264,11 @@ export default function ParentMobileAttendance() {
               onClick={() => setTab(key)}
               className={cn(
                 "relative py-3.5 text-[15px]",
-                active ? "font-semibold text-[#22C5D6]" : "font-medium text-[#A8B3C0]",
+                active ? "font-semibold text-[#0867cc]" : "font-medium text-[#A8B3C0]",
               )}
             >
               {label}
-              {active ? <span className="absolute inset-x-7 bottom-0 h-[3px] rounded-full bg-[#22C5D6]" /> : null}
+              {active ? <span className="absolute inset-x-7 bottom-0 h-[3px] rounded-full bg-[#0867cc]" /> : null}
             </button>
           );
         })}
@@ -277,7 +277,7 @@ export default function ParentMobileAttendance() {
       {tab === "today" ? (
         <div className="space-y-5 px-4 pt-4">
           <section className="overflow-hidden rounded-[22px] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-            <div className="bg-[#22C9D6] py-3.5 text-center text-[15px] font-semibold text-white">Attendance Status</div>
+            <div className="bg-[#0867cc] py-3.5 text-center text-[15px] font-semibold text-white">Attendance Status</div>
             <div className="px-4 pb-1 pt-6">
               <div className="mb-5 flex items-center justify-center gap-3">
                 <span className={cn("grid h-[58px] w-[58px] place-items-center rounded-full", mark.wrap)}>
@@ -344,7 +344,7 @@ export default function ParentMobileAttendance() {
                 setAppliedKey(draftKey);
                 setAppliedStatus(draftStatus);
               }}
-              className="mt-4 h-11 w-full rounded-xl bg-[#14C4D4] text-sm font-semibold text-white"
+              className="mt-4 h-11 w-full rounded-xl bg-[#0870da] text-sm font-semibold text-white"
             >
               View History
             </button>
@@ -362,7 +362,7 @@ export default function ParentMobileAttendance() {
               <article key={record._id} className="rounded-[20px] bg-white px-4 py-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <p className="min-w-0 text-[15px]">
-                    <span className="font-bold text-[#12C2D4]">{weekdayName(ymd)}</span>
+                    <span className="font-bold text-[#0870da]">{weekdayName(ymd)}</span>
                     <span className="font-medium text-[#64748B]"> · {ymd}</span>
                   </p>
                   <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold", statusTone(record.status))}>

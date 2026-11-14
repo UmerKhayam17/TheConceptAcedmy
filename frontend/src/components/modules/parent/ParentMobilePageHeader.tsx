@@ -29,7 +29,7 @@ export default function ParentMobilePageHeader({
             type="button"
             onClick={onBack}
             aria-label="Back"
-            className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-[#D6F4F8] text-[#1F2937]"
+            className="relative z-10 grid h-9 w-9 place-items-center rounded-full bg-[#DBEAFE] text-[#1F2937]"
           >
             <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
           </button>

@@ -11,10 +11,11 @@ import {
   notificationBelongsToChild,
   useParentSelectedChild,
 } from "@/components/modules/parent/ParentChildSelectBanner";
+import { cn } from "@/lib/utils";
 
 const ROLE = "parent" as const;
-const ACTIVE = "#12C5D6";
-const IDLE = "#94A3B8";
+const ACTIVE = "#0867cc";
+const IDLE = "#555a70";
 
 function Tab({
   to,
@@ -39,9 +40,9 @@ function Tab({
     >
       <span className="relative overflow-visible">
         <Icon
-          className="h-[22px] w-[22px]"
+          className="h-[27px] w-[27px]"
           style={{ color: active ? ACTIVE : IDLE }}
-          strokeWidth={active ? 2.25 : 1.75}
+          strokeWidth={active ? 2.25 : 2}
         />
         {count > 0 ? (
           <span className="absolute -right-2.5 -top-1.5 z-10 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#F04444] px-[4px] text-[10px] font-bold leading-none text-white">
@@ -50,10 +51,16 @@ function Tab({
         ) : null}
       </span>
       <span
-        className="text-[11px] font-medium leading-none"
+        className={cn(
+          "text-[clamp(10px,3.1vw,13px)] font-extrabold leading-none",
+          active && "relative",
+        )}
         style={{ color: active ? ACTIVE : IDLE }}
       >
         {label}
+        {active ? (
+          <span className="absolute -bottom-2 left-1/2 h-[3px] w-[54px] -translate-x-1/2 rounded bg-[#0867cc]" />
+        ) : null}
       </span>
     </NavLink>
   );
@@ -104,29 +111,29 @@ export default function ParentMobileTabBar() {
   return (
     <nav
       data-panel-mobile-nav
-      className="relative z-40 shrink-0 overflow-visible bg-white pb-[max(34px,var(--safe-bottom))] md:hidden"
+      className="relative z-40 shrink-0 overflow-visible bg-transparent pb-[max(12px,var(--safe-bottom))] md:hidden"
       aria-label="Parent navigation"
     >
-      <div className="relative mx-auto h-16 max-w-lg overflow-visible">
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-[94px] items-end [filter:drop-shadow(0_-4px_10px_rgba(15,23,42,0.06))]">
-          <div className="h-16 flex-1 border-t border-[#E7EEF3] bg-white" />
-          <svg width="160" height="94" viewBox="0 0 160 94" className="-mx-px shrink-0" aria-hidden>
+      <div className="relative mx-auto h-[72px] max-w-lg overflow-visible">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-[110px] items-end [filter:drop-shadow(0_-5px_16px_#16385e1c)]">
+          <div className="h-[72px] flex-1 rounded-tl-[44px] border-t border-[#E7EEF3] bg-white" />
+          <svg width="180" height="110" viewBox="0 0 180 110" className="-mx-px shrink-0" aria-hidden>
             <path
               fill="#ffffff"
-              d="M0 30H40C52 30 56 30 62 18C68 8 74 6 80 6C86 6 92 8 98 18C104 30 108 30 120 30H160V94H0Z"
+              d="M0 38H45C58 38 63 38 70 24C77 12 84 10 90 10C96 10 103 12 110 24C117 38 122 38 135 38H180V110H0Z"
             />
             <path
               fill="none"
               stroke="#E7EEF3"
               strokeWidth="1"
               vectorEffect="non-scaling-stroke"
-              d="M0 30H40C52 30 56 30 62 18C68 8 74 6 80 6C86 6 92 8 98 18C104 30 108 30 120 30H160"
+              d="M0 38H45C58 38 63 38 70 24C77 12 84 10 90 10C96 10 103 12 110 24C117 38 122 38 135 38H180"
             />
           </svg>
-          <div className="h-16 flex-1 border-t border-[#E7EEF3] bg-white" />
+          <div className="h-[72px] flex-1 rounded-tr-[44px] border-t border-[#E7EEF3] bg-white" />
         </div>
 
-        <div className="relative grid h-16 grid-cols-5 overflow-visible">
+        <div className="relative grid h-[72px] grid-cols-5 overflow-visible px-1.5 pt-2">
           <Tab to="/panel/parent" label="Home" active={onHome && !view} icon={Home} />
           <Tab
             to={moduleHref(ROLE, "attendance")}
@@ -139,9 +146,9 @@ export default function ParentMobileTabBar() {
             aria-label="The Concept Academy"
             className="relative flex h-full items-end justify-center"
           >
-            <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-[42%]">
+            <span className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-[55%]">
               <span
-                className="academy-icon-pulse grid h-14 w-14 place-items-center overflow-hidden rounded-full bg-white shadow-[0_8px_16px_rgba(15,23,42,0.16)] ring-[3px] ring-white"
+                className="academy-icon-pulse grid h-[78px] w-[78px] place-content-center overflow-hidden rounded-full border-[6px] border-white bg-[radial-gradient(circle_at_50%_30%,#ffda23_0_11%,#fff_34%)] text-center shadow-[0_6px_13px_#102b5d3b]"
                 style={{ animation: "academyIconPulse 1.8s ease-in-out infinite" }}
               >
                 <img src="/icons/icon-512.png" alt="" className="h-full w-full object-cover" />

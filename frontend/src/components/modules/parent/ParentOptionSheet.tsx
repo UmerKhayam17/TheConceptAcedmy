@@ -57,7 +57,7 @@ export function ParentOptionSheet({
                   }}
                   className={cn(
                     "w-full px-5 py-4 text-left text-[16px]",
-                    selected ? "font-medium text-[#22C5D6]" : "font-medium text-[#1F2937]",
+                    selected ? "font-medium text-[#0867cc]" : "font-medium text-[#1F2937]",
                   )}
                 >
                   {option.label}
@@ -110,7 +110,7 @@ export function ParentOptionField({
           </span>
           <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[#111827]" />
         </span>
-        {accent ? <span className="mt-1 block h-0.5 w-14 rounded-full bg-[#22C5D6]" /> : null}
+        {accent ? <span className="mt-1 block h-0.5 w-14 rounded-full bg-[#0867cc]" /> : null}
       </button>
       <ParentOptionSheet
         open={open}

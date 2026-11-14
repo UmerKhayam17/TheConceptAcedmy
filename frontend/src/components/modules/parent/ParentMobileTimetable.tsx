@@ -25,11 +25,11 @@ import type { Weekday } from "@/lib/configApi";
 import { cn } from "@/lib/utils";
 
 const STRIPES = [
-  "bg-gradient-to-b from-[#3DDBE8] to-[#14C4D4]",
-  "bg-gradient-to-b from-[#2DD4BF] to-[#14B8A6]",
-  "bg-gradient-to-b from-[#22D3EE] to-[#06B6D4]",
+  "bg-gradient-to-b from-[#4aa4ff] to-[#0867cc]",
+  "bg-gradient-to-b from-[#3B82F6] to-[#0739ac]",
+  "bg-gradient-to-b from-[#60A5FA] to-[#1D4ED8]",
   "bg-gradient-to-b from-[#8B5CF6] to-[#6D28D9]",
-  "bg-gradient-to-b from-[#E879F9] to-[#C026D3]",
+  "bg-gradient-to-b from-[#FBBF24] to-[#D97706]",
 ];
 
 function refId(ref: unknown): string {
@@ -251,7 +251,7 @@ export default function ParentMobileTimetable({ sessionId }: { sessionId: string
               onClick={() => setDay(item)}
               className={cn(
                 "h-9 shrink-0 rounded-full px-4 text-[13px] font-semibold",
-                active ? "bg-[#22C5D6] text-white shadow-sm" : "border border-[#E7EEF3] bg-white text-[#94A3B8]",
+                active ? "bg-[#0867cc] text-white shadow-sm" : "border border-[#E7EEF3] bg-white text-[#94A3B8]",
               )}
             >
               {DAY_LABELS[item]}
@@ -277,50 +277,50 @@ export default function ParentMobileTimetable({ sessionId }: { sessionId: string
 
         {grid
           ? rows.map((period) => {
-              if (period.type !== "lecture") {
-                const name = breakTitle(period);
-                const mins = durationLabel(period.startTime, period.endTime);
-                return (
-                  <div key={period._id} className="flex justify-center py-0.5">
-                    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#FFF4D6] px-3 py-1.5 text-[12px] font-semibold text-[#D97706]">
-                      <Coffee className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">
-                        {name} {timeRange(period.startTime, period.endTime)}
-                        {mins ? ` · ${mins}` : ""}
-                      </span>
-                    </span>
-                  </div>
-                );
-              }
-              const slot = slots.find((item) => item.day === day && slotMatchesPeriod(item, period._id));
-              const stripe = STRIPES[lectureIndex % STRIPES.length];
-              lectureIndex += 1;
-              const teacher = teacherNames(slot);
+            if (period.type !== "lecture") {
+              const name = breakTitle(period);
               const mins = durationLabel(period.startTime, period.endTime);
               return (
-                <article key={period._id} className="flex overflow-hidden rounded-[18px] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.05)]">
-                  <div className={cn("flex w-[58px] shrink-0 flex-col items-center justify-center text-white", stripe)}>
-                    <span className="text-[10px] font-bold tracking-[0.08em]">PER</span>
-                    <span className="text-[22px] font-extrabold leading-none">{periodNumber(period, lectureIndex)}</span>
-                  </div>
-                  <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[16px] font-bold text-[#1F2937]">{subjectName(slot)}</p>
-                      {teacher ? <p className="mt-0.5 truncate text-[13px] text-[#64748B]">Teacher: {teacher}</p> : null}
-                      <p className="mt-1 flex items-center gap-1 text-[13px] font-semibold text-[#14B8C6]">
-                        <Clock3 className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">{timeRange(period.startTime, period.endTime)}</span>
-                      </p>
-                    </div>
-                    {mins ? (
-                      <span className="shrink-0 rounded-lg bg-[#F3F5F7] px-2.5 py-1.5 text-[12px] font-medium text-[#94A3B8]">
-                        {mins}
-                      </span>
-                    ) : null}
-                  </div>
-                </article>
+                <div key={period._id} className="flex justify-center py-0.5">
+                  <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#FFF4D6] px-3 py-1.5 text-[12px] font-semibold text-[#D97706]">
+                    <Coffee className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {name} {timeRange(period.startTime, period.endTime)}
+                      {mins ? ` · ${mins}` : ""}
+                    </span>
+                  </span>
+                </div>
               );
-            })
+            }
+            const slot = slots.find((item) => item.day === day && slotMatchesPeriod(item, period._id));
+            const stripe = STRIPES[lectureIndex % STRIPES.length];
+            lectureIndex += 1;
+            const teacher = teacherNames(slot);
+            const mins = durationLabel(period.startTime, period.endTime);
+            return (
+              <article key={period._id} className="flex overflow-hidden rounded-[18px] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.05)]">
+                <div className={cn("flex w-[58px] shrink-0 flex-col items-center justify-center text-white", stripe)}>
+                  <span className="text-[10px] font-bold tracking-[0.08em]">PER</span>
+                  <span className="text-[22px] font-extrabold leading-none">{periodNumber(period, lectureIndex)}</span>
+                </div>
+                <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[16px] font-bold text-[#1F2937]">{subjectName(slot)}</p>
+                    {teacher ? <p className="mt-0.5 truncate text-[13px] text-[#64748B]">Teacher: {teacher}</p> : null}
+                    <p className="mt-1 flex items-center gap-1 text-[13px] font-semibold text-[#0867cc]">
+                      <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{timeRange(period.startTime, period.endTime)}</span>
+                    </p>
+                  </div>
+                  {mins ? (
+                    <span className="shrink-0 rounded-lg bg-[#F3F5F7] px-2.5 py-1.5 text-[12px] font-medium text-[#94A3B8]">
+                      {mins}
+                    </span>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })
           : null}
 
         {grid && lectureCount > 0 ? (

@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 
 function IconBubble({ children }: { children: ReactNode }) {
   return (
-    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#E0F7FA] text-[#0E7490]">
+    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#DBEAFE] text-[#0867cc]">
       {children}
     </span>
   );
@@ -114,7 +114,7 @@ export default function ParentMobileSidebar({
 
   return (
     <div className="flex h-full flex-col bg-[#F4F6F8]">
-      <header className="relative shrink-0 overflow-hidden bg-gradient-to-b from-[#3B82F6] via-[#22C5D6] to-[#14B8C8] px-5 pb-8 pt-[calc(var(--safe-top)+0.5rem)] text-white">
+      <header className="relative shrink-0 overflow-hidden bg-gradient-to-b from-[#071958] via-[#0739ac] to-[#0873ed] px-5 pb-8 pt-[calc(var(--safe-top)+0.5rem)] text-white">
         <div className="pointer-events-none absolute -left-10 top-6 h-36 w-36 rounded-full border border-white/15" />
         <div className="pointer-events-none absolute -right-8 -top-6 h-40 w-40 rounded-full border border-white/15" />
         <div className="pointer-events-none absolute right-10 top-24 h-20 w-20 rounded-full border border-white/10" />
@@ -144,7 +144,7 @@ export default function ParentMobileSidebar({
           <h2 className="mt-3 max-w-[90%] truncate text-center text-[26px] font-extrabold leading-tight tracking-tight">
             {user.name || "Parent"}
           </h2>
-          <span className="mt-2 rounded-full bg-[#14B8A6] px-3.5 py-1 text-[13px] font-bold text-white shadow-sm">
+          <span className="mt-2 rounded-full bg-[#0867cc] px-3.5 py-1 text-[13px] font-bold text-white shadow-sm">
             Parent
           </span>
         </div>
@@ -176,7 +176,7 @@ export default function ParentMobileSidebar({
                 disabled
                 aria-label="Toggle dark mode"
                 className={cn(
-                  "h-[26px] w-[46px] cursor-not-allowed data-[state=checked]:bg-[#22C5D6] data-[state=unchecked]:bg-[#CBD5E1]",
+                  "h-[26px] w-[46px] cursor-not-allowed data-[state=checked]:bg-[#0867cc] data-[state=unchecked]:bg-[#CBD5E1]",
                   "[&>span]:h-[22px] [&>span]:w-[22px] data-[state=checked]:[&>span]:translate-x-[20px]",
                 )}
               />

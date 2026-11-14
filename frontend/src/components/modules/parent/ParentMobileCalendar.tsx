@@ -33,7 +33,7 @@ const GROUP_STYLE: Record<Group, { label: string; dot: string; chip: string; bad
   exam: { label: "Exam", dot: "bg-[#7C3AED]", chip: "bg-[#EDE9FE] text-[#6D28D9]", badge: "bg-[#EDE9FE] text-[#6D28D9]", Icon: GraduationCap },
   test: { label: "Test", dot: "bg-[#0EA5E9]", chip: "bg-[#E0F2FE] text-[#0369A1]", badge: "bg-[#E0F2FE] text-[#0369A1]", Icon: FileText },
   event: { label: "Event", dot: "bg-[#F59E0B]", chip: "bg-[#FEF3C7] text-[#B45309]", badge: "bg-[#FEF3C7] text-[#B45309]", Icon: PartyPopper },
-  class: { label: "Class work", dot: "bg-[#14B8A6]", chip: "bg-[#CCFBF1] text-[#0F766E]", badge: "bg-[#CCFBF1] text-[#0F766E]", Icon: BookOpen },
+  class: { label: "Class work", dot: "bg-[#0867cc]", chip: "bg-[#CCFBF1] text-[#0F766E]", badge: "bg-[#CCFBF1] text-[#0F766E]", Icon: BookOpen },
 };
 
 const LEGEND: Group[] = ["holiday", "exam", "test", "event"];
@@ -322,9 +322,9 @@ export default function ParentMobileCalendar({
                   className={cn(
                     "grid h-8 w-8 place-items-center rounded-full text-[14px] font-semibold",
                     isSelected
-                      ? "bg-[#12B3C8] text-white"
+                      ? "bg-[#0867cc] text-white"
                       : isToday
-                        ? "text-[#0E7C8A] ring-2 ring-[#12B3C8]"
+                        ? "text-[#0c4a9e] ring-2 ring-[#0867cc]"
                         : isHoliday
                           ? "text-[#E11D48]"
                           : offDay
@@ -363,7 +363,7 @@ export default function ParentMobileCalendar({
           <button
             type="button"
             onClick={() => setSelectedDay(null)}
-            className="text-[13px] font-semibold text-[#12B3C8]"
+            className="text-[13px] font-semibold text-[#0867cc]"
           >
             Show whole month
           </button>

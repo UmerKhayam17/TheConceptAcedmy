@@ -526,12 +526,12 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
                   className={cn(
                     "flex h-12 items-center justify-center gap-2 rounded-[14px] text-[14px] font-semibold transition-colors",
                     active
-                      ? "bg-white text-[#22C5D6] shadow-[0_4px_14px_rgba(15,23,42,0.06)] ring-1 ring-[#D7EEF3]"
+                      ? "bg-white text-[#0867cc] shadow-[0_4px_14px_rgba(15,23,42,0.06)] ring-1 ring-[#D7EEF3]"
                       : "bg-[#E8EDF3] text-[#8B97A8]",
                   )}
                 >
                   {item.id === "academic" || item.id === "keydates" ? (
-                    <CalendarDays className={cn("h-4 w-4", active ? "text-[#22C5D6]" : "text-[#8B97A8]")} />
+                    <CalendarDays className={cn("h-4 w-4", active ? "text-[#0867cc]" : "text-[#8B97A8]")} />
                   ) : null}
                   {item.label}
                 </button>
@@ -566,14 +566,14 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
             <button
               type="button"
               onClick={() => setOpenGroupId(null)}
-              className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#22C5D6]"
+              className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#0867cc]"
             >
               <ArrowLeft className="h-4 w-4" strokeWidth={2.25} />
               Back to list
             </button>
             <div className="rounded-[20px] bg-white px-4 py-4 shadow-[0_6px_18px_rgba(15,23,42,0.04)]">
               <p className="text-[17px] font-bold text-[#102A43]">{openGroup.title}</p>
-              <p className="mt-1 text-[13px] font-medium text-[#22C5D6]">
+              <p className="mt-1 text-[13px] font-medium text-[#0867cc]">
                 {openGroup.typeLabel}
                 {" · "}
                 {openGroup.papers.length} subject{openGroup.papers.length === 1 ? "" : "s"}
@@ -584,43 +584,43 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
                 const theme = subjectTheme(paper.subjectId || "", paper.subjectName);
                 const Icon = theme.Icon;
                 return (
-                <li
-                  key={paper.id}
-                  className="rounded-[18px] bg-white px-4 py-3.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
-                >
-                  <div className="flex items-start gap-3">
-                    <span
-                      className={cn(
-                        "grid h-11 w-11 shrink-0 place-items-center rounded-[14px]",
-                        theme.iconBox,
-                        theme.icon,
-                      )}
-                    >
-                      <Icon className="h-5 w-5" strokeWidth={1.75} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[15px] font-bold text-[#102A43]">
-                        {paper.subjectName || "Subject"}
-                      </p>
-                      <p className="mt-0.5 text-[13px] font-medium text-[#22C5D6]">
-                        {[
-                          formatEventDate(paper.startDate),
-                          paper.totalMarks != null ? `${paper.totalMarks} marks` : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || paper.assessmentTypeLabel}
-                      </p>
-                      {paper.syllabus ? (
-                        <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-[#475569]">
-                          <span className="font-semibold text-[#64748B]">Syllabus: </span>
-                          {paper.syllabus}
+                  <li
+                    key={paper.id}
+                    className="rounded-[18px] bg-white px-4 py-3.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={cn(
+                          "grid h-11 w-11 shrink-0 place-items-center rounded-[14px]",
+                          theme.iconBox,
+                          theme.icon,
+                        )}
+                      >
+                        <Icon className="h-5 w-5" strokeWidth={1.75} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[15px] font-bold text-[#102A43]">
+                          {paper.subjectName || "Subject"}
                         </p>
-                      ) : (
-                        <p className="mt-2 text-[13px] text-[#94A3B8]">No syllabus added yet.</p>
-                      )}
+                        <p className="mt-0.5 text-[13px] font-medium text-[#0867cc]">
+                          {[
+                            formatEventDate(paper.startDate),
+                            paper.totalMarks != null ? `${paper.totalMarks} marks` : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || paper.assessmentTypeLabel}
+                        </p>
+                        {paper.syllabus ? (
+                          <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-[#475569]">
+                            <span className="font-semibold text-[#64748B]">Syllabus: </span>
+                            {paper.syllabus}
+                          </p>
+                        ) : (
+                          <p className="mt-2 text-[13px] text-[#94A3B8]">No syllabus added yet.</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </li>
+                  </li>
                 );
               })}
             </ul>
@@ -644,14 +644,14 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
                             onClick={() => setOpenGroupId(group.id)}
                             className="flex w-full items-center gap-3 rounded-[18px] bg-white px-3.5 py-3.5 text-left shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
                           >
-                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#E7F8FB] text-[#22C5D6]">
+                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#DBEAFE] text-[#0867cc]">
                               <FileText className="h-5 w-5" strokeWidth={1.75} />
                             </span>
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-[15px] font-bold text-[#102A43]">
                                 {group.title}
                               </span>
-                              <span className="mt-0.5 block truncate text-[13px] font-medium text-[#22C5D6]">
+                              <span className="mt-0.5 block truncate text-[13px] font-medium text-[#0867cc]">
                                 {group.typeLabel}
                                 {" · "}
                                 {group.papers.length} subject{group.papers.length === 1 ? "" : "s"}
@@ -682,14 +682,14 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
                         key={event.id}
                         className="flex items-center gap-3 rounded-[18px] bg-white px-3.5 py-3.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
                       >
-                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#E7F8FB] text-[#22C5D6]">
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[#DBEAFE] text-[#0867cc]">
                           <Icon className="h-5 w-5" strokeWidth={1.75} />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[15px] font-bold text-[#102A43]">
                             {event.title}
                           </span>
-                          <span className="mt-0.5 block truncate text-[13px] font-medium text-[#22C5D6]">
+                          <span className="mt-0.5 block truncate text-[13px] font-medium text-[#0867cc]">
                             {event.assessmentTypeLabel ||
                               event.subjectName ||
                               formatEventDate(event.startDate) ||
@@ -733,7 +733,7 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
                     onClick={() => setTerm(item)}
                     className={cn(
                       "h-10 rounded-full px-4 text-[14px] font-semibold",
-                      active ? "bg-[#22C5D6] text-white" : "bg-[#EEF2F6] text-[#64748B]",
+                      active ? "bg-[#0867cc] text-white" : "bg-[#EEF2F6] text-[#64748B]",
                     )}
                   >
                     {item}
@@ -765,7 +765,7 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
               >
                 <p className="text-[15px] font-bold text-[#102A43]">{row.title}</p>
                 {row.detail ? (
-                  <p className="mt-0.5 text-[13px] font-medium text-[#22C5D6]">{row.detail}</p>
+                  <p className="mt-0.5 text-[13px] font-medium text-[#0867cc]">{row.detail}</p>
                 ) : null}
               </li>
             ))}
@@ -814,12 +814,12 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
               onClick={() => setTab(item.id)}
               className={cn(
                 "relative py-3.5 text-center text-[15px]",
-                active ? "font-semibold text-[#22C5D6]" : "font-medium text-[#A8B3C0]",
+                active ? "font-semibold text-[#0867cc]" : "font-medium text-[#A8B3C0]",
               )}
             >
               {item.label}
               {active ? (
-                <span className="absolute inset-x-8 bottom-0 h-[3px] rounded-full bg-[#22C5D6]" />
+                <span className="absolute inset-x-8 bottom-0 h-[3px] rounded-full bg-[#0867cc]" />
               ) : null}
             </button>
           );

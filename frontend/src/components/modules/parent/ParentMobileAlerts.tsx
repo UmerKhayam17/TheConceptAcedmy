@@ -66,7 +66,7 @@ function AlertCard({
       onClick={() => onOpen(item)}
       className="flex w-full items-start gap-2.5 rounded-[16px] bg-white px-3 py-2.5 text-left shadow-[0_6px_16px_rgba(15,23,42,0.04)] active:bg-[#F8FAFC]"
     >
-      <span className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#F3F6F8] text-[#13B6C6]">
+      <span className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#F3F6F8] text-[#0867cc]">
         <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
       </span>
       <span className="min-w-0 flex-1">
@@ -83,12 +83,12 @@ function AlertCard({
         ) : null}
         <span className="mt-1.5 flex items-center gap-2">
           {label ? (
-            <span className="inline-flex rounded-full bg-[#E6F7FB] px-2.5 py-0.5 text-[11px] font-semibold text-[#12C2D4]">
+            <span className="inline-flex rounded-full bg-[#DBEAFE] px-2.5 py-0.5 text-[11px] font-semibold text-[#0870da]">
               {label}
             </span>
           ) : null}
           {!item.read ? (
-            <span className="h-1.5 w-1.5 rounded-full bg-[#22C5D6]" aria-label="Unread" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[#0867cc]" aria-label="Unread" />
           ) : null}
         </span>
       </span>

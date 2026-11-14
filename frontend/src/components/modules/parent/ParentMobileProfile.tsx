@@ -129,7 +129,7 @@ export default function ParentMobileProfile() {
 
       <div className="space-y-4 px-4 pt-4">
         <section className="flex flex-col items-center rounded-[22px] bg-white px-4 py-6 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-          <span className="grid h-[72px] w-[72px] place-items-center overflow-hidden rounded-full bg-[#22C5D6] text-white shadow-sm">
+          <span className="grid h-[72px] w-[72px] place-items-center overflow-hidden rounded-full bg-[#0867cc] text-white shadow-sm">
             {photo ? (
               <img src={photo} alt="" className="h-full w-full object-cover" />
             ) : (
@@ -139,7 +139,7 @@ export default function ParentMobileProfile() {
           <h2 className="mt-3 max-w-full truncate text-center text-[20px] font-bold text-[#111827]">
             {user?.name || "Parent"}
           </h2>
-          <span className="mt-2 rounded-full bg-[#E6F9FB] px-3.5 py-1 text-[12px] font-semibold text-[#14B8A6]">
+          <span className="mt-2 rounded-full bg-[#DBEAFE] px-3.5 py-1 text-[12px] font-semibold text-[#0867cc]">
             Parent
           </span>
         </section>

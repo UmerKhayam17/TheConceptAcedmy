@@ -350,7 +350,7 @@ export default function ParentMobileReportCard() {
             onClick={onDownload}
             disabled={downloading || !reportRows.length}
             aria-label="Download result card"
-            className="grid h-10 w-10 place-items-center rounded-full bg-[#22C5D6] text-white shadow-sm disabled:opacity-40"
+            className="grid h-10 w-10 place-items-center rounded-full bg-[#0867cc] text-white shadow-sm disabled:opacity-40"
           >
             <Download className="h-[18px] w-[18px]" strokeWidth={2.25} />
           </button>
@@ -454,7 +454,7 @@ export default function ParentMobileReportCard() {
             type="button"
             disabled={!selectedRow}
             onClick={() => setViewing(true)}
-            className="mt-5 h-[52px] w-full rounded-full bg-[#67DCEA] text-[16px] font-semibold text-white disabled:opacity-50"
+            className="mt-5 h-[52px] w-full rounded-full bg-[#4aa4ff] text-[16px] font-semibold text-white disabled:opacity-50"
           >
             View Results
           </button>

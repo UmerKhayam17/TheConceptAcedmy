@@ -60,7 +60,7 @@ function shortDate(value?: string) {
 
 function MintAvatar({ name, online }: { name: string; online?: boolean }) {
   return (
-    <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#DDF5D8] text-sm font-bold text-[#3D8C40]">
+    <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#DBEAFE] text-sm font-bold text-[#0867cc]">
       {initials(name)}
       {online ? (
         <span className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#22C55E]" />
@@ -143,7 +143,7 @@ export default function ParentMobileChats() {
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
-          className="mt-3 flex h-11 w-full items-center justify-center rounded-xl bg-[#12C2D4] text-sm font-semibold text-white shadow-sm"
+          className="mt-3 flex h-11 w-full items-center justify-center rounded-xl bg-[#0870da] text-sm font-semibold text-white shadow-sm"
         >
           + New Chat
         </button>
@@ -304,7 +304,7 @@ function NewChatSheet({ onClose }: { onClose: () => void }) {
                     getOrCreate.mutate(person._id);
                     onClose();
                   }}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#12C2D4] text-white"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0870da] text-white"
                 >
                   <MessageCircle className="h-4 w-4" />
                 </button>

@@ -180,8 +180,8 @@ function ImageGallery({
 function DatePill({ day }: { day: string }) {
   return (
     <div className="relative mb-2.5 flex items-center">
-      <span className="absolute -left-[17px] top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[#22C5D6] ring-[3px] ring-[#E6F4FA]" />
-      <span className="inline-flex items-center gap-1.5 rounded-[10px] bg-white px-3 py-1.5 text-[13px] font-semibold text-[#22C5D6] shadow-[0_2px_8px_rgba(15,23,42,0.04)]">
+      <span className="absolute -left-[17px] top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[#0867cc] ring-[3px] ring-[#E6F4FA]" />
+      <span className="inline-flex items-center gap-1.5 rounded-[10px] bg-white px-3 py-1.5 text-[13px] font-semibold text-[#0867cc] shadow-[0_2px_8px_rgba(15,23,42,0.04)]">
         <CalendarDays className="h-3.5 w-3.5" strokeWidth={2.25} />
         {day}
       </span>
@@ -203,14 +203,14 @@ function TextNoticeCard({
       <button
         type="button"
         onClick={onOpen}
-        className="mt-2.5 text-[14px] font-semibold text-[#22C5D6]"
+        className="mt-2.5 text-[14px] font-semibold text-[#0867cc]"
       >
         View Details →
       </button>
       <button
         type="button"
         onClick={onOpen}
-        className="mt-3.5 flex h-[48px] w-full items-center justify-center gap-2 rounded-[12px] bg-[#22C5D6] text-[15px] font-bold text-white"
+        className="mt-3.5 flex h-[48px] w-full items-center justify-center gap-2 rounded-[12px] bg-[#0867cc] text-[15px] font-bold text-white"
       >
         <Eye className="h-[18px] w-[18px]" strokeWidth={2.25} />
         View Details
@@ -235,7 +235,7 @@ function PictureNoticeCard({
         <h3 className="text-[18px] font-bold leading-tight text-[#102A43]">
           {item.title || "Pictures"}
         </h3>
-        <button type="button" onClick={onOpen} className="text-[14px] font-semibold text-[#22C5D6]">
+        <button type="button" onClick={onOpen} className="text-[14px] font-semibold text-[#0867cc]">
           Tap to view
         </button>
       </div>
@@ -306,7 +306,7 @@ export default function ParentMobileNoticeBoard() {
           <span className="text-[15px] font-medium text-[#A8B3C0]">Month</span>
           <span className="inline-flex items-center gap-1 text-[15px] font-semibold text-[#1F2A37]">
             {monthLabel}
-            <ChevronDown className="h-4 w-4 text-[#22C5D6]" strokeWidth={2.5} />
+            <ChevronDown className="h-4 w-4 text-[#0867cc]" strokeWidth={2.5} />
           </span>
         </button>
       </div>

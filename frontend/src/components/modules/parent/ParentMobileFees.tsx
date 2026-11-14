@@ -262,7 +262,7 @@ export default function ParentMobileFees({
               type="button"
               disabled={busyKey === `voucher-${selected._id}`}
               onClick={() => downloadVoucher(selected)}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-[#22C5D6] text-[15px] font-bold text-white disabled:opacity-60"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-[#0867cc] text-[15px] font-bold text-white disabled:opacity-60"
             >
               {busyKey === `voucher-${selected._id}` ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -332,15 +332,15 @@ export default function ParentMobileFees({
               onClick={() => setFilter(key)}
               className={cn(
                 "relative py-3.5 text-center text-[15px]",
-                active ? "font-semibold text-[#22C5D6]" : "font-medium text-[#A8B3C0]",
+                active ? "font-semibold text-[#0867cc]" : "font-medium text-[#A8B3C0]",
               )}
             >
               {label}
-              <span className={cn("ml-1", active ? "text-[#22C5D6]" : "text-[#C0C8D2]")}>
+              <span className={cn("ml-1", active ? "text-[#0867cc]" : "text-[#C0C8D2]")}>
                 ({count})
               </span>
               {active ? (
-                <span className="absolute inset-x-6 bottom-0 h-[3px] rounded-full bg-[#22C5D6]" />
+                <span className="absolute inset-x-6 bottom-0 h-[3px] rounded-full bg-[#0867cc]" />
               ) : null}
             </button>
           );
@@ -372,7 +372,7 @@ export default function ParentMobileFees({
                 type="button"
                 disabled={busyKey === "challan-all"}
                 onClick={downloadUnpaidChallan}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-[#22C5D6] text-[15px] font-bold text-white disabled:opacity-60"
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-[#0867cc] text-[15px] font-bold text-white disabled:opacity-60"
               >
                 {busyKey === "challan-all" ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
