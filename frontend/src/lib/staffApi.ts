@@ -60,6 +60,8 @@ export interface StaffUser {
   permissions?: PermissionDefinition[];
   /** Populated for parent users on GET /users (all-users list). */
   linkedStudents?: LinkedStudentSummary[];
+  /** Set after staff sends login credentials once via WhatsApp. */
+  credentialsWhatsAppSentAt?: string | null;
 }
 
 export interface UserWithAccess extends StaffUser {
@@ -364,6 +366,23 @@ export async function deleteStaffUser(id: string): Promise<void> {
   const res = await authedFetch(`/users/${id}`, { method: "DELETE" });
   const body = await parseJson<{ success?: boolean; message?: string }>(res);
   if (!res.ok) throw new Error(body.message || "Failed to delete user");
+}
+
+/** Lock WhatsApp credential share after the first successful send. */
+export async function markParentCredentialsWhatsAppSent(
+  parentUserId: string,
+): Promise<{ _id: string; credentialsWhatsAppSentAt: string }> {
+  const res = await authedFetch(`/users/${parentUserId}/credentials-whatsapp-sent`, {
+    method: "POST",
+  });
+  const body = await parseJson<{
+    success?: boolean;
+    message?: string;
+    data?: { _id: string; credentialsWhatsAppSentAt: string };
+  }>(res);
+  if (!res.ok) throw new Error(body.message || "Failed to lock WhatsApp share");
+  if (!body.data) throw new Error("Invalid response");
+  return body.data;
 }
 
 export type BulkUserAction = "activate" | "deactivate" | "delete" | "resetPassword";

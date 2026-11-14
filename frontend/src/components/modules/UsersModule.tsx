@@ -23,6 +23,8 @@ import {
   EyeOff,
   KeyRound,
   Loader2,
+  Lock,
+  MessageCircle,
   Trash2,
   Users,
   UserRound,
@@ -31,6 +33,7 @@ import {
 import { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { shareParentPortalOnWhatsApp } from "@/lib/whatsappShare";
 import PanelStatCard from "@/components/modules/PanelStatCard";
 import PanelSearchBar from "@/components/modules/PanelSearchBar";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
@@ -41,6 +44,7 @@ import {
   updateStaffUser,
   bulkUsersAction,
   exportParentCredentials,
+  markParentCredentialsWhatsAppSent,
   roleDisplayLabel,
   isNoLoginEmail,
   STAFF_DESIGNATIONS,
@@ -196,6 +200,30 @@ function PasswordCell({
       <span>{visible ? DEFAULT_PARENT_PASSWORD : "••••••••"}</span>
     </button>
   );
+}
+
+async function shareParentUserOnWhatsApp(
+  user: StaffUser,
+  onLocked?: () => void,
+): Promise<void> {
+  if (user.credentialsWhatsAppSentAt) return;
+  const linked = user.linkedStudents ?? [];
+  shareParentPortalOnWhatsApp({
+    students:
+      linked.length > 0
+        ? linked.map((s) => ({
+            studentName: s.studentName,
+            studentId: s.studentId,
+            className: s.className,
+            sectionName: s.sectionName,
+          }))
+        : [{ studentName: user.name, studentId: "—" }],
+    parentEmail: user.email,
+    parentPassword: DEFAULT_PARENT_PASSWORD,
+    phone: user.phone,
+  });
+  await markParentCredentialsWhatsAppSent(user._id);
+  onLocked?.();
 }
 
 function sectionBadgeClass(name: string) {
@@ -1357,6 +1385,50 @@ const UsersModule = ({
                               <Eye className="h-4 w-4" />
                             </Button>
                           )}
+                          {isParentsScope && isParentUser(u) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8",
+                                u.credentialsWhatsAppSentAt
+                                  ? "cursor-not-allowed text-muted-foreground opacity-60"
+                                  : "text-[#25D366] hover:bg-[#25D366]/10 hover:text-[#1ebe57]",
+                              )}
+                              disabled={Boolean(u.credentialsWhatsAppSentAt)}
+                              onClick={() => {
+                                void shareParentUserOnWhatsApp(u, () => {
+                                  void qc.invalidateQueries({ queryKey: STAFF_QUERY });
+                                  toast({
+                                    title: "Credentials sent",
+                                    description: "WhatsApp share is locked for this parent.",
+                                  });
+                                }).catch((e: Error) => {
+                                  toast({
+                                    title: "Could not lock share",
+                                    description: e.message,
+                                    variant: "destructive",
+                                  });
+                                });
+                              }}
+                              aria-label={
+                                u.credentialsWhatsAppSentAt
+                                  ? "Credentials already sent on WhatsApp"
+                                  : "Send credentials on WhatsApp"
+                              }
+                              title={
+                                u.credentialsWhatsAppSentAt
+                                  ? "Already sent — locked until password reset"
+                                  : "Send login + app download on WhatsApp"
+                              }
+                            >
+                              {u.credentialsWhatsAppSentAt ? (
+                                <Lock className="h-4 w-4" />
+                              ) : (
+                                <MessageCircle className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
                           {caps.canEdit && (
                             <Button
                               variant="ghost"
@@ -1495,6 +1567,7 @@ const UsersModule = ({
                       <th className="text-left font-medium px-3 py-2">Email</th>
                       <th className="text-left font-medium px-3 py-2">Password</th>
                       <th className="text-left font-medium px-3 py-2">Status</th>
+                      <th className="text-right font-medium px-3 py-2">WhatsApp</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1508,6 +1581,84 @@ const UsersModule = ({
                         </td>
                         <td className="px-3 py-2 text-xs text-muted-foreground">
                           {row.created ? "Created" : "Updated"}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "h-8 w-8",
+                              row.credentialsWhatsAppSentAt
+                                ? "cursor-not-allowed text-muted-foreground opacity-60"
+                                : "text-[#25D366] hover:bg-[#25D366]/10 hover:text-[#1ebe57]",
+                            )}
+                            disabled={Boolean(row.credentialsWhatsAppSentAt) || !row.parentUserId}
+                            title={
+                              row.credentialsWhatsAppSentAt
+                                ? "Already sent — locked until password reset"
+                                : "Send login + app download on WhatsApp"
+                            }
+                            aria-label={
+                              row.credentialsWhatsAppSentAt
+                                ? `Credentials already sent for ${row.studentName}`
+                                : `Send WhatsApp to ${row.studentName}`
+                            }
+                            onClick={() => {
+                              if (!row.parentUserId || row.credentialsWhatsAppSentAt) return;
+                              const siblings = (provisionResult?.rows || []).filter(
+                                (r) => r.parentUserId === row.parentUserId,
+                              );
+                              const kids = siblings.length > 0 ? siblings : [row];
+                              shareParentPortalOnWhatsApp({
+                                students: kids.map((s) => ({
+                                  studentName: s.studentName,
+                                  studentId: s.studentId,
+                                })),
+                                parentEmail: row.parentEmail,
+                                parentPassword: row.parentPassword,
+                                phone: row.phone,
+                              });
+                              void markParentCredentialsWhatsAppSent(row.parentUserId)
+                                .then((res) => {
+                                  // Lock every provision row that shares this parent account
+                                  // (siblings under the same portal login).
+                                  setProvisionResult((prev) => {
+                                    if (!prev) return prev;
+                                    return {
+                                      ...prev,
+                                      rows: prev.rows.map((r) =>
+                                        r.parentUserId === row.parentUserId
+                                          ? {
+                                              ...r,
+                                              credentialsWhatsAppSentAt:
+                                                res.credentialsWhatsAppSentAt,
+                                            }
+                                          : r,
+                                      ),
+                                    };
+                                  });
+                                  void qc.invalidateQueries({ queryKey: STAFF_QUERY });
+                                  toast({
+                                    title: "Credentials sent",
+                                    description: "WhatsApp share is locked for this parent.",
+                                  });
+                                })
+                                .catch((e: Error) => {
+                                  toast({
+                                    title: "Could not lock share",
+                                    description: e.message,
+                                    variant: "destructive",
+                                  });
+                                });
+                            }}
+                          >
+                            {row.credentialsWhatsAppSentAt ? (
+                              <Lock className="h-4 w-4" />
+                            ) : (
+                              <MessageCircle className="h-4 w-4" />
+                            )}
+                          </Button>
                         </td>
                       </tr>
                     ))}

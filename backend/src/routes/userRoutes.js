@@ -24,5 +24,10 @@ router.delete('/:id/module-permissions', requirePermission('manage_roles'), ctrl
 router.get('/:id/parent-students', requireAnyAccountModule('view'), ctrl.getParentStudents);
 router.get('/:id/report', requireAnyAccountModule('view'), staffReportCtrl.exportStaffReport);
 router.patch('/:id/parent-students', requireAnyAccountModule('edit'), validate(schemas.parentStudentAccess), ctrl.patchParentStudents);
+router.post(
+  '/:id/credentials-whatsapp-sent',
+  requireAnyAccountModule('view'),
+  ctrl.markCredentialsWhatsAppSent
+);
 
 module.exports = router;

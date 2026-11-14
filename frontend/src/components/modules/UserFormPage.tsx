@@ -22,6 +22,7 @@ import {
   Loader2,
   Lock,
   Mail,
+  MessageCircle,
   Percent,
   Phone,
   Search,
@@ -37,6 +38,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { shareParentPortalOnWhatsApp } from "@/lib/whatsappShare";
 import type { ModuleActionCaps } from "@/lib/permissions";
 import {
   emptyUserForm,
@@ -57,6 +59,7 @@ import {
   fetchParentStudents,
   fetchModuleRegistry,
   fetchUsersByScope,
+  markParentCredentialsWhatsAppSent,
   staffRolesOnly,
   parentRolesOnly,
   adminRolesOnly,
@@ -303,6 +306,11 @@ export default function UserFormPage({
     name: string;
     email: string;
     password: string;
+    phone?: string;
+    studentId?: string;
+    studentName?: string;
+    parentUserId?: string;
+    whatsappSent?: boolean;
   } | null>(null);
   const [showParentPassword, setShowParentPassword] = useState(true);
   /** "Other" picked in the designation dropdown → free-text job title. */
@@ -505,6 +513,11 @@ export default function UserFormPage({
             name: parentCreate.name.trim(),
             email: parentCreate.email.trim().toLowerCase(),
             password: parentCreate.password,
+            phone: parentCreate.phone.trim(),
+            studentId: parentCreate.studentId,
+            studentName: parentCreate.name.trim(),
+            parentUserId: u._id,
+            whatsappSent: false,
           },
         };
       }
@@ -1193,7 +1206,63 @@ export default function UserFormPage({
                   </Button>
                 </div>
               </div>
-              <Button className="w-full" onClick={() => navigate(listHref)}>
+              <p className="text-xs text-muted-foreground">
+                Send login details and the Android app download link on WhatsApp once. The button
+                locks after the first send.
+              </p>
+              <Button
+                type="button"
+                className={
+                  createdParentCredentials.whatsappSent
+                    ? "w-full cursor-not-allowed gap-1.5 bg-muted text-muted-foreground hover:bg-muted"
+                    : "w-full gap-1.5 bg-[#25D366] text-white hover:bg-[#1ebe57]"
+                }
+                disabled={
+                  Boolean(createdParentCredentials.whatsappSent) ||
+                  !createdParentCredentials.parentUserId
+                }
+                onClick={() => {
+                  if (
+                    createdParentCredentials.whatsappSent ||
+                    !createdParentCredentials.parentUserId
+                  ) {
+                    return;
+                  }
+                  shareParentPortalOnWhatsApp({
+                    studentName:
+                      createdParentCredentials.studentName || createdParentCredentials.name,
+                    studentId: createdParentCredentials.studentId || "—",
+                    parentEmail: createdParentCredentials.email,
+                    parentPassword: createdParentCredentials.password,
+                    phone: createdParentCredentials.phone,
+                  });
+                  void markParentCredentialsWhatsAppSent(createdParentCredentials.parentUserId)
+                    .then(() => {
+                      setCreatedParentCredentials((prev) =>
+                        prev ? { ...prev, whatsappSent: true } : prev,
+                      );
+                      toast({
+                        title: "Credentials sent",
+                        description: "WhatsApp share is locked for this parent.",
+                      });
+                    })
+                    .catch((e: Error) => {
+                      toast({
+                        title: "Could not lock share",
+                        description: e.message,
+                        variant: "destructive",
+                      });
+                    });
+                }}
+              >
+                {createdParentCredentials.whatsappSent ? (
+                  <Lock className="h-4 w-4" />
+                ) : (
+                  <MessageCircle className="h-4 w-4" />
+                )}
+                {createdParentCredentials.whatsappSent ? "Already sent" : "Send on WhatsApp"}
+              </Button>
+              <Button className="w-full" variant="secondary" onClick={() => navigate(listHref)}>
                 Done
               </Button>
             </div>

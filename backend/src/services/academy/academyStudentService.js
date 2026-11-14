@@ -74,6 +74,12 @@ function buildParentPortalEmail(studentName, studentId) {
  * Create (or reuse) a parent User for portal login. No student User is created.
  * Links via guardianEmail === parent email (parentScope).
  */
+async function findParentUserByPhone(phone, parentRoleId) {
+  const p = String(phone || '').trim();
+  if (!p || p === 'N/A') return null;
+  return User.findOne({ role: parentRoleId, phone: p });
+}
+
 async function ensureParentPortalUser({
   studentName,
   fatherName,
@@ -90,19 +96,25 @@ async function ensureParentPortalUser({
   if (!parentRole) throw new ApiError(500, 'Roles not initialized');
   const getHash = async () => passwordHash || bcrypt.hash(DEFAULT_PARENT_PASSWORD, 12);
 
-  const parentEmail = buildParentPortalEmail(studentName, studentId);
+  const canonicalEmail = buildParentPortalEmail(studentName, studentId);
   const parentPassword = DEFAULT_PARENT_PASSWORD;
   const parentName =
     (guardianName && String(guardianName).trim()) ||
     (fatherName && String(fatherName).trim()) ||
     `${String(studentName || '').trim()} Parent`;
 
-  let parentUser = await User.findOne({ email: parentEmail });
+  // Prefer existing portal for this student; otherwise reuse a parent who already
+  // has the same mobile (siblings share one login).
+  let parentUser = await User.findOne({ email: canonicalEmail });
+  if (!parentUser) {
+    parentUser = await findParentUserByPhone(phone, parentRole._id);
+  }
+
   let created = false;
   if (!parentUser) {
     parentUser = await User.create({
       name: parentName,
-      email: parentEmail,
+      email: canonicalEmail,
       phone: phone || '',
       password: await getHash(),
       issuedPassword: parentPassword,
@@ -116,6 +128,7 @@ async function ensureParentPortalUser({
     if (resetPassword) {
       parentUser.password = await getHash();
       parentUser.issuedPassword = parentPassword;
+      parentUser.credentialsWhatsAppSentAt = null;
       dirty = true;
     }
     // Drop fee from parent accounts; ensure exam (test results) view remains.
@@ -140,14 +153,111 @@ async function ensureParentPortalUser({
       parentUser.modulePermissions = asMap;
       dirty = true;
     }
-    if (phone && !parentUser.phone) {
+    // Keep parent portal contact in sync with the student record.
+    if (phone && String(parentUser.phone || '').trim() !== phone) {
       parentUser.phone = phone;
+      dirty = true;
+    }
+    if (parentName && String(parentUser.name || '').trim() !== parentName) {
+      parentUser.name = parentName;
       dirty = true;
     }
     if (dirty) await parentUser.save();
   }
 
+  const parentEmail = String(parentUser.email || '').trim().toLowerCase();
   return { parentUser, parentEmail, parentPassword, created };
+}
+
+/**
+ * Push student contact fields onto the linked parent User (Parents panel).
+ * Link key: guardianEmail (portal email). Falls back to canonical portal email.
+ */
+async function syncParentPortalFromStudent(student) {
+  if (!student) return null;
+
+  let email = String(student.guardianEmail || '').trim().toLowerCase();
+  const canonical =
+    student.studentId && student.studentName
+      ? buildParentPortalEmail(student.studentName, student.studentId)
+      : '';
+  const phone = String(student.phone || '').trim();
+
+  let parentUser = email ? await User.findOne({ email }) : null;
+  if (!parentUser && canonical) {
+    parentUser = await User.findOne({ email: canonical });
+  }
+  // Siblings: same mobile → prefer one shared parent portal account.
+  if (phone && phone !== 'N/A') {
+    const parentRole = await Role.findOne({ name: 'parent' }).select('_id');
+    const byPhone = parentRole ? await findParentUserByPhone(phone, parentRole._id) : null;
+    if (byPhone && (!parentUser || String(byPhone._id) !== String(parentUser._id))) {
+      parentUser = byPhone;
+    }
+  }
+  if (!parentUser) return null;
+
+  const linkedEmail = String(parentUser.email || '').trim().toLowerCase();
+  if (student._id && linkedEmail && email !== linkedEmail) {
+    student.guardianEmail = linkedEmail;
+    await AcademyStudent.updateOne(
+      { _id: student._id },
+      { $set: { guardianEmail: linkedEmail } }
+    );
+  }
+
+  const parentName =
+    (student.guardianName && String(student.guardianName).trim()) ||
+    (student.fatherName && String(student.fatherName).trim()) ||
+    parentUser.name;
+
+  let dirty = false;
+  if (parentName && String(parentUser.name || '').trim() !== parentName) {
+    parentUser.name = parentName;
+    dirty = true;
+  }
+  if (phone && phone !== 'N/A' && String(parentUser.phone || '').trim() !== phone) {
+    parentUser.phone = phone;
+    dirty = true;
+  }
+  if (dirty) {
+    await parentUser.save();
+    try {
+      const rt = require('../realtime/academyRealtime');
+      rt.userCrud('updated', String(parentUser._id));
+    } catch {
+      /* realtime optional */
+    }
+  }
+  return parentUser;
+}
+
+/**
+ * Push parent User contact fields onto every student linked by guardianEmail.
+ */
+async function syncStudentsFromParentUser(user, { previousEmail } = {}) {
+  if (!user) return 0;
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!email) return 0;
+
+  const matchEmails = [email];
+  const prev = String(previousEmail || '').trim().toLowerCase();
+  if (prev && prev !== email) matchEmails.push(prev);
+
+  const set = {};
+  const phone = String(user.phone || '').trim();
+  if (phone && phone !== 'N/A') set.phone = phone;
+  const name = String(user.name || '').trim();
+  if (name) set.guardianName = name;
+  if (prev && prev !== email) set.guardianEmail = email;
+
+  if (!Object.keys(set).length) return 0;
+
+  const result = await AcademyStudent.updateMany(
+    { guardianEmail: { $in: matchEmails } },
+    { $set: set }
+  );
+  return result.modifiedCount || result.nModified || 0;
 }
 
 function saveStudentPhotoFile(studentMongoId, file) {
@@ -406,7 +516,9 @@ async function updateStudent(id, payload) {
       student.classId = payload.classId;
       student.rollNumber = await generateTemporaryRollNumber(payload.classId);
     }
+    applyProfileToStudent(student, payload);
     await student.save();
+    await syncParentPortalFromStudent(student);
     return student.populate([
       { path: 'classId', select: 'className' },
       { path: 'createdBy', select: 'name email' },
@@ -532,6 +644,8 @@ async function updateStudent(id, payload) {
   if (tuitionPoolChanged) {
     await refreshUnpaidSalariesAfterStudentTuitionChange(undefined, 'student_update');
   }
+
+  await syncParentPortalFromStudent(student);
 
   return student.populate([
     { path: 'classId', select: 'className' },
@@ -1730,6 +1844,9 @@ async function provisionParentPortalsForAllActiveStudents() {
       studentName: student.studentName,
       parentEmail,
       parentPassword,
+      phone: student.phone || parentUser.phone || '',
+      parentUserId: String(parentUser._id),
+      credentialsWhatsAppSentAt: parentUser.credentialsWhatsAppSentAt || null,
       created,
     };
   };
@@ -1772,6 +1889,8 @@ module.exports = {
   uploadStudentPhoto,
   getDiscountReport,
   provisionParentPortalsForAllActiveStudents,
+  syncParentPortalFromStudent,
+  syncStudentsFromParentUser,
   buildParentPortalEmail,
   DEFAULT_PARENT_PASSWORD,
 };

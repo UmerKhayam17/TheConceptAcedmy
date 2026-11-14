@@ -48,6 +48,6 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-# # Firebase service-account key (secret)
-# firebase-key.json
-# *firebase-adminsdk*.json
+# Firebase service-account key (secret)
+firebase-key.json
+*firebase-adminsdk*.json

@@ -915,6 +915,10 @@ export type ParentPortalProvisionRow = {
   studentName: string;
   parentEmail: string;
   parentPassword: string;
+  /** Student mobile — used for free WhatsApp credential share. */
+  phone?: string;
+  parentUserId?: string;
+  credentialsWhatsAppSentAt?: string | null;
   created: boolean;
 };
 

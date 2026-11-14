@@ -2025,7 +2025,8 @@ export default function RegisterStudentPage({
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Only parents have portal access. Share these credentials with the family. Default password is Concept@1234.
+              Only parents have portal access. Share these credentials with the family. Default
+              password is Concept@1234.
             </p>
           </div>
         )}

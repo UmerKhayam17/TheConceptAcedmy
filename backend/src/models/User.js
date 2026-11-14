@@ -17,6 +17,11 @@ const userSchema = new mongoose.Schema(
      * Never selected on normal account lists.
      */
     issuedPassword: { type: String, select: false },
+    /**
+     * When staff sent parent login credentials once via WhatsApp.
+     * Cleared when the portal password is reset so they can send again.
+     */
+    credentialsWhatsAppSentAt: { type: Date, default: null },
     phone: { type: String, required: true, trim: true },
     role: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', required: true },
     permissions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Permission' }],

@@ -453,6 +453,11 @@ const updateUser = catchAsync(async (req, res) => {
     `editing ${currentRoleName || 'user'} accounts`,
   );
 
+  const previousParentEmail = normalizeEmail(user.email);
+  const parentContactChanged =
+    currentRoleName === 'parent' &&
+    (name !== undefined || phone !== undefined || email !== undefined);
+
   if (name !== undefined) user.name = name;
   if (email !== undefined) {
     const nextEmail = normalizeEmail(email);
@@ -540,6 +545,7 @@ const updateUser = catchAsync(async (req, res) => {
       user.password = await bcrypt.hash(password, 12);
       if (roleNameFromUserDoc(user) === 'parent') {
         user.issuedPassword = String(password);
+        user.credentialsWhatsAppSentAt = null;
       }
     }
   }
@@ -559,6 +565,18 @@ const updateUser = catchAsync(async (req, res) => {
     typeof salaryPercentage === 'number';
 
   await user.save();
+
+  // Keep linked student phone / guardian name / guardianEmail aligned with Parents panel.
+  if (parentContactChanged) {
+    try {
+      const {
+        syncStudentsFromParentUser,
+      } = require('../services/academy/academyStudentService');
+      await syncStudentsFromParentUser(user, { previousEmail: previousParentEmail });
+    } catch (err) {
+      console.error('[parent-sync] Failed to sync students from parent update:', err);
+    }
+  }
 
   // Unpaid percentage vouchers use this teacher's % — refresh when rate/pay type changes.
   if (shouldRefreshSalaries) {
@@ -784,7 +802,10 @@ const bulkUsers = catchAsync(async (req, res) => {
         results.processed += 1;
       } else if (action === 'resetPassword') {
         user.password = passwordHash;
-        if (roleName === 'parent') user.issuedPassword = resetPassword;
+        if (roleName === 'parent') {
+          user.issuedPassword = resetPassword;
+          user.credentialsWhatsAppSentAt = null;
+        }
         await user.save();
         results.processed += 1;
       } else if (action === 'delete') {
@@ -820,6 +841,31 @@ const bulkUsers = catchAsync(async (req, res) => {
   });
 });
 
+/** Mark parent login credentials as shared once via WhatsApp (locks the send icon). */
+const markCredentialsWhatsAppSent = catchAsync(async (req, res) => {
+  const user = await User.findById(req.params.id).populate('role');
+  if (!user) throw new ApiError(404, 'User not found');
+  const roleName = String(user.role?.name || '').toLowerCase();
+  if (roleName !== 'parent') {
+    throw new ApiError(400, 'Only parent accounts support WhatsApp credential share');
+  }
+  assertAccountAction(req.user, 'parentUsers', 'view', 'mark WhatsApp credential share');
+
+  if (!user.credentialsWhatsAppSentAt) {
+    user.credentialsWhatsAppSentAt = new Date();
+    await user.save();
+  }
+
+  notifyStaff(req, 'updated');
+  res.json({
+    success: true,
+    data: {
+      _id: user._id,
+      credentialsWhatsAppSentAt: user.credentialsWhatsAppSentAt,
+    },
+  });
+});
+
 module.exports = {
   listUsers,
   exportParentCredentialsFile,
@@ -834,4 +880,5 @@ module.exports = {
   revokeModulePermissions,
   getParentStudents,
   patchParentStudents,
+  markCredentialsWhatsAppSent,
 };

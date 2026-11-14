@@ -15,6 +15,7 @@ import {
   Loader2,
   Lock,
   Mail,
+  MessageCircle,
   Pencil,
   Phone,
   Plus,
@@ -40,12 +41,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { resolveUploadUrl } from "@/lib/api";
 import type { ModuleActionCaps } from "@/lib/permissions";
+import { shareParentPortalOnWhatsApp } from "@/lib/whatsappShare";
 import {
   assignParentStudents,
   bulkUsersAction,
   fetchModuleRegistry,
   fetchParentStudents,
   fetchUsersByScope,
+  markParentCredentialsWhatsAppSent,
   normalizeModulePermissions,
   roleDisplayLabel,
   displayEmail,
@@ -1011,38 +1014,94 @@ export default function UserDetailPage({
           </div>
       </div>
 
-        {caps.canEdit && (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button className="h-10 gap-2" asChild>
-              <Link to={editHref}>
-                <Pencil className="h-4 w-4" />
-                Edit Parent
-              </Link>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-10 gap-2 border-rose-300 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-              disabled={resetMutation.isPending}
-              onClick={() => {
-                if (
-                  !window.confirm(
-                    `Reset password for ${account.name} to ${DEFAULT_PARENT_PASSWORD}?`,
-                  )
-                ) {
-                  return;
-                }
-                resetMutation.mutate();
-              }}
-            >
-              {resetMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Lock className="h-4 w-4" />
-              )}
-              Reset Password
-            </Button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            className={cn(
+              "h-10 gap-2",
+              account.credentialsWhatsAppSentAt
+                ? "cursor-not-allowed bg-muted text-muted-foreground hover:bg-muted"
+                : "bg-[#25D366] text-white hover:bg-[#1ebe57]",
+            )}
+            disabled={Boolean(account.credentialsWhatsAppSentAt)}
+            title={
+              account.credentialsWhatsAppSentAt
+                ? "Already sent — locked until password reset"
+                : "Send login + app download on WhatsApp"
+            }
+            onClick={() => {
+              if (account.credentialsWhatsAppSentAt) return;
+              shareParentPortalOnWhatsApp({
+                students:
+                  students.length > 0
+                    ? students.map((s) => ({
+                        studentName: s.studentName,
+                        studentId: s.studentId,
+                        className: s.className,
+                        sectionName: s.sectionName,
+                      }))
+                    : [{ studentName: account.name, studentId: "—" }],
+                parentEmail: account.email,
+                parentPassword: DEFAULT_PARENT_PASSWORD,
+                phone: account.phone,
+              });
+              void markParentCredentialsWhatsAppSent(account._id)
+                .then(() => {
+                  void qc.invalidateQueries({ queryKey: ["users-module-list", scope] });
+                  toast({
+                    title: "Credentials sent",
+                    description: "WhatsApp share is locked for this parent.",
+                  });
+                })
+                .catch((e: Error) => {
+                  toast({
+                    title: "Could not lock share",
+                    description: e.message,
+                    variant: "destructive",
+                  });
+                });
+            }}
+          >
+            {account.credentialsWhatsAppSentAt ? (
+              <Lock className="h-4 w-4" />
+            ) : (
+              <MessageCircle className="h-4 w-4" />
+            )}
+            {account.credentialsWhatsAppSentAt ? "Already sent" : "Send on WhatsApp"}
+          </Button>
+          {caps.canEdit && (
+            <>
+              <Button className="h-10 gap-2" asChild>
+                <Link to={editHref}>
+                  <Pencil className="h-4 w-4" />
+                  Edit Parent
+                </Link>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-10 gap-2 border-rose-300 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                disabled={resetMutation.isPending}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Reset password for ${account.name} to ${DEFAULT_PARENT_PASSWORD}?`,
+                    )
+                  ) {
+                    return;
+                  }
+                  resetMutation.mutate();
+                }}
+              >
+                {resetMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Lock className="h-4 w-4" />
+                )}
+                Reset Password
+              </Button>
+            </>
+          )}
+        </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full flex flex-wrap h-auto gap-0.5 p-0.5 bg-muted/40">
