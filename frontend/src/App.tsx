@@ -1,7 +1,9 @@
 import { Suspense, lazy, useEffect } from "react";
 import AcademyLoader from "@/components/AcademyLoader";
 import AppApkUpdateNotice from "@/components/AppApkUpdateNotice";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, type Query } from "@tanstack/react-query";
+import { PersistQueryClientProvider, removeOldestQuery } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { getSession, USER_KEY } from "@/lib/auth";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -22,11 +24,57 @@ const Login = lazy(() => import("./pages/Login"));
 const Panel = lazy(() => import("./pages/Panel"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
+/**
+ * Instant screens: the data each screen loaded last time is saved on the device
+ * (localStorage, one copy per signed-in user) and shown immediately on the next open, while
+ * the screen refreshes it from the server in the background (anything older than 30 s is
+ * refetched). The copy is deleted on logout / user change (ClearCacheOnUserChange below).
+ * Chat messages and searches are not saved (they change constantly and can be large).
+ */
+const DATA_CACHE_KEY = "tca-data-cache";
+const DATA_CACHE_MAX_AGE = 24 * 60 * 60_000;
+const dataCacheKeyFor = (userId: string | null | undefined) => `${DATA_CACHE_KEY}:${userId ?? "signed-out"}`;
+
+const dataCachePersister = createSyncStoragePersister({
+  key: DATA_CACHE_KEY,
+  throttleTime: 1000,
+  retry: removeOldestQuery, // storage full: drop the oldest screens' data and try again
+  storage:
+    typeof window === "undefined"
+      ? undefined
+      : {
+          // Always read/write the copy of whoever is signed in right now.
+          getItem: () => {
+            try {
+              return window.localStorage.getItem(dataCacheKeyFor(getSession()?.id));
+            } catch {
+              return null;
+            }
+          },
+          setItem: (_key: string, value: string) => window.localStorage.setItem(dataCacheKeyFor(getSession()?.id), value),
+          removeItem: () => {
+            try {
+              window.localStorage.removeItem(dataCacheKeyFor(getSession()?.id));
+            } catch {
+              /* storage unavailable */
+            }
+          },
+        },
+});
+
+function shouldSaveQuery(query: Query) {
+  if (query.state.status !== "success") return false;
+  const key = query.queryKey.map((part) => (typeof part === "string" ? part.toLowerCase() : ""));
+  if (key[0] === "chat" && key[1] !== "conversations") return false; // messages, media, search
+  return !key.some((part) => part.includes("search"));
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
-      gcTime: 5 * 60_000,
+      // Must outlive the saved copy, or screens not opened recently drop out of it.
+      gcTime: DATA_CACHE_MAX_AGE,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       retry: 1,
@@ -58,8 +106,17 @@ function ClearCacheOnUserChange() {
       const userId = getSession()?.id ?? null;
       if (userId === lastUserId) return;
       const hadUser = lastUserId !== null;
+      const previousUserId = lastUserId;
       lastUserId = userId;
-      if (hadUser) queryClient.clear();
+      if (hadUser) {
+        queryClient.clear();
+        // Also delete the previous user's saved copy on this device.
+        try {
+          window.localStorage.removeItem(dataCacheKeyFor(previousUserId));
+        } catch {
+          /* storage unavailable */
+        }
+      }
     };
     const onStorage = (e: StorageEvent) => {
       if (e.key === null || e.key === USER_KEY) check();
@@ -75,7 +132,15 @@ function ClearCacheOnUserChange() {
 }
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
+  <PersistQueryClientProvider
+    client={queryClient}
+    persistOptions={{
+      persister: dataCachePersister,
+      maxAge: DATA_CACHE_MAX_AGE,
+      buster: "v1",
+      dehydrateOptions: { shouldDehydrateQuery: shouldSaveQuery },
+    }}
+  >
     <ClearCacheOnUserChange />
     <TooltipProvider delayDuration={300}>
       <Toaster />
@@ -113,7 +178,7 @@ const App = () => (
         </Suspense>
       </BrowserRouter>
     </TooltipProvider>
-  </QueryClientProvider>
+  </PersistQueryClientProvider>
 );
 
 export default App;

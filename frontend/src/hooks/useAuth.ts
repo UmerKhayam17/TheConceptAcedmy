@@ -13,7 +13,11 @@ export type AuthState = {
  * page load (not once per component), and the snapshot only changes when the stored
  * user actually changes — so cross-tab events no longer re-render the whole panel.
  */
-let snapshot: AuthState = { user: getSession(), loading: true };
+// Signed in before on this device? Show the panel straight away with the saved user (and the
+// saved screen data) while the session is confirmed in the background; API calls wait for the
+// same token refresh, and a rejected session still sends the user to the login page.
+// No saved user: wait for the restore as before.
+let snapshot: AuthState = { user: getSession(), loading: getSession() === null };
 let userKey = JSON.stringify(snapshot.user);
 let started = false;
 const listeners = new Set<() => void>();
