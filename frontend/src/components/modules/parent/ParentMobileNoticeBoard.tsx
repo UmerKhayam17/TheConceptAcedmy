@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   CalendarDays,
   ChevronDown,
   Eye,
@@ -10,6 +9,8 @@ import {
   X,
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import ParentEmptyMessage from "@/components/modules/parent/ParentEmptyMessage";
+import ParentMobilePageHeader from "@/components/modules/parent/ParentMobilePageHeader";
 import { ParentOptionSheet } from "@/components/modules/parent/ParentOptionSheet";
 import { resolveUploadUrl } from "@/lib/api";
 import { fetchAnnouncements, type Announcement } from "@/lib/announcementApi";
@@ -134,7 +135,7 @@ function ImageGallery({
   const current = images[Math.min(index, images.length - 1)];
   return createPortal(
     <div className="fixed inset-0 z-[85] flex flex-col bg-black/92" onClick={onClose}>
-      <div className="flex items-center justify-between px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <div className="flex items-center justify-between px-4 pb-2 pt-[calc(var(--safe-top)+0.5rem)]">
         <p className="text-[14px] font-semibold text-white">
           {index + 1} / {images.length}
         </p>
@@ -294,19 +295,7 @@ export default function ParentMobileNoticeBoard() {
 
   return (
     <div className="min-h-full bg-white pb-10">
-      <header className="relative flex items-center px-4 pb-1 pt-[max(0.65rem,env(safe-area-inset-top))]">
-        <button
-          type="button"
-          onClick={() => navigate("/panel/parent")}
-          aria-label="Back"
-          className="grid h-9 w-9 place-items-center rounded-full bg-[#D6F4F8] text-[#1EB8C9]"
-        >
-          <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.5} />
-        </button>
-        <h1 className="absolute left-1/2 -translate-x-1/2 text-[22px] font-extrabold tracking-tight text-[#102A43]">
-          Notice Board
-        </h1>
-      </header>
+      <ParentMobilePageHeader title="Notice Board" onBack={() => navigate("/panel/parent")} />
 
       <div className="px-5 pt-3">
         <button
@@ -331,12 +320,12 @@ export default function ParentMobileNoticeBoard() {
         ) : null}
 
         {!isLoading && filtered.length === 0 ? (
-          <div className="rounded-[20px] bg-white px-4 py-12 text-center shadow-[0_6px_18px_rgba(15,23,42,0.04)]">
-            <p className="text-[16px] font-bold text-[#102A43]">No notices yet</p>
-            <p className="mt-1 text-[14px] font-medium text-[#94A3B8]">
+          <ParentEmptyMessage>
+            No notices yet
+            <span className="mt-1.5 block text-[14px] font-medium text-[#64748B]">
               School notices will appear here.
-            </p>
-          </div>
+            </span>
+          </ParentEmptyMessage>
         ) : null}
 
         <div className="relative">

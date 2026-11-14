@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import {
-  ArrowLeft,
   ChevronRight,
   Download,
   FileText,
@@ -19,6 +18,8 @@ import {
   type AcademyStudent,
   type AcademyStudentRecord,
 } from "@/lib/studentManagementApi";
+import ParentEmptyMessage from "@/components/modules/parent/ParentEmptyMessage";
+import ParentMobilePageHeader from "@/components/modules/parent/ParentMobilePageHeader";
 import { classLabel, MONTH_NAMES } from "@/components/modules/student-management/studentDisplayUtils";
 import { cn } from "@/lib/utils";
 
@@ -102,30 +103,6 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ScreenHeader({
-  title,
-  onBack,
-}: {
-  title: string;
-  onBack: () => void;
-}) {
-  return (
-    <header className="relative flex items-center px-4 pb-2 pt-[max(0.7rem,env(safe-area-inset-top))]">
-      <button
-        type="button"
-        onClick={onBack}
-        aria-label="Back"
-        className="grid h-9 w-9 place-items-center rounded-full bg-[#D6F4F8] text-[#1F2937]"
-      >
-        <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
-      </button>
-      <h1 className="absolute left-1/2 max-w-[70%] -translate-x-1/2 truncate text-center text-[22px] font-extrabold tracking-tight text-[#111827]">
-        {title}
-      </h1>
-    </header>
-  );
-}
-
 export default function ParentMobileFees({
   onBack,
   student,
@@ -195,7 +172,7 @@ export default function ParentMobileFees({
 
     return (
       <div className="min-h-full bg-white pb-10">
-        <ScreenHeader title="Voucher" onBack={() => setSelectedId(null)} />
+        <ParentMobilePageHeader title="Voucher" onBack={() => setSelectedId(null)} />
 
         <div className="mx-4 mt-2 space-y-3.5">
           <section className="overflow-hidden rounded-[22px] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
@@ -321,10 +298,10 @@ export default function ParentMobileFees({
 
   return (
     <div className="min-h-full bg-white pb-10">
-      <ScreenHeader title="Fee" onBack={onBack} />
+      <ParentMobilePageHeader title="Fee" onBack={onBack} />
 
-      <div className="mx-4 mt-1 flex items-center gap-3 rounded-[18px] bg-[#E7F8F4] px-3.5 py-3">
-        <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-white text-[#8E99A8]">
+      <div className="mx-4 mt-1 flex items-center gap-3 rounded-[18px] bg-[#FEF6DC] px-3.5 py-3">
+        <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-white text-[#D97706]">
           {photo ? (
             <img src={photo} alt="" className="h-full w-full object-cover" />
           ) : (
@@ -332,10 +309,10 @@ export default function ParentMobileFees({
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[18px] font-extrabold text-[#102A43]">
+          <p className="truncate text-[18px] font-extrabold text-[#78350F]">
             {loading ? "Loading…" : student?.studentName || "No child linked"}
           </p>
-          <p className="mt-0.5 truncate text-[16px] font-bold text-[#0F3A4A]">{classLine || "—"}</p>
+          <p className="mt-0.5 truncate text-[16px] font-bold text-[#92400E]">{classLine || "—"}</p>
         </div>
       </div>
 
@@ -407,20 +384,18 @@ export default function ParentMobileFees({
             ) : null}
 
             {filtered.length === 0 ? (
-              <div className="rounded-[22px] bg-white px-4 py-12 text-center shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-                <p className="text-[16px] font-bold text-[#102A43]">
-                  {filter === "due"
-                    ? "No dues"
-                    : filter === "paid"
-                      ? "No paid vouchers yet"
-                      : "No fee vouchers yet"}
-                </p>
-                <p className="mt-1 text-[14px] font-medium text-[#94A3B8]">
+              <ParentEmptyMessage>
+                {filter === "due"
+                  ? "No dues"
+                  : filter === "paid"
+                    ? "No paid vouchers yet"
+                    : "No fee vouchers yet"}
+                <span className="mt-1.5 block text-[14px] font-medium text-[#64748B]">
                   {filter === "all"
                     ? "Invoices from the school will show up here."
                     : "Try another filter."}
-                </p>
-              </div>
+                </span>
+              </ParentEmptyMessage>
             ) : (
               <ul className="overflow-hidden rounded-[22px] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
                 {filtered.map((fee, index) => (

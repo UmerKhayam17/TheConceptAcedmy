@@ -278,7 +278,27 @@ export default function ParentDashboard({
     } catch {
       /* ignore */
     }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("parent-child-changed"));
+    }
   }, [selectedId]);
+
+  useEffect(() => {
+    const sync = () => {
+      try {
+        const next = localStorage.getItem("parent_selected_student_id") || "";
+        if (next) setSelectedId(next);
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("parent-child-changed", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("parent-child-changed", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   const { data: record, isLoading: recordLoading } = useQuery({
     queryKey: ["parent-dashboard-record", selectedId],

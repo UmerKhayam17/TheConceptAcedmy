@@ -5,7 +5,9 @@ import {
   ArrowLeftRight,
   BarChart3,
   // Brain, // used by the hidden Online Quiz tile
+  CalendarClock,
   CalendarDays,
+  CalendarRange,
   Check,
   ChevronRight,
   FileText,
@@ -23,6 +25,7 @@ import { testExamsHref } from "@/lib/testExamsMenus";
 import { resolveUploadUrl, type AcademyStudent, type AcademyStudentRecord } from "@/lib/studentManagementApi";
 import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
 import ParentMobileFees from "@/components/modules/parent/ParentMobileFees";
+import ParentMobileCalendar from "@/components/modules/parent/ParentMobileCalendar";
 import { cn } from "@/lib/utils";
 
 const ROLE = "parent" as const;
@@ -124,6 +127,16 @@ const TILES: {
       label: "text-[#365314]",
     },
   },
+  {
+    label: "Timetable",
+    to: timetableHref(ROLE, "view"),
+    Icon: CalendarClock,
+    tone: {
+      card: "border-[#C4B5FD] bg-gradient-to-b from-[#EDE9FE] to-[#DDD6FE] shadow-[0_10px_22px_rgba(109,40,217,0.18)]",
+      icon: "text-[#5B21B6]",
+      label: "text-[#1E1B4B]",
+    },
+  },
 ];
 
 const ROWS: {
@@ -135,7 +148,14 @@ const ROWS: {
   tone: Tone;
 }[] = [
   { label: "Fee", hint: "Invoices, dues & payment history", view: "fees", Icon: Receipt, tone: { wrap: "bg-[#BBF7D0]", icon: "text-[#16A34A]" } },
-  { label: "Timetable", hint: "Weekly class schedule", to: timetableHref(ROLE, "view"), Icon: CalendarDays, tone: { wrap: "bg-[#BFDBFE]", icon: "text-[#2563EB]" } },
+  // Timetable moved up into the tile grid.
+  {
+    label: "Academic Calendar",
+    hint: "Holidays, events & important dates",
+    view: "calendar",
+    Icon: CalendarRange,
+    tone: { wrap: "bg-[#FDE68A]", icon: "text-[#B45309]" },
+  },
 ];
 
 function greeting() {
@@ -272,7 +292,8 @@ export default function ParentMobileHome({
 }) {
   const [params, setParams] = useSearchParams();
   const { setOpenMobile } = useSidebar();
-  const view = params.get("view") === "fees" ? "fees" : "";
+  const rawView = params.get("view");
+  const view = rawView === "fees" || rawView === "calendar" ? rawView : "";
   const student = record?.student || students.find((s) => s._id === selectedId);
   const displayName = student?.studentName || parentName || "Parent";
 
@@ -305,9 +326,19 @@ export default function ParentMobileHome({
     );
   }
 
+  if (view === "calendar") {
+    return (
+      <ParentMobileCalendar
+        onBack={closeView}
+        student={student}
+        loading={studentsLoading || recordLoading}
+      />
+    );
+  }
+
   return (
     <div className="min-h-full bg-[#F4F6F8] pb-8">
-      <header className="relative overflow-hidden bg-gradient-to-b from-[#2ED3E0] via-[#18C3D4] to-[#12B3C8] px-4 pb-16 pt-[max(0.85rem,env(safe-area-inset-top))] text-white">
+      <header className="relative overflow-hidden bg-gradient-to-b from-[#2ED3E0] via-[#18C3D4] to-[#12B3C8] px-4 pb-16 pt-[calc(var(--safe-top)+0.5rem)] text-white">
         <div className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 rounded-full border border-white/15" />
         <div className="pointer-events-none absolute right-6 top-16 h-24 w-24 rounded-full border border-white/10" />
         <div className="relative flex items-start justify-between">

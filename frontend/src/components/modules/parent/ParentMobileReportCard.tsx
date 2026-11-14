@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Download, UserRound } from "lucide-react";
+import { Download, UserRound } from "lucide-react";
+import ParentEmptyMessage from "@/components/modules/parent/ParentEmptyMessage";
+import ParentMobilePageHeader from "@/components/modules/parent/ParentMobilePageHeader";
 import { ParentOptionField } from "@/components/modules/parent/ParentOptionSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -339,31 +341,24 @@ export default function ParentMobileReportCard() {
 
   return (
     <div className="min-h-full bg-white pb-8">
-      <header className="relative flex items-center px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <button
-          type="button"
-          onClick={() => (viewing ? setViewing(false) : navigate("/panel/parent"))}
-          aria-label="Back"
-          className="grid h-9 w-9 place-items-center text-[#1F2937]"
-        >
-          <ArrowLeft className="h-5 w-5" strokeWidth={2.25} />
-        </button>
-        <h1 className="absolute left-1/2 -translate-x-1/2 text-[20px] font-extrabold tracking-tight text-[#1A1A2E]">
-          Result Card
-        </h1>
-        <button
-          type="button"
-          onClick={onDownload}
-          disabled={downloading || !reportRows.length}
-          aria-label="Download result card"
-          className="ml-auto grid h-10 w-10 place-items-center rounded-full bg-[#22C5D6] text-white shadow-sm disabled:opacity-40"
-        >
-          <Download className="h-[18px] w-[18px]" strokeWidth={2.25} />
-        </button>
-      </header>
+      <ParentMobilePageHeader
+        title="Result Card"
+        onBack={() => (viewing ? setViewing(false) : navigate("/panel/parent"))}
+        trailing={
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={downloading || !reportRows.length}
+            aria-label="Download result card"
+            className="grid h-10 w-10 place-items-center rounded-full bg-[#22C5D6] text-white shadow-sm disabled:opacity-40"
+          >
+            <Download className="h-[18px] w-[18px]" strokeWidth={2.25} />
+          </button>
+        }
+      />
 
-      <div className="mx-4 flex items-center gap-3 rounded-[16px] bg-[#E5F8F4] px-3 py-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-white text-[#B0B8C4]">
+      <div className="mx-4 flex items-center gap-3 rounded-[16px] bg-[#FEF6DC] px-3 py-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-white text-[#D97706]">
           {photo ? (
             <img src={photo} alt="" className="h-full w-full object-cover" />
           ) : (
@@ -375,7 +370,7 @@ export default function ParentMobileReportCard() {
             <ParentOptionField
               sheetTitle="Child"
               value={childId}
-              valueClassName="text-[18px] font-extrabold text-[#102A43]"
+              valueClassName="text-[18px] font-extrabold text-[#78350F]"
               options={children.map((child) => ({ value: child._id, label: child.studentName }))}
               onChange={(id) => {
                 setChildId(id);
@@ -384,11 +379,11 @@ export default function ParentMobileReportCard() {
               }}
             />
           ) : (
-            <p className="truncate text-[18px] font-extrabold text-[#102A43]">
+            <p className="truncate text-[18px] font-extrabold text-[#78350F]">
               {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
             </p>
           )}
-          <p className="mt-0.5 truncate text-[16px] font-bold text-[#0F3A4A]">
+          <p className="mt-0.5 truncate text-[16px] font-bold text-[#92400E]">
             {selected ? classSectionLine(selected) || "—" : "—"}
           </p>
         </div>
@@ -464,9 +459,9 @@ export default function ParentMobileReportCard() {
             View Results
           </button>
           {!loading && selected && reportRows.length === 0 ? (
-            <p className="mt-3 text-center text-[12px] text-[#94A3B8]">
-              Published exam and test results for this child will show here.
-            </p>
+            <ParentEmptyMessage className="min-h-[36vh]">
+              No published results for this child yet.
+            </ParentEmptyMessage>
           ) : null}
         </section>
       )}

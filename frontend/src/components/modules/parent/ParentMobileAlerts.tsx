@@ -19,6 +19,8 @@ import ParentChildSelectBanner, {
   notificationBelongsToChild,
   useParentSelectedChild,
 } from "@/components/modules/parent/ParentChildSelectBanner";
+import ParentEmptyMessage from "@/components/modules/parent/ParentEmptyMessage";
+import ParentMobilePageHeader from "@/components/modules/parent/ParentMobilePageHeader";
 import {
   fetchNotifications,
   markNotificationRead,
@@ -178,15 +180,16 @@ export default function ParentMobileAlerts() {
 
   return (
     <div className="flex min-h-full flex-col bg-white">
-      <header className="px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <h1 className="text-center text-[22px] font-extrabold tracking-tight text-[#111827]">
-          Notifications
-        </h1>
-      </header>
+      <ParentMobilePageHeader title="Notifications" />
 
       <ParentChildSelectBanner className="mb-3" />
 
-      <div className={cn("flex-1 space-y-3 px-4 pb-5")}>
+      <div
+        className={cn(
+          "flex flex-1 flex-col px-4 pb-5",
+          (unseen.length > 0 || seen.length > 0) && "space-y-3",
+        )}
+      >
         {isLoading ? (
           <div className="space-y-1.5">
             <div className="h-16 animate-pulse rounded-[16px] bg-white/70" />
@@ -194,12 +197,12 @@ export default function ParentMobileAlerts() {
           </div>
         ) : null}
         {isError ? (
-          <p className="py-8 text-center text-sm text-slate-500">Could not load alerts.</p>
+          <ParentEmptyMessage>Could not load alerts.</ParentEmptyMessage>
         ) : null}
         {!isLoading && !isError && items.length === 0 ? (
-          <p className="py-12 text-center text-sm text-slate-500">
+          <ParentEmptyMessage>
             No alerts for {selected?.studentName || "this student"} yet.
-          </p>
+          </ParentEmptyMessage>
         ) : null}
         <Section label="Unseen" items={unseen} onOpen={(item) => void openNotification(item)} />
         <Section label="Seen" items={seen} onOpen={(item) => void openNotification(item)} />

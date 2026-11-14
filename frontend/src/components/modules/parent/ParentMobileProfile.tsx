@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, UserRound } from "lucide-react";
+import { UserRound } from "lucide-react";
+import ParentMobilePageHeader from "@/components/modules/parent/ParentMobilePageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { usePanelSessionOptional } from "@/components/panel-header/PanelSessionContext";
 import { resolveUploadUrl } from "@/lib/api";
@@ -124,19 +125,7 @@ export default function ParentMobileProfile() {
 
   return (
     <div className="min-h-full bg-white pb-10">
-      <header className="relative flex items-center bg-white px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <button
-          type="button"
-          onClick={() => navigate("/panel/parent")}
-          aria-label="Back"
-          className="grid h-9 w-9 place-items-center rounded-full text-[#22C5D6]"
-        >
-          <ArrowLeft className="h-5 w-5" strokeWidth={2.5} />
-        </button>
-        <h1 className="absolute left-1/2 -translate-x-1/2 text-[22px] font-extrabold tracking-tight text-[#111827]">
-          Profile
-        </h1>
-      </header>
+      <ParentMobilePageHeader title="Profile" onBack={() => navigate("/panel/parent")} />
 
       <div className="space-y-4 px-4 pt-4">
         <section className="flex flex-col items-center rounded-[22px] bg-white px-4 py-6 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">

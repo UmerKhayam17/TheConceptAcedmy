@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowLeft,
   BookOpen,
   CalendarDays,
   ChevronRight,
@@ -13,6 +12,7 @@ import {
   Plane,
   UserRound,
 } from "lucide-react";
+import ParentMobilePageHeader from "@/components/modules/parent/ParentMobilePageHeader";
 import { ParentOptionField } from "@/components/modules/parent/ParentOptionSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { usePanelSessionOptional } from "@/components/panel-header/PanelSessionContext";
@@ -182,9 +182,9 @@ function groupAcademicEvents(events: CalendarEvent[]): AssessmentGroup[] {
 
 function EmptyState({ icon: Icon, message }: { icon: LucideIcon; message: string }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-      <Icon className="h-14 w-14 text-[#D5DEE7]" strokeWidth={1.25} />
-      <p className="mt-4 text-[15px] font-medium text-[#94A3B8]">{message}</p>
+    <div className="flex min-h-[52vh] flex-1 flex-col items-center justify-center px-6 text-center">
+      <Icon className="h-14 w-14 text-[#94A3B8]" strokeWidth={1.5} />
+      <p className="mt-4 max-w-[300px] text-[16px] font-semibold leading-snug text-[#334155]">{message}</p>
     </div>
   );
 }
@@ -207,8 +207,8 @@ function StudentSwitcher({
   const classLine = display ? classSectionLine(display) : "";
 
   return (
-    <div className="mx-4 flex items-center gap-3 rounded-[16px] border border-[#D7EEF3] bg-[#EAF8FB] px-3 py-3">
-      <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-white text-[#8E99A8]">
+    <div className="mx-4 flex items-center gap-3 rounded-[16px] bg-[#FEF6DC] px-3 py-3">
+      <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-white text-[#D97706]">
         {photo ? (
           <img src={photo} alt="" className="h-full w-full object-cover" />
         ) : (
@@ -222,14 +222,14 @@ function StudentSwitcher({
             value={studentId}
             onChange={onSelect}
             options={childList.map((child) => ({ value: child._id, label: child.studentName }))}
-            valueClassName="text-[18px] font-extrabold text-[#102A43]"
+            valueClassName="text-[18px] font-extrabold text-[#78350F]"
           />
         ) : (
-          <p className="truncate text-[18px] font-extrabold text-[#102A43]">
+          <p className="truncate text-[18px] font-extrabold text-[#78350F]">
             {childrenLoading ? "Loading…" : display?.studentName || "No child linked"}
           </p>
         )}
-        <p className="mt-0.5 truncate text-[16px] font-bold text-[#0F3A4A]">
+        <p className="mt-0.5 truncate text-[16px] font-bold text-[#92400E]">
           {classLine || "—"}
         </p>
       </div>
@@ -777,25 +777,16 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
 
   return (
     <div className="min-h-full bg-white pb-10">
-      <header className="relative flex items-center px-4 pb-2 pt-[max(0.7rem,env(safe-area-inset-top))]">
-        <button
-          type="button"
-          onClick={() => {
-            if (openGroupId) {
-              setOpenGroupId(null);
-              return;
-            }
-            navigate("/panel/parent");
-          }}
-          aria-label="Back"
-          className="grid h-9 w-9 place-items-center rounded-full bg-[#D6F4F8] text-[#1F2937]"
-        >
-          <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
-        </button>
-        <h1 className="absolute left-1/2 max-w-[70%] -translate-x-1/2 truncate text-center text-[22px] font-extrabold tracking-tight text-[#102A43]">
-          {openGroup ? openGroup.title : "Academics"}
-        </h1>
-      </header>
+      <ParentMobilePageHeader
+        title={openGroup ? openGroup.title : "Academics"}
+        onBack={() => {
+          if (openGroupId) {
+            setOpenGroupId(null);
+            return;
+          }
+          navigate("/panel/parent");
+        }}
+      />
 
       <div className="mt-2">
         {student || childrenLoading || children.length > 0 ? (

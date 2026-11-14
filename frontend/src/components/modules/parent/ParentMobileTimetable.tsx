@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Check, Clock3, Coffee, UserRound } from "lucide-react";
+import { Check, Clock3, Coffee, UserRound } from "lucide-react";
+import ParentEmptyMessage from "@/components/modules/parent/ParentEmptyMessage";
+import ParentMobilePageHeader from "@/components/modules/parent/ParentMobilePageHeader";
 import { ParentOptionField } from "@/components/modules/parent/ParentOptionSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
@@ -213,22 +215,10 @@ export default function ParentMobileTimetable({ sessionId }: { sessionId: string
 
   return (
     <div className="min-h-full bg-white pb-8">
-      <header className="relative flex items-center px-4 pb-3 pt-[max(0.7rem,env(safe-area-inset-top))]">
-        <button
-          type="button"
-          onClick={() => navigate("/panel/parent")}
-          aria-label="Back"
-          className="grid h-9 w-9 place-items-center rounded-full bg-[#D6F4F8] text-[#1F2937]"
-        >
-          <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
-        </button>
-        <h1 className="absolute left-1/2 -translate-x-1/2 text-[22px] font-extrabold tracking-tight text-[#111827]">
-          Timetable
-        </h1>
-      </header>
+      <ParentMobilePageHeader title="Timetable" onBack={() => navigate("/panel/parent")} />
 
-      <div className="mx-4 flex items-center gap-3 rounded-[16px] bg-[#E5F8F4] px-3 py-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-white text-[#B0B8C4]">
+      <div className="mx-4 flex items-center gap-3 rounded-[16px] bg-[#FEF6DC] px-3 py-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-white text-[#D97706]">
           {photo ? <img src={photo} alt="" className="h-full w-full object-cover" /> : <UserRound className="h-5 w-5" />}
         </span>
         <div className="min-w-0 flex-1">
@@ -237,15 +227,15 @@ export default function ParentMobileTimetable({ sessionId }: { sessionId: string
               sheetTitle="Child"
               value={childId}
               onChange={setChildId}
-              valueClassName="text-[18px] font-extrabold text-[#102A43]"
+              valueClassName="text-[18px] font-extrabold text-[#78350F]"
               options={children.map((child) => ({ value: child._id, label: child.studentName }))}
             />
           ) : (
-            <p className="truncate text-[18px] font-extrabold text-[#102A43]">
+            <p className="truncate text-[18px] font-extrabold text-[#78350F]">
               {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
             </p>
           )}
-          <p className="mt-0.5 truncate text-[16px] font-bold text-[#0F3A4A]">
+          <p className="mt-0.5 truncate text-[16px] font-bold text-[#92400E]">
             {selected ? classSectionLine(selected) || "—" : "—"}
           </p>
         </div>
@@ -270,27 +260,19 @@ export default function ParentMobileTimetable({ sessionId }: { sessionId: string
         })}
       </div>
 
-      <div className="mt-3 space-y-3 px-4">
+      <div className={cn("mt-3 flex flex-col px-4", rows.length > 0 && "space-y-3")}>
         {loading ? <div className="h-24 animate-pulse rounded-[18px] bg-white/80" /> : null}
         {!loading && !selected ? (
-          <p className="rounded-[18px] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">
-            Link a student to this parent account to see the timetable.
-          </p>
+          <ParentEmptyMessage>Link a student to this parent account to see the timetable.</ParentEmptyMessage>
         ) : null}
         {!loading && selected && !sectionId ? (
-          <p className="rounded-[18px] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">
-            This child is not in a class section yet.
-          </p>
+          <ParentEmptyMessage>This child is not in a class section yet.</ParentEmptyMessage>
         ) : null}
         {!loading && selected && sectionId && !grid ? (
-          <p className="rounded-[18px] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">
-            No timetable is published for this class yet.
-          </p>
+          <ParentEmptyMessage>No timetable is published for this class yet.</ParentEmptyMessage>
         ) : null}
         {!loading && grid && rows.length === 0 ? (
-          <p className="rounded-[18px] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">
-            No periods on {DAY_LABELS[day]}.
-          </p>
+          <ParentEmptyMessage>No periods on {DAY_LABELS[day]}.</ParentEmptyMessage>
         ) : null}
 
         {grid

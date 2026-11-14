@@ -114,7 +114,7 @@ export default function ParentMobileSidebar({
 
   return (
     <div className="flex h-full flex-col bg-[#F4F6F8]">
-      <header className="relative shrink-0 overflow-hidden bg-gradient-to-b from-[#3B82F6] via-[#22C5D6] to-[#14B8C8] px-5 pb-8 pt-[max(1rem,env(safe-area-inset-top))] text-white">
+      <header className="relative shrink-0 overflow-hidden bg-gradient-to-b from-[#3B82F6] via-[#22C5D6] to-[#14B8C8] px-5 pb-8 pt-[calc(var(--safe-top)+0.5rem)] text-white">
         <div className="pointer-events-none absolute -left-10 top-6 h-36 w-36 rounded-full border border-white/15" />
         <div className="pointer-events-none absolute -right-8 -top-6 h-40 w-40 rounded-full border border-white/15" />
         <div className="pointer-events-none absolute right-10 top-24 h-20 w-20 rounded-full border border-white/10" />
@@ -127,7 +127,7 @@ export default function ParentMobileSidebar({
               onClose();
             }}
             aria-label="Close menu"
-            className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-30 grid h-10 w-10 place-items-center rounded-full bg-white/20 text-white shadow-sm"
+            className="absolute right-3 top-[calc(var(--safe-top)+0.35rem)] z-30 grid h-10 w-10 place-items-center rounded-full bg-white/20 text-white shadow-sm"
           >
             <X className="h-5 w-5" strokeWidth={2.5} />
           </button>

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, Download, UserRound } from "lucide-react";
+import { BookOpen, Download, UserRound } from "lucide-react";
+import ParentEmptyMessage from "@/components/modules/parent/ParentEmptyMessage";
+import ParentMobilePageHeader from "@/components/modules/parent/ParentMobilePageHeader";
 import { ParentOptionField } from "@/components/modules/parent/ParentOptionSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -331,20 +333,10 @@ export default function ParentMobileDateSheet() {
 
   return (
     <div className="min-h-full bg-white pb-8">
-      <header className="relative flex items-center px-4 pb-2 pt-[max(0.7rem,env(safe-area-inset-top))]">
-        <button
-          type="button"
-          onClick={() => navigate("/panel/parent")}
-          aria-label="Back"
-          className="grid h-9 w-9 place-items-center rounded-full bg-[#D6F4F8] text-[#1F2A37]"
-        >
-          <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
-        </button>
-        <h1 className="absolute left-1/2 -translate-x-1/2 text-[22px] font-extrabold tracking-tight text-[#111827]">Date Sheet</h1>
-      </header>
+      <ParentMobilePageHeader title="Date Sheet" onBack={() => navigate("/panel/parent")} />
 
-      <div className="mx-4 flex items-center gap-3 rounded-[18px] bg-[#E7F8F4] px-3.5 py-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full bg-white text-[#8E99A8]">
+      <div className="mx-4 flex items-center gap-3 rounded-[18px] bg-[#FEF6DC] px-3.5 py-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full bg-white text-[#D97706]">
           {photo ? <img src={photo} alt="" className="h-full w-full object-cover" /> : <UserRound className="h-5 w-5" strokeWidth={1.75} />}
         </span>
         <div className="min-w-0 flex-1">
@@ -354,14 +346,14 @@ export default function ParentMobileDateSheet() {
               value={childId}
               onChange={setChildId}
               options={children.map((child) => ({ value: child._id, label: child.studentName }))}
-              valueClassName="text-[18px] font-extrabold text-[#102A43]"
+              valueClassName="text-[18px] font-extrabold text-[#78350F]"
             />
           ) : (
-            <p className="truncate text-[18px] font-extrabold text-[#102A43]">
+            <p className="truncate text-[18px] font-extrabold text-[#78350F]">
               {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
             </p>
           )}
-          <p className="mt-0.5 truncate text-[16px] font-bold text-[#0F3A4A]">
+          <p className="mt-0.5 truncate text-[16px] font-bold text-[#92400E]">
             {classSectionLine(studentClass, studentSection) || "—"}
           </p>
         </div>
@@ -404,9 +396,7 @@ export default function ParentMobileDateSheet() {
       {loading ? <div className="mx-4 mt-3 h-36 animate-pulse rounded-[22px] bg-white/70" /> : null}
 
       {!loading && selectedPapers.length === 0 ? (
-        <p className="px-6 py-10 text-center text-sm text-slate-500">
-          No date sheet is published for this exam yet.
-        </p>
+        <ParentEmptyMessage>No date sheet is published for this exam yet.</ParentEmptyMessage>
       ) : null}
 
       {!loading && selectedPapers.length > 0 ? (

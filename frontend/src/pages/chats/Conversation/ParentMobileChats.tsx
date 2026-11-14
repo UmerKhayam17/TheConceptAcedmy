@@ -13,6 +13,8 @@ import ParentChildSelectBanner, {
   conversationBelongsToChild,
   useParentSelectedChild,
 } from "@/components/modules/parent/ParentChildSelectBanner";
+import ParentEmptyMessage from "@/components/modules/parent/ParentEmptyMessage";
+import ParentMobilePageHeader from "@/components/modules/parent/ParentMobilePageHeader";
 import { cn } from "@/lib/utils";
 
 type StaffUser = {
@@ -115,16 +117,16 @@ export default function ParentMobileChats() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
-      <header className="px-4 pb-2 pt-[max(0.85rem,env(safe-area-inset-top))]">
-        <h1 className="flex items-center justify-center gap-2 text-[22px] font-extrabold tracking-tight text-[#111827]">
-          Chats
-          {unreadTotal > 0 ? (
+      <ParentMobilePageHeader
+        title="Chats"
+        titleExtra={
+          unreadTotal > 0 ? (
             <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#F43F5E] px-1.5 text-[11px] font-bold text-white">
               {unreadTotal > 9 ? "9+" : unreadTotal}
             </span>
-          ) : null}
-        </h1>
-      </header>
+          ) : null
+        }
+      />
 
       <ParentChildSelectBanner className="mb-3" />
 
@@ -147,14 +149,19 @@ export default function ParentMobileChats() {
         </button>
       </div>
 
-      <div className="mt-3 min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 pb-4">
+      <div
+        className={cn(
+          "mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4",
+          filtered.length > 0 && "space-y-2.5",
+        )}
+      >
         {isLoading ? <div className="h-20 animate-pulse rounded-2xl bg-white/70" /> : null}
         {!isLoading && filtered.length === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-500">
+          <ParentEmptyMessage>
             {search.trim()
               ? "No matching chats."
               : `No chats for ${selected?.studentName || "this student"} yet. Start one with school staff.`}
-          </p>
+          </ParentEmptyMessage>
         ) : null}
         {filtered.map((conversation) => {
           const other = conversation.participants?.find(
@@ -266,12 +273,12 @@ function NewChatSheet({ onClose }: { onClose: () => void }) {
             />
           </label>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5">
           <p className="text-[11px] font-bold tracking-[0.14em] text-[#64748B]">SCHOOL STAFF</p>
           <p className="mb-2 mt-3 text-[10px] font-semibold tracking-[0.16em] text-[#94A3B8]">APP INSTALLED</p>
-          {loading ? <p className="py-6 text-sm text-slate-400">Loading staff…</p> : null}
+          {loading ? <ParentEmptyMessage className="min-h-[30vh]">Loading staff…</ParentEmptyMessage> : null}
           {!loading && visible.length === 0 ? (
-            <p className="py-6 text-sm text-slate-400">No staff found.</p>
+            <ParentEmptyMessage className="min-h-[30vh]">No staff found.</ParentEmptyMessage>
           ) : null}
           <ul>
             {visible.map((person) => (

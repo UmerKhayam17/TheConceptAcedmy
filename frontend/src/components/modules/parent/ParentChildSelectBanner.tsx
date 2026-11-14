@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { UserRound } from "lucide-react";
-import { ParentOptionField } from "@/components/modules/parent/ParentOptionSheet";
+import { ChevronDown, UserRound } from "lucide-react";
+import { ParentOptionSheet } from "@/components/modules/parent/ParentOptionSheet";
 import { useAuth } from "@/hooks/useAuth";
 import {
   fetchAcademyStudents,
@@ -10,6 +10,14 @@ import {
 } from "@/lib/studentManagementApi";
 import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
 import { cn } from "@/lib/utils";
+
+const BANNER = {
+  wrap: "bg-[#FEF6DC]",
+  avatar: "bg-white text-[#D97706]",
+  name: "text-[#78350F]",
+  meta: "text-[#92400E]",
+  chevron: "text-[#D97706]",
+} as const;
 
 const STORAGE_KEY = "parent_selected_student_id";
 const CHANGE_EVENT = "parent-child-changed";
@@ -165,40 +173,66 @@ export default function ParentChildSelectBanner({
     setSelectedStudentId,
     selected,
   } = useParentSelectedChild();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const photo = selected?.photoImage ? resolveUploadUrl(selected.photoImage) : "";
   const classLine = selected ? classSectionLine(selected) : "";
+  const canSwitch = children.length > 1;
 
   return (
     <div
       className={cn(
-        "mx-4 flex items-center gap-3 rounded-[18px] bg-[#E7F8F4] px-3.5 py-3",
+        "mx-4 flex items-center gap-3 rounded-[18px] px-3.5 py-3",
+        BANNER.wrap,
         className,
       )}
     >
-      <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-white text-[#8E99A8]">
+      <span
+        className={cn(
+          "grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full",
+          BANNER.avatar,
+        )}
+      >
         {photo ? (
           <img src={photo} alt="" className="h-full w-full object-cover" />
         ) : (
           <UserRound className="h-6 w-6" strokeWidth={1.75} />
         )}
       </span>
-      <div className="min-w-0 flex-1">
-        {children.length > 1 ? (
-          <ParentOptionField
-            sheetTitle="Child"
+      {canSwitch ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          >
+            <span className="min-w-0 flex-1">
+              <span className={cn("block truncate text-[18px] font-extrabold", BANNER.name)}>
+                {selected?.studentName || "Select child"}
+              </span>
+              <span className={cn("mt-0.5 block truncate text-[16px] font-bold", BANNER.meta)}>
+                {classLine || "—"}
+              </span>
+            </span>
+            <ChevronDown className={cn("h-5 w-5 shrink-0", BANNER.chevron)} strokeWidth={2.25} />
+          </button>
+          <ParentOptionSheet
+            open={sheetOpen}
+            title="Child"
             value={selectedStudentId}
-            onChange={setSelectedStudentId}
             options={children.map((child) => ({ value: child._id, label: child.studentName }))}
-            valueClassName="text-[18px] font-extrabold text-[#102A43]"
+            onClose={() => setSheetOpen(false)}
+            onSelect={setSelectedStudentId}
           />
-        ) : (
-          <p className="truncate text-[18px] font-extrabold text-[#102A43]">
+        </>
+      ) : (
+        <div className="min-w-0 flex-1">
+          <p className={cn("truncate text-[18px] font-extrabold", BANNER.name)}>
             {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
           </p>
-        )}
-        <p className="mt-0.5 truncate text-[16px] font-bold text-[#0F3A4A]">{classLine || "—"}</p>
-      </div>
+          <p className={cn("mt-0.5 truncate text-[16px] font-bold", BANNER.meta)}>{classLine || "—"}</p>
+        </div>
+      )}
     </div>
   );
 }

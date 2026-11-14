@@ -108,7 +108,7 @@ export function ParentOptionField({
           <span className={cn("truncate pr-6 text-[15px] font-bold text-[#111827]", valueClassName)}>
             {current?.label || placeholder}
           </span>
-          <ChevronDown className="pointer-events-none absolute right-0 h-4 w-4 text-[#111827]" />
+          <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[#111827]" />
         </span>
         {accent ? <span className="mt-1 block h-0.5 w-14 rounded-full bg-[#22C5D6]" /> : null}
       </button>
