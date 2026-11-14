@@ -284,6 +284,7 @@ export const PARENT_DEFAULT_MODULE_PERMISSIONS: Record<string, string[]> = {
   announcement: ["view"],
   notifications: ["view"],
   academicCalendar: ["view"],
+  profile: ["view"],
 };
 
 /** Modules selectable for parent accounts (portal matrix only). */

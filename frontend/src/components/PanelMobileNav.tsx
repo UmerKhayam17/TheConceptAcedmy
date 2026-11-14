@@ -274,13 +274,7 @@ const PanelMobileNav = ({ user }: { user: SessionUser }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.role, user.modulePermissions, perms, pathname, isAdmin, parentStudents]);
 
-  if (user.role === "parent") {
-    if (
-      pathname.startsWith("/panel/parent/attendance") ||
-      pathname.startsWith("/panel/parent/exams/date-sheet")
-    ) return null;
-    return <ParentMobileTabBar />;
-  }
+  if (user.role === "parent") return <ParentMobileTabBar />;
 
   const primaryActive = tabs.some((t) => t.active);
 

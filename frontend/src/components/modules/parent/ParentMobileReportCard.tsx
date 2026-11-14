@@ -18,18 +18,29 @@ import {
 import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
 import { cn } from "@/lib/utils";
 
+type ReportKind = "test" | "exam";
+
+/** Same two groups as the admin Report Cards page: Class Tests and Exams. */
+const KIND_OPTIONS: { value: ReportKind; label: string }[] = [
+  { value: "test", label: "Test" },
+  { value: "exam", label: "Exam" },
+];
+
 type ReportRow = {
   id: string;
-  kind: "exam" | "test";
+  kind: ReportKind;
+  /** e.g. "Test 1" or the exam title — what the admin list shows in its first column. */
   name: string;
-  term: string;
+  /** e.g. "Weekly Test" or "Mid Term" — the admin "Type" column. */
+  typeLabel: string;
   sortKey: string;
   totalMarks: number;
   obtainedMarks: number;
   percentage: number;
   grade: string;
   examResult?: ExamResult;
-  assessment?: AcademyAssessmentRecord;
+  /** All subject papers of one test (admin groups them into one row). */
+  assessments?: AcademyAssessmentRecord[];
 };
 
 type SubjectLine = {
@@ -80,12 +91,51 @@ function examTitle(result: ExamResult): string {
   return "Exam result";
 }
 
-function examTerm(result: ExamResult): string {
+function examTypeLabel(result: ExamResult): string {
   const exam = result.exam;
-  if (exam && typeof exam === "object") {
-    return String(exam.sessionLabel || exam.type || "Term").replace(/_/g, " ");
-  }
-  return "Term";
+  if (exam && typeof exam === "object" && exam.type) return String(exam.type).replace(/_/g, " ");
+  return "Exam";
+}
+
+function assessmentTypeName(type?: string): string {
+  return (
+    ASSESSMENT_TYPE_LABELS[type as keyof typeof ASSESSMENT_TYPE_LABELS] ||
+    type?.replace(/_/g, " ") ||
+    "Class test"
+  );
+}
+
+type ClassTestRef = Exclude<AcademyAssessmentRecord["classTestId"], string | undefined>;
+
+function classTestOf(item: AcademyAssessmentRecord): ClassTestRef | null {
+  return item.classTestId && typeof item.classTestId === "object" ? item.classTestId : null;
+}
+
+function normalizeTestLabel(value?: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[#.]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+/** Same grouping as the admin Report Cards page: "Test No. 1" Chemistry + Biology = one test. */
+function testBatchKey(item: AcademyAssessmentRecord): string {
+  const test = classTestOf(item);
+  const title = normalizeTestLabel(test?.title || item.title);
+  const series = normalizeTestLabel(test?.seriesLabel);
+  const numbered =
+    title.match(/\btest\s*(?:no|number)?\s*(\d+)\b/) ||
+    series.match(/\btest\s*(?:no|number)?\s*(\d+)\b/);
+  if (numbered) return `test-no-${numbered[1]}`;
+  if (series && test?.occurrenceIndex != null) return `${series}::occ-${test.occurrenceIndex}`;
+  return title || series || test?._id || item._id;
+}
+
+function testBatchName(item: AcademyAssessmentRecord): string {
+  const test = classTestOf(item);
+  if (test?.occurrenceIndex != null) return `Test ${test.occurrenceIndex}`;
+  return test?.title || item.title || assessmentTypeName(item.assessmentType);
 }
 
 function subjectLinesFor(row: ReportRow): SubjectLine[] {
@@ -100,19 +150,19 @@ function subjectLinesFor(row: ReportRow): SubjectLine[] {
       };
     });
   }
-  const subject =
-    row.assessment &&
-    typeof row.assessment.subjectId === "object" &&
-    row.assessment.subjectId &&
-    "subjectName" in row.assessment.subjectId
-      ? String((row.assessment.subjectId as { subjectName?: string }).subjectName || row.name)
-      : row.name;
-  return [{
-    name: subject,
-    total: row.totalMarks,
-    obtained: row.obtainedMarks,
-    grade: row.grade,
-  }];
+  return (row.assessments || []).map((item) => {
+    const pct = item.totalMarks > 0 ? (item.obtainedMarks / item.totalMarks) * 100 : 0;
+    const subject =
+      typeof item.subjectId === "object" && item.subjectId && "subjectName" in item.subjectId
+        ? String((item.subjectId as { subjectName?: string }).subjectName || item.title)
+        : item.title || row.name;
+    return {
+      name: subject,
+      total: item.totalMarks,
+      obtained: item.obtainedMarks,
+      grade: pctToGrade(pct),
+    };
+  });
 }
 
 export default function ParentMobileReportCard() {
@@ -126,7 +176,7 @@ export default function ParentMobileReportCard() {
       return "";
     }
   });
-  const [term, setTerm] = useState("");
+  const [kind, setKind] = useState<ReportKind | "">("");
   const [examId, setExamId] = useState("");
   const [viewing, setViewing] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -179,7 +229,7 @@ export default function ParentMobileReportCard() {
           id: `exam-${result._id}`,
           kind: "exam" as const,
           name: examTitle(result),
-          term: examTerm(result),
+          typeLabel: examTypeLabel(result),
           sortKey: end,
           totalMarks: result.totalMarks,
           obtainedMarks: result.obtainedMarks,
@@ -189,52 +239,51 @@ export default function ParentMobileReportCard() {
         };
       });
 
-    const testRows: ReportRow[] = (assessments as AcademyAssessmentRecord[])
-      .filter((item) => item.obtainedMarks != null && item.totalMarks > 0)
-      .map((item) => {
-        const pct = item.totalMarks > 0 ? (item.obtainedMarks / item.totalMarks) * 100 : 0;
-        const typeLabel =
-          ASSESSMENT_TYPE_LABELS[item.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
-          item.assessmentType?.replace(/_/g, " ") ||
-          "Class test";
-        return {
-          id: `test-${item._id}`,
-          kind: "test" as const,
-          name: item.title || typeLabel,
-          term: typeLabel,
-          sortKey: item.examDate || "",
-          totalMarks: item.totalMarks,
-          obtainedMarks: item.obtainedMarks,
-          percentage: pct,
-          grade: pctToGrade(pct),
-          assessment: item,
-        };
-      });
+    // One row per test, with every subject paper of that test inside it (like admin).
+    const batches = new Map<string, AcademyAssessmentRecord[]>();
+    for (const item of assessments as AcademyAssessmentRecord[]) {
+      if (item.obtainedMarks == null || !(item.totalMarks > 0)) continue;
+      const key = testBatchKey(item);
+      batches.set(key, [...(batches.get(key) || []), item]);
+    }
+    const testRows: ReportRow[] = [...batches.entries()].map(([key, group]) => {
+      const byDate = [...group].sort((a, b) => (a.examDate || "").localeCompare(b.examDate || ""));
+      const primary = byDate[0];
+      const totalMarks = group.reduce((sum, item) => sum + item.totalMarks, 0);
+      const obtainedMarks = group.reduce((sum, item) => sum + (Number(item.obtainedMarks) || 0), 0);
+      const pct = totalMarks > 0 ? (obtainedMarks / totalMarks) * 100 : 0;
+      return {
+        id: `test-${key}`,
+        kind: "test" as const,
+        name: testBatchName(primary),
+        typeLabel: assessmentTypeName(primary.assessmentType),
+        sortKey: byDate[byDate.length - 1].examDate || "",
+        totalMarks,
+        obtainedMarks,
+        percentage: pct,
+        grade: pctToGrade(pct),
+        assessments: byDate,
+      };
+    });
 
     return [...examRows, ...testRows].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
   }, [results, assessments]);
 
-  const terms = useMemo(() => {
-    const latest = new Map<string, string>();
-    for (const row of reportRows) {
-      const key = row.term || "Other";
-      if ((latest.get(key) || "") < row.sortKey) latest.set(key, row.sortKey);
-    }
-    return [...latest.entries()].sort((a, b) => b[1].localeCompare(a[1])).map(([name]) => name);
-  }, [reportRows]);
+  /** Only offer Test / Exam when this child has published results of that kind. */
+  const kindOptions = useMemo(
+    () => KIND_OPTIONS.filter((option) => reportRows.some((row) => row.kind === option.value)),
+    [reportRows],
+  );
 
   useEffect(() => {
-    if (!terms.length) {
-      setTerm("");
+    if (!kindOptions.length) {
+      setKind("");
       return;
     }
-    if (!term || !terms.includes(term)) setTerm(terms[0]);
-  }, [terms, term]);
+    if (!kind || !kindOptions.some((option) => option.value === kind)) setKind(kindOptions[0].value);
+  }, [kindOptions, kind]);
 
-  const exams = useMemo(
-    () => reportRows.filter((row) => (row.term || "Other") === term),
-    [reportRows, term],
-  );
+  const exams = useMemo(() => reportRows.filter((row) => row.kind === kind), [reportRows, kind]);
 
   useEffect(() => {
     if (examId && !exams.some((row) => row.id === examId)) setExamId("");
@@ -258,7 +307,7 @@ export default function ParentMobileReportCard() {
         URL.revokeObjectURL(url);
         return;
       }
-      const classTest = row.assessment?.classTestId;
+      const classTest = row.assessments?.[0]?.classTestId;
       const testId = typeof classTest === "object" && classTest ? classTest._id : typeof classTest === "string" ? classTest : "";
       if (!testId) throw new Error("This result does not have a downloadable card yet.");
       await previewClassTestMarksReportPdf(testId, { view: "student", studentIds: [selected._id] });
@@ -341,7 +390,7 @@ export default function ParentMobileReportCard() {
 
       {viewing && selectedRow ? (
         <section className="mx-4 mt-4 overflow-hidden rounded-[22px] bg-white px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#94A3B8]">{selectedRow.term}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#94A3B8]">{selectedRow.typeLabel}</p>
           <h2 className="mt-1 text-[17px] font-bold text-[#1A1A2E]">{selectedRow.name}</h2>
           <ul className="mt-3">
             {lines.map((line, index) => (
@@ -380,22 +429,22 @@ export default function ParentMobileReportCard() {
         <section className="mx-4 mt-4 rounded-[22px] bg-white px-4 pb-4 pt-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
           <div className="grid grid-cols-2 gap-4">
             <ParentOptionField
-              label="TERM"
-              sheetTitle="Term"
-              value={term}
-              placeholder={loading ? "Loading…" : "No term yet"}
-              options={terms.map((item) => ({ value: item, label: item }))}
+              label="ASSESSMENT TYPE"
+              sheetTitle="Assessment type"
+              value={kind}
+              placeholder={loading ? "Loading…" : "No results yet"}
+              options={kindOptions}
               onChange={(next) => {
-                setTerm(next);
+                setKind(next as ReportKind);
                 setExamId("");
               }}
             />
             <ParentOptionField
-              label="EXAM NAME"
-              sheetTitle="Exam name"
+              label={kind === "test" ? "TEST NAME" : "EXAM NAME"}
+              sheetTitle={kind === "test" ? "Test name" : "Exam name"}
               value={examId}
-              placeholder={loading ? "Loading…" : "No exam yet"}
-              options={exams.map((row) => ({ value: row.id, label: row.name }))}
+              placeholder={loading ? "Loading…" : kind === "test" ? "Select test" : "Select exam"}
+              options={exams.map((row) => ({ value: row.id, label: `${row.name} · ${row.typeLabel}` }))}
               onChange={setExamId}
             />
           </div>

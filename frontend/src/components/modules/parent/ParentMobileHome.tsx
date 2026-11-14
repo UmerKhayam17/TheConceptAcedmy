@@ -13,9 +13,11 @@ import {
   GraduationCap,
   Home,
   Megaphone,
+  Menu,
   Receipt,
   UserRound,
 } from "lucide-react";
+import { useSidebar } from "@/components/ui/sidebar";
 import { moduleHref } from "@/lib/panelMenus";
 import { timetableHref } from "@/lib/timetableMenus";
 import { testExamsHref } from "@/lib/testExamsMenus";
@@ -212,6 +214,7 @@ export default function ParentMobileHome({
   recordLoading: boolean;
 }) {
   const [params, setParams] = useSearchParams();
+  const { setOpenMobile } = useSidebar();
   const view = params.get("view") === "fees" ? "fees" : "";
   const student = record?.student || students.find((s) => s._id === selectedId);
   const displayName = student?.studentName || parentName || "Parent";
@@ -254,18 +257,24 @@ export default function ParentMobileHome({
         <div className="relative flex items-start justify-between">
           <button
             type="button"
-            onClick={cycleChild}
-            aria-label={students.length > 1 ? "Switch child" : "One child linked"}
+            onClick={() => setOpenMobile(true)}
+            aria-label="Open account menu"
             className="grid h-11 w-11 place-items-center rounded-2xl bg-white/20 text-white"
           >
-            <ArrowLeftRight className="h-5 w-5" />
+            <Menu className="h-5 w-5" strokeWidth={2.25} />
           </button>
-          <span
-            aria-hidden
+          <button
+            type="button"
+            onClick={cycleChild}
+            aria-label={students.length > 1 ? "Switch child" : "One child linked"}
             className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-[#7DD3FC] to-[#2563EB] text-white shadow-md ring-2 ring-white/70"
           >
-            <GraduationCap className="h-6 w-6" />
-          </span>
+            {students.length > 1 ? (
+              <ArrowLeftRight className="h-5 w-5" />
+            ) : (
+              <GraduationCap className="h-6 w-6" />
+            )}
+          </button>
         </div>
         <p className="relative mt-5 text-[11px] font-semibold tracking-[0.22em] text-white/90">
           {greeting()}

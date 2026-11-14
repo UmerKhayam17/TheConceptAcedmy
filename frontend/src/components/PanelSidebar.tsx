@@ -31,6 +31,15 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
+import {
+  Sheet,
+  SheetDescription,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Role, SessionUser, logout, panelPathFor } from "@/lib/auth";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -44,6 +53,7 @@ import {
 } from "@/lib/sidebarNav";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
+import ParentMobileSidebar from "@/components/modules/parent/ParentMobileSidebar";
 
 const roleHeader: Record<Role, { title: string; Icon: React.ComponentType<{ className?: string }> }> = {
   admin: { title: "Administrator", Icon: ShieldCheck },
@@ -63,8 +73,44 @@ function activeCollapsibleGroupId(
   return match?.id ?? null;
 }
 
+/**
+ * Picks the sidebar variant. Kept as a separate wrapper so each variant has a fixed set of
+ * hooks: `isMobile` flips after the first render, and an early return inside one component
+ * would change its hook count ("Rendered fewer hooks than expected").
+ */
 const PanelSidebar = ({ user }: { user: SessionUser }) => {
-  const { state } = useSidebar();
+  const { isMobile } = useSidebar();
+  if (user.role === "parent" && isMobile) return <ParentMobileSidebarSheet user={user} />;
+  return <PanelSidebarMain user={user} />;
+};
+
+const ParentMobileSidebarSheet = ({ user }: { user: SessionUser }) => {
+  const { openMobile, setOpenMobile } = useSidebar();
+  return (
+      <Sheet open={openMobile} onOpenChange={setOpenMobile}>
+        <SheetPortal>
+          <SheetOverlay className="bg-[#4B5563]/45" />
+          <SheetPrimitive.Content
+            className={cn(
+              "fixed inset-y-0 left-0 z-50 flex h-full w-[min(22rem,86vw)] flex-col border-0 p-0 shadow-xl",
+              "bg-transparent data-[state=closed]:animate-out data-[state=open]:animate-in",
+              "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
+              "data-[state=closed]:duration-300 data-[state=open]:duration-500",
+            )}
+          >
+            <SheetHeader className="sr-only">
+              <SheetTitle>Account menu</SheetTitle>
+              <SheetDescription>Parent account and preferences</SheetDescription>
+            </SheetHeader>
+            <ParentMobileSidebar user={user} onClose={() => setOpenMobile(false)} />
+          </SheetPrimitive.Content>
+        </SheetPortal>
+      </Sheet>
+  );
+};
+
+const PanelSidebarMain = ({ user }: { user: SessionUser }) => {
+  const { state, isMobile, openMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { pathname } = useLocation();
   const head = roleHeader[user.role];

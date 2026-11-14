@@ -496,6 +496,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     announcements: "view",
     notifications: "view",
     "academic-calendar": "view",
+    settings: "view",
   }),
   student: modulePermMatrix({
     dashboard: "view",
@@ -934,6 +935,12 @@ export function applyBackendModulePermissions(
   // Finance dashboard is a client analytics view for anyone with fee access.
   if (next.fees && next.fees !== "none") {
     next["finance-dashboard"] = "view";
+  }
+
+  // Parent account drawer always needs My Profile (own settings), even when
+  // an older parent account was provisioned without the profile key.
+  if (role === "parent" && (!next.settings || next.settings === "none")) {
+    next.settings = "view";
   }
 
   return next;

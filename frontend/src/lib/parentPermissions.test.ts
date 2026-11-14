@@ -15,7 +15,6 @@ const FORBIDDEN_PARENT_BACKEND_KEYS = [
   "studentRegistration",
   "salary",
   "academyExpense",
-  "profile",
   "parentUsers",
   "staffUsers",
   "adminUsers",
@@ -33,9 +32,10 @@ describe("parent role matrix", () => {
     expect(PARENT_DEFAULT_MODULE_PERMISSIONS.examTests).toEqual(["view"]);
     expect(PARENT_DEFAULT_MODULE_PERMISSIONS.chat).toContain("view");
     expect(PARENT_DEFAULT_MODULE_PERMISSIONS.announcement).toEqual(["view"]);
+    expect(PARENT_DEFAULT_MODULE_PERMISSIONS.profile).toEqual(["view"]);
   });
 
-  it("excludes fees, registration, staff, salary, settings, admin modules", () => {
+  it("excludes fees, registration, staff, salary, admin modules", () => {
     for (const key of FORBIDDEN_PARENT_BACKEND_KEYS) {
       expect(PARENT_DEFAULT_MODULE_PERMISSIONS[key]).toBeUndefined();
     }
@@ -56,7 +56,7 @@ describe("parent role matrix", () => {
     expect(canRead(parent.fees)).toBe(false);
     expect(canRead(parent["student-registration"])).toBe(false);
     expect(canRead(parent.salary)).toBe(false);
-    expect(canRead(parent.settings)).toBe(false);
+    expect(canRead(parent.settings)).toBe(true);
     expect(canRead(parent.parents)).toBe(false);
   });
 

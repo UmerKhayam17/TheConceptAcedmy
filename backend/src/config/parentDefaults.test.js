@@ -37,8 +37,8 @@ describe('parentDefaults', () => {
     assert.equal(next.has('timetableBuilder'), false);
     assert.equal(next.has('timetableBoard'), false);
     assert.equal(next.has('fee'), false);
-    assert.equal(next.has('profile'), false);
     assert.equal(next.has('schoolCalendar'), false);
+    assert.deepEqual(next.get('profile'), ['view', 'edit']);
     assert.deepEqual(next.get('timetableView'), ['view']);
     assert.deepEqual(next.get('notifications'), ['view']);
     assert.deepEqual(next.get('examTests'), ['view']);

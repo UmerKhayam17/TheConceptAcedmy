@@ -21,7 +21,8 @@ async function listByStudent(studentId) {
     .populate('recordedBy', 'name email')
     .populate({
       path: 'classTestId',
-      select: 'title createdBy teacherId',
+      // seriesLabel + occurrenceIndex let the parent app group subject tests ("Test 1") like admin.
+      select: 'title seriesLabel occurrenceIndex createdBy teacherId',
       populate: [
         { path: 'createdBy', select: 'name email' },
         { path: 'teacherId', select: 'name email' },

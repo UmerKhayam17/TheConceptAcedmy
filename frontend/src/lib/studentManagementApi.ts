@@ -337,6 +337,7 @@ export interface AcademyAssessmentRecord {
     _id: string;
     title?: string;
     seriesLabel?: string;
+    occurrenceIndex?: number;
     createdBy?: CreatedByUser | string;
     teacherId?: CreatedByUser | string;
   };

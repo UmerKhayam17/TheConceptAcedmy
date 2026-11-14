@@ -26,6 +26,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import androidx.activity.OnBackPressedCallback;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
 import java.io.File;
@@ -81,6 +82,30 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void onReceivedError(WebView webView) {
                     hideSplash();
+                }
+            }
+        );
+
+        installBackButton();
+    }
+
+    /**
+     * Phone back button: go to the previous page inside the site (like a browser) instead of
+     * closing the app. On the first page there is nothing to go back to, so the app is sent to
+     * the background (like pressing Home) rather than being destroyed.
+     */
+    private void installBackButton() {
+        getOnBackPressedDispatcher().addCallback(
+            this,
+            new OnBackPressedCallback(true) {
+                @Override
+                public void handleOnBackPressed() {
+                    WebView webView = bridge != null ? bridge.getWebView() : null;
+                    if (webView != null && webView.canGoBack()) {
+                        webView.goBack();
+                    } else {
+                        moveTaskToBack(true);
+                    }
                 }
             }
         );
