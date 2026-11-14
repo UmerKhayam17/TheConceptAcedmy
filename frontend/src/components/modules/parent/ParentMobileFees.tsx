@@ -7,7 +7,7 @@ import {
   Loader2,
   Receipt,
   UserRound,
-  Wallet,
+  // Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadBlobFile } from "@/lib/downloadFile";
@@ -297,6 +297,7 @@ export default function ParentMobileFees({
               {paid ? "Download receipt" : "Download voucher"}
             </button>
 
+            {/* Pay online — hidden until online payments are enabled.
             {payable ? (
               <button
                 type="button"
@@ -311,6 +312,7 @@ export default function ParentMobileFees({
                 Pay online
               </button>
             ) : null}
+            */}
           </div>
         </div>
       </div>

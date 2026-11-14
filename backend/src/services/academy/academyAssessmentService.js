@@ -5,6 +5,7 @@ const AcademySubject = require('../../models/academy/AcademySubject');
 const { hasAnySubjectEnrollment, isEnrolledInSubject } = require('./studentEnrollment');
 const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 const { dayBounds } = require('../../utils/schoolDay');
+const parentNotify = require('../parentNotifyService');
 
 async function assertStudent(id) {
   const student = await AcademyStudent.findById(id);
@@ -61,7 +62,7 @@ async function createAssessment(studentId, body, userId) {
     recordedBy: userId,
     createdBy: userId,
   });
-  return AcademyAssessment.findById(doc._id)
+  const saved = await AcademyAssessment.findById(doc._id)
     .populate('subjectId', 'subjectName subjectCode')
     .populate('createdBy', 'name email')
     .populate('recordedBy', 'name email')
@@ -70,6 +71,9 @@ async function createAssessment(studentId, body, userId) {
       { path: 'teacherId', select: 'name email' },
     ] })
     .lean();
+  // New marks only: later corrections to the same entry don't re-alert parents.
+  parentNotify.marksPosted([saved]);
+  return saved;
 }
 
 async function updateAssessment(id, body, userId) {

@@ -99,10 +99,12 @@ export default function NotificationBell() {
         ["notifications"],
         (prev) => {
           if (!prev) return prev;
-          const items = prev.items.filter((n) => n._id !== id);
-          return { items, unreadCount: items.length };
+          const items = prev.items.map((n) => (n._id === id ? { ...n, read: true } : n));
+          return { items, unreadCount: items.filter((n) => !n.read).length };
         }
       );
+      qc.invalidateQueries({ queryKey: ["notifications-inbox"] });
+      qc.invalidateQueries({ queryKey: ["parent-mobile-alert-count"] });
     },
   });
 
@@ -111,8 +113,14 @@ export default function NotificationBell() {
     onSuccess: () => {
       qc.setQueryData<{ items: AppNotification[]; unreadCount: number }>(
         ["notifications"],
-        { items: [], unreadCount: 0 }
+        (prev) => {
+          if (!prev) return { items: [], unreadCount: 0 };
+          const items = prev.items.map((n) => ({ ...n, read: true }));
+          return { items, unreadCount: 0 };
+        }
       );
+      qc.invalidateQueries({ queryKey: ["notifications-inbox"] });
+      qc.invalidateQueries({ queryKey: ["parent-mobile-alert-count"] });
     },
   });
 
@@ -122,12 +130,12 @@ export default function NotificationBell() {
         ["notifications"],
         (prev) => {
           if (!prev) return prev;
-          const items = prev.items.filter((x) => x._id !== n._id);
-          return { items, unreadCount: items.length };
+          const items = prev.items.map((x) => (x._id === n._id ? { ...x, read: true } : x));
+          return { items, unreadCount: items.filter((x) => !x.read).length };
         }
       );
       try {
-        await markReadMut.mutateAsync(n._id);
+        if (!n.read) await markReadMut.mutateAsync(n._id);
       } catch {
         void refetch();
       }

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
@@ -14,6 +15,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import ParentChildSelectBanner, {
+  notificationBelongsToChild,
+  useParentSelectedChild,
+} from "@/components/modules/parent/ParentChildSelectBanner";
 import {
   fetchNotifications,
   markNotificationRead,
@@ -119,22 +124,37 @@ export default function ParentMobileAlerts() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { selected, children, selectedStudentId } = useParentSelectedChild();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["notifications-inbox", false],
-    queryFn: () => fetchNotifications({ limit: 50 }),
+    queryFn: () => fetchNotifications({ limit: 80 }),
     enabled: Boolean(user),
   });
 
-  const items = data?.items ?? [];
+  const items = useMemo(() => {
+    const all = data?.items ?? [];
+    return all.filter((item) => notificationBelongsToChild(item, selected, children));
+  }, [data?.items, selected, children, selectedStudentId]);
+
   const unseen = items.filter((item) => !item.read);
   const seen = items.filter((item) => item.read);
 
   const markOne = useMutation({
     mutationFn: markNotificationRead,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["notifications"] });
-      qc.invalidateQueries({ queryKey: ["notifications-inbox"] });
+    onSuccess: (_result, id) => {
+      const markList = (prev?: { items: AppNotification[]; unreadCount: number }) => {
+        if (!prev) return prev;
+        const nextItems = prev.items.map((item) =>
+          item._id === id ? { ...item, read: true } : item,
+        );
+        return {
+          items: nextItems,
+          unreadCount: nextItems.filter((item) => !item.read).length,
+        };
+      };
+      qc.setQueryData(["notifications-inbox", false], markList);
+      qc.setQueryData(["notifications"], markList);
       qc.invalidateQueries({ queryKey: ["parent-mobile-alert-count"] });
       qc.invalidateQueries({ queryKey: ["parent-dashboard-notifications"] });
     },
@@ -145,7 +165,7 @@ export default function ParentMobileAlerts() {
       try {
         await markOne.mutateAsync(item._id);
       } catch {
-        /* still navigate */
+        /* still open */
       }
     }
     const href = resolveParentNotificationHref(item);
@@ -153,7 +173,7 @@ export default function ParentMobileAlerts() {
       navigate(href);
       return;
     }
-    toast.message("No linked page for this alert");
+    toast.message("Marked as seen");
   };
 
   return (
@@ -163,6 +183,8 @@ export default function ParentMobileAlerts() {
           Notifications
         </h1>
       </header>
+
+      <ParentChildSelectBanner className="mb-3" />
 
       <div className={cn("flex-1 space-y-3 px-4 pb-5")}>
         {isLoading ? (
@@ -175,7 +197,9 @@ export default function ParentMobileAlerts() {
           <p className="py-8 text-center text-sm text-slate-500">Could not load alerts.</p>
         ) : null}
         {!isLoading && !isError && items.length === 0 ? (
-          <p className="py-12 text-center text-sm text-slate-500">No alerts yet.</p>
+          <p className="py-12 text-center text-sm text-slate-500">
+            No alerts for {selected?.studentName || "this student"} yet.
+          </p>
         ) : null}
         <Section label="Unseen" items={unseen} onOpen={(item) => void openNotification(item)} />
         <Section label="Seen" items={seen} onOpen={(item) => void openNotification(item)} />

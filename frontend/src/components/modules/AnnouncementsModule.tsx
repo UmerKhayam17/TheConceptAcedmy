@@ -15,9 +15,10 @@ import {
   createAnnouncement,
   deleteAnnouncement,
   fetchAnnouncements,
-  type Announcement,
   type AnnouncementAudience,
 } from "@/lib/announcementApi";
+import ParentMobileNoticeBoard from "@/components/modules/parent/ParentMobileNoticeBoard";
+import { cn } from "@/lib/utils";
 
 const AUDIENCE_LABELS: Record<AnnouncementAudience, string> = {
   all: "Everyone",
@@ -85,90 +86,98 @@ const AnnouncementsModule = ({ perm: _perm, caps }: { perm: PermLevel; caps: Mod
   };
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
-      {caps.canCreate && (
-        <Card className="p-4 space-y-3">
-          <div className="grid sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2">
-              <Label>Title</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+    <>
+      {isParent ? (
+        <div className="min-h-full md:hidden">
+          <ParentMobileNoticeBoard />
+        </div>
+      ) : null}
+
+      <div className={cn("px-4 sm:px-6 lg:px-8 py-6 space-y-4", isParent && "hidden md:block")}>
+        {caps.canCreate && (
+          <Card className="p-4 space-y-3">
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <Label>Title</Label>
+                <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+              </div>
+              <div>
+                <Label>Audience</Label>
+                <select
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={audience}
+                  onChange={(e) => setAudience(e.target.value as AnnouncementAudience)}
+                >
+                  <option value="all">Everyone</option>
+                  <option value="teachers">Teachers</option>
+                  <option value="parents">Parents</option>
+                </select>
+              </div>
             </div>
             <div>
-              <Label>Audience</Label>
-              <select
-                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={audience}
-                onChange={(e) => setAudience(e.target.value as AnnouncementAudience)}
-              >
-                <option value="all">Everyone</option>
-                <option value="teachers">Teachers</option>
-                <option value="parents">Parents</option>
-              </select>
+              <Label>Message</Label>
+              <Textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} />
             </div>
-          </div>
-          <div>
-            <Label>Message</Label>
-            <Textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} />
-          </div>
-          <div className="text-right">
-            <Button variant="hero" disabled={publishMut.isPending} onClick={publish}>
-              <Plus className="h-4 w-4" /> Publish
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      <PanelSearchBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search announcements…"
-        className="max-w-lg"
-      />
-
-      <div className="space-y-3">
-        {isLoading && (
-          <p className="text-sm text-center text-muted-foreground py-6">Loading announcements…</p>
-        )}
-        {!isLoading && listFiltered.length === 0 && (
-          <p className="text-sm text-center text-muted-foreground py-6">
-            No announcements yet.
-          </p>
-        )}
-        {listFiltered.map((a) => (
-          <Card key={a._id} className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs text-accent uppercase tracking-wider">
-                  {AUDIENCE_LABELS[a.targetAudience] || a.targetAudience}
-                </div>
-                <div className="font-semibold text-primary">{a.title}</div>
-                <div className="text-sm text-muted-foreground mt-1">{a.body}</div>
-                <div className="text-[11px] text-muted-foreground mt-2">
-                  {new Date(a.createdAt).toLocaleString("en-US", {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: true,
-                  })}
-                </div>
-              </div>
-              {caps.canDelete && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={deleteMut.isPending}
-                  onClick={() => deleteMut.mutate(a._id)}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              )}
+            <div className="text-right">
+              <Button variant="hero" disabled={publishMut.isPending} onClick={publish}>
+                <Plus className="h-4 w-4" /> Publish
+              </Button>
             </div>
           </Card>
-        ))}
+        )}
+
+        <PanelSearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Search announcements…"
+          className="max-w-lg"
+        />
+
+        <div className="space-y-3">
+          {isLoading && (
+            <p className="text-sm text-center text-muted-foreground py-6">Loading announcements…</p>
+          )}
+          {!isLoading && listFiltered.length === 0 && (
+            <p className="text-sm text-center text-muted-foreground py-6">
+              No announcements yet.
+            </p>
+          )}
+          {listFiltered.map((a) => (
+            <Card key={a._id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs text-accent uppercase tracking-wider">
+                    {AUDIENCE_LABELS[a.targetAudience] || a.targetAudience}
+                  </div>
+                  <div className="font-semibold text-primary">{a.title}</div>
+                  <div className="text-sm text-muted-foreground mt-1">{a.body}</div>
+                  <div className="text-[11px] text-muted-foreground mt-2">
+                    {new Date(a.createdAt).toLocaleString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    })}
+                  </div>
+                </div>
+                {caps.canDelete && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={deleteMut.isPending}
+                    onClick={() => deleteMut.mutate(a._id)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

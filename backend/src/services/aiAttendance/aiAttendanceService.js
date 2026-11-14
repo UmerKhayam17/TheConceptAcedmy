@@ -18,6 +18,7 @@ const {
   resolveStaffAttendanceStatus,
 } = require('./attendanceStatusFromTimetable');
 const { dayBounds, formatDateInTz } = require('../../utils/schoolDay');
+const parentNotify = require('../parentNotifyService');
 
 const MATCH_THRESHOLD = 0.75;
 
@@ -88,7 +89,16 @@ function dayWindow(forDate = new Date()) {
   return dayBounds(ymd);
 }
 
-async function applyStudentAttendance(studentId, { status, checkIn, checkOut, confidence, notes, source = 'ai' }) {
+/** Camera check-in: also tells the parents their child has arrived (once per day). */
+async function applyStudentAttendance(studentId, opts) {
+  const doc = await writeStudentAttendance(studentId, opts);
+  if (doc?.$locals?.aiChange === 'check_in') {
+    parentNotify.attendanceMarked([{ studentId, status: doc.status, date: doc.date }]);
+  }
+  return doc;
+}
+
+async function writeStudentAttendance(studentId, { status, checkIn, checkOut, confidence, notes, source = 'ai' }) {
   const now = checkIn instanceof Date ? checkIn : new Date(checkIn || Date.now());
   const { start, end } = dayWindow(now);
   const filter = {

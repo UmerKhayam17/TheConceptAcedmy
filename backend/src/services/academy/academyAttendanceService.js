@@ -6,6 +6,7 @@ const { loadExpectationContext } = require('./attendanceExpectationService');
 const { loadStudentHolidayContext } = require('../holidayService');
 const { dayBounds, formatDateInTz, monthBounds } = require('../../utils/schoolDay');
 const { sortStudentsByClassThenRoll } = require('../../utils/academyStudentSort');
+const parentNotify = require('../parentNotifyService');
 
 /** Inclusive calendar-day cap for custom attendance report ranges. */
 const MAX_RANGE_DAYS = 93;
@@ -419,6 +420,7 @@ async function listRegisterByDateRange({
 async function markAttendance({ date, entries }, userId, { assertStudentAccess } = {}) {
   const { start, end } = resolveDay(date);
   const results = [];
+  const changed = [];
 
   for (const e of entries) {
     if (typeof assertStudentAccess === 'function') {
@@ -449,6 +451,8 @@ async function markAttendance({ date, entries }, userId, { assertStudentAccess }
       set.checkIn = new Date(e.checkIn);
     }
 
+    const before = await AcademyAttendance.findOne(filter).select('status').lean();
+
     // eslint-disable-next-line no-await-in-loop
     const doc = await AcademyAttendance.findOneAndUpdate(
       filter,
@@ -460,7 +464,13 @@ async function markAttendance({ date, entries }, userId, { assertStudentAccess }
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
     results.push(doc);
+    if (before?.status !== e.status) {
+      changed.push({ studentId: e.studentId, status: e.status, date: start });
+    }
   }
+
+  // Tell parents only when a child's status actually changed (re-saving the register is silent).
+  parentNotify.attendanceMarked(changed);
 
   return results;
 }

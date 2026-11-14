@@ -19,6 +19,7 @@ const User           = require("../../../models/User");
 const FileDoc        = require("../../../models/chat/file.chat.model");
 const { emitToConversation } = require("../utils/roomEmitter");
 const { isParticipant, canSeeMessage, isObjectId } = require("../utils/chatAccess");
+const parentNotify   = require("../../parentNotifyService");
 
 /**
  * A file attached to a message must be one this sender uploaded (via /chat/upload).
@@ -154,6 +155,34 @@ async function resolveInitialStatus(nsp, conversationId, senderId, participants,
   return overallStatus;
 }
 
+/**
+ * Parent participants who are not looking at this chat right now get an in-app alert
+ * (parentNotify ignores recipients who are not parents).
+ */
+async function alertParentRecipients(nsp, conversation, senderId, senderName, text, type) {
+  try {
+    const sockets = await nsp.fetchSockets();
+    const viewing = new Set(
+      sockets
+        .filter((s) => s.activeConversationId?.toString() === String(conversation._id))
+        .map((s) => s.user?._id?.toString())
+        .filter(Boolean)
+    );
+    const recipientIds = (conversation.participants || [])
+      .map((p) => (p.userId?._id || p.userId)?.toString())
+      .filter((uid) => uid && uid !== String(senderId) && !viewing.has(uid));
+    parentNotify.chatMessage({
+      conversationId: conversation._id,
+      senderName,
+      text,
+      type,
+      recipientIds,
+    });
+  } catch (err) {
+    console.error("chat parent alert failed", err.message);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // register handlers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -262,6 +291,8 @@ function registerMessageHandlers(socket, nsp) {
       populated = await populateMentions(populated);
 
       emitToConversation(nsp, conversationId, "message:new", populated);
+
+      void alertParentRecipients(nsp, conversation, senderId, socket.user.name, text, type);
 
       // Notify each mentioned user individually
       if (mentions.length) {

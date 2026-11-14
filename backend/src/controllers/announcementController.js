@@ -2,10 +2,12 @@ const catchAsync = require('../utils/catchAsync');
 const ApiError = require('../utils/ApiError');
 const Announcement = require('../models/Announcement');
 const rt = require('../services/realtime/academyRealtime');
+const parentNotify = require('../services/parentNotifyService');
 
 const create = catchAsync(async (req, res) => {
   const ann = await Announcement.create({ ...req.body, createdBy: req.user._id });
   rt.announcementCrud('created', ann._id);
+  parentNotify.announcementPosted(ann);
   res.status(201).json({ success: true, data: ann });
 });
 //  latest Code

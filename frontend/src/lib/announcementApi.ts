@@ -4,6 +4,11 @@ import type { CreatedByUser } from "@/lib/createdBy";
 
 export type AnnouncementAudience = "all" | "class" | "section" | "teachers" | "parents";
 
+export interface AnnouncementAttachment {
+  name?: string;
+  url?: string;
+}
+
 export interface Announcement {
   _id: string;
   title: string;
@@ -13,6 +18,8 @@ export interface Announcement {
   isPinned?: boolean;
   publishedAt?: string;
   createdAt: string;
+  expiresAt?: string;
+  attachments?: AnnouncementAttachment[];
   createdBy?: CreatedByUser | string;
 }
 

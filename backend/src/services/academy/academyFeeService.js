@@ -14,6 +14,7 @@ const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const Session = require('../../models/Session');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { notifyByAccess } = require('../realtime/realtimeService');
+const parentNotify = require('../parentNotifyService');
 const { renderBrandedExcel, renderBrandedPdf } = require('./academyReportDocument');
 const { renderDualTablePdf } = require('./academyStudentExportService');
 const { compareStudentsByRollAsc } = require('../../utils/academyStudentSort');
@@ -635,6 +636,7 @@ async function createEnrollmentFeeVouchers(
   }
 
   const record = await AcademyFeeRecord.create(recordPayload);
+  if (!isFree) parentNotify.feeEvent('issued', [record]);
 
   return [record];
 }
@@ -835,6 +837,7 @@ async function syncOverdueFees(filter = {}) {
       { _id: { $in: flipping.map((r) => r._id) } },
       { $set: { overdueNoticeAt: new Date() } }
     );
+    parentNotify.feeEvent('overdue', flipping);
     await safeNotify(() => notifyFeeStaff({
       type: 'fee_overdue',
       title: flipping.length === 1 ? 'Unpaid fee is overdue' : `${flipping.length} unpaid fees are overdue`,
@@ -1494,6 +1497,7 @@ async function generateMonthlyFees({ month, year, classId }, userId) {
   }
 
   const unpaidCreated = created.filter((r) => r.status === 'pending' || r.status === 'overdue');
+  parentNotify.feeEvent('issued', unpaidCreated);
   if (unpaidCreated.length) {
     const label = periodText(month, year, 'monthly');
     await safeNotify(() => notifyFeeStaff({
@@ -1969,6 +1973,8 @@ async function recordPayment(feeRecordId, { paymentMethod, notes, paidAt, paymen
     throw new ApiError(409, 'Could not record payment — please retry');
   }
 
+  parentNotify.feeEvent('paid', [record], { amount: balance > 0 ? balance : record.amount });
+
   const student = record.studentId;
   const needsSectionAssignment =
     record.feeType === 'admission' &&
@@ -2146,6 +2152,7 @@ async function recordPayments(feeRecordIds, payload, userId, slipFile) {
   }
 
   const studentId = records[0].studentId;
+  if (cash > 0) parentNotify.feeEvent('paid', [...paid, ...partial], { amount: cash });
   const student = await AcademyStudent.findById(studentId).select('status sectionId');
   const paidAdmission = paid.some((r) => r.feeType === 'admission');
   const needsSectionAssignment =

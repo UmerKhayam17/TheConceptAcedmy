@@ -91,6 +91,7 @@ export default function PanelPageHeader({
       pathname === "/panel/parent/" ||
       pathname.startsWith("/panel/parent/chat") ||
       pathname.startsWith("/panel/parent/notifications") ||
+      pathname.startsWith("/panel/parent/announcements") ||
       pathname.startsWith("/panel/parent/attendance") ||
       pathname.startsWith("/panel/parent/exams/date-sheet") ||
       pathname.startsWith("/panel/parent/exams/report-card") ||

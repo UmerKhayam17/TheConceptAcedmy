@@ -9,6 +9,7 @@ const AcademyClass = require('../../models/academy/AcademyClass');
 const { computeResultTotals } = require('./examGrading');
 const { hasAnySubjectEnrollment, selectedSubjectIds } = require('../academy/studentEnrollment');
 const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
+const parentNotify = require('../parentNotifyService');
 
 const EXAM_PAPER_DIR = path.join(__dirname, '../../../uploads/exam-papers');
 
@@ -296,6 +297,7 @@ async function getExamResults(examId) {
 }
 
 async function publishResult(resultId) {
+  const before = await Result.findById(resultId).select('isPublished').lean();
   const result = await Result.findByIdAndUpdate(
     resultId,
     { isPublished: true },
@@ -304,14 +306,19 @@ async function publishResult(resultId) {
     .populate('exam')
     .populate('academyStudent', 'studentId studentName');
   if (!result) throw new ApiError(404, 'Result not found');
+  if (before && !before.isPublished) parentNotify.examResultsPublished([result]);
   return result;
 }
 
 async function publishAllForExam(examId) {
   const exam = await Exam.findById(examId);
   if (!exam) throw new ApiError(404, 'Exam not found');
+  const newlyPublished = await Result.find({ exam: examId, isPublished: { $ne: true } })
+    .select('_id academyStudent percentage')
+    .lean();
   const res = await Result.updateMany({ exam: examId }, { $set: { isPublished: true } });
   await Exam.findByIdAndUpdate(examId, { status: 'completed' });
+  parentNotify.examResultsPublished(newlyPublished.map((r) => ({ ...r, exam: { title: exam.title } })));
   return { modifiedCount: res.modifiedCount };
 }
 

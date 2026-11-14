@@ -9,6 +9,10 @@ import api, {
 } from "@/services/socket/chat.api";
 import socketService from "@/services/socket/socket.service";
 import { useQueryClient } from "@tanstack/react-query";
+import ParentChildSelectBanner, {
+  conversationBelongsToChild,
+  useParentSelectedChild,
+} from "@/components/modules/parent/ParentChildSelectBanner";
 import { cn } from "@/lib/utils";
 
 type StaffUser = {
@@ -69,15 +73,27 @@ export default function ParentMobileChats() {
   const { data: list = [], isLoading } = useConversations();
   const [search, setSearch] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const { selected, children } = useParentSelectedChild();
 
-  const unreadTotal = list.reduce((sum, conversation) => {
+  const siblingNames = children.map((child) => child.studentName || "");
+  const childName = selected?.studentName || "";
+
+  const childScoped = useMemo(
+    () =>
+      list.filter((conversation) =>
+        conversationBelongsToChild(conversation, childName, siblingNames),
+      ),
+    [list, childName, siblingNames],
+  );
+
+  const unreadTotal = childScoped.reduce((sum, conversation) => {
     const mine = conversation.participants?.find(
       (participant) => userIdStr(participant.userId) === userIdStr(myId),
     );
     return sum + (Number(mine?.unreadCount) || 0);
   }, 0);
 
-  const filtered = list.filter((conversation) => {
+  const filtered = childScoped.filter((conversation) => {
     const other = conversation.participants?.find(
       (participant) => userIdStr(participant.userId) !== userIdStr(myId),
     );
@@ -99,8 +115,8 @@ export default function ParentMobileChats() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#E7F4FB]">
-      <header className="px-4 pb-3 pt-[max(0.85rem,env(safe-area-inset-top))]">
-        <h1 className="flex items-center justify-center gap-2 text-xl font-bold text-[#111827]">
+      <header className="px-4 pb-2 pt-[max(0.85rem,env(safe-area-inset-top))]">
+        <h1 className="flex items-center justify-center gap-2 text-[22px] font-extrabold tracking-tight text-[#111827]">
           Chats
           {unreadTotal > 0 ? (
             <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#F43F5E] px-1.5 text-[11px] font-bold text-white">
@@ -109,6 +125,8 @@ export default function ParentMobileChats() {
           ) : null}
         </h1>
       </header>
+
+      <ParentChildSelectBanner className="mb-3" />
 
       <div className="px-4">
         <label className="flex h-11 items-center gap-2 rounded-xl bg-white px-3 text-slate-400 shadow-sm">
@@ -132,7 +150,11 @@ export default function ParentMobileChats() {
       <div className="mt-3 min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 pb-4">
         {isLoading ? <div className="h-20 animate-pulse rounded-2xl bg-white/70" /> : null}
         {!isLoading && filtered.length === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-500">No chats yet. Start one with school staff.</p>
+          <p className="py-10 text-center text-sm text-slate-500">
+            {search.trim()
+              ? "No matching chats."
+              : `No chats for ${selected?.studentName || "this student"} yet. Start one with school staff.`}
+          </p>
         ) : null}
         {filtered.map((conversation) => {
           const other = conversation.participants?.find(

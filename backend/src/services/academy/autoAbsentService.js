@@ -10,6 +10,7 @@ const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const { dayBounds, todayYmd } = require('../../utils/schoolDay');
 const { loadExpectationContext } = require('./attendanceExpectationService');
+const parentNotify = require('../parentNotifyService');
 
 /** "HH:MM" (24h, school timezone) after which unmarked students are saved as absent. */
 function autoAbsentTime() {
@@ -54,17 +55,24 @@ async function markAbsentForDay(ymd = todayYmd()) {
     }));
 
   let inserted = 0;
+  let insertedDocs = [];
   if (docs.length) {
     try {
       const res = await AcademyAttendance.insertMany(docs, { ordered: false });
       inserted = res.length;
+      insertedDocs = res;
     } catch (err) {
       // Duplicate key = camera/teacher marked the student meanwhile — keep theirs.
       const dupOnly = (err?.writeErrors || []).every((e) => (e.code ?? e.err?.code) === 11000);
       if (!dupOnly) throw err;
       inserted = err.insertedDocs?.length ?? err.result?.insertedCount ?? docs.length - err.writeErrors.length;
+      insertedDocs = err.insertedDocs || [];
     }
   }
+
+  parentNotify.attendanceMarked(
+    insertedDocs.map((d) => ({ studentId: d.studentId, status: 'absent', date: d.date }))
+  );
 
   return {
     date: ymd,
