@@ -35,8 +35,10 @@ const config: CapacitorConfig = {
       backgroundColor: SPLASH_BG,
       androidScaleType: "CENTER_CROP",
       showSpinner: false,
-      splashFullScreen: true,
-      splashImmersive: true,
+      // Keep status bar (time/battery) and nav bar (buttons) visible — do not
+      // expand the splash under system UI after Capacitor finishes setup.
+      splashFullScreen: false,
+      splashImmersive: false,
     },
   },
 };
