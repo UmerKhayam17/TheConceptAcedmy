@@ -47,3 +47,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+
+# # Firebase service-account key (secret)
+# firebase-key.json
+# *firebase-adminsdk*.json

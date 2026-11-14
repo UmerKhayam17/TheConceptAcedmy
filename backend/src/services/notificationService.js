@@ -75,32 +75,6 @@ async function sendEmail(to, subject, text) {
   }
 }
 
-async function sendFcm(fcmToken, title, body) {
-  if (!fcmToken) {
-    return { sent: false, channel: 'fcm', reason: 'No FCM token' };
-  }
-  const saPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-  if (!saPath) {
-    return { sent: false, channel: 'fcm', reason: 'FIREBASE_SERVICE_ACCOUNT_PATH not set' };
-  }
-  try {
-    // eslint-disable-next-line global-require
-    const admin = require('firebase-admin');
-    if (!admin.apps.length) {
-      // eslint-disable-next-line global-require
-      const serviceAccount = require(require('path').resolve(saPath));
-      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-    }
-    await admin.messaging().send({
-      token: fcmToken,
-      notification: { title, body },
-    });
-    return { sent: true, channel: 'fcm' };
-  } catch (err) {
-    return { sent: false, channel: 'fcm', reason: err.message };
-  }
-}
-
 async function sendAttendanceAbsentNotification({
   studentName,
   className,
@@ -131,7 +105,6 @@ async function sendAttendanceAbsentNotification({
     if (parent) {
       results.push(await sendSms(parent.phone, `${title}: ${body}`));
       results.push(await sendEmail(parent.email, title, body));
-      results.push(await sendFcm(parent.fcmToken, title, body));
     }
   } else {
     results.push({ sent: false, channel: 'in_app', reason: 'No parentUserId' });
@@ -161,7 +134,6 @@ async function sendGenericPush(userId, title, body) {
     if (user) {
       results.push(await sendSms(user.phone, `${title}: ${body}`));
       results.push(await sendEmail(user.email, title, body));
-      results.push(await sendFcm(user.fcmToken, title, body));
     }
   }
   if (process.env.NODE_ENV !== 'production') {

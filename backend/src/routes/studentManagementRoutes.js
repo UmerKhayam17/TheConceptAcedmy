@@ -816,5 +816,11 @@ router.post(
   validate(schemas.academyAttendanceMark),
   attendanceCtrl.mark
 );
+router.post(
+  '/attendance/confirm-absent-notify',
+  requirePermission('mark_attendance'),
+  validate(schemas.academyAttendanceConfirmAbsent),
+  attendanceCtrl.confirmAbsentNotify
+);
 
 module.exports = router;

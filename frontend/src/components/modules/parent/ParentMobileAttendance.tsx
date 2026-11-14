@@ -116,7 +116,7 @@ function DetailRow({ label, value, pill, strong }: { label: string; value: strin
   const empty = !value || value === "—" || value === "-";
   return (
     <div className="flex items-start justify-between gap-6 border-t border-[#F0F3F6] py-[13px]">
-      <span className="shrink-0 text-[14px] text-[#A3ADB8]">{label}</span>
+      <span className="shrink-0 text-[14px] font-bold text-[#0867cc]">{label}</span>
       {pill && !empty ? (
         <span className="rounded-md bg-[#F1F5F9] px-2 py-0.5 text-xs font-semibold text-[#64748B]">{value}</span>
       ) : (

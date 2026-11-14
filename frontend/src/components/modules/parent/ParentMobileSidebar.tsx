@@ -5,6 +5,7 @@ import {
   Facebook,
   LogOut,
   Moon,
+  Phone,
   Share2,
   ShieldCheck,
   User,
@@ -111,13 +112,14 @@ export default function ParentMobileSidebar({
 }) {
   const photo = user.profileImage ? resolveUploadUrl(user.profileImage) : "";
   const profileHref = moduleHref("parent", "settings");
+  const contactHref = moduleHref("parent", "contact");
 
   return (
-    <div className="flex h-full flex-col bg-[#F4F6F8]">
-      <header className="relative shrink-0 overflow-hidden bg-gradient-to-b from-[#071958] via-[#0739ac] to-[#0873ed] px-5 pb-8 pt-[calc(var(--safe-top)+0.5rem)] text-white">
-        <div className="pointer-events-none absolute -left-10 top-6 h-36 w-36 rounded-full border border-white/15" />
-        <div className="pointer-events-none absolute -right-8 -top-6 h-40 w-40 rounded-full border border-white/15" />
-        <div className="pointer-events-none absolute right-10 top-24 h-20 w-20 rounded-full border border-white/10" />
+    <div className="flex h-full min-h-0 max-h-dvh flex-col overflow-hidden bg-[#F4F6F8]">
+      <header className="relative z-10 shrink-0 overflow-hidden bg-gradient-to-b from-[#071958] via-[#0739ac] to-[#0873ed] px-4 pb-3 pt-[calc(var(--safe-top)+0.25rem)] text-white">
+        <div className="pointer-events-none absolute -left-10 top-3 h-24 w-24 rounded-full border border-white/15" />
+        <div className="pointer-events-none absolute -right-8 -top-6 h-28 w-28 rounded-full border border-white/15" />
+        <div className="pointer-events-none absolute right-10 top-14 h-14 w-14 rounded-full border border-white/10" />
 
         <SheetClose asChild>
           <button
@@ -127,30 +129,33 @@ export default function ParentMobileSidebar({
               onClose();
             }}
             aria-label="Close menu"
-            className="absolute right-3 top-[calc(var(--safe-top)+0.35rem)] z-30 grid h-10 w-10 place-items-center rounded-full bg-white/20 text-white shadow-sm"
+            className="absolute right-2.5 top-[calc(var(--safe-top)+0.2rem)] z-30 grid h-8 w-8 place-items-center rounded-full bg-white/20 text-white shadow-sm"
           >
-            <X className="h-5 w-5" strokeWidth={2.5} />
+            <X className="h-4 w-4" strokeWidth={2.5} />
           </button>
         </SheetClose>
 
-        <div className="relative z-10 flex flex-col items-center pt-4">
-          <span className="grid h-[72px] w-[72px] place-items-center overflow-hidden rounded-full border-[3px] border-white/40 bg-white/15 shadow-md">
+        <div className="relative z-10 flex flex-col items-center">
+          <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-full border-2 border-white/40 bg-white/15 shadow-md">
             {photo ? (
               <img src={photo} alt="" className="h-full w-full object-cover" />
             ) : (
-              <UserRound className="h-9 w-9 text-white/95" strokeWidth={1.5} />
+              <UserRound className="h-6 w-6 text-white/95" strokeWidth={1.5} />
             )}
           </span>
-          <h2 className="mt-3 max-w-[90%] truncate text-center text-[26px] font-extrabold leading-tight tracking-tight">
+          <h2 className="mt-1.5 max-w-[90%] truncate text-center text-[18px] font-extrabold leading-tight tracking-tight">
             {user.name || "Parent"}
           </h2>
-          <span className="mt-2 rounded-full bg-[#0867cc] px-3.5 py-1 text-[13px] font-bold text-white shadow-sm">
+          <span className="mt-1 rounded-full bg-[#0867cc] px-2.5 py-0.5 text-[11px] font-bold text-white shadow-sm">
             Parent
           </span>
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <div
+        className="min-h-0 flex-1 touch-pan-y space-y-5 overflow-y-auto overscroll-y-contain px-4 py-5 pb-[max(1.25rem,var(--safe-bottom))]"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
         <section>
           <SectionLabel>Account</SectionLabel>
           <MenuCard>
@@ -187,6 +192,13 @@ export default function ParentMobileSidebar({
         <section>
           <SectionLabel>Support & More</SectionLabel>
           <MenuCard>
+            <NavRow
+              icon={<Phone className="h-[18px] w-[18px]" strokeWidth={2} />}
+              label="Contact Us"
+              to={contactHref}
+              onClick={onClose}
+            />
+            <RowDivider />
             <NavRow
               icon={<Share2 className="h-[18px] w-[18px]" strokeWidth={2} />}
               label="Share App"

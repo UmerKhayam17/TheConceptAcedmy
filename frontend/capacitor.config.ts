@@ -26,6 +26,10 @@ const config: CapacitorConfig = {
     backgroundColor: SPLASH_BG,
   },
   plugins: {
+    // Show alerts in the notification bar even while the app is open.
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
     SplashScreen: {
       // 0 = don't hold Android's plain launch screen. The splash image is shown by
       // MainActivity.java straight from the APK and fades out when the site has loaded.

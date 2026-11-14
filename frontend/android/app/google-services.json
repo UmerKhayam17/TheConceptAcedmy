@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "186119687656",
+    "project_id": "concept-academy-83a95",
+    "storage_bucket": "concept-academy-83a95.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:186119687656:android:1cde225b72e56a22ba285d",
+        "android_client_info": {
+          "package_name": "com.conceptacademy.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD40B6SAwtcjl41Ex85Ck8h6IwDYCNaIsU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

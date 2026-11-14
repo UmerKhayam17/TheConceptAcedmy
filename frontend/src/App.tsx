@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from "react";
 import AcademyLoader from "@/components/AcademyLoader";
 import AppApkUpdateNotice from "@/components/AppApkUpdateNotice";
+import PushNotificationSetup from "@/components/PushNotificationSetup";
 import { QueryClient, type Query } from "@tanstack/react-query";
 import { PersistQueryClientProvider, removeOldestQuery } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
@@ -152,6 +153,7 @@ const App = () => (
           v7_relativeSplatPath: true,
         }}
       >
+        <PushNotificationSetup />
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route element={<Layout />}>

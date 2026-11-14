@@ -25,6 +25,17 @@
 
         </activity>
 
+        <!-- Push notifications (Firebase): status-bar icon, colour and default channel -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/colorPrimary" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="tca_alerts" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -41,6 +52,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- In-app APK updates (AppUpdater.java): open Android's installer for a newer tca.apk -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Phone notification-bar alerts (Android 13+ asks the user) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Face attendance / photo capture -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

@@ -27,6 +27,8 @@ const academyAttendanceSchema = new mongoose.Schema(
     notes: { type: String, trim: true },
     markedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    /** When absent parent alerts were confirmed/sent (null = pending admin confirm). */
+    parentNotifiedAt: { type: Date, default: null },
   },
   { timestamps: true, collection: 'attendances' }
 );

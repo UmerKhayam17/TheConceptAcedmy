@@ -451,7 +451,16 @@ async function markAttendance({ date, entries }, userId, { assertStudentAccess }
       set.checkIn = new Date(e.checkIn);
     }
 
-    const before = await AcademyAttendance.findOne(filter).select('status').lean();
+    const before = await AcademyAttendance.findOne(filter).select('status parentNotifiedAt').lean();
+
+    const unset = {};
+    if (e.status === 'absent' || e.status === 'leave') unset.confidence = 1;
+    // Absent alerts wait for admin Confirm & notify. Clear stamp when newly marked absent.
+    if (e.status === 'absent') {
+      if (before?.status !== 'absent') set.parentNotifiedAt = null;
+    } else {
+      unset.parentNotifiedAt = 1;
+    }
 
     // eslint-disable-next-line no-await-in-loop
     const doc = await AcademyAttendance.findOneAndUpdate(
@@ -459,7 +468,7 @@ async function markAttendance({ date, entries }, userId, { assertStudentAccess }
       {
         $set: set,
         $setOnInsert: { createdBy: userId },
-        $unset: e.status === 'absent' || e.status === 'leave' ? { confidence: 1 } : {},
+        ...(Object.keys(unset).length ? { $unset: unset } : {}),
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
@@ -469,10 +478,109 @@ async function markAttendance({ date, entries }, userId, { assertStudentAccess }
     }
   }
 
-  // Tell parents only when a child's status actually changed (re-saving the register is silent).
-  parentNotify.attendanceMarked(changed);
+  // Present / late / leave notify immediately. Absent waits for Confirm & notify.
+  parentNotify.attendanceMarked(changed.filter((row) => row.status !== 'absent'));
 
   return results;
+}
+
+/**
+ * Admin review step: materialize default (unmarked) absents, send parent alerts,
+ * then stamp rows so Confirm is idempotent.
+ *
+ * AI / camera only writes present/late rows. Everyone else shows as absent in the
+ * UI with no DB row — Confirm turns those into real absent records first.
+ */
+async function confirmAbsentNotifications(
+  { date, classId, sectionId, sessionId },
+  { assertStudentAccess } = {}
+) {
+  const { start, end, ymd } = resolveDay(date);
+  const students = await resolveStudents({ classId, sectionId, sessionId });
+  const studentIds = students.map((s) => s._id);
+  if (!studentIds.length) {
+    return { date: ymd, pending: 0, notified: 0, materialized: 0, parentAlerts: 0 };
+  }
+
+  if (typeof assertStudentAccess === 'function') {
+    for (const id of studentIds) {
+      // eslint-disable-next-line no-await-in-loop
+      await assertStudentAccess(id);
+    }
+  }
+
+  const existing = await AcademyAttendance.find({
+    studentId: { $in: studentIds },
+    date: { $gte: start, $lte: end },
+    $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+  })
+    .select('studentId')
+    .lean();
+  const markedIds = new Set(existing.map((r) => String(r.studentId)));
+
+  const { isStudentHoliday } = await loadStudentHolidayContext(students);
+  const unmarked = students.filter(
+    (s) => !markedIds.has(String(s._id)) && !isStudentHoliday(s, ymd)
+  );
+
+  let materialized = 0;
+  if (unmarked.length) {
+    const docs = unmarked.map((s) => ({
+      studentId: s._id,
+      date: start,
+      status: 'absent',
+      source: 'manual',
+      notes: 'Confirmed absent (unmarked at notify time)',
+      parentNotifiedAt: null,
+    }));
+    try {
+      const res = await AcademyAttendance.insertMany(docs, { ordered: false });
+      materialized = res.length;
+    } catch (err) {
+      // Race with AI/manual mark — keep their row; count only inserted.
+      const dupOnly = (err?.writeErrors || []).every((e) => (e.code ?? e.err?.code) === 11000);
+      if (!dupOnly) throw err;
+      materialized =
+        err.insertedDocs?.length ?? err.result?.insertedCount ?? docs.length - err.writeErrors.length;
+    }
+  }
+
+  const pending = await AcademyAttendance.find({
+    studentId: { $in: studentIds },
+    date: { $gte: start, $lte: end },
+    status: 'absent',
+    parentNotifiedAt: null,
+    $or: [{ subjectId: { $exists: false } }, { subjectId: null }],
+  })
+    .select('_id studentId date status')
+    .lean();
+
+  if (!pending.length) {
+    return { date: ymd, pending: 0, notified: 0, materialized, parentAlerts: 0 };
+  }
+
+  const rows = pending.map((r) => ({
+    studentId: r.studentId,
+    status: 'absent',
+    date: r.date,
+  }));
+
+  // Send first, then stamp — if send fails, Confirm can be retried.
+  const parentAlerts = await parentNotify.attendanceMarkedAwait(rows);
+
+  const now = new Date();
+  await AcademyAttendance.updateMany(
+    { _id: { $in: pending.map((r) => r._id) } },
+    { $set: { parentNotifiedAt: now } }
+  );
+
+  return {
+    date: ymd,
+    pending: pending.length,
+    notified: pending.length,
+    materialized,
+    parentAlerts,
+  };
 }
 
 async function getSummary({ month, year, scopeFilter = null, studentIds = null }) {
@@ -552,6 +660,7 @@ module.exports = {
   listAbsentByDateRange,
   listRegisterByDateRange,
   markAttendance,
+  confirmAbsentNotifications,
   getSummary,
   listByStudentMonth,
   MAX_RANGE_DAYS,

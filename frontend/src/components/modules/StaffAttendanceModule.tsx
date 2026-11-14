@@ -22,11 +22,13 @@ import {
   Timer,
   UserCheck,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { SquareCheckbox } from "@/components/ui/square-checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -192,6 +194,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   const [drafts, setDrafts] = useState<Record<string, PeriodDraft>>({});
   const [savingAll, setSavingAll] = useState(false);
   const [exporting, setExporting] = useState<StaffAttendanceExportFormat | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const { data: dayData, isLoading: dayLoading, isError: dayError, error: dayErr } = useQuery({
     queryKey: ["staff-period-day", date, sessionId],
@@ -334,6 +337,94 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     }
     return dailyTeachers;
   }, [dailyTeachers, isAdmin, reportStaffId]);
+
+  const selectableIds = useMemo(
+    () =>
+      markingTeachers
+        .filter((teacher) => String(teacher.userId) !== String(lockedUserId || ""))
+        .filter((teacher) => teacher.periods.length > 0)
+        .map((teacher) => teacher.userId),
+    [markingTeachers, lockedUserId],
+  );
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [date, roleFilter, teacherSearch, reportStaffId, view]);
+
+  const selectedCount = selectableIds.filter((id) => selectedIds.has(id)).length;
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /** Bulk: mark selected staff periods, then save (admin manual override). */
+  const markSelectedStaff = async (status: StaffPeriodStatus) => {
+    if (!sessionId) {
+      toast({ title: "Select a session first", variant: "destructive" });
+      return;
+    }
+    const ids = selectableIds.filter((id) => selectedIds.has(id));
+    if (!ids.length) {
+      toast({ title: "Select staff first", description: "Use the checkboxes to choose who to mark." });
+      return;
+    }
+    const idSet = new Set(ids);
+    const targets = markingTeachers.filter((teacher) => idSet.has(teacher.userId));
+    const marks = targets.flatMap((teacher) =>
+      teacher.periods.map((period) => ({
+        userId: teacher.userId,
+        periodKey: period.periodKey,
+        status,
+      })),
+    );
+    if (!marks.length) {
+      toast({ title: "No staff periods to mark" });
+      return;
+    }
+    setDrafts((prev) => {
+      const next = { ...prev };
+      marks.forEach((mark) => {
+        next[periodDraftKey(mark.userId, mark.periodKey)] = { status: mark.status, dirty: true };
+      });
+      return next;
+    });
+    setSavingAll(true);
+    try {
+      await saveStaffPeriodMarks({ date, sessionId, marks });
+      setDrafts((prev) => {
+        const next = { ...prev };
+        marks.forEach((mark) => {
+          next[periodDraftKey(mark.userId, mark.periodKey)] = { status: mark.status, dirty: false };
+        });
+        return next;
+      });
+      setSelectedIds(new Set());
+      qc.invalidateQueries({ queryKey: ["staff-period-day"] });
+      qc.invalidateQueries({ queryKey: ["staff-period-month"] });
+      toast({
+        title:
+          status === "present"
+            ? "Marked present"
+            : status === "absent"
+              ? "Marked absent"
+              : "Attendance updated",
+        description: `${ids.length} staff · ${marks.length} period${marks.length === 1 ? "" : "s"} saved.`,
+      });
+    } catch (e) {
+      toast({
+        title: "Could not save",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingAll(false);
+    }
+  };
 
   // Classes that ran after the teacher's last check-out, or no check-out scan at all.
   const reviewCount = useMemo(
@@ -733,6 +824,55 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
         </FilterToolbar>
       </Card>
 
+      {view === "daily" && canMark && selectedCount > 0 && (
+        <Card className="border-border/80 p-3 shadow-sm sm:px-4 sm:py-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-semibold text-[#1a2b4b]">{selectedCount}</span>
+              {" selected"}
+              {savingAll ? (
+                <span className="ml-2 text-muted-foreground">Working…</span>
+              ) : null}
+            </p>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 border-emerald-500/50 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                disabled={savingAll}
+                onClick={() => void markSelectedStaff("present")}
+              >
+                <UserCheck className="h-4 w-4" />
+                Mark all present
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 border-rose-400/60 bg-rose-50 text-rose-800 hover:bg-rose-100"
+                disabled={savingAll}
+                onClick={() => void markSelectedStaff("absent")}
+              >
+                <UserX className="h-4 w-4" />
+                Mark all absent
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 gap-1.5 text-muted-foreground"
+                disabled={savingAll}
+                onClick={() => setSelectedIds(new Set())}
+              >
+                <X className="h-4 w-4" />
+                Clear
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {!sessionId && (
         <Card className="p-6 text-sm text-muted-foreground">
           Select an academic session. Periods are taken from that session’s published timetable.
@@ -765,6 +905,42 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               drafts={drafts}
               canMark={canMark}
               lockedUserId={lockedUserId}
+              selectedIds={selectedIds}
+              allSelected={(() => {
+                const ids = classTeachers
+                  .filter(
+                    (t) =>
+                      String(t.userId) !== String(lockedUserId || "") && t.periods.length > 0,
+                  )
+                  .map((t) => t.userId);
+                return ids.length > 0 && ids.every((id) => selectedIds.has(id));
+              })()}
+              someSelected={(() => {
+                const ids = classTeachers
+                  .filter(
+                    (t) =>
+                      String(t.userId) !== String(lockedUserId || "") && t.periods.length > 0,
+                  )
+                  .map((t) => t.userId);
+                const n = ids.filter((id) => selectedIds.has(id)).length;
+                return n > 0 && n < ids.length;
+              })()}
+              onToggleSelectAll={() => {
+                const ids = classTeachers
+                  .filter(
+                    (t) =>
+                      String(t.userId) !== String(lockedUserId || "") && t.periods.length > 0,
+                  )
+                  .map((t) => t.userId);
+                const every = ids.length > 0 && ids.every((id) => selectedIds.has(id));
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (every) ids.forEach((id) => next.delete(id));
+                  else ids.forEach((id) => next.add(id));
+                  return next;
+                });
+              }}
+              onToggleSelectOne={toggleSelectOne}
               onChange={updatePeriod}
               onViewDetails={viewStaffDetails}
             />
@@ -791,6 +967,42 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               drafts={drafts}
               canMark={canMark}
               lockedUserId={lockedUserId}
+              selectedIds={selectedIds}
+              allSelected={(() => {
+                const ids = dailyStaff
+                  .filter(
+                    (s) =>
+                      String(s.userId) !== String(lockedUserId || "") && s.periods.length > 0,
+                  )
+                  .map((s) => s.userId);
+                return ids.length > 0 && ids.every((id) => selectedIds.has(id));
+              })()}
+              someSelected={(() => {
+                const ids = dailyStaff
+                  .filter(
+                    (s) =>
+                      String(s.userId) !== String(lockedUserId || "") && s.periods.length > 0,
+                  )
+                  .map((s) => s.userId);
+                const n = ids.filter((id) => selectedIds.has(id)).length;
+                return n > 0 && n < ids.length;
+              })()}
+              onToggleSelectAll={() => {
+                const ids = dailyStaff
+                  .filter(
+                    (s) =>
+                      String(s.userId) !== String(lockedUserId || "") && s.periods.length > 0,
+                  )
+                  .map((s) => s.userId);
+                const every = ids.length > 0 && ids.every((id) => selectedIds.has(id));
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (every) ids.forEach((id) => next.delete(id));
+                  else ids.forEach((id) => next.add(id));
+                  return next;
+                });
+              }}
+              onToggleSelectOne={toggleSelectOne}
               onChange={updatePeriod}
               onViewDetails={viewStaffDetails}
             />
@@ -1087,6 +1299,11 @@ function DayClassGrid({
   drafts,
   canMark: canMarkAny,
   lockedUserId,
+  selectedIds,
+  allSelected,
+  someSelected,
+  onToggleSelectAll,
+  onToggleSelectOne,
   onChange,
   onViewDetails,
 }: {
@@ -1097,6 +1314,11 @@ function DayClassGrid({
   canMark: boolean;
   /** The viewer's own row: shown read-only (nobody marks their own attendance). */
   lockedUserId?: string;
+  selectedIds: Set<string>;
+  allSelected: boolean;
+  someSelected: boolean;
+  onToggleSelectAll: () => void;
+  onToggleSelectOne: (userId: string) => void;
   onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
   onViewDetails?: (userId: string) => void;
 }) {
@@ -1108,6 +1330,7 @@ function DayClassGrid({
       drafts[periodDraftKey(teacher.userId, period.periodKey)]?.status ?? period.status
     );
 
+  const checkWidth = "2.75rem";
   const teacherWidth = "15rem";
   const classWidth = "13.5rem";
   const ratioWidth = "10.5rem";
@@ -1139,7 +1362,8 @@ function DayClassGrid({
       },
     ].filter((item) => item.key !== "left_early" || teacher.periods.some((p) => p.review));
     const canMark = canMarkAny && String(teacher.userId) !== String(lockedUserId);
-    return { teacher, statuses, total, present, hasLate, items, canMark };
+    const selectable = canMark && teacher.periods.length > 0;
+    return { teacher, statuses, total, present, hasLate, items, canMark, selectable };
   });
 
   if (teachers.length === 0) {
@@ -1173,6 +1397,7 @@ function DayClassGrid({
           }}
         >
           <colgroup>
+            {canMarkAny ? <col style={{ width: checkWidth }} /> : null}
             <col style={{ width: teacherWidth }} />
             {Array.from({ length: classCount }, (_, index) => (
               <col key={index} style={{ width: classWidth }} />
@@ -1182,6 +1407,16 @@ function DayClassGrid({
           </colgroup>
           <thead>
             <tr>
+              {canMarkAny ? (
+                <th className={cn(headClass, "px-2 text-center")} style={{ width: checkWidth, minWidth: checkWidth }}>
+                  <SquareCheckbox
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={onToggleSelectAll}
+                    aria-label="Select all teachers"
+                  />
+                </th>
+              ) : null}
               <th className={headClass} style={{ width: teacherWidth, minWidth: teacherWidth }}>
                 Teacher
               </th>
@@ -1199,8 +1434,25 @@ function DayClassGrid({
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ teacher, statuses, total, present, hasLate, items, canMark }) => (
-              <tr key={teacher.userId} className="group">
+            {rows.map(({ teacher, statuses, total, present, hasLate, items, canMark, selectable }) => (
+              <tr
+                key={teacher.userId}
+                className={cn("group", selectedIds.has(teacher.userId) && "bg-muted/40")}
+              >
+                {canMarkAny ? (
+                  <td
+                    className={cn(cellClass, "align-middle px-2 text-center")}
+                    style={{ width: checkWidth, minWidth: checkWidth }}
+                  >
+                    {selectable ? (
+                      <SquareCheckbox
+                        checked={selectedIds.has(teacher.userId)}
+                        onChange={() => onToggleSelectOne(teacher.userId)}
+                        aria-label={`Select ${teacher.name}`}
+                      />
+                    ) : null}
+                  </td>
+                ) : null}
                 <td className={cn(cellClass, "align-middle")} style={{ width: teacherWidth, minWidth: teacherWidth }}>
                   <StaffIdentity person={teacher} />
                   <ScanTimes teacher={teacher} />
@@ -1339,6 +1591,11 @@ function StaffDayTable({
   drafts,
   canMark: canMarkAny,
   lockedUserId,
+  selectedIds,
+  allSelected,
+  someSelected,
+  onToggleSelectAll,
+  onToggleSelectOne,
   onChange,
   onViewDetails,
 }: {
@@ -1347,6 +1604,11 @@ function StaffDayTable({
   canMark: boolean;
   /** The viewer's own row: shown read-only (nobody marks their own attendance). */
   lockedUserId?: string;
+  selectedIds: Set<string>;
+  allSelected: boolean;
+  someSelected: boolean;
+  onToggleSelectAll: () => void;
+  onToggleSelectOne: (userId: string) => void;
   onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
   onViewDetails?: (userId: string) => void;
 }) {
@@ -1360,6 +1622,16 @@ function StaffDayTable({
       <table className="w-full min-w-[52.75rem] border-collapse text-sm">
         <thead className="bg-[#eef4fc] border-b border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700">
           <tr>
+            {canMarkAny ? (
+              <th className={cn(headClass, "w-10 px-2 text-center")}>
+                <SquareCheckbox
+                  checked={allSelected}
+                  indeterminate={someSelected && !allSelected}
+                  onChange={onToggleSelectAll}
+                  aria-label="Select all staff"
+                />
+              </th>
+            ) : null}
             <th className={cn(headClass, "min-w-[14rem]")}>Staff</th>
             <th className={cn(headClass, "min-w-[8rem]")}>Role</th>
             <th className={cn(headClass, "min-w-[13rem]")}>Attendance</th>
@@ -1370,12 +1642,14 @@ function StaffDayTable({
         <tbody>
           {staff.map((person) => {
             const canMark = canMarkAny && String(person.userId) !== String(lockedUserId);
+            const selectable = canMark && person.periods.length > 0;
             if (person.holidayName && person.periods.length === 0) {
               return (
                 <tr
                   key={person.userId}
                   className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                 >
+                  {canMarkAny ? <td className={cn(cellClass, "px-2 text-center")} /> : null}
                   <td className={cellClass}>
                     <StaffIdentity person={person} />
                   </td>
@@ -1401,8 +1675,22 @@ function StaffDayTable({
             return (
               <tr
                 key={person.userId}
-                className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60 dark:border-slate-800 dark:hover:bg-slate-800/30"
+                className={cn(
+                  "border-b border-slate-100 last:border-0 hover:bg-slate-50/60 dark:border-slate-800 dark:hover:bg-slate-800/30",
+                  selectedIds.has(person.userId) && "bg-muted/40",
+                )}
               >
+                {canMarkAny ? (
+                  <td className={cn(cellClass, "px-2 text-center")}>
+                    {selectable ? (
+                      <SquareCheckbox
+                        checked={selectedIds.has(person.userId)}
+                        onChange={() => onToggleSelectOne(person.userId)}
+                        aria-label={`Select ${person.name}`}
+                      />
+                    ) : null}
+                  </td>
+                ) : null}
                 <td className={cellClass}>
                   <StaffIdentity person={person} />
                 </td>

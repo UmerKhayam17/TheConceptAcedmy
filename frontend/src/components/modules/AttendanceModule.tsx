@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, isValid, parseISO } from "date-fns";
 import {
+  BellRing,
   CalendarDays,
   CheckCircle2,
   ClipboardList,
@@ -26,6 +27,7 @@ import { cn, formatClockTime } from "@/lib/utils";
 import { avatarTone } from "@/lib/avatarTone";
 import { resolveUploadUrl } from "@/lib/api";
 import {
+  confirmAcademyAbsentNotify,
   exportAcademyAttendance,
   fetchAcademyAbsentList,
   fetchAcademyAttendanceDay,
@@ -201,6 +203,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const canMark = writable && (caps.canCreate || caps.canEdit);
+  const isAdmin = user?.role === "admin" || Boolean(user?.isSystemAdmin);
 
   /** Marking list always uses the To date. */
   const date = dateTo;
@@ -288,6 +291,28 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const confirmAbsentMut = useMutation({
+    mutationFn: () =>
+      confirmAcademyAbsentNotify({
+        date,
+        classId: classFilter || undefined,
+        sectionId: sectionFilter || undefined,
+        sessionId: classFilter ? undefined : apiSessionId,
+      }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["academy-attendance-day", date] });
+      const n = res?.notified ?? 0;
+      toast({
+        title: n > 0 ? "Parents notified" : "Nothing pending",
+        description:
+          n > 0
+            ? `Absent alerts sent for ${n} ${n === 1 ? "student" : "students"}.`
+            : "No unsent absent alerts for this day and filter.",
+      });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const recordMap = useMemo(() => {
     const m = new Map<string, AcademyAttendanceRecord>();
     (data?.records ?? []).forEach((r) => {
@@ -337,6 +362,28 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
     });
     return counts;
   }, [studentsFiltered, recordMap, holidayIds]);
+
+  /**
+   * Pending parent alerts = saved absents not yet notified, plus default absents
+   * (AI never saw them — no row yet, treated as absent in the register).
+   */
+  const pendingAbsentNotifyCount = useMemo(() => {
+    const holiday = holidayIds;
+    const marked = new Set<string>();
+    let n = 0;
+    (data?.records ?? []).forEach((r) => {
+      const sid =
+        typeof r.studentId === "object"
+          ? String((r.studentId as { _id?: string })._id || "")
+          : String(r.studentId || "");
+      if (sid) marked.add(sid);
+      if (r.status === "absent" && !r.parentNotifiedAt) n += 1;
+    });
+    (data?.students ?? []).forEach((s) => {
+      if (!marked.has(s._id) && !holiday.has(s._id)) n += 1;
+    });
+    return n;
+  }, [data?.records, data?.students, holidayIds]);
 
   /** Flat rows for the absent list — same date filter as the toolbar. */
   const absentRows = useMemo(() => {
@@ -419,7 +466,19 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
       });
       return;
     }
-    markMut.mutate([{ studentId, status }], { onSuccess: () => toast({ title: `Marked ${status}` }) });
+    markMut.mutate(
+      [{ studentId, status }],
+      {
+        onSuccess: () =>
+          toast({
+            title: `Marked ${status}`,
+            description:
+              status === "absent" && isAdmin
+                ? "Parent alert waits until you Confirm & notify."
+                : undefined,
+          }),
+      },
+    );
   };
 
   const visibleIds = studentsFiltered.map((s) => s._id);
@@ -462,7 +521,13 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
       ids.map((studentId) => ({ studentId, status })),
       {
         onSuccess: () => {
-          toast({ title: `Marked ${ids.length} ${ids.length === 1 ? "student" : "students"} ${status}` });
+          toast({
+            title: `Marked ${ids.length} ${ids.length === 1 ? "student" : "students"} ${status}`,
+            description:
+              status === "absent" && isAdmin
+                ? "Parent alerts wait until you Confirm & notify."
+                : undefined,
+          });
           setSelectedIds(new Set());
         },
       },
@@ -691,6 +756,37 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
             <span className="font-semibold">{data.holidayName}</span>
             {" "}is an approved holiday. Students without a mark are not counted absent.
           </div>
+        )}
+
+        {isAdmin && canMark && view === "mark" && pendingAbsentNotifyCount > 0 && (
+          <Card className="border-rose-200/80 bg-rose-50/60 p-3 shadow-sm sm:px-4 sm:py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#1a2b4b]">
+                  {pendingAbsentNotifyCount} absent{" "}
+                  {pendingAbsentNotifyCount === 1 ? "alert" : "alerts"} pending
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
+                  Includes unmarked students (default absent after AI). Confirm saves
+                  them as absent and notifies parents.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 shrink-0 gap-1.5 bg-rose-600 text-white hover:bg-rose-700"
+                disabled={confirmAbsentMut.isPending || !hasScope}
+                onClick={() => confirmAbsentMut.mutate()}
+              >
+                {confirmAbsentMut.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <BellRing className="h-4 w-4" />
+                )}
+                Confirm &amp; notify
+              </Button>
+            </div>
+          </Card>
         )}
 
         <Card className="overflow-hidden border-border/80 shadow-sm">

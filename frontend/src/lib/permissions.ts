@@ -90,6 +90,7 @@ export type ModuleKey =
   | "reports"
   | "datasheets"
   | "settings"
+  | "contact"
   | "permissions"
   | "permission-catalog";
 
@@ -293,6 +294,12 @@ export const MODULES: ModuleDef[] = [
     showInNav: false,
   },
   { key: "settings", label: "My Profile", icon: "User", desc: "Update profile and change password" },
+  {
+    key: "contact",
+    label: "Contact Us",
+    icon: "Phone",
+    desc: "Phone, email, hours and send a message to the academy",
+  },
 ];
 
 /** Every panel module key (from MODULES — add new modules there first). */
@@ -497,6 +504,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     notifications: "view",
     "academic-calendar": "view",
     settings: "view",
+    contact: "view",
   }),
   student: modulePermMatrix({
     dashboard: "view",
@@ -799,6 +807,11 @@ export function resolveModuleCaps(
   // Seeded system admin only — full UI access to every module (including newly added ones).
   if (isSystemAdmin) return capsFromPermLevel("full");
 
+  // Contact Us is always available to parents (no backend module key yet).
+  if (role === "parent" && moduleKey === "contact") {
+    return capsFromPermLevel("view");
+  }
+
   const expanded = expandBackendModulePermissions(backendPerms);
 
   // Secondary admins always use their dynamic matrix (empty = no access).
@@ -941,6 +954,9 @@ export function applyBackendModulePermissions(
   // an older parent account was provisioned without the profile key.
   if (role === "parent" && (!next.settings || next.settings === "none")) {
     next.settings = "view";
+  }
+  if (role === "parent" && (!next.contact || next.contact === "none")) {
+    next.contact = "view";
   }
 
   return next;

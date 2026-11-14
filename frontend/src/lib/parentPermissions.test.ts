@@ -87,6 +87,7 @@ describe("parent role matrix", () => {
     expect(keys).toContain("chat");
     expect(keys).toContain("announcements");
     expect(keys).toContain("notifications");
+    expect(keys).toContain("contact");
     expect(keys).not.toContain("school-calendar");
     expect(keys).not.toContain("timetable-builder");
     expect(keys).not.toContain("timetable-board");

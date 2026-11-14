@@ -2,6 +2,7 @@ const catchAsync = require('../utils/catchAsync');
 const ApiError = require('../utils/ApiError');
 const Notification = require('../models/Notification');
 const { formatNotification } = require('../services/realtime/realtimeService');
+const { saveDeviceToken, removeDeviceToken } = require('../services/pushService');
 
 const list = catchAsync(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 30, 100);
@@ -39,4 +40,23 @@ const markAllRead = catchAsync(async (req, res) => {
   res.json({ success: true, data: { updated: result.modifiedCount } });
 });
 
-module.exports = { list, markRead, markAllRead };
+/** The Android app saves this phone's push token after sign-in (phone notification bar). */
+const readToken = (req) => {
+  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+  if (token && (token.length > 4096 || /\s/.test(token))) throw new ApiError(400, 'Invalid device token');
+  return token;
+};
+
+const registerDevice = catchAsync(async (req, res) => {
+  const token = readToken(req);
+  if (!token) throw new ApiError(400, 'Device token is required');
+  await saveDeviceToken(req.user._id, token);
+  res.json({ success: true });
+});
+
+const unregisterDevice = catchAsync(async (req, res) => {
+  await removeDeviceToken(req.user._id, readToken(req) || null);
+  res.json({ success: true });
+});
+
+module.exports = { list, markRead, markAllRead, registerDevice, unregisterDevice };

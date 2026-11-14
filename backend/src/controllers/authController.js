@@ -243,7 +243,8 @@ const logout = catchAsync(async (req, res) => {
 
   if (userId) {
     await User.findByIdAndUpdate(userId, {
-      $unset: { refreshToken: 1, refreshTokenPrev: 1, refreshTokenRotatedAt: 1 },
+      // fcmToken: a signed-out phone must stop getting this user's notifications.
+      $unset: { refreshToken: 1, refreshTokenPrev: 1, refreshTokenRotatedAt: 1, fcmToken: 1 },
     });
   }
   clearRefreshCookie(res);

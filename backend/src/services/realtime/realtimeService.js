@@ -6,6 +6,7 @@ const User = require('../../models/User');
 const { SYSTEM_MODULES } = require('../../config/systemModules');
 const { hasModuleAccess } = require('../../modules/moduleUtils');
 const { isSystemAdmin } = require('../../utils/systemAdmin');
+const { sendPushToUser } = require('../pushService');
 
 function getNotificationsNsp() {
   try {
@@ -36,6 +37,8 @@ async function createNotificationForUser(userId, doc) {
   if (nsp) {
     nsp.to(`user:${userId}`).emit('notification:new', formatNotification(saved));
   }
+  // Also to the phone's notification bar (Android app); runs in the background, never throws.
+  void sendPushToUser(userId, saved);
   return saved;
 }
 

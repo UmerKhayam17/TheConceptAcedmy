@@ -324,6 +324,8 @@ export interface AcademyAttendanceRecord {
   subjectId?: AcademySubject | string;
   notes?: string;
   markedBy?: string | { _id?: string; name?: string } | null;
+  /** Set after admin Confirm & notify for absent parent alerts. */
+  parentNotifiedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -2595,6 +2597,22 @@ export const markAcademyAttendance = (body: {
   entries: { studentId: string; status: "present" | "absent" | "late" | "leave" }[];
 }) =>
   api<AcademyAttendanceRecord[]>("/attendance/mark", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const confirmAcademyAbsentNotify = (body: {
+  date: string;
+  classId?: string;
+  sectionId?: string;
+  sessionId?: string;
+}) =>
+  api<{
+    date: string;
+    pending: number;
+    notified: number;
+    parentAlerts: number;
+  }>("/attendance/confirm-absent-notify", {
     method: "POST",
     body: JSON.stringify(body),
   });

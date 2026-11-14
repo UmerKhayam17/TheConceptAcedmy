@@ -34,6 +34,7 @@ import {
   ArrowLeftRight,
   Tags,
   BadgePercent,
+  Phone,
 } from "lucide-react";
 import type { Role } from "./auth";
 import type { ModuleKey } from "./permissions";
@@ -887,6 +888,13 @@ export const PARENT_SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: Bell,
         moduleKey: "notifications",
         href: (role) => moduleHref(role, "notifications"),
+      },
+      {
+        id: "contact",
+        label: "Contact Us",
+        icon: Phone,
+        moduleKey: "contact",
+        href: (role) => moduleHref(role, "contact"),
       },
     ],
   },

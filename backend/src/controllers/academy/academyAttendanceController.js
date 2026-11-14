@@ -311,6 +311,20 @@ const mark = catchAsync(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+const confirmAbsentNotify = catchAsync(async (req, res) => {
+  const role = roleNameOf(req);
+  if (role === 'parent' || role === 'teacher') {
+    throw new ApiError(403, 'Only admins can confirm absent parent notifications');
+  }
+  if (role !== 'admin' && !req.user?.isSystemAdmin) {
+    throw new ApiError(403, 'Only admins can confirm absent parent notifications');
+  }
+
+  const data = await attendanceService.confirmAbsentNotifications(req.body);
+  rt.attendanceCrud('updated', req.body?.classId || 'batch');
+  res.json({ success: true, data });
+});
+
 const summary = catchAsync(async (req, res) => {
   const teacherScope = await resolveTeacherScope(req, req.query.sessionId);
   let studentIds = null;
@@ -346,4 +360,12 @@ const studentMonth = catchAsync(async (req, res) => {
   res.json({ success: true, data });
 });
 
-module.exports = { list, listAbsent, mark, summary, exportAttendance, studentMonth };
+module.exports = {
+  list,
+  listAbsent,
+  mark,
+  confirmAbsentNotify,
+  summary,
+  exportAttendance,
+  studentMonth,
+};

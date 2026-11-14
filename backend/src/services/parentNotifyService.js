@@ -180,13 +180,13 @@ function formatDay(date) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: SCHOOL_TZ });
 }
 
-/** rows: [{ studentId, status, date }] */
-function attendanceMarked(rows) {
+function buildAttendanceDocs(rows) {
   const valid = (rows || []).filter((r) => r?.studentId && ATTENDANCE_TEXT[r.status]);
-  if (!valid.length) return;
+  if (!valid.length) return null;
   const byStudent = new Map(valid.map((r) => [String(r.studentId), r]));
-  later(() =>
-    notifyParentsOfStudents([...byStudent.keys()], (student) => {
+  return {
+    studentIds: [...byStudent.keys()],
+    build: (student) => {
       const row = byStudent.get(String(student._id));
       const text = ATTENDANCE_TEXT[row.status];
       const day = formatDay(row.date);
@@ -200,8 +200,22 @@ function attendanceMarked(rows) {
         resourceId: String(student._id),
         meta: { status: row.status, date: row.date },
       };
-    })
-  );
+    },
+  };
+}
+
+/** rows: [{ studentId, status, date }] — fire-and-forget (marking / AI). */
+function attendanceMarked(rows) {
+  const packed = buildAttendanceDocs(rows);
+  if (!packed) return;
+  later(() => notifyParentsOfStudents(packed.studentIds, packed.build));
+}
+
+/** Same alerts, but waits so Confirm & notify can stamp rows only after send. */
+async function attendanceMarkedAwait(rows) {
+  const packed = buildAttendanceDocs(rows);
+  if (!packed) return 0;
+  return notifyParentsOfStudents(packed.studentIds, packed.build);
 }
 
 /** New marks for a class test / assessment. assessments: lean or mongoose docs. */
@@ -377,6 +391,7 @@ module.exports = {
   notifyParentsOfStudents,
   notifyParentsOnce,
   attendanceMarked,
+  attendanceMarkedAwait,
   marksPosted,
   examResultsPublished,
   feeEvent,
