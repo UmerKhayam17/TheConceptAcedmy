@@ -220,7 +220,7 @@ export default function ParentMobileAttendance() {
   ];
 
   return (
-    <div className="min-h-full bg-[#E8F3FA] pb-8">
+    <div className="min-h-full bg-white pb-8">
       <header className="relative flex items-center px-4 pb-2 pt-[max(0.7rem,env(safe-area-inset-top))]">
         <button
           type="button"

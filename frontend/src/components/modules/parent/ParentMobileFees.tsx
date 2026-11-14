@@ -194,7 +194,7 @@ export default function ParentMobileFees({
     const remaining = Math.max(0, (selected.amount || 0) - (selected.paidAmount || 0));
 
     return (
-      <div className="min-h-full bg-[#E8F3FA] pb-10">
+      <div className="min-h-full bg-white pb-10">
         <ScreenHeader title="Voucher" onBack={() => setSelectedId(null)} />
 
         <div className="mx-4 mt-2 space-y-3.5">
@@ -320,7 +320,7 @@ export default function ParentMobileFees({
   }
 
   return (
-    <div className="min-h-full bg-[#E8F3FA] pb-10">
+    <div className="min-h-full bg-white pb-10">
       <ScreenHeader title="Fee" onBack={onBack} />
 
       <div className="mx-4 mt-1 flex items-center gap-3 rounded-[18px] bg-[#E7F8F4] px-3.5 py-3">

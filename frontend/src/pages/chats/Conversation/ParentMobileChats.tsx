@@ -114,7 +114,7 @@ export default function ParentMobileChats() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#E7F4FB]">
+    <div className="flex h-full min-h-0 flex-col bg-white">
       <header className="px-4 pb-2 pt-[max(0.85rem,env(safe-area-inset-top))]">
         <h1 className="flex items-center justify-center gap-2 text-[22px] font-extrabold tracking-tight text-[#111827]">
           Chats

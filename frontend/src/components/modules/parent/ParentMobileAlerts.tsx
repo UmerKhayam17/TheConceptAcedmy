@@ -177,7 +177,7 @@ export default function ParentMobileAlerts() {
   };
 
   return (
-    <div className="flex min-h-full flex-col bg-[#E7F4FB]">
+    <div className="flex min-h-full flex-col bg-white">
       <header className="px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <h1 className="text-center text-[22px] font-extrabold tracking-tight text-[#111827]">
           Notifications

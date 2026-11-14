@@ -338,7 +338,7 @@ export default function ParentMobileReportCard() {
   };
 
   return (
-    <div className="min-h-full bg-[#E7F3FA] pb-8">
+    <div className="min-h-full bg-white pb-8">
       <header className="relative flex items-center px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <button
           type="button"
@@ -414,7 +414,7 @@ export default function ParentMobileReportCard() {
               </li>
             ))}
           </ul>
-          <div className="mt-1 grid grid-cols-3 rounded-2xl bg-[#E7F6FB] px-2 py-3 text-center">
+          <div className="mt-1 grid grid-cols-3 rounded-2xl bg-[#F4F6F8] px-2 py-3 text-center">
             <div>
               <p className="text-[11px] text-[#64748B]">Obtained</p>
               <p className="mt-0.5 text-[15px] font-bold text-[#1A1A2E]">

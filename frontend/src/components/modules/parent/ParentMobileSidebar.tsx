@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 
 function IconBubble({ children }: { children: ReactNode }) {
   return (
-    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#E8F8FB] text-[#22C5D6]">
+    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#E0F7FA] text-[#0E7490]">
       {children}
     </span>
   );
@@ -29,7 +29,7 @@ function IconBubble({ children }: { children: ReactNode }) {
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#94A3B8]">
+    <p className="mb-2.5 px-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#64748B]">
       {children}
     </p>
   );
@@ -37,7 +37,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 
 function MenuCard({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-[20px] bg-white shadow-[0_4px_16px_rgba(15,23,42,0.04)]">
+    <div className="overflow-hidden rounded-[22px] border border-[#E5EAF0] bg-white shadow-[0_10px_28px_rgba(15,23,42,0.1)]">
       {children}
     </div>
   );
@@ -63,14 +63,14 @@ function NavRow({
   disabled?: boolean;
 }) {
   const className = cn(
-    "flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors",
+    "flex w-full items-center gap-3.5 px-4 py-4 text-left transition-colors",
     disabled ? "cursor-not-allowed opacity-45" : "active:bg-[#F8FAFC]",
   );
   const inner = (
     <>
       <IconBubble>{icon}</IconBubble>
-      <span className="min-w-0 flex-1 text-[15px] font-semibold text-[#1E293B]">{label}</span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-[#CBD5E1]" />
+      <span className="min-w-0 flex-1 text-[16px] font-bold text-[#0F172A]">{label}</span>
+      <ChevronRight className="h-5 w-5 shrink-0 text-[#94A3B8]" />
     </>
   );
 
@@ -113,7 +113,7 @@ export default function ParentMobileSidebar({
   const profileHref = moduleHref("parent", "settings");
 
   return (
-    <div className="flex h-full flex-col bg-[#EAF2F8]">
+    <div className="flex h-full flex-col bg-[#F4F6F8]">
       <header className="relative shrink-0 overflow-hidden bg-gradient-to-b from-[#3B82F6] via-[#22C5D6] to-[#14B8C8] px-5 pb-8 pt-[max(1rem,env(safe-area-inset-top))] text-white">
         <div className="pointer-events-none absolute -left-10 top-6 h-36 w-36 rounded-full border border-white/15" />
         <div className="pointer-events-none absolute -right-8 -top-6 h-40 w-40 rounded-full border border-white/15" />
@@ -166,11 +166,11 @@ export default function ParentMobileSidebar({
         <section>
           <SectionLabel>Preferences</SectionLabel>
           <MenuCard>
-            <div className="flex items-center gap-3 px-4 py-3.5 opacity-45">
+            <div className="flex items-center gap-3.5 px-4 py-4 opacity-45">
               <IconBubble>
                 <Moon className="h-[18px] w-[18px]" strokeWidth={2} />
               </IconBubble>
-              <span className="min-w-0 flex-1 text-[15px] font-semibold text-[#1E293B]">Dark Mode</span>
+              <span className="min-w-0 flex-1 text-[16px] font-bold text-[#0F172A]">Dark Mode</span>
               <Switch
                 checked={false}
                 disabled
@@ -211,12 +211,12 @@ export default function ParentMobileSidebar({
           <button
             type="button"
             onClick={() => void logout()}
-            className="flex w-full items-center gap-3 rounded-[20px] bg-[#FDECEC] px-4 py-3.5 text-left shadow-[0_4px_16px_rgba(15,23,42,0.04)] transition-colors active:bg-[#FCDADA]"
+            className="flex w-full items-center gap-3.5 rounded-[22px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.08)] transition-colors active:bg-[#FCDADA]"
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#FCE4E4] text-[#EF4444]">
-              <LogOut className="h-[18px] w-[18px]" strokeWidth={2} />
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#FECACA] text-[#DC2626]">
+              <LogOut className="h-[18px] w-[18px]" strokeWidth={2.25} />
             </span>
-            <span className="text-[15px] font-semibold text-[#EF4444]">Logout</span>
+            <span className="text-[16px] font-bold text-[#DC2626]">Logout</span>
           </button>
         </section>
       </div>

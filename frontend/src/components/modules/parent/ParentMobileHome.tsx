@@ -4,7 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeftRight,
   BarChart3,
-  Brain,
+  // Brain, // used by the hidden Online Quiz tile
   CalendarDays,
   Check,
   ChevronRight,
@@ -50,19 +50,80 @@ type Tone = {
   icon: string;
 };
 
+type TileTone = {
+  card: string;
+  icon: string;
+  label: string;
+};
+
 const TILES: {
   label: string;
   view?: string;
   to?: string;
   Icon: LucideIcon;
-  tone: Tone;
+  tone: TileTone;
 }[] = [
-  { label: "Online Quiz", to: testExamsHref(ROLE, "enter-tests"), Icon: Brain, tone: { wrap: "bg-[#DDD6FE]", icon: "text-[#6D28D9]" } },
-  { label: "Academics", view: "academics", Icon: GraduationCap, tone: { wrap: "bg-[#99F6E4]", icon: "text-[#0F766E]" } },
-  { label: "Attendance", to: moduleHref(ROLE, "attendance"), Icon: CalendarDays, tone: { wrap: "bg-[#FED7AA]", icon: "text-[#EA580C]" } },
-  { label: "Notice Board", to: moduleHref(ROLE, "announcements"), Icon: Megaphone, tone: { wrap: "bg-[#FBCFE8]", icon: "text-[#DB2777]" } },
-  { label: "Date Sheet", to: testExamsHref(ROLE, "date-sheet"), Icon: FileText, tone: { wrap: "bg-[#A5F3FC]", icon: "text-[#0891B2]" } },
-  { label: "Results", to: testExamsHref(ROLE, "report-card"), Icon: BarChart3, tone: { wrap: "bg-[#BFDBFE]", icon: "text-[#2563EB]" } },
+  // Hidden for now: there is no real online quiz yet (it opened the desktop Class Tests page).
+  // {
+  //   label: "Online Quiz",
+  //   to: testExamsHref(ROLE, "enter-tests"),
+  //   Icon: Brain,
+  //   tone: {
+  //     card: "border-[#C4B5FD] bg-gradient-to-b from-[#EDE9FE] to-[#DDD6FE] shadow-[0_10px_22px_rgba(109,40,217,0.18)]",
+  //     icon: "text-[#5B21B6]",
+  //     label: "text-[#1E1B4B]",
+  //   },
+  // },
+  {
+    label: "Academics",
+    view: "academics",
+    Icon: GraduationCap,
+    tone: {
+      card: "border-[#5EEAD4] bg-gradient-to-b from-[#CCFBF1] to-[#99F6E4] shadow-[0_10px_22px_rgba(15,118,110,0.18)]",
+      icon: "text-[#0F766E]",
+      label: "text-[#134E4A]",
+    },
+  },
+  {
+    label: "Attendance",
+    to: moduleHref(ROLE, "attendance"),
+    Icon: CalendarDays,
+    tone: {
+      card: "border-[#FDBA74] bg-gradient-to-b from-[#FFEDD5] to-[#FED7AA] shadow-[0_10px_22px_rgba(234,88,12,0.18)]",
+      icon: "text-[#C2410C]",
+      label: "text-[#7C2D12]",
+    },
+  },
+  {
+    label: "Notice Board",
+    to: moduleHref(ROLE, "announcements"),
+    Icon: Megaphone,
+    tone: {
+      card: "border-[#F9A8D4] bg-gradient-to-b from-[#FCE7F3] to-[#FBCFE8] shadow-[0_10px_22px_rgba(219,39,119,0.18)]",
+      icon: "text-[#BE185D]",
+      label: "text-[#831843]",
+    },
+  },
+  {
+    label: "Date Sheet",
+    to: testExamsHref(ROLE, "date-sheet"),
+    Icon: FileText,
+    tone: {
+      card: "border-[#7DD3FC] bg-gradient-to-b from-[#E0F2FE] to-[#BAE6FD] shadow-[0_10px_22px_rgba(8,145,178,0.18)]",
+      icon: "text-[#0369A1]",
+      label: "text-[#0C4A6E]",
+    },
+  },
+  {
+    label: "Results",
+    to: testExamsHref(ROLE, "report-card"),
+    Icon: BarChart3,
+    tone: {
+      card: "border-[#BEF264] bg-gradient-to-b from-[#F7FEE7] to-[#D9F99D] shadow-[0_10px_22px_rgba(101,163,13,0.18)]",
+      icon: "text-[#4D7C0F]",
+      label: "text-[#365314]",
+    },
+  },
 ];
 
 const ROWS: {
@@ -245,7 +306,7 @@ export default function ParentMobileHome({
   }
 
   return (
-    <div className="min-h-full bg-[#E7F6FB] pb-8">
+    <div className="min-h-full bg-[#F4F6F8] pb-8">
       <header className="relative overflow-hidden bg-gradient-to-b from-[#2ED3E0] via-[#18C3D4] to-[#12B3C8] px-4 pb-16 pt-[max(0.85rem,env(safe-area-inset-top))] text-white">
         <div className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 rounded-full border border-white/15" />
         <div className="pointer-events-none absolute right-6 top-16 h-24 w-24 rounded-full border border-white/10" />
@@ -318,8 +379,9 @@ export default function ParentMobileHome({
                     type="button"
                     onClick={() => onSelect(child._id)}
                     className={cn(
-                      "flex min-w-[240px] flex-1 items-center gap-3 rounded-2xl border-2 bg-white px-3 py-3 text-left shadow-sm",
-                      active ? "border-[#3EC6D4]" : "border-transparent",
+                      "flex shrink-0 items-center gap-3 rounded-2xl border-2 bg-white px-3.5 py-3 text-left shadow-[0_8px_20px_rgba(15,23,42,0.08)]",
+                      students.length === 1 ? "w-full" : "w-max max-w-[min(100%,320px)]",
+                      active ? "border-[#3EC6D4]" : "border-[#E5EAF0]",
                     )}
                   >
                     <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-[#1EC6D6] text-white">
@@ -330,10 +392,10 @@ export default function ParentMobileHome({
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[18px] font-extrabold text-[#102A43]">
+                      <span className="block whitespace-normal break-words text-[18px] font-extrabold leading-snug text-[#102A43]">
                         {shown.studentName}
                       </span>
-                      <span className="mt-0.5 block truncate text-[16px] font-bold text-[#0F3A4A]">
+                      <span className="mt-0.5 block whitespace-normal break-words text-[16px] font-bold leading-snug text-[#0F3A4A]">
                         {classSectionLine(shown)}
                       </span>
                     </span>
@@ -349,22 +411,23 @@ export default function ParentMobileHome({
           )}
         </section>
 
-        <section className="grid grid-cols-3 gap-x-2 gap-y-4">
+        <section className="grid grid-cols-3 gap-x-2.5 gap-y-3">
           {TILES.map((tile) => {
             const academicsTo = tile.label === "Academics" && student
               ? `/panel/parent/students/${student._id}`
               : tile.to;
             const inner = (
               <>
-                <span className={cn("grid h-[72px] w-[72px] place-items-center rounded-[20px]", tile.tone.wrap)}>
-                  <tile.Icon className={cn("h-8 w-8", tile.tone.icon)} strokeWidth={1.75} />
-                </span>
-                <span className="text-center text-[15px] font-semibold leading-tight text-[#1E293B]">
+                <tile.Icon className={cn("h-8 w-8", tile.tone.icon)} strokeWidth={2.25} />
+                <span className={cn("text-center text-[14px] font-extrabold leading-tight", tile.tone.label)}>
                   {tile.label}
                 </span>
               </>
             );
-            const className = "flex flex-col items-center gap-1.5";
+            const className = cn(
+              "flex min-h-[112px] flex-col items-center justify-center gap-2.5 rounded-[22px] border px-2 py-3.5",
+              tile.tone.card,
+            );
             if (academicsTo) {
               return (
                 <Link key={tile.label} to={academicsTo} className={className}>
@@ -380,23 +443,23 @@ export default function ParentMobileHome({
           })}
         </section>
 
-        <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+        <section className="overflow-hidden rounded-[24px] border border-[#E5EAF0] bg-white shadow-[0_10px_28px_rgba(15,23,42,0.1)]">
           {ROWS.map((row, index) => {
             const inner = (
               <>
-                <span className={cn("grid h-16 w-16 shrink-0 place-items-center rounded-2xl", row.tone.wrap)}>
-                  <row.Icon className={cn("h-8 w-8", row.tone.icon)} strokeWidth={1.75} />
+                <span className={cn("grid h-[56px] w-[56px] shrink-0 place-items-center rounded-[16px]", row.tone.wrap)}>
+                  <row.Icon className={cn("h-7 w-7", row.tone.icon)} strokeWidth={2} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold leading-tight text-[#1E293B]">{row.label}</span>
-                  <span className="mt-0.5 block truncate text-[15px] font-medium leading-tight text-[#64748B]">{row.hint}</span>
+                  <span className="block text-[16px] font-bold leading-tight text-[#0F172A]">{row.label}</span>
+                  <span className="mt-0.5 block truncate text-[13px] font-medium leading-tight text-[#64748B]">{row.hint}</span>
                 </span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-[#CBD5E1]" />
+                <ChevronRight className="h-5 w-5 shrink-0 text-[#94A3B8]" />
               </>
             );
             const className = cn(
-              "flex w-full items-center gap-3 px-4 py-3.5 text-left",
-              index > 0 && "border-t border-[#F1F5F9]",
+              "flex w-full items-center gap-3.5 px-4 py-4 text-left active:bg-[#F8FAFC]",
+              index > 0 && "border-t border-[#EEF2F6]",
             );
             if (row.to) {
               return (

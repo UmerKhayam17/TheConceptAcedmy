@@ -776,7 +776,7 @@ export default function ParentMobileAcademics({ studentId }: { studentId: string
   }
 
   return (
-    <div className="min-h-full bg-[#E7F3FA] pb-10">
+    <div className="min-h-full bg-white pb-10">
       <header className="relative flex items-center px-4 pb-2 pt-[max(0.7rem,env(safe-area-inset-top))]">
         <button
           type="button"

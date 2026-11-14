@@ -212,7 +212,7 @@ export default function ParentMobileTimetable({ sessionId }: { sessionId: string
   let lectureIndex = 0;
 
   return (
-    <div className="min-h-full bg-[#E7F3FA] pb-8">
+    <div className="min-h-full bg-white pb-8">
       <header className="relative flex items-center px-4 pb-3 pt-[max(0.7rem,env(safe-area-inset-top))]">
         <button
           type="button"

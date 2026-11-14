@@ -123,7 +123,7 @@ export default function ParentMobileProfile() {
         : `${linkedCount} linked children — switch from Home or Select Child.`;
 
   return (
-    <div className="min-h-full bg-[#E7F3FA] pb-10">
+    <div className="min-h-full bg-white pb-10">
       <header className="relative flex items-center bg-white px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <button
           type="button"

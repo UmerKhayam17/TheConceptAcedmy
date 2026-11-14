@@ -82,7 +82,7 @@ const PanelLayout = () => {
     return (
       <AcademyLoader
         web={
-          <div className="min-h-screen flex flex-col items-center justify-center gap-2 bg-secondary/30 text-muted-foreground text-sm">
+          <div className="min-h-screen flex flex-col items-center justify-center gap-2 bg-white text-muted-foreground text-sm">
             <span>Restoring your session…</span>
             <span className="text-xs text-muted-foreground/80">Please wait — do not refresh</span>
           </div>
@@ -95,7 +95,7 @@ const PanelLayout = () => {
 
   return (
     <SidebarProvider className="h-full max-h-full min-h-0 overflow-hidden !min-h-0">
-      <div className="cms-root flex h-full max-h-full w-full overflow-hidden bg-secondary/30">
+      <div className="cms-root flex h-full max-h-full w-full overflow-hidden bg-white">
         <PanelSidebar user={user} />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <PanelSessionProvider>

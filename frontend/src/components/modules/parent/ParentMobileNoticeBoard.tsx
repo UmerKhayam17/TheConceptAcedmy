@@ -293,7 +293,7 @@ export default function ParentMobileNoticeBoard() {
   const monthLabel = MONTH_OPTIONS.find((option) => option.value === month)?.label || "All Months";
 
   return (
-    <div className="min-h-full bg-[#E6F4FA] pb-10">
+    <div className="min-h-full bg-white pb-10">
       <header className="relative flex items-center px-4 pb-1 pt-[max(0.65rem,env(safe-area-inset-top))]">
         <button
           type="button"
