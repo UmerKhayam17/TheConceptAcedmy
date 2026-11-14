@@ -1791,8 +1791,11 @@ export const fetchFeeChallanPdf = async (
 ) => {
   const q = new URLSearchParams({ size });
   if (months) q.set("months", String(months));
-  // Always send chargeIds so the server applies the opt-in selection (empty = none).
-  q.set("chargeIds", (chargeIds || []).join(","));
+  // Only when callers pass chargeIds (including []) — staff print/pay flows.
+  // Parents downloading as-is omit this so existing challan lines are not rewritten.
+  if (chargeIds !== undefined) {
+    q.set("chargeIds", chargeIds.join(","));
+  }
   const res = await authedFetch(`/student-management/fees/challan/${studentId}?${q}`);
   if (!res.ok) {
     const body = await parseJson<{ message?: string }>(res);

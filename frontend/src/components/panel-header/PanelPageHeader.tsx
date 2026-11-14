@@ -94,7 +94,9 @@ export default function PanelPageHeader({
       pathname.startsWith("/panel/parent/attendance") ||
       pathname.startsWith("/panel/parent/exams/date-sheet") ||
       pathname.startsWith("/panel/parent/exams/report-card") ||
-      pathname.startsWith("/panel/parent/timetable"));
+      pathname.startsWith("/panel/parent/timetable") ||
+      pathname.startsWith("/panel/parent/settings") ||
+      pathname.startsWith("/panel/parent/students"));
 
   return (
     <header

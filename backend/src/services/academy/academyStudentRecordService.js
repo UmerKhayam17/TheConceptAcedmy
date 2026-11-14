@@ -155,7 +155,7 @@ async function getStudentRecord(id) {
     .populate('classId', 'className totalSubjects sessionId')
     .populate('sectionId', 'sectionName')
     .populate('disciplineId', 'name code')
-    .populate('selectedSubjects', 'subjectName subjectCode')
+    .populate('selectedSubjects', 'subjectName subjectCode enrollmentType choiceGroupName status')
     .populate('feeStructureId')
     .populate('createdBy', 'name email');
   if (!student) throw new ApiError(404, 'Student not found');

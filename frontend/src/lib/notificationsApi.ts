@@ -46,3 +46,46 @@ export function notificationHref(role: string, path: string) {
   const clean = path.startsWith("/") ? path : `/${path}`;
   return `/panel/${role}${clean}`;
 }
+
+/** Parent-mobile destinations for alerts (path, moduleKey, type, or title). */
+export function resolveParentNotificationHref(item: {
+  path?: string | null;
+  moduleKey?: string | null;
+  type?: string | null;
+  title?: string | null;
+  resource?: string | null;
+}): string | null {
+  const path = String(item.path || "").trim();
+  const blob = `${item.type || ""} ${item.moduleKey || ""} ${item.resource || ""} ${item.title || ""} ${path}`.toLowerCase();
+
+  const fromHint = (): string | null => {
+    if (/fee|challan|voucher|due|unpaid/.test(blob)) return "/panel/parent?view=fees";
+    if (/attendance|absent|late|leave/.test(blob)) return "/panel/parent/attendance";
+    if (/date.?sheet|exam.?schedule/.test(blob)) return "/panel/parent/exams/date-sheet";
+    if (/report.?card|result|marks/.test(blob)) return "/panel/parent/exams/report-card";
+    if (/term.?exam|enter.?test|weekly.?test|assessment/.test(blob)) return "/panel/parent/exams/date-sheet";
+    if (/announce|notice/.test(blob)) return "/panel/parent/announcements";
+    if (/chat|message/.test(blob)) return "/panel/parent/chat";
+    if (/timetable|schedule/.test(blob)) return "/panel/parent/timetable/view";
+    if (/academic.?calendar|homework|lesson/.test(blob)) return "/panel/parent/academic-calendar";
+    return null;
+  };
+
+  if (path) {
+    if (path.startsWith("/panel/")) return path;
+    const clean = path.startsWith("/") ? path : `/${path}`;
+    // Parent Fee lives on home ?view=fees, not /fees module.
+    if (/^\/fees(\/|$)/i.test(clean) || clean.toLowerCase() === "/fee") {
+      return "/panel/parent?view=fees";
+    }
+    if (/^\/attendance/i.test(clean)) return "/panel/parent/attendance";
+    if (/^\/announcements?/i.test(clean)) return "/panel/parent/announcements";
+    if (/^\/chat/i.test(clean)) return "/panel/parent/chat";
+    if (/^\/timetable/i.test(clean)) return "/panel/parent/timetable/view";
+    if (/exams\/report-card|\/report-card/i.test(clean)) return "/panel/parent/exams/report-card";
+    if (/exams\/date-sheet|\/date-sheet/i.test(clean)) return "/panel/parent/exams/date-sheet";
+    return notificationHref("parent", clean);
+  }
+
+  return fromHint();
+}

@@ -10,6 +10,7 @@ import RegistrationTab from "@/components/modules/student-management/Registratio
 import RegisterStudentPage from "@/components/modules/student-management/RegisterStudentPage";
 import StudentDetailPage from "@/components/modules/student-management/StudentDetailPage";
 import ParentChildrenPage from "@/components/modules/parent/ParentChildrenPage";
+import ParentMobileAcademics from "@/components/modules/parent/ParentMobileAcademics";
 
 /** Student Records — enrollment for staff; linked children for parents. */
 const StudentsRecordsModule = ({
@@ -40,7 +41,16 @@ const StudentsRecordsModule = ({
           return <Navigate to={routes?.detail(section) ?? listHref} replace />;
         }
         if (action) return <Navigate to={routes?.detail(section) ?? listHref} replace />;
-        return <StudentDetailPage caps={caps} studentId={section} routes={routes ?? undefined} />;
+        return (
+          <>
+            <div className="md:hidden">
+              <ParentMobileAcademics studentId={section} />
+            </div>
+            <div className="hidden md:block">
+              <StudentDetailPage caps={caps} studentId={section} routes={routes ?? undefined} />
+            </div>
+          </>
+        );
       }
       if (section) return <Navigate to={listHref} replace />;
       // My Children → same parent dashboard, with student name chips

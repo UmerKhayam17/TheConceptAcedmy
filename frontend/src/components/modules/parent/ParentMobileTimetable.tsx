@@ -237,15 +237,15 @@ export default function ParentMobileTimetable({ sessionId }: { sessionId: string
               sheetTitle="Child"
               value={childId}
               onChange={setChildId}
-              valueClassName="text-[16px] text-[#1A1A1A]"
+              valueClassName="text-[18px] font-extrabold text-[#102A43]"
               options={children.map((child) => ({ value: child._id, label: child.studentName }))}
             />
           ) : (
-            <p className="truncate text-[16px] font-bold text-[#1A1A1A]">
+            <p className="truncate text-[18px] font-extrabold text-[#102A43]">
               {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
             </p>
           )}
-          <p className="truncate text-[13px] font-medium text-[#22C5D6]">
+          <p className="mt-0.5 truncate text-[16px] font-bold text-[#0F3A4A]">
             {selected ? classSectionLine(selected) || "—" : "—"}
           </p>
         </div>

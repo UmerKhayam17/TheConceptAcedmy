@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowLeft,
   ArrowLeftRight,
   BarChart3,
   Brain,
@@ -23,6 +22,7 @@ import { timetableHref } from "@/lib/timetableMenus";
 import { testExamsHref } from "@/lib/testExamsMenus";
 import { resolveUploadUrl, type AcademyStudent, type AcademyStudentRecord } from "@/lib/studentManagementApi";
 import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
+import ParentMobileFees from "@/components/modules/parent/ParentMobileFees";
 import { cn } from "@/lib/utils";
 
 const ROLE = "parent" as const;
@@ -107,10 +107,6 @@ function classSectionLine(student: AcademyStudent) {
   if (!rawSection) return className;
   const section = /^section\b/i.test(rawSection) ? rawSection : `Section ${rawSection}`;
   return `${className} · ${section}`;
-}
-
-function formatMoney(amount: number) {
-  return `Rs ${Math.round(amount).toLocaleString("en-PK")}`;
 }
 
 function Plants() {
@@ -237,10 +233,9 @@ export default function ParentMobileHome({
     if (next) onSelect(next._id);
   };
 
-  if (view) {
+  if (view === "fees") {
     return (
-      <FeatureScreen
-        view={view}
+      <ParentMobileFees
         onBack={closeView}
         student={student}
         record={record}
@@ -276,21 +271,21 @@ export default function ParentMobileHome({
             )}
           </button>
         </div>
-        <p className="relative mt-5 text-[11px] font-semibold tracking-[0.22em] text-white/90">
+        <p className="relative mt-5 text-[12px] font-bold tracking-[0.22em] text-white/95">
           {greeting()}
         </p>
-        <h1 className="relative mt-1 truncate text-[2rem] font-bold leading-none tracking-tight">
+        <h1 className="relative mt-1.5 truncate text-[2.4rem] font-extrabold leading-none tracking-tight">
           {displayName}
         </h1>
-        <p className="relative mt-2 flex items-center gap-1.5 text-sm text-white/95">
-          <Home className="h-3.5 w-3.5" />
+        <p className="relative mt-2.5 flex items-center gap-1.5 text-[17px] font-bold text-white">
+          <Home className="h-[18px] w-[18px]" strokeWidth={2.25} />
           The Concept Academy
         </p>
         <div className="relative mt-3 flex items-center gap-2">
-          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#0F3A4A]">
+          <span className="rounded-full bg-white px-3.5 py-1 text-[13px] font-bold text-[#0F3A4A]">
             Parent
           </span>
-          <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white">
+          <span className="rounded-full bg-white/20 px-3.5 py-1 text-[13px] font-semibold text-white">
             {todayLabel()}
           </span>
         </div>
@@ -335,10 +330,10 @@ export default function ParentMobileHome({
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-lg font-semibold text-[#17324A]">
+                      <span className="block truncate text-[18px] font-extrabold text-[#102A43]">
                         {shown.studentName}
                       </span>
-                      <span className="mt-0.5 block truncate text-sm font-semibold text-[#0891B2]">
+                      <span className="mt-0.5 block truncate text-[16px] font-bold text-[#0F3A4A]">
                         {classSectionLine(shown)}
                       </span>
                     </span>
@@ -417,79 +412,6 @@ export default function ParentMobileHome({
             );
           })}
         </section>
-      </div>
-    </div>
-  );
-}
-
-function FeatureScreen({
-  view,
-  onBack,
-  student,
-  record,
-  loading,
-}: {
-  view: string;
-  onBack: () => void;
-  student?: AcademyStudent;
-  record?: AcademyStudentRecord;
-  loading: boolean;
-}) {
-  const fees = record?.fees;
-
-  return (
-    <div className="min-h-full bg-[#E7F6FB] pb-8">
-      <div className="sticky top-0 z-10 flex items-center gap-3 bg-[#E7F6FB]/95 px-3 py-3 backdrop-blur">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Back"
-          className="grid h-10 w-10 place-items-center rounded-full bg-white text-[#17324A] shadow-sm"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <div className="min-w-0">
-          <h1 className="truncate text-lg font-bold text-[#17324A]">Fee</h1>
-          {student ? <p className="truncate text-xs text-[#13A8B8]">{classSectionLine(student)}</p> : null}
-        </div>
-      </div>
-      <div className="space-y-3 px-4">
-        {loading ? <div className="h-24 animate-pulse rounded-2xl bg-white/80" /> : null}
-
-        {view === "fees" && !loading && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl bg-white p-4 shadow-sm">
-                <p className="text-xs text-slate-500">Paid</p>
-                <p className="mt-1 text-lg font-bold text-[#17324A]">{formatMoney(fees?.summary.totalPaid || 0)}</p>
-              </div>
-              <div className="rounded-2xl bg-white p-4 shadow-sm">
-                <p className="text-xs text-slate-500">Due</p>
-                <p className="mt-1 text-lg font-bold text-[#17324A]">{formatMoney(fees?.summary.totalPending || 0)}</p>
-              </div>
-            </div>
-            {(fees?.records || []).length === 0 ? (
-              <EmptyNote title="No fee vouchers yet" body="Invoices from the school will show up here." />
-            ) : (
-              <ul className="overflow-hidden rounded-2xl bg-white shadow-sm">
-                {fees!.records.map((fee, index) => (
-                  <li
-                    key={fee._id}
-                    className={cn("flex items-center justify-between gap-3 px-4 py-3", index > 0 && "border-t border-[#F1F5F9]")}
-                  >
-                    <div>
-                      <p className="text-sm font-semibold capitalize text-[#17324A]">
-                        {fee.feeType} · {fee.month}/{fee.year}
-                      </p>
-                      <p className="text-xs capitalize text-slate-400">{fee.status}</p>
-                    </div>
-                    <p className="text-sm font-semibold text-[#17324A]">{formatMoney(fee.amount)}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { SheetClose } from "@/components/ui/sheet";
 import type { SessionUser } from "@/lib/auth";
 import { logout } from "@/lib/auth";
 import { resolveUploadUrl } from "@/lib/api";
@@ -118,16 +119,21 @@ export default function ParentMobileSidebar({
         <div className="pointer-events-none absolute -right-8 -top-6 h-40 w-40 rounded-full border border-white/15" />
         <div className="pointer-events-none absolute right-10 top-24 h-20 w-20 rounded-full border border-white/10" />
 
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close menu"
-          className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] grid h-9 w-9 place-items-center rounded-full bg-white/15 text-white"
-        >
-          <X className="h-5 w-5" strokeWidth={2.25} />
-        </button>
+        <SheetClose asChild>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+            aria-label="Close menu"
+            className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-30 grid h-10 w-10 place-items-center rounded-full bg-white/20 text-white shadow-sm"
+          >
+            <X className="h-5 w-5" strokeWidth={2.5} />
+          </button>
+        </SheetClose>
 
-        <div className="relative flex flex-col items-center pt-4">
+        <div className="relative z-10 flex flex-col items-center pt-4">
           <span className="grid h-[72px] w-[72px] place-items-center overflow-hidden rounded-full border-[3px] border-white/40 bg-white/15 shadow-md">
             {photo ? (
               <img src={photo} alt="" className="h-full w-full object-cover" />
@@ -135,10 +141,10 @@ export default function ParentMobileSidebar({
               <UserRound className="h-9 w-9 text-white/95" strokeWidth={1.5} />
             )}
           </span>
-          <h2 className="mt-3 max-w-[90%] truncate text-center text-[22px] font-bold leading-tight tracking-tight">
+          <h2 className="mt-3 max-w-[90%] truncate text-center text-[26px] font-extrabold leading-tight tracking-tight">
             {user.name || "Parent"}
           </h2>
-          <span className="mt-2 rounded-full bg-[#14B8A6] px-3.5 py-1 text-[12px] font-semibold text-white shadow-sm">
+          <span className="mt-2 rounded-full bg-[#14B8A6] px-3.5 py-1 text-[13px] font-bold text-white shadow-sm">
             Parent
           </span>
         </div>

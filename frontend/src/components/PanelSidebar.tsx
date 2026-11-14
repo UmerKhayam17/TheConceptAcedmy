@@ -92,7 +92,7 @@ const ParentMobileSidebarSheet = ({ user }: { user: SessionUser }) => {
           <SheetOverlay className="bg-[#4B5563]/45" />
           <SheetPrimitive.Content
             className={cn(
-              "fixed inset-y-0 left-0 z-50 flex h-full w-[min(22rem,86vw)] flex-col border-0 p-0 shadow-xl",
+              "fixed inset-y-0 left-0 z-[60] flex h-full w-[min(22rem,86vw)] flex-col border-0 p-0 shadow-xl outline-none",
               "bg-transparent data-[state=closed]:animate-out data-[state=open]:animate-in",
               "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
               "data-[state=closed]:duration-300 data-[state=open]:duration-500",
@@ -102,7 +102,12 @@ const ParentMobileSidebarSheet = ({ user }: { user: SessionUser }) => {
               <SheetTitle>Account menu</SheetTitle>
               <SheetDescription>Parent account and preferences</SheetDescription>
             </SheetHeader>
-            <ParentMobileSidebar user={user} onClose={() => setOpenMobile(false)} />
+            <ParentMobileSidebar
+              user={user}
+              onClose={() => {
+                setOpenMobile(false);
+              }}
+            />
           </SheetPrimitive.Content>
         </SheetPortal>
       </Sheet>

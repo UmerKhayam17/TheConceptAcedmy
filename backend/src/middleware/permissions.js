@@ -125,14 +125,16 @@ function requireAnyPermission(...permissionNames) {
 }
 
 /**
- * Staff fee-report access. Parents are denied here — fee module is not part of the parent portal.
- * (Controllers that intentionally expose parent fee views must use scoped checks instead.)
+ * Fee read access for staff reports and parent portal views.
+ * Parents are allowed through; controllers must scope to linked children
+ * (assertParentOwnsStudent / linkedStudentIdsForParent).
  */
 function requireFeeReadAccess() {
   return (req, res, next) => {
     if (isSystemAdmin(req.user)) return next();
+    // Parent portal: view own children's vouchers, challans, and receipts.
     if (String(roleNameOf(req.user) || '').toLowerCase() === 'parent') {
-      return next(new ApiError(403, 'You do not have permission for this action'));
+      return next();
     }
     const allowed = ['view_academy_fee_reports', 'manage_academy_fees'].some((p) =>
       hasLegacyOrModulePermission(req.user, p)

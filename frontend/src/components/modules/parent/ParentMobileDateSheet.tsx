@@ -354,14 +354,14 @@ export default function ParentMobileDateSheet() {
               value={childId}
               onChange={setChildId}
               options={children.map((child) => ({ value: child._id, label: child.studentName }))}
-              valueClassName="text-[15px] text-[#1A1A1A]"
+              valueClassName="text-[18px] font-extrabold text-[#102A43]"
             />
           ) : (
-            <p className="truncate text-[15px] font-bold text-[#1A1A1A]">
+            <p className="truncate text-[18px] font-extrabold text-[#102A43]">
               {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
             </p>
           )}
-          <p className="truncate text-[13px] font-medium text-[#22C5D6]">
+          <p className="mt-0.5 truncate text-[16px] font-bold text-[#0F3A4A]">
             {classSectionLine(studentClass, studentSection) || "—"}
           </p>
         </div>

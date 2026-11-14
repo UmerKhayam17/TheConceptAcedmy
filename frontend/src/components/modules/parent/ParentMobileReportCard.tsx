@@ -9,12 +9,13 @@ import { fetchResultCardPdf, fetchStudentExamResults, type ExamResult } from "@/
 import {
   ASSESSMENT_TYPE_LABELS,
   fetchAcademyStudents,
+  fetchClassTestMarksReportPdf,
   fetchStudentAssessments,
-  previewClassTestMarksReportPdf,
   resolveUploadUrl,
   type AcademyAssessmentRecord,
   type AcademyStudent,
 } from "@/lib/studentManagementApi";
+import { downloadBlobFile } from "@/lib/downloadFile";
 import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
 import { cn } from "@/lib/utils";
 
@@ -297,24 +298,29 @@ export default function ParentMobileReportCard() {
     if (!selected) return;
     setDownloading(true);
     try {
+      const safeName = selected.studentName.replace(/[^\w.-]+/g, "_").slice(0, 40) || "student";
       if (row.kind === "exam" && row.examResult) {
         const blob = await fetchResultCardPdf(row.examResult._id);
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `result-card-${selected.studentName.replace(/[^\w.-]+/g, "_").slice(0, 40)}.pdf`;
-        link.click();
-        URL.revokeObjectURL(url);
+        await downloadBlobFile(blob, `result-card-${safeName}.pdf`);
+        toast({ title: "Downloaded", description: "Result PDF saved." });
         return;
       }
       const classTest = row.assessments?.[0]?.classTestId;
       const testId = typeof classTest === "object" && classTest ? classTest._id : typeof classTest === "string" ? classTest : "";
       if (!testId) throw new Error("This result does not have a downloadable card yet.");
-      await previewClassTestMarksReportPdf(testId, { view: "student", studentIds: [selected._id] });
+      const blob = await fetchClassTestMarksReportPdf(testId, {
+        view: "student",
+        studentIds: [selected._id],
+      });
+      await downloadBlobFile(blob, `result-card-${safeName}.pdf`);
+      toast({ title: "Downloaded", description: "Result PDF saved." });
     } catch (error) {
+      // User cancelled the native share sheet — not a failure.
+      const message = error instanceof Error ? error.message : String(error || "");
+      if (/cancel|dismiss|abort/i.test(message)) return;
       toast({
         title: "Download failed",
-        description: error instanceof Error ? error.message : "Could not open the result card",
+        description: error instanceof Error ? error.message : "Could not download the result card",
         variant: "destructive",
       });
     } finally {
@@ -369,7 +375,7 @@ export default function ParentMobileReportCard() {
             <ParentOptionField
               sheetTitle="Child"
               value={childId}
-              valueClassName="text-[16px] text-[#1A1A1A]"
+              valueClassName="text-[18px] font-extrabold text-[#102A43]"
               options={children.map((child) => ({ value: child._id, label: child.studentName }))}
               onChange={(id) => {
                 setChildId(id);
@@ -378,11 +384,11 @@ export default function ParentMobileReportCard() {
               }}
             />
           ) : (
-            <p className="truncate text-[16px] font-bold text-[#1A1A1A]">
+            <p className="truncate text-[18px] font-extrabold text-[#102A43]">
               {childrenLoading ? "Loading…" : selected?.studentName || "No child linked"}
             </p>
           )}
-          <p className="truncate text-[13px] font-medium text-[#22C5D6]">
+          <p className="mt-0.5 truncate text-[16px] font-bold text-[#0F3A4A]">
             {selected ? classSectionLine(selected) || "—" : "—"}
           </p>
         </div>

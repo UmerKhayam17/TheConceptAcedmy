@@ -5,31 +5,43 @@ import {
   Bell,
   BookOpen,
   CalendarDays,
+  ChevronRight,
   FileText,
   Megaphone,
   MessageSquare,
   Monitor,
   Receipt,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import {
   fetchNotifications,
   markNotificationRead,
-  notificationHref,
+  resolveParentNotificationHref,
   type AppNotification,
 } from "@/lib/notificationsApi";
+import { cn } from "@/lib/utils";
 
 function visualFor(n: AppNotification): { label: string; Icon: LucideIcon } {
   const blob = `${n.type} ${n.moduleKey} ${n.resource} ${n.path} ${n.title}`.toLowerCase();
   if (/chat|message/.test(blob)) return { label: "Chat", Icon: MessageSquare };
   if (/lesson/.test(blob)) return { label: "Lesson Plans", Icon: Monitor };
   if (/attendance|absent/.test(blob)) return { label: "Attendance", Icon: CalendarDays };
-  if (/fee|challan/.test(blob)) return { label: "Fees", Icon: Receipt };
+  if (/fee|challan|voucher|due|unpaid/.test(blob)) return { label: "Fees", Icon: Receipt };
   if (/homework/.test(blob)) return { label: "Homework", Icon: BookOpen };
   if (/announce|notice/.test(blob)) return { label: "Notice Board", Icon: Megaphone };
-  if (/exam|date-sheet|assessment|result|report/.test(blob)) return { label: "Date Sheet", Icon: FileText };
-  if (n.path) return { label: "Open", Icon: Bell };
+  if (/report.?card|result|marks/.test(blob)) return { label: "Results", Icon: FileText };
+  if (/exam|date-sheet|assessment/.test(blob)) return { label: "Date Sheet", Icon: FileText };
+  if (/timetable|schedule/.test(blob)) return { label: "Timetable", Icon: CalendarDays };
+  if (resolveParentNotificationHref(n)) return { label: "Open", Icon: Bell };
   return { label: "", Icon: Bell };
+}
+
+function timeLabel(iso: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
 function AlertCard({
@@ -40,26 +52,40 @@ function AlertCard({
   onOpen: (item: AppNotification) => void;
 }) {
   const { label, Icon } = visualFor(item);
+  const canOpen = Boolean(resolveParentNotificationHref(item));
   return (
     <button
       type="button"
       onClick={() => onOpen(item)}
-      className="flex w-full gap-3 rounded-[18px] bg-white p-3.5 text-left shadow-[0_8px_22px_rgba(15,23,42,0.05)]"
+      className="flex w-full items-start gap-2.5 rounded-[16px] bg-white px-3 py-2.5 text-left shadow-[0_6px_16px_rgba(15,23,42,0.04)] active:bg-[#F8FAFC]"
     >
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#F3F6F8] text-[#13B6C6]">
-        <Icon className="h-5 w-5" strokeWidth={1.75} />
+      <span className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#F3F6F8] text-[#13B6C6]">
+        <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[15px] font-bold leading-5 text-[#111827]">{item.title}</span>
+        <span className="flex items-start justify-between gap-2">
+          <span className="block text-[14px] font-bold leading-5 text-[#111827]">{item.title}</span>
+          {item.createdAt ? (
+            <span className="shrink-0 pt-0.5 text-[11px] font-semibold text-[#A8B3C0]">
+              {timeLabel(item.createdAt)}
+            </span>
+          ) : null}
+        </span>
         {item.body ? (
-          <span className="mt-1 block text-[13px] leading-5 text-[#64748B]">{item.body}</span>
+          <span className="mt-0.5 line-clamp-2 block text-[12px] leading-4 text-[#64748B]">{item.body}</span>
         ) : null}
-        {label ? (
-          <span className="mt-2 inline-flex rounded-full bg-[#E6F7FB] px-3 py-1 text-xs font-semibold text-[#12C2D4]">
-            {label}
-          </span>
-        ) : null}
+        <span className="mt-1.5 flex items-center gap-2">
+          {label ? (
+            <span className="inline-flex rounded-full bg-[#E6F7FB] px-2.5 py-0.5 text-[11px] font-semibold text-[#12C2D4]">
+              {label}
+            </span>
+          ) : null}
+          {!item.read ? (
+            <span className="h-1.5 w-1.5 rounded-full bg-[#22C5D6]" aria-label="Unread" />
+          ) : null}
+        </span>
       </span>
+      {canOpen ? <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-[#C0C8D2]" /> : null}
     </button>
   );
 }
@@ -76,11 +102,11 @@ function Section({
   if (!items.length) return null;
   return (
     <section>
-      <h2 className="mb-2.5 flex items-center gap-2 px-0.5 text-sm font-medium text-[#94A3B8]">
-        <span className="h-2 w-2 rounded-full bg-[#94A3B8]" />
+      <h2 className="mb-1.5 flex items-center gap-1.5 px-0.5 text-[12px] font-semibold text-[#94A3B8]">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#94A3B8]" />
         {label} ({items.length})
       </h2>
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         {items.map((item) => (
           <AlertCard key={item._id} item={item} onOpen={onOpen} />
         ))}
@@ -91,7 +117,6 @@ function Section({
 
 export default function ParentMobileAlerts() {
   const { user } = useAuth();
-  const role = user?.role || "parent";
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -123,27 +148,34 @@ export default function ParentMobileAlerts() {
         /* still navigate */
       }
     }
-    if (item.path) navigate(notificationHref(role, item.path));
+    const href = resolveParentNotificationHref(item);
+    if (href) {
+      navigate(href);
+      return;
+    }
+    toast.message("No linked page for this alert");
   };
 
   return (
     <div className="flex min-h-full flex-col bg-[#E7F4FB]">
-      <header className="px-4 pb-4 pt-[max(0.9rem,env(safe-area-inset-top))]">
-        <h1 className="text-center text-xl font-bold text-[#111827]">Notifications</h1>
+      <header className="px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <h1 className="text-center text-[22px] font-extrabold tracking-tight text-[#111827]">
+          Notifications
+        </h1>
       </header>
 
-      <div className="flex-1 space-y-5 px-4 pb-6">
+      <div className={cn("flex-1 space-y-3 px-4 pb-5")}>
         {isLoading ? (
-          <div className="space-y-3">
-            <div className="h-24 animate-pulse rounded-[18px] bg-white/70" />
-            <div className="h-24 animate-pulse rounded-[18px] bg-white/70" />
+          <div className="space-y-1.5">
+            <div className="h-16 animate-pulse rounded-[16px] bg-white/70" />
+            <div className="h-16 animate-pulse rounded-[16px] bg-white/70" />
           </div>
         ) : null}
         {isError ? (
-          <p className="py-10 text-center text-sm text-slate-500">Could not load alerts.</p>
+          <p className="py-8 text-center text-sm text-slate-500">Could not load alerts.</p>
         ) : null}
         {!isLoading && !isError && items.length === 0 ? (
-          <p className="py-16 text-center text-sm text-slate-500">No alerts yet.</p>
+          <p className="py-12 text-center text-sm text-slate-500">No alerts yet.</p>
         ) : null}
         <Section label="Unseen" items={unseen} onOpen={(item) => void openNotification(item)} />
         <Section label="Seen" items={seen} onOpen={(item) => void openNotification(item)} />
