@@ -203,6 +203,7 @@ export default function AssignAssessmentsPanel({
   const branch = category;
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("");
+  const [sectionFilter, setSectionFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [assignOpen, setAssignOpen] = useState(false);
   const [configAssignment, setConfigAssignment] = useState<AssessmentAssignment | null>(null);
@@ -237,6 +238,16 @@ export default function AssignAssessmentsPanel({
     ? uniqueClassOptions(scopeRows)
     : (classes as AcademyClass[]).map((c) => ({ _id: c._id, className: c.className }));
 
+  const { data: classSections = [] } = useQuery({
+    queryKey: ["academy-sections", classFilter],
+    queryFn: () => fetchSectionsByClass(classFilter, { status: "active" }),
+    enabled: Boolean(classFilter) && !isTeacher,
+  });
+
+  const filterSections = isTeacher
+    ? sectionOptionsForClass(scopeRows, classFilter)
+    : (classSections as AcademySection[]).map((s) => ({ _id: s._id, sectionName: s.sectionName }));
+
   const catalogItems = (planData?.plan.items || []).filter((i) => i.category === branch);
   const assignments = assignData?.assignments || [];
   const { data: classTests = [] } = useQuery({
@@ -259,6 +270,10 @@ export default function AssignAssessmentsPanel({
     if (branch !== "test") return [];
     return classTests.filter((t) => {
       if (linkedTestIds.has(t._id)) return false;
+      if (sectionFilter) {
+        const sid = idOf(t.sectionId);
+        if (sid && sid !== sectionFilter) return false;
+      }
       if (statusFilter === "draft") return false;
       return matchesPanelSearch(search, [
         t.title,
@@ -268,7 +283,7 @@ export default function AssignAssessmentsPanel({
         ASSESSMENT_TYPE_LABELS[t.assessmentType as AssessmentType],
       ]);
     });
-  }, [branch, classTests, linkedTestIds, search, statusFilter]);
+  }, [branch, classTests, linkedTestIds, search, statusFilter, sectionFilter]);
 
   const draftCount = assignments.filter((a) => a.status === "draft").length;
   const publishedCount = assignments.filter((a) => a.status === "published").length;
@@ -276,6 +291,11 @@ export default function AssignAssessmentsPanel({
   const filtered = useMemo(() => {
     return assignments.filter((a) => {
       if (classFilter && idOf(a.classId) !== classFilter) return false;
+      if (sectionFilter) {
+        // Assignments with no section apply to every section of the class.
+        const sid = idOf(a.sectionId);
+        if (sid && sid !== sectionFilter) return false;
+      }
       if (statusFilter && a.status !== statusFilter) return false;
       return matchesPanelSearch(search, [
         a.name,
@@ -285,7 +305,7 @@ export default function AssignAssessmentsPanel({
         ASSESSMENT_TYPE_LABELS[a.assessmentType as AssessmentType],
       ]);
     });
-  }, [assignments, search, classFilter, statusFilter]);
+  }, [assignments, search, classFilter, sectionFilter, statusFilter]);
 
   const papersForTeacher = (a: AssessmentAssignment) => {
     if (!isTeacher) return a.papers || [];
@@ -416,7 +436,7 @@ export default function AssignAssessmentsPanel({
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 min-w-0 flex-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 min-w-0 flex-1">
             <div className="min-w-0">
               <Label className="mb-1 block text-xs text-slate-500">Search</Label>
               <PanelSearchBar
@@ -435,6 +455,7 @@ export default function AssignAssessmentsPanel({
                 onChange={(e) => {
                   setSessionId(e.target.value);
                   setClassFilter("");
+                  setSectionFilter("");
                 }}
               >
                 {sessions.map((s) => (
@@ -450,12 +471,31 @@ export default function AssignAssessmentsPanel({
               <select
                 className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                 value={classFilter}
-                onChange={(e) => setClassFilter(e.target.value)}
+                onChange={(e) => {
+                  setClassFilter(e.target.value);
+                  setSectionFilter("");
+                }}
               >
                 <option value="">All Classes (School + College)</option>
                 {filterClasses.map((c) => (
                   <option key={c._id} value={c._id}>
                     {c.className}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-0">
+              <Label className="mb-1 block text-xs text-slate-500">Section</Label>
+              <select
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm disabled:opacity-60"
+                value={sectionFilter}
+                onChange={(e) => setSectionFilter(e.target.value)}
+                disabled={!classFilter}
+              >
+                <option value="">{classFilter ? "All Sections" : "Select class first"}</option>
+                {filterSections.map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.sectionName}
                   </option>
                 ))}
               </select>
