@@ -151,7 +151,7 @@ export default function ParentMobileTabBar() {
                 className="academy-icon-pulse grid h-[78px] w-[78px] place-content-center overflow-hidden rounded-full border-[6px] border-white bg-[radial-gradient(circle_at_50%_30%,#ffda23_0_11%,#fff_34%)] text-center shadow-[0_6px_13px_#102b5d3b]"
                 style={{ animation: "academyIconPulse 1.8s ease-in-out infinite" }}
               >
-                <img src="/icons/icon-512.png" alt="" className="h-full w-full object-cover" />
+                <img src="/icons/apple-touch-icon.png" alt="" className="h-full w-full object-cover" />
               </span>
             </span>
             <style>{`

@@ -21,6 +21,7 @@ const studentCtrl = require('../controllers/academy/academyStudentController');
 const feeCtrl = require('../controllers/academy/academyFeeController');
 const salaryCtrl = require('../controllers/academy/academySalaryController');
 const expenseCtrl = require('../controllers/academy/academyExpenseController');
+const advanceCtrl = require('../controllers/academy/academyStaffAdvanceController');
 const concessionCategoryCtrl = require('../controllers/academy/academyConcessionCategoryController');
 const attendanceCtrl = require('../controllers/academy/academyAttendanceController');
 const assessmentCtrl = require('../controllers/academy/academyAssessmentController');
@@ -681,6 +682,52 @@ router.patch(
   requirePermission('manage_academy_salaries'),
   validate(schemas.academySalaryPay),
   salaryCtrl.pay
+);
+router.patch(
+  '/salaries/:id/deduction',
+  requirePermission('manage_academy_salaries'),
+  validate(schemas.academySalaryDeduction),
+  advanceCtrl.setVoucherDeduction
+);
+
+// Staff advances & loans (recovered from salary vouchers)
+router.get(
+  '/staff-advances/summary',
+  requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
+  advanceCtrl.summary
+);
+router.get(
+  '/staff-advances',
+  requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
+  advanceCtrl.list
+);
+router.get(
+  '/staff-advances/:id',
+  requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
+  advanceCtrl.getOne
+);
+router.post(
+  '/staff-advances',
+  requirePermission('manage_academy_salaries'),
+  validate(schemas.staffAdvanceCreate),
+  advanceCtrl.create
+);
+router.patch(
+  '/staff-advances/:id',
+  requirePermission('manage_academy_salaries'),
+  validate(schemas.staffAdvancePatch),
+  advanceCtrl.update
+);
+router.post(
+  '/staff-advances/:id/repay',
+  requirePermission('manage_academy_salaries'),
+  validate(schemas.staffAdvanceRepay),
+  advanceCtrl.repay
+);
+router.post(
+  '/staff-advances/:id/cancel',
+  requirePermission('manage_academy_salaries'),
+  advanceCtrl.cancel
 );
 
 function canReadExpenseCategories(req, res, next) {

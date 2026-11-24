@@ -1378,6 +1378,9 @@ export type BalanceSheet = {
     receipts: number;
     salaryPayments: number;
     expensePayments: number;
+    advancesGiven?: number;
+    loansGiven?: number;
+    advanceRepaidCash?: number;
     closing: number;
   };
   notes: {
@@ -2167,6 +2170,13 @@ export interface AcademySalaryRecord {
   voucherNumber?: string;
   paymentMethod?: string;
   notes?: string;
+  /** Advance / loan recovery taken from this voucher. */
+  advanceDeductions?: { advanceId: string; type: "advance" | "loan"; amount: number }[];
+  advanceDeductionTotal?: number;
+  /** true = deduction was set by hand on this voucher. */
+  advanceDeductionManual?: boolean;
+  /** amount − advanceDeductionTotal. Use salaryNetAmount() — older vouchers lack it. */
+  netAmount?: number;
   detailMeta?: AcademySalaryDetailMeta;
   /** Detail endpoint only. */
   attendance?: AcademySalaryAttendance;
@@ -2179,6 +2189,8 @@ export interface AcademySalarySummary {
   recordsCount: number;
   totalPaid: number;
   totalPending: number;
+  /** Advance / loan recovered through paid vouchers. */
+  totalAdvanceDeducted?: number;
   byStatus: { pending: number; paid: number; cancelled: number };
   activeStaff: number;
 }
@@ -2318,6 +2330,156 @@ export const updateAcademySalaryAmount = (id: string, amount: number) =>
     method: "PATCH",
     body: JSON.stringify({ amount }),
   });
+
+/** Salary actually handed over: amount − advance / loan deduction. */
+export const salaryNetAmount = (r: Pick<AcademySalaryRecord, "amount" | "advanceDeductionTotal">) =>
+  Math.max(0, (Number(r.amount) || 0) - (Number(r.advanceDeductionTotal) || 0));
+
+/** Override one pending voucher's advance / loan deduction. `null` = automatic again. */
+export const setAcademySalaryDeduction = (id: string, amount: number | null) =>
+  api<AcademySalaryRecord>(`/salaries/${id}/deduction`, {
+    method: "PATCH",
+    body: JSON.stringify({ amount }),
+  });
+
+// Staff advances & loans — recovered from salary vouchers when they are paid.
+export type StaffAdvanceType = "advance" | "loan";
+export type StaffAdvanceStatus = "active" | "closed" | "cancelled";
+
+export interface StaffAdvance {
+  _id: string;
+  staffId:
+    | {
+        _id: string;
+        name: string;
+        phone?: string;
+        profileImage?: string;
+        designation?: string;
+        role?: { name: string };
+      }
+    | string;
+  type: StaffAdvanceType;
+  amount: number;
+  givenDate: string;
+  startMonth: number;
+  startYear: number;
+  installmentAmount: number;
+  recoveredAmount: number;
+  remainingAmount: number;
+  status: StaffAdvanceStatus;
+  paymentMethod?: string;
+  notes?: string;
+  repayments: {
+    _id: string;
+    salaryRecordId?: string;
+    month?: number;
+    year?: number;
+    amount: number;
+    paidAt?: string;
+  }[];
+  closedAt?: string;
+  createdBy?: { _id: string; name: string } | string;
+  createdAt?: string;
+}
+
+export interface StaffAdvanceSummary {
+  totalGiven: number;
+  totalRecovered: number;
+  totalOutstanding: number;
+  activeCount: number;
+  closedCount: number;
+  advanceOutstanding: number;
+  loanOutstanding: number;
+}
+
+export const fetchStaffAdvances = async (params?: {
+  page?: number;
+  limit?: number;
+  staffId?: string;
+  type?: StaffAdvanceType | "";
+  status?: StaffAdvanceStatus | "";
+  search?: string;
+}) => {
+  const q = new URLSearchParams();
+  if (params?.page) q.set("page", String(params.page));
+  if (params?.limit) q.set("limit", String(params.limit));
+  if (params?.staffId) q.set("staffId", params.staffId);
+  if (params?.type) q.set("type", params.type);
+  if (params?.status) q.set("status", params.status);
+  if (params?.search) q.set("search", params.search);
+  const res = await authedFetch(`/student-management/staff-advances?${q}`);
+  const body = await parseJson<{
+    success?: boolean;
+    data?: StaffAdvance[];
+    pagination?: Pagination;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(body.message || "Failed to load advances and loans");
+  return { records: body.data || [], pagination: body.pagination };
+};
+
+export const fetchStaffAdvanceSummary = (params?: { staffId?: string; type?: StaffAdvanceType | "" }) => {
+  const q = new URLSearchParams();
+  if (params?.staffId) q.set("staffId", params.staffId);
+  if (params?.type) q.set("type", params.type);
+  const qs = q.toString();
+  return api<StaffAdvanceSummary>(`/staff-advances/summary${qs ? `?${qs}` : ""}`);
+};
+
+export interface StaffAdvanceDetail extends Omit<StaffAdvance, "repayments"> {
+  repayments: {
+    _id: string;
+    salaryRecordId?: { _id: string; voucherNumber?: string; month: number; year: number } | string | null;
+    month?: number;
+    year?: number;
+    amount: number;
+    paidAt?: string;
+  }[];
+  recordedBy?: { _id: string; name: string } | string;
+  updatedAt?: string;
+  /** Deductions planned on pending salary vouchers (taken when they are paid). */
+  upcomingDeductions: {
+    salaryRecordId: string;
+    voucherNumber?: string;
+    month: number;
+    year: number;
+    amount: number;
+  }[];
+}
+
+export const fetchStaffAdvance = (id: string) => api<StaffAdvanceDetail>(`/staff-advances/${id}`);
+
+export const createStaffAdvance = (body: {
+  staffId: string;
+  type: StaffAdvanceType;
+  amount: number;
+  installmentAmount?: number;
+  givenDate?: string;
+  startMonth?: number;
+  startYear?: number;
+  paymentMethod?: string;
+  notes?: string;
+}) =>
+  api<StaffAdvance>("/staff-advances", { method: "POST", body: JSON.stringify(body) });
+
+export const updateStaffAdvance = (
+  id: string,
+  body: Partial<{
+    amount: number;
+    installmentAmount: number;
+    givenDate: string;
+    startMonth: number;
+    startYear: number;
+    paymentMethod: string;
+    notes: string;
+  }>,
+) => api<StaffAdvance>(`/staff-advances/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+
+export const repayStaffAdvance = (id: string, body: { amount: number; paidAt?: string; notes?: string }) =>
+  api<StaffAdvance>(`/staff-advances/${id}/repay`, { method: "POST", body: JSON.stringify(body) });
+
+export const cancelStaffAdvance = (id: string) =>
+  api<StaffAdvance>(`/staff-advances/${id}/cancel`, { method: "POST" });
 
 // Academy expenses — category keys come from Academic Setup → Expense Categories.
 export type ExpenseCategory = string;

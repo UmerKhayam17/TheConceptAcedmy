@@ -435,9 +435,10 @@ export default function AssignAssessmentsPanel({
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 min-w-0 flex-1">
-            <div className="min-w-0">
+        {/* One line on desktop (lg+); stacks into a grid on smaller screens. */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:items-end">
+            <div className="min-w-0 lg:flex-[1.4]">
               <Label className="mb-1 block text-xs text-slate-500">Search</Label>
               <PanelSearchBar
                 value={search}
@@ -447,7 +448,7 @@ export default function AssignAssessmentsPanel({
                 inputClassName="h-10"
               />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 lg:flex-1">
               <Label className="mb-1 block text-xs text-slate-500">Session</Label>
               <select
                 className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
@@ -466,7 +467,7 @@ export default function AssignAssessmentsPanel({
                 ))}
               </select>
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 lg:flex-1">
               <Label className="mb-1 block text-xs text-slate-500">Class</Label>
               <select
                 className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
@@ -484,7 +485,7 @@ export default function AssignAssessmentsPanel({
                 ))}
               </select>
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 lg:flex-1">
               <Label className="mb-1 block text-xs text-slate-500">Section</Label>
               <select
                 className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm disabled:opacity-60"
@@ -500,7 +501,7 @@ export default function AssignAssessmentsPanel({
                 ))}
               </select>
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 lg:flex-1">
               <Label className="mb-1 block text-xs text-slate-500">Status</Label>
               <select
                 className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
@@ -514,13 +515,13 @@ export default function AssignAssessmentsPanel({
             </div>
           </div>
           {canManage && branch === "test" && isTeacher && (
-            <Button size="sm" className="h-10 w-full gap-2 xl:w-auto" onClick={() => setAssignOpen(true)} disabled={!catalogReady || !scopeRows.length}>
+            <Button size="sm" className="h-10 w-full shrink-0 gap-2 lg:w-auto" onClick={() => setAssignOpen(true)} disabled={!catalogReady || !scopeRows.length}>
               <Plus className="h-4 w-4" />
               Create {noun}
             </Button>
           )}
           {canManage && !(branch === "test" && isTeacher) && (
-            <Button size="sm" className="h-10 w-full gap-2 xl:w-auto" onClick={() => setAssignOpen(true)} disabled={!catalogReady}>
+            <Button size="sm" className="h-10 w-full shrink-0 gap-2 lg:w-auto" onClick={() => setAssignOpen(true)} disabled={!catalogReady}>
               <Plus className="h-4 w-4" />
               Create {noun}
             </Button>

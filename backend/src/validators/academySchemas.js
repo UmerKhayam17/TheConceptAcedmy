@@ -501,6 +501,43 @@ const academySalaryGenerate = Joi.object({
   roleName: Joi.string().valid('teacher', 'accountant', 'non_teaching_staff').optional(),
 });
 
+const staffAdvanceCreate = Joi.object({
+  staffId: objectId.required(),
+  type: Joi.string().valid('advance', 'loan').required(),
+  amount: Joi.number().min(1).max(100_000_000).required(),
+  installmentAmount: Joi.when('type', {
+    is: 'loan',
+    then: Joi.number().min(1).required(),
+    otherwise: Joi.number().min(0).optional(),
+  }),
+  givenDate: Joi.date().optional(),
+  startMonth: Joi.number().integer().min(1).max(12).optional(),
+  startYear: Joi.number().integer().min(2000).max(2100).optional(),
+  paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other').optional(),
+  notes: Joi.string().allow('').trim().max(500).optional(),
+});
+
+const staffAdvancePatch = Joi.object({
+  amount: Joi.number().min(1).max(100_000_000),
+  installmentAmount: Joi.number().min(1),
+  givenDate: Joi.date(),
+  startMonth: Joi.number().integer().min(1).max(12),
+  startYear: Joi.number().integer().min(2000).max(2100),
+  paymentMethod: Joi.string().valid('cash', 'bank_transfer', 'online', 'other'),
+  notes: Joi.string().allow('').trim().max(500),
+}).min(1);
+
+const staffAdvanceRepay = Joi.object({
+  amount: Joi.number().min(1).required(),
+  paidAt: Joi.date().optional(),
+  notes: Joi.string().allow('').trim().max(300).optional(),
+});
+
+/** null = back to automatic deduction. */
+const academySalaryDeduction = Joi.object({
+  amount: Joi.number().min(0).allow(null).required(),
+});
+
 const openingBalanceBody = Joi.object({
   amount: Joi.number().min(0).max(1_000_000_000).required(),
   asOf: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),
@@ -760,6 +797,10 @@ module.exports = {
   academySalaryPayBulk,
   academySalaryAmount,
   academySalaryGenerate,
+  staffAdvanceCreate,
+  staffAdvancePatch,
+  staffAdvanceRepay,
+  academySalaryDeduction,
   openingBalanceBody,
   academyExpenseBody,
   academyExpensePatch,

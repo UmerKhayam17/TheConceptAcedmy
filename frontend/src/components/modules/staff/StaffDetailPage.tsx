@@ -45,6 +45,7 @@ import {
 import {
   fetchAcademySalaries,
   fetchAcademySalarySummary,
+  salaryNetAmount,
   type AcademySalaryRecord,
 } from "@/lib/studentManagementApi";
 import { fetchStaffAttendanceHistory, type StaffAttendanceRecord } from "@/lib/aiAttendanceApi";
@@ -53,7 +54,8 @@ import { formatPkr, MONTH_NAMES } from "@/components/modules/student-management/
 import { DAY_LABELS, DAY_ORDER, subjectColor } from "@/components/modules/timetable/constants";
 import type { Weekday } from "@/lib/configApi";
 import { moduleHref } from "@/lib/panelMenus";
-import type { ModuleActionCaps } from "@/lib/permissions";
+import { emptyActionCaps, type ModuleActionCaps } from "@/lib/permissions";
+import StaffAdvancesTab from "@/components/modules/student-management/StaffAdvancesTab";
 import { cn, formatClockTime } from "@/lib/utils";
 
 function roleNameOf(user?: StaffUser | null) {
@@ -571,6 +573,8 @@ export default function StaffDetailPage({
                     <th className="text-left p-3">Period</th>
                     <th className="text-left p-3">Voucher</th>
                     <th className="text-left p-3">Amount</th>
+                    <th className="text-left p-3">Advance / loan</th>
+                    <th className="text-left p-3">Net</th>
                     <th className="text-left p-3">Status</th>
                     <th className="text-left p-3">Paid on</th>
                     <th className="text-left p-3">Method</th>
@@ -578,16 +582,20 @@ export default function StaffDetailPage({
                 </thead>
                 <tbody>
                   {salaryLoading && (
-                    <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Loading payroll…</td></tr>
+                    <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">Loading payroll…</td></tr>
                   )}
                   {!salaryLoading && salaries.length === 0 && (
-                    <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No salary vouchers yet.</td></tr>
+                    <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">No salary vouchers yet.</td></tr>
                   )}
                   {salaries.map((r: AcademySalaryRecord) => (
                     <tr key={r._id} className="border-t">
                       <td className="p-3">{MONTH_NAMES[(r.month || 1) - 1]} {r.year}</td>
                       <td className="p-3 font-mono text-xs">{r.voucherNumber || "—"}</td>
                       <td className="p-3">{formatPkr(r.amount)}</td>
+                      <td className="p-3 text-rose-600">
+                        {(r.advanceDeductionTotal || 0) > 0 ? `− ${formatPkr(r.advanceDeductionTotal)}` : "—"}
+                      </td>
+                      <td className="p-3 font-semibold">{formatPkr(salaryNetAmount(r))}</td>
                       <td className="p-3"><StatusPill status={r.status} /></td>
                       <td className="p-3 text-muted-foreground">{fmtDate(r.paidAt)}</td>
                       <td className="p-3 capitalize">{r.paymentMethod?.replace("_", " ") || "—"}</td>
@@ -597,6 +605,11 @@ export default function StaffDetailPage({
               </table>
             </div>
           </Card>
+          <div className="pt-2">
+            <div className="mb-2 font-semibold text-primary">Advances & loans</div>
+            {/* Read-only here; give / edit from Staff Salary → Advances & Loans. */}
+            <StaffAdvancesTab caps={{ ...emptyActionCaps(), canView: true }} staffId={staffId} />
+          </div>
         </TabsContent>
 
         <TabsContent value="attendance" className="mt-4 space-y-3">

@@ -168,6 +168,11 @@ export const moduleHref = (
   return `/panel/${role}/${key}`;
 };
 
+/** Advances & Loans list and one record's detail page. */
+export const advancesHref = (role: Role) => `${moduleHref(role, "salary")}/advances`;
+export const advanceDetailHref = (role: Role, advanceId: string) =>
+  `${moduleHref(role, "salary")}/advances/${advanceId}`;
+
 /** Staff salary voucher detail page. */
 export const salaryDetailHref = (role: Role, salaryId: string) =>
   `${moduleHref(role, "salary")}/${salaryId}`;

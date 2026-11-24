@@ -2,6 +2,7 @@ const AcademyFeeRecord = require('../../models/academy/AcademyFeeRecord');
 const AcademyExpense = require('../../models/academy/AcademyExpense');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyOpeningBalance = require('../../models/academy/AcademyOpeningBalance');
+const AcademyStaffAdvance = require('../../models/academy/AcademyStaffAdvance');
 const Session = require('../../models/Session');
 const { categoryNameMap } = require('./expenseCategoryService');
 const { ACADEMY_BRAND } = require('../../config/academyBrand');
@@ -14,6 +15,9 @@ const { resolveSessionStatus } = require('../session/sessionGuard');
  *  - Fee income = paid vouchers, counted on their paid date (falls back to the billing month
  *    when the paid date is missing). Unpaid vouchers are not included anywhere.
  *  - Paid academy expenses are recognised on their expense date ("planned" ones are only disclosed).
+ *  - Staff advances / loans: money given is Expenditure, cash paid back by staff is Income.
+ *    Recovery through salary moves no cash; it and the amount still owed are reported in the
+ *    separate staffAdvances block.
  * Income, collected and receipts are therefore the same figure, and it matches the
  * Paid Fees report for the same date range. Assets (cash) = Fund always holds.
  */
@@ -165,7 +169,7 @@ async function getBalanceSheet({ from, to, sessionId } = {}) {
     ],
   };
 
-  const [fees, expenses, planned, waived, categoryNames, enrolledStudents, savedOpening] =
+  const [fees, expenses, planned, waived, categoryNames, enrolledStudents, savedOpening, advances] =
     await Promise.all([
     AcademyFeeRecord.find(paidByTo)
       .select('studentId amount status paidAt paymentMethod feeType month year')
@@ -197,6 +201,9 @@ async function getBalanceSheet({ from, to, sessionId } = {}) {
       )
       .lean(),
     AcademyOpeningBalance.findOne({ key: session ? session.id : OPENING_KEY }).lean(),
+    AcademyStaffAdvance.find({ status: { $ne: 'cancelled' }, givenDate: { $lte: toEnd } })
+      .select('type amount givenDate paymentMethod repayments')
+      .lean(),
   ]);
 
   const cash = new Map();
@@ -262,6 +269,44 @@ async function getBalanceSheet({ from, to, sessionId } = {}) {
     else addTo(expenditure, label, amount);
     if (trackCash(when, -amount, e.paymentMethod)) expensePayments += amount;
   }
+
+  // Staff advances & loans
+  const adv = {
+    advance: { given: 0, recoveredSalary: 0, repaidCash: 0, outstanding: 0 },
+    loan: { given: 0, recoveredSalary: 0, repaidCash: 0, outstanding: 0 },
+  };
+  // Shown in the Income / Expenditure columns so the admin can read them at a glance:
+  //  - money given  → Expenditure ("Staff advances given" / "Staff loans given")
+  //  - cash paid back by staff → Income ("Staff advance / loan repaid")
+  //  - recovery through salary moves no cash (salary is paid net), so it is only shown in the
+  //    Staff Advances & Loans table.
+  const GIVEN_LABEL = { advance: 'Staff advances given', loan: 'Staff loans given' };
+  const REPAID_LABEL = 'Staff advance / loan repaid';
+  for (const a of advances) {
+    const type = a.type === 'loan' ? 'loan' : 'advance';
+    const bucket = adv[type];
+    const amount = Number(a.amount) || 0;
+    const givenOn = new Date(a.givenDate);
+    let owed = amount;
+    if (givenOn < fromDate) openingFund -= amount;
+    else addTo(expenditure, GIVEN_LABEL[type], amount);
+    if (trackCash(givenOn, -amount, a.paymentMethod)) bucket.given += amount;
+    for (const r of a.repayments || []) {
+      const value = Number(r.amount) || 0;
+      const when = r.paidAt ? new Date(r.paidAt) : givenOn;
+      if (when > toEnd || value <= 0) continue;
+      owed -= value;
+      if (r.salaryRecordId) {
+        if (when >= fromDate) bucket.recoveredSalary += value;
+        continue;
+      }
+      if (when < fromDate) openingFund += value;
+      else addTo(income, REPAID_LABEL, value);
+      if (trackCash(when, value, 'cash')) bucket.repaidCash += value;
+    }
+    bucket.outstanding += Math.max(0, owed);
+  }
+  const advanceOutstanding = round(adv.advance.outstanding + adv.loan.outstanding);
 
   if (manualAsOf) {
     const savedAmount = Number(savedOpening.amount) || 0;
@@ -333,7 +378,25 @@ async function getBalanceSheet({ from, to, sessionId } = {}) {
       receipts: round(receipts),
       salaryPayments: 0,
       expensePayments: round(expensePayments),
+      advancesGiven: round(adv.advance.given),
+      loansGiven: round(adv.loan.given),
+      advanceRepaidCash: round(adv.advance.repaidCash + adv.loan.repaidCash),
       closing: totalCash,
+    },
+    staffAdvances: {
+      advance: {
+        given: round(adv.advance.given),
+        recoveredSalary: round(adv.advance.recoveredSalary),
+        repaidCash: round(adv.advance.repaidCash),
+        outstanding: round(adv.advance.outstanding),
+      },
+      loan: {
+        given: round(adv.loan.given),
+        recoveredSalary: round(adv.loan.recoveredSalary),
+        repaidCash: round(adv.loan.repaidCash),
+        outstanding: round(adv.loan.outstanding),
+      },
+      totalOutstanding: advanceOutstanding,
     },
     headCounts: {
       paidStudents: paidStudentIds.size,

@@ -219,7 +219,8 @@ function drawSlip(doc, ctx) {
     const daysInMonth = new Date(rec.year, rec.month, 0).getDate() || 30;
     const perDay = Math.round(amount / daysInMonth);
     const deduction = fullLeaves * perDay;
-    const advance = 0;
+    // Advance / loan recovery planned on (or applied to) this voucher.
+    const advance = Number(rec.advanceDeductionTotal) || 0;
     const extra = 0;
     const net = Math.max(0, amount - advance - deduction);
     const totalPayable = net + extra;
@@ -270,7 +271,13 @@ function drawSlip(doc, ctx) {
       row('Month', period.toUpperCase(), 'Fixed monthly salary');
     }
     row('Total Salary Payable', whole(amount));
-    row('Advance Payment', whole(advance));
+    const advLines = rec.advanceDeductions || [];
+    const advNote = advLines.length
+      ? advLines
+          .map((l) => `${l.type === 'loan' ? 'Loan installment' : 'Advance'}: ${whole(l.amount)}`)
+          .join('    ')
+      : '';
+    row('Advance / Loan Deduction', whole(advance), advNote);
     row(
       'Leave Deduction',
       whole(deduction),

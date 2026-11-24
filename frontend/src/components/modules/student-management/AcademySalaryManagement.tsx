@@ -46,6 +46,8 @@ import {
   payAcademySalary,
   payAcademySalariesBulk,
   recalculatePercentageSalaries,
+  salaryNetAmount,
+  setAcademySalaryDeduction,
   type AcademySalaryRecord,
   type SalaryReportFormat,
 } from "@/lib/studentManagementApi";
@@ -174,7 +176,7 @@ const FULL_MONTH_NAMES = [
   "December",
 ];
 
-function MetricCard({
+export function MetricCard({
   title,
   value,
   description,
@@ -232,6 +234,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
   const [paymentMethod, setPaymentMethod] = useState("bank_transfer");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [payAmount, setPayAmount] = useState("");
+  const [deductionInput, setDeductionInput] = useState("");
   const [exporting, setExporting] = useState<SalaryReportFormat | null>(null);
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [expandedPoolKeys, setExpandedPoolKeys] = useState<string[]>([]);
@@ -368,7 +371,7 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
     [records, selectedIds],
   );
   const bulkPayTotal = useMemo(
-    () => selectedPendingPayable.reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
+    () => selectedPendingPayable.reduce((sum, r) => sum + salaryNetAmount(r), 0),
     [selectedPendingPayable],
   );
 
@@ -421,7 +424,32 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
     setPaymentMethod("bank_transfer");
     setPaymentNotes("");
     setPayAmount(r.amount > 0 ? String(r.amount) : "");
+    setDeductionInput(String(r.advanceDeductionTotal || 0));
   };
+
+  const deductionMut = useMutation({
+    mutationFn: ({ id, amount }: { id: string; amount: number | null }) =>
+      setAcademySalaryDeduction(id, amount),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ["academy-salaries"] });
+      qc.invalidateQueries({ queryKey: ["academy-salaries-summary"] });
+      qc.invalidateQueries({ queryKey: ["staff-advances"] });
+      setPayRecord((prev) =>
+        prev && prev._id === updated._id
+          ? {
+            ...prev,
+            advanceDeductions: updated.advanceDeductions,
+            advanceDeductionTotal: updated.advanceDeductionTotal,
+            advanceDeductionManual: updated.advanceDeductionManual,
+            netAmount: updated.netAmount,
+          }
+          : prev,
+      );
+      setDeductionInput(String(updated.advanceDeductionTotal || 0));
+      toast({ title: "Deduction updated" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const openBulkPay = () => {
     if (selectedPendingPayable.length === 0) {
@@ -781,6 +809,16 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                         ) : (
                           <div>
                             <span className="font-semibold text-[#16A66A]">{formatRs(r.amount)}</span>
+                            {(r.advanceDeductionTotal || 0) > 0 ? (
+                              <div className="mt-0.5 text-[10px] leading-tight">
+                                <span className="text-rose-600">
+                                  − {formatRs(r.advanceDeductionTotal)} advance/loan
+                                </span>
+                                <span className="block font-semibold text-[#1a2b4b]">
+                                  Net {formatRs(salaryNetAmount(r))}
+                                </span>
+                              </div>
+                            ) : null}
                             {canExpand ? (
                               <button
                                 type="button"
@@ -1059,6 +1097,79 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                   <span className="font-semibold">{formatRs(payRecord.amount)}</span>
                 </p>
               )}
+              {payRecord.status === "pending" &&
+                ((payRecord.advanceDeductionTotal || 0) > 0 || payRecord.advanceDeductionManual) ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50/60 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[#1a2b4b]">Advance / loan deduction</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {payRecord.advanceDeductionManual ? "Set by hand" : "Automatic"}
+                    </span>
+                  </div>
+                  {(payRecord.advanceDeductions || []).map((d) => (
+                    <div key={d.advanceId} className="flex justify-between text-xs">
+                      <span>{d.type === "loan" ? "Loan installment" : "Advance recovery"}</span>
+                      <span className="font-semibold text-rose-600">− {formatRs(d.amount)}</span>
+                    </div>
+                  ))}
+                  {caps.canEdit ? (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="1"
+                        className="h-8 w-32"
+                        value={deductionInput}
+                        onChange={(e) => setDeductionInput(e.target.value)}
+                        aria-label="Deduction amount"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={deductionMut.isPending || deductionInput === ""}
+                        onClick={() =>
+                          deductionMut.mutate({ id: payRecord._id, amount: Number(deductionInput) })
+                        }
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={deductionMut.isPending}
+                        onClick={() => deductionMut.mutate({ id: payRecord._id, amount: 0 })}
+                      >
+                        Skip this month
+                      </Button>
+                      {payRecord.advanceDeductionManual ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={deductionMut.isPending}
+                          onClick={() => deductionMut.mutate({ id: payRecord._id, amount: null })}
+                        >
+                          Back to automatic
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between border-t border-rose-200 pt-2">
+                    <span className="font-medium">Net to pay</span>
+                    <span className="font-bold text-[#16A66A]">
+                      {formatRs(
+                        Math.max(
+                          0,
+                          (payAmount !== "" ? Number(payAmount) : payRecord.amount) -
+                          (payRecord.advanceDeductionTotal || 0),
+                        ),
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    The deduction is recovered from the advance / loan when you confirm payment.
+                  </p>
+                </div>
+              ) : null}
               <div className="space-y-1.5">
                 <Label>Payment method</Label>
                 <select
@@ -1128,7 +1239,12 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
                     </span>
                   </span>
                   <span className="shrink-0 font-semibold tabular-nums text-[#16A66A]">
-                    {formatRs(r.amount)}
+                    {formatRs(salaryNetAmount(r))}
+                    {(r.advanceDeductionTotal || 0) > 0 ? (
+                      <span className="block text-[10px] font-normal text-rose-600">
+                        after − {formatRs(r.advanceDeductionTotal)}
+                      </span>
+                    ) : null}
                   </span>
                 </li>
               ))}

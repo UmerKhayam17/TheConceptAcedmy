@@ -195,6 +195,29 @@ export default defineConfig(({ mode }) => ({
             },
           },
           {
+            // Profile photos: show the saved copy instantly (works offline), refresh it in the
+            // background. Deleted on logout / user change (App.tsx ClearCacheOnUserChange).
+            urlPattern: ({ request, url }) =>
+              request.destination === "image" && url.pathname.startsWith("/uploads/"),
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "upload-images",
+              expiration: { maxEntries: 150, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
+            // App pictures (logos, icons, illustrations): saved on first view so they show offline.
+            urlPattern: ({ request, url, sameOrigin }) =>
+              sameOrigin && request.destination === "image" && !url.pathname.startsWith("/uploads/"),
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "app-images",
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
             urlPattern: ({ url }) =>
               url.pathname.startsWith("/api/") ||
               url.pathname.startsWith("/uploads/") ||

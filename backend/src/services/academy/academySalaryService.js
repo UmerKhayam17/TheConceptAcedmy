@@ -7,6 +7,7 @@ const { populateCreatedBy } = require('../../utils/createdBy');
 const { STAFF_ROLE_NAMES } = require('../../config/staffRoles');
 const { calculateTeacherPercentageSalary } = require('./percentageSalaryCalculator');
 const { buildSalaryAttendance, buildFixedClassAllocation } = require('./salarySlipDetails');
+const advanceService = require('./staffAdvanceService');
 
 /**
  * Fill missing tuitionSharePercent on stored breakdown lines from live subject docs
@@ -187,6 +188,7 @@ async function generateMonthlySalaries({ month, year, roleName }, userId) {
   const dueDate = new Date(year, month, 1);
   let created = 0;
   let skipped = 0;
+  const createdFor = [];
 
   for (const member of staff) {
     if (!staffHasPayroll(member)) {
@@ -242,7 +244,11 @@ async function generateMonthlySalaries({ month, year, roleName }, userId) {
       recordedBy: userId,
     });
     created += 1;
+    createdFor.push(member._id);
   }
+
+  // Plan advance / loan deductions on the new vouchers.
+  await advanceService.safeRefreshStaff(createdFor);
 
   return { created, skipped };
 }
@@ -263,6 +269,7 @@ async function recalculatePercentageSalaries({ month, year, roleName } = {}, use
   const records = await AcademySalaryRecord.find(q);
   let updated = 0;
   let skipped = 0;
+  const touched = new Set();
 
   for (const record of records) {
     const member = await User.findById(record.staffId);
@@ -279,7 +286,11 @@ async function recalculatePercentageSalaries({ month, year, roleName } = {}, use
     if (userId) record.recordedBy = userId;
     await record.save();
     updated += 1;
+    touched.add(String(record.staffId));
   }
+
+  // Amounts changed → deduction caps may change too.
+  await advanceService.safeRefreshStaff([...touched]);
 
   return { updated, skipped };
 }
@@ -331,6 +342,8 @@ async function recalculateUnpaidPercentageSalariesForStaff(staffId, userId) {
     await record.save();
     updated += 1;
   }
+
+  if (updated) await advanceService.safeRefreshStaff(staffId);
 
   return { updated, skipped };
 }
@@ -387,6 +400,9 @@ async function recordSalaryPayment(id, { paymentMethod, notes, amount }, userId)
     throw new ApiError(400, 'Salary amount must be greater than zero');
   }
 
+  // Final advance / loan deduction for this voucher (net = amount − deduction).
+  await advanceService.prepareDeductionsForPayment(record);
+
   record.status = 'paid';
   record.paidAt = new Date();
   record.paymentMethod = paymentMethod || 'bank_transfer';
@@ -396,6 +412,7 @@ async function recordSalaryPayment(id, { paymentMethod, notes, amount }, userId)
     record.voucherNumber = voucherNumber(record.staffId, record.month, record.year);
   }
   await record.save();
+  await advanceService.applyDeductionsFromPaidVoucher(record, userId);
   return record;
 }
 
@@ -437,13 +454,13 @@ async function recordBulkSalaryPayments({ ids, paymentMethod, notes }, userId) {
         continue;
       }
 
-      await recordSalaryPayment(
+      const saved = await recordSalaryPayment(
         id,
         { paymentMethod, notes: notes !== undefined ? notes : undefined },
         userId
       );
       paid += 1;
-      totalAmount += Number(record.amount) || 0;
+      totalAmount += Number(saved.netAmount ?? saved.amount) || 0;
     } catch (err) {
       skipped += 1;
       errors.push({ id, reason: err?.message || 'Failed' });
@@ -473,7 +490,9 @@ async function updateSalaryAmount(id, amount, userId) {
   }
   record.recordedBy = userId;
   await record.save();
-  return record.populate({
+  await advanceService.safeRefreshStaff(record.staffId);
+  const fresh = await AcademySalaryRecord.findById(id);
+  return fresh.populate({
     path: 'staffId',
     select: 'name email phone salary payType salaryPercentage profileImage designation canLogin',
     populate: { path: 'role', select: 'name' },
@@ -554,11 +573,18 @@ async function getSalarySummary({ month, year, roleName, staffId }) {
   const byStatus = { pending: 0, paid: 0, cancelled: 0 };
   let totalPaid = 0;
   let totalPending = 0;
+  let totalAdvanceDeducted = 0;
 
   records.forEach((r) => {
     if (byStatus[r.status] != null) byStatus[r.status] += 1;
-    if (r.status === 'paid') totalPaid += r.amount;
-    if (r.status === 'pending') totalPending += r.amount;
+    // Cash actually handed over = salary − advance / loan recovery.
+    const deduction = Number(r.advanceDeductionTotal) || 0;
+    const net = Math.max(0, (Number(r.amount) || 0) - deduction);
+    if (r.status === 'paid') {
+      totalPaid += net;
+      totalAdvanceDeducted += deduction;
+    }
+    if (r.status === 'pending') totalPending += net;
   });
 
   const roleIds = await staffRoleIds();
@@ -577,6 +603,7 @@ async function getSalarySummary({ month, year, roleName, staffId }) {
     recordsCount: records.length,
     totalPaid,
     totalPending,
+    totalAdvanceDeducted,
     byStatus,
     activeStaff,
   };

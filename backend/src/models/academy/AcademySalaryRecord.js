@@ -70,6 +70,20 @@ const academySalaryRecordSchema = new mongoose.Schema(
       default: 'bank_transfer',
     },
     notes: { type: String, trim: true },
+    /** Advance / loan recovery taken from this voucher (applied to the loans when paid). */
+    advanceDeductions: [
+      {
+        advanceId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademyStaffAdvance' },
+        type: { type: String, enum: ['advance', 'loan'] },
+        amount: { type: Number, default: 0, min: 0 },
+        _id: false,
+      },
+    ],
+    advanceDeductionTotal: { type: Number, default: 0, min: 0 },
+    /** true = admin set the deduction by hand; auto refresh leaves it alone. */
+    advanceDeductionManual: { type: Boolean, default: false },
+    /** amount − advanceDeductionTotal (what is actually handed over). */
+    netAmount: { type: Number, default: 0, min: 0 },
     recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
@@ -77,5 +91,14 @@ const academySalaryRecordSchema = new mongoose.Schema(
 );
 
 academySalaryRecordSchema.index({ staffId: 1, month: 1, year: 1 }, { unique: true });
+
+academySalaryRecordSchema.pre('save', function syncNet(next) {
+  const total = Math.round(
+    (this.advanceDeductions || []).reduce((n, d) => n + (Number(d.amount) || 0), 0) * 100
+  ) / 100;
+  this.advanceDeductionTotal = total;
+  this.netAmount = Math.max(0, Math.round(((Number(this.amount) || 0) - total) * 100) / 100);
+  next();
+});
 
 module.exports = mongoose.model('AcademySalaryRecord', academySalaryRecordSchema);

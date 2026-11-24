@@ -33,7 +33,8 @@ const NotFound = lazy(() => import("./pages/NotFound"));
  * Chat messages and searches are not saved (they change constantly and can be large).
  */
 const DATA_CACHE_KEY = "tca-data-cache";
-const DATA_CACHE_MAX_AGE = 24 * 60 * 60_000;
+// Kept 30 days so the app (especially the parent app) still works after days without internet.
+const DATA_CACHE_MAX_AGE = 30 * 24 * 60 * 60_000;
 const dataCacheKeyFor = (userId: string | null | undefined) => `${DATA_CACHE_KEY}:${userId ?? "signed-out"}`;
 
 const dataCachePersister = createSyncStoragePersister({
@@ -117,6 +118,8 @@ function ClearCacheOnUserChange() {
         } catch {
           /* storage unavailable */
         }
+        // ...and the photos saved for offline use (children's / staff profile pictures).
+        if (typeof caches !== "undefined") void caches.delete("upload-images").catch(() => {});
       }
     };
     const onStorage = (e: StorageEvent) => {

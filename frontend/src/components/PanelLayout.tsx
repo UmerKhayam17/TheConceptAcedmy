@@ -15,6 +15,8 @@ import {
 import SessionScopeBanner from "@/components/panel-header/SessionScopeBanner";
 import { hideBootSplash } from "@/lib/bootSplash";
 import AcademyLoader from "@/components/AcademyLoader";
+import OfflineBanner from "@/components/OfflineBanner";
+import ParentOfflineSync from "@/components/modules/parent/ParentOfflineSync";
 
 function PanelChrome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["user"]> }) {
   const { pathname } = useLocation();
@@ -24,7 +26,7 @@ function PanelChrome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["u
     section?: string;
     action?: string;
   }>();
-  const { setAllowAllSessions, setHeaderSearch } = usePanelSession();
+  const { setAllowAllSessions, setHeaderSearch, apiSessionId } = usePanelSession();
 
   const meta = useMemo(
     () => resolvePanelPageMeta((role as Role) || user.role, pathname, { slug, section, action }),
@@ -42,6 +44,8 @@ function PanelChrome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["u
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <OfflineBanner />
+      {user.role === "parent" && <ParentOfflineSync userId={user.id} panelSessionId={apiSessionId} />}
       <PanelPageHeader
         user={user}
         title={meta.title}

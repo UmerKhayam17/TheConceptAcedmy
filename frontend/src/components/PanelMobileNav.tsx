@@ -60,6 +60,7 @@ function shortLabel(label: string): string {
     Announcements: "News",
     "Class Tests / Exams": "Exams",
     "Staff Salary": "Salary",
+    "Advances & Loans": "Advances",
   };
   if (map[label]) return map[label];
   const first = label.split(/[\s/]/)[0] || label;
@@ -86,7 +87,10 @@ function itemIsActive(item: SidebarNavItem, pathname: string, role: Role): boole
   if (item.moduleKey === "chat") return rest.startsWith("/chat");
   if (item.moduleKey === "fees") return rest.startsWith("/fees");
   if (item.moduleKey === "expenses") return rest.startsWith("/expenses");
-  if (item.moduleKey === "salary") return rest.startsWith("/salary");
+  if (item.id === "advances-loans") return rest.startsWith("/salary/advances");
+  if (item.moduleKey === "salary") {
+    return rest.startsWith("/salary") && !rest.startsWith("/salary/advances");
+  }
   if (
     item.moduleKey === "exams" ||
     item.moduleKey === "exam-tests" ||

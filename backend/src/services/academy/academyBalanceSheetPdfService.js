@@ -290,12 +290,69 @@ function renderBalanceSheetPdf(sheet) {
         },
         { label: 'Add: fees / receipts collected', amount: sheet.cashFlow.receipts, kind: 'item' },
         { label: 'Less: academy expenses paid', amount: -sheet.cashFlow.expensePayments, kind: 'item' },
+        ...(sheet.cashFlow.advancesGiven
+          ? [{ label: 'Less: staff advances given', amount: -sheet.cashFlow.advancesGiven, kind: 'item' }]
+          : []),
+        ...(sheet.cashFlow.loansGiven
+          ? [{ label: 'Less: staff loans given', amount: -sheet.cashFlow.loansGiven, kind: 'item' }]
+          : []),
+        ...(sheet.cashFlow.advanceRepaidCash
+          ? [
+              {
+                label: 'Add: advance / loan repaid in cash',
+                amount: sheet.cashFlow.advanceRepaidCash,
+                kind: 'item',
+              },
+            ]
+          : []),
         {
           label: `Cash on hand as at ${shortDate(sheet.range.to)}`,
           amount: sheet.cashFlow.closing,
           kind: 'grand',
         },
       ]);
+
+      // Staff advances & loans head
+      const sa = sheet.staffAdvances;
+      const hasAdvances =
+        sa &&
+        ['advance', 'loan'].some((k) =>
+          ['given', 'recoveredSalary', 'repaidCash', 'outstanding'].some((f) => sa[k]?.[f])
+        );
+      if (hasAdvances) {
+        y += 14;
+        // Keep the heading with its table: header row + up to 9 rows must fit.
+        if (y + 18 + ROW_H * 10 > pageBottom()) {
+          doc.addPage();
+          y = startBodyY();
+        }
+        doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9);
+        pdfLine(doc, 'Staff Advances & Loans', MARGIN, y);
+        doc.save();
+        doc.rect(MARGIN, y + 12, contentW, 1.5).fill(GOLD);
+        doc.restore();
+        y += 18;
+        const advRows = [];
+        [
+          ['advance', 'Advances'],
+          ['loan', 'Loans'],
+        ].forEach(([key, name]) => {
+          const b = sa[key] || {};
+          if (!(b.given || b.recoveredSalary || b.repaidCash || b.outstanding)) return;
+          advRows.push(
+            { label: `${name} given during the period`, amount: b.given || 0, kind: 'item' },
+            { label: `${name} recovered through salary`, amount: b.recoveredSalary || 0, kind: 'item' },
+            { label: `${name} repaid in cash`, amount: b.repaidCash || 0, kind: 'item' },
+            {
+              label: `${name} still owed as at ${shortDate(sheet.range.to)}`,
+              amount: b.outstanding || 0,
+              kind: 'item',
+            }
+          );
+        });
+        advRows.push({ label: 'Total still owed by staff', amount: sa.totalOutstanding || 0, kind: 'grand' });
+        y = drawSingleTable(y, 'Staff Advances & Loans', advRows);
+      }
 
       const heads = sheet.headCounts || {};
       y += 14;

@@ -19,7 +19,7 @@ const RESOURCE_KEYS: Record<string, string[][]> = {
   subjects: [["academy-subjects"], ["enrollment-subjects"]],
   feeStructures: [["academy-fee-structures"], ["fee-preview"]],
   fees: [["academy-fees"], ["academy-fees-summary"], ["academy-fee-summary"], ["fee-defaulters"], ["finance-dashboard-overview"], ["finance-dashboard-defaulters"]],
-  salaries: [["academy-salaries"], ["academy-salary-summary"], ["finance-dashboard-overview"]],
+  salaries: [["academy-salaries"], ["academy-salary-summary"], ["academy-salaries-summary"], ["staff-advances"], ["staff-advance-summary"], ["academy-salary-detail"], ["finance-dashboard-overview"]],
   expenses: [["academy-expenses"], ["academy-expense-summary"], ["finance-dashboard-overview"]],
   attendance: [
     ["academy-attendance"],
@@ -47,7 +47,7 @@ const MODULE_FALLBACK: Record<string, string[][]> = {
   studentManagement: [["academy-classes"], ["academy-students"], ["academy-sections"], ["academy-subjects"]],
   student: [["academy-students"], ["academy-student"]],
   fee: [["academy-fees"], ["academy-fees-summary"]],
-  salary: [["academy-salaries"]],
+  salary: [["academy-salaries"], ["staff-advances"], ["staff-advance-summary"]],
   academyExpense: [["academy-expenses"]],
   attendance: [["academy-attendance"], ["academy-attendance-day"], ["staff-attendance-day"], ["staff-period-day"], ["staff-period-month"]],
   exam: [["academy-assessments"], ["academy-class-tests"], ["class-tests"]],

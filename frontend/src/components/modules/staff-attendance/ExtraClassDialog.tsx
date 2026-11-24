@@ -1,6 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import {
+  CalendarPlus,
+  Loader2,
+  Plus,
+  RefreshCcw,
+  UserRoundCheck,
+  BookOpenCheck,
+  type LucideIcon,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +22,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createStaffExtraClass,
-  EXTRA_CLASS_REASON_LABELS,
   fetchExtraClassPeriods,
   type ExtraClassReason,
 } from "@/lib/aiAttendanceApi";
@@ -25,10 +32,29 @@ import {
 } from "@/lib/studentManagementApi";
 import { fetchStaffUsers, type StaffUser } from "@/lib/staffApi";
 import { useToast } from "@/hooks/use-toast";
-import { formatWallClockRange } from "@/lib/utils";
+import { cn, formatWallClockRange } from "@/lib/utils";
 
-const selectClass =
-  "h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950";
+// Modal styling — same as the Loan / Advance and Student Fee Details modals.
+const formLabelClass = "text-sm font-medium text-muted-foreground";
+const formControlClass =
+  "h-10 min-w-0 rounded-md border-input bg-background text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0";
+const formSelectClass =
+  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-70";
+const sectionTitleClass = "text-sm font-semibold text-primary";
+const sectionCardClass = "rounded-md border bg-background p-4 space-y-4";
+const cancelBtnClass =
+  "h-10 w-full gap-2 border-primary text-primary hover:bg-primary/5 hover:text-primary sm:w-auto";
+const primaryBtnClass = "h-10 w-full gap-2 sm:w-auto";
+const dialogShellClass = cn(
+  "flex w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:w-full sm:p-0 max-h-[94dvh] sm:max-w-[38rem]",
+  "[&>button]:right-5 [&>button]:top-5 [&>button]:text-primary-foreground [&>button]:opacity-100 [&>button]:hover:text-primary-foreground",
+);
+
+const REASONS: { value: ExtraClassReason; label: string; hint: string; icon: LucideIcon }[] = [
+  { value: "extra", label: "Extra class", hint: "Additional class outside the timetable", icon: BookOpenCheck },
+  { value: "makeup", label: "Make-up class", hint: "Replaces a class that was missed", icon: RefreshCcw },
+  { value: "cover", label: "Cover", hint: "Taking the class of an absent teacher", icon: UserRoundCheck },
+];
 
 /** "2026-11-24" → "Tuesday, 24 November 2026" (falls back to the raw value). */
 function formatLongDate(ymd: string) {
@@ -45,6 +71,26 @@ function formatLongDate(ymd: string) {
 function isTeacherUser(u: StaffUser) {
   const role = typeof u.role === "object" && u.role ? u.role.name : u.role;
   return role === "teacher" && u.isActive !== false;
+}
+
+function FormField({
+  label,
+  className,
+  hint,
+  children,
+}: {
+  label: string;
+  className?: string;
+  hint?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn("min-w-0 space-y-1.5", className)}>
+      <Label className={formLabelClass}>{label}</Label>
+      {children}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
 }
 
 /**
@@ -176,176 +222,223 @@ export default function ExtraClassDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add extra class</DialogTitle>
-          <DialogDescription className="space-y-1">
-            <span className="block">
-              {teacherName ? (
-                <>
-                  <span className="font-medium text-foreground">{teacherName}</span>
-                  {" · "}
-                </>
-              ) : null}
+      <DialogContent className={dialogShellClass}>
+        <DialogHeader className="shrink-0 space-y-1 bg-primary px-6 py-4 pr-12 text-left text-primary-foreground">
+          <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-primary-foreground">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-foreground/15">
+              <CalendarPlus className="h-5 w-5" />
+            </span>
+            Add extra class
+          </DialogTitle>
+          <DialogDescription className="space-y-0.5 pl-12 text-primary-foreground/80">
+            <span className="block font-medium text-primary-foreground">
+              {teacherName ? `${teacherName} · ` : ""}
               {formatLongDate(date)}
             </span>
             <span className="block">
-              Record a class taken outside the published timetable. This entry applies to the selected
-              date only.
+              Record a class taken outside the published timetable. This entry applies to the
+              selected date only.
             </span>
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3">
-          {!fixedTeacherId && (
-            <div>
-              <Label className="mb-1 block text-xs text-slate-500">Teacher</Label>
-              <select className={selectClass} value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>
-                <option value="">Select teacher</option>
-                {teachers
-                  .filter((t) => String(t._id) !== String(lockedUserId || ""))
-                  .map((t) => (
-                    <option key={t._id} value={t._id}>
-                      {t.name}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-muted/30 px-5 py-4">
+          <div className="space-y-4">
+            <section className={sectionCardClass}>
+              <p className={sectionTitleClass}>Reason</p>
+              <div className="grid grid-cols-1 gap-3 min-[520px]:grid-cols-3">
+                {REASONS.map((r) => {
+                  const Icon = r.icon;
+                  const on = reason === r.value;
+                  return (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => setReason(r.value)}
+                      className={cn(
+                        "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+                        on
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-primary/30 bg-background text-primary hover:bg-primary/5",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                          on ? "bg-primary-foreground/15 text-primary-foreground" : "bg-primary/10 text-primary",
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold">{r.label}</span>
+                        <span
+                          className={cn(
+                            "block text-xs leading-snug",
+                            on ? "text-primary-foreground/80" : "text-muted-foreground",
+                          )}
+                        >
+                          {r.hint}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className={sectionCardClass}>
+              <p className={sectionTitleClass}>Class details</p>
+              <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2">
+                {!fixedTeacherId ? (
+                  <FormField label="Teacher" className="min-[480px]:col-span-2">
+                    <select
+                      className={formSelectClass}
+                      value={teacherId}
+                      onChange={(e) => setTeacherId(e.target.value)}
+                    >
+                      <option value="">Select teacher…</option>
+                      {teachers
+                        .filter((t) => String(t._id) !== String(lockedUserId || ""))
+                        .map((t) => (
+                          <option key={t._id} value={t._id}>
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                  </FormField>
+                ) : null}
+                <FormField label="Class">
+                  <select
+                    className={formSelectClass}
+                    value={classId}
+                    onChange={(e) => {
+                      setClassId(e.target.value);
+                      setSectionId("");
+                      setSubjectId("");
+                    }}
+                  >
+                    <option value="">Select class…</option>
+                    {classes.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {c.className}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Section">
+                  <select
+                    className={formSelectClass}
+                    value={sectionId}
+                    disabled={!classId}
+                    onChange={(e) => {
+                      setSectionId(e.target.value);
+                      setSubjectId("");
+                    }}
+                  >
+                    <option value="">{classId ? "All sections" : "Select class first"}</option>
+                    {sections.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.sectionName}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Subject">
+                  <select
+                    className={formSelectClass}
+                    value={subjectId}
+                    disabled={!classId}
+                    onChange={(e) => setSubjectId(e.target.value)}
+                  >
+                    <option value="">{classId ? "Select subject…" : "Select class first"}</option>
+                    {subjects.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.subjectName}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField
+                  label="Period"
+                  hint={
+                    classId && !periodsLoading && periods.length === 0 ? (
+                      <span className="text-destructive">
+                        No periods configured. Add them in Timetable configuration first.
+                      </span>
+                    ) : (
+                      "Time comes from the timetable configuration."
+                    )
+                  }
+                >
+                  <select
+                    className={formSelectClass}
+                    value={periodId}
+                    disabled={!classId || periodsLoading}
+                    onChange={(e) => setPeriodId(e.target.value)}
+                  >
+                    <option value="">
+                      {!classId ? "Select class first" : periodsLoading ? "Loading…" : "Select period…"}
                     </option>
-                  ))}
-              </select>
-            </div>
-          )}
+                    {periods.map((p) => (
+                      <option key={p._id} value={p._id}>
+                        {p.label} ({formatWallClockRange(p.startTime, p.endTime, "–")})
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+            </section>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <Label className="mb-1 block text-xs text-slate-500">Class</Label>
-              <select
-                className={selectClass}
-                value={classId}
-                onChange={(e) => {
-                  setClassId(e.target.value);
-                  setSectionId("");
-                  setSubjectId("");
-                }}
-              >
-                <option value="">Select class</option>
-                {classes.map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {c.className}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label className="mb-1 block text-xs text-slate-500">Section</Label>
-              <select
-                className={selectClass}
-                value={sectionId}
-                disabled={!classId}
-                onChange={(e) => {
-                  setSectionId(e.target.value);
-                  setSubjectId("");
-                }}
-              >
-                <option value="">{classId ? "All sections" : "Select class first"}</option>
-                {sections.map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.sectionName}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <Label className="mb-1 block text-xs text-slate-500">Subject</Label>
-              <select
-                className={selectClass}
-                value={subjectId}
-                disabled={!classId}
-                onChange={(e) => setSubjectId(e.target.value)}
-              >
-                <option value="">Select subject</option>
-                {subjects.map((s) => (
-                  <option key={s._id} value={s._id}>
-                    {s.subjectName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label className="mb-1 block text-xs text-slate-500">Period</Label>
-              <select
-                className={selectClass}
-                value={periodId}
-                disabled={!classId || periodsLoading}
-                onChange={(e) => setPeriodId(e.target.value)}
-              >
-                <option value="">
-                  {!classId ? "Select class first" : periodsLoading ? "Loading…" : "Select period"}
-                </option>
-                {periods.map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {p.label} ({formatWallClockRange(p.startTime, p.endTime, "–")})
-                  </option>
-                ))}
-              </select>
-              {classId && !periodsLoading && periods.length === 0 ? (
-                <p className="mt-1 text-xs text-destructive">
-                  No periods configured. Add them in Timetable configuration first.
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          <div>
-            <Label className="mb-1 block text-xs text-slate-500">Reason</Label>
-            <select
-              className={selectClass}
-              value={reason}
-              onChange={(e) => setReason(e.target.value as ExtraClassReason)}
-            >
-              {(Object.keys(EXTRA_CLASS_REASON_LABELS) as ExtraClassReason[]).map((r) => (
-                <option key={r} value={r}>
-                  {EXTRA_CLASS_REASON_LABELS[r]}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {reason === "cover" && (
-            <div>
-              <Label className="mb-1 block text-xs text-slate-500">Covering for</Label>
-              <select className={selectClass} value={coveringFor} onChange={(e) => setCoveringFor(e.target.value)}>
-                <option value="">Select teacher</option>
-                {teachers
-                  .filter((t) => String(t._id) !== String(effectiveTeacherId))
-                  .map((t) => (
-                    <option key={t._id} value={t._id}>
-                      {t.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          )}
-
-          <div>
-            <Label className="mb-1 block text-xs text-slate-500">Note (optional)</Label>
-            <Textarea
-              value={note}
-              maxLength={300}
-              rows={2}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Revision before exams"
-            />
+            <section className={sectionCardClass}>
+              <p className={sectionTitleClass}>{reason === "cover" ? "Cover & notes" : "Notes"}</p>
+              <div className="grid grid-cols-1 gap-4">
+                {reason === "cover" ? (
+                  <FormField label="Covering for">
+                    <select
+                      className={formSelectClass}
+                      value={coveringFor}
+                      onChange={(e) => setCoveringFor(e.target.value)}
+                    >
+                      <option value="">Select absent teacher…</option>
+                      {teachers
+                        .filter((t) => String(t._id) !== String(effectiveTeacherId))
+                        .map((t) => (
+                          <option key={t._id} value={t._id}>
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                  </FormField>
+                ) : null}
+                <FormField label="Notes (optional)">
+                  <Textarea
+                    className={cn(formControlClass, "h-auto min-h-[4.5rem] py-2")}
+                    value={note}
+                    maxLength={300}
+                    rows={2}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="e.g. Revision before exams, approved by…"
+                  />
+                </FormField>
+              </div>
+            </section>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+        <DialogFooter className="shrink-0 flex-col gap-2 border-t bg-background px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:space-x-0">
+          <Button
+            type="button"
+            variant="outline"
+            className={cancelBtnClass}
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Cancel
           </Button>
-          <Button onClick={save} disabled={!canSave || saving} className="gap-2">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Save
+          <Button type="button" className={primaryBtnClass} onClick={save} disabled={!canSave || saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            {saving ? "Saving…" : "Add extra class"}
           </Button>
         </DialogFooter>
       </DialogContent>

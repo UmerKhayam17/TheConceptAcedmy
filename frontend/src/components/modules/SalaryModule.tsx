@@ -1,17 +1,30 @@
 import type { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import AcademySalaryManagement from "@/components/modules/student-management/AcademySalaryManagement";
 import AcademySalaryDetailPage from "@/components/modules/student-management/AcademySalaryDetailPage";
+import StaffAdvancesTab from "@/components/modules/student-management/StaffAdvancesTab";
+import StaffAdvanceDetailPage from "@/components/modules/student-management/StaffAdvanceDetailPage";
 
 /** Panel Teacher salary — live staff payroll from the API */
 const SalaryModule = ({
   perm: _perm,
   caps,
   section,
+  action,
 }: {
   perm: PermLevel;
   caps: ModuleActionCaps;
   section?: string;
+  action?: string;
 }) => {
+  // /panel/:role/salary/advances → Advances & Loans (own sidebar entry, salary permissions)
+  if (section === "advances") {
+    // /panel/:role/salary/advances/:advanceId → one advance / loan
+    if (action && /^[a-f0-9]{24}$/i.test(action)) {
+      return <StaffAdvanceDetailPage advanceId={action} caps={caps} />;
+    }
+    return <StaffAdvancesTab caps={caps} />;
+  }
+
   // /panel/:role/salary/:salaryId → voucher detail page
   if (section && /^[a-f0-9]{24}$/i.test(section)) {
     return <AcademySalaryDetailPage salaryId={section} />;
