@@ -1,0 +1,5 @@
+# Environment files — never commit secrets (any folder)
+.env
+.env.*
+# Keep the shareable templates
+!.env.example
