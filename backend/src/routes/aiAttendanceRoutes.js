@@ -112,6 +112,21 @@ router.post(
   ctrl.saveStaffPeriodAttendance
 );
 router.get(
+  '/staff-attendance/extra-classes/periods',
+  requireAnyPermission('mark_attendance', 'manage_users'),
+  ctrl.extraClassPeriodOptions
+);
+router.post(
+  '/staff-attendance/extra-classes',
+  requireAnyPermission('mark_attendance', 'manage_users'),
+  ctrl.createStaffExtraClass
+);
+router.delete(
+  '/staff-attendance/extra-classes/:id',
+  requireAnyPermission('mark_attendance', 'manage_users'),
+  ctrl.deleteStaffExtraClass
+);
+router.get(
   '/staff-attendance/export',
   requireAnyPermission('view_attendance', 'mark_attendance', 'manage_users'),
   ctrl.exportStaffAttendance

@@ -295,6 +295,12 @@ export type StaffPeriodRow = {
   reviewNote?: string;
   day?: string;
   weekday?: string;
+  /** Extra class added for this date only (not on the timetable). */
+  isExtra?: boolean;
+  extraClassId?: string;
+  extraReason?: ExtraClassReason;
+  coveringForName?: string;
+  extraNote?: string;
 };
 
 export type StaffPeriodTeacher = {
@@ -312,6 +318,8 @@ export type StaffPeriodTeacher = {
   absent: number;
   leave: number;
   left_early: number;
+  /** Extra (off-timetable) classes — already counted inside totalClasses. */
+  extraClasses?: number;
   /** Periods flagged for review, plus 1 when the teacher never scanned out. */
   needsReview?: number;
   /** "no_checkout" = checked in but never scanned out on a finished school day (daily view). */
@@ -340,6 +348,7 @@ export type StaffPeriodReport = {
     leave: number;
     left_early?: number;
     needsReview?: number;
+    extraClasses?: number;
     attendancePercent?: number;
   };
   holiday?: { name: string; teachers?: boolean; staff?: boolean } | null;
@@ -371,6 +380,51 @@ export const saveStaffPeriodMarks = (payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+
+export type ExtraClassReason = "extra" | "makeup" | "cover";
+
+export const EXTRA_CLASS_REASON_LABELS: Record<ExtraClassReason, string> = {
+  extra: "Extra class",
+  makeup: "Make-up class",
+  cover: "Covering for a teacher",
+};
+
+export type ExtraClassPeriodOption = {
+  _id: string;
+  label: string;
+  startTime: string;
+  endTime: string;
+  order: number;
+};
+
+/** Lecture periods from the timetable configuration that applies to the section. */
+export const fetchExtraClassPeriods = (sessionId: string, sectionId?: string) => {
+  const q = new URLSearchParams({ sessionId });
+  if (sectionId) q.set("sectionId", sectionId);
+  return api<{ periodTemplateId: string; periodTemplateName: string; periods: ExtraClassPeriodOption[] }>(
+    `/staff-attendance/extra-classes/periods?${q}`,
+  );
+};
+
+export const createStaffExtraClass = (payload: {
+  sessionId: string;
+  date: string;
+  userId: string;
+  classId: string;
+  sectionId?: string;
+  subjectId: string;
+  periodId: string;
+  reason: ExtraClassReason;
+  coveringFor?: string;
+  note?: string;
+}) =>
+  api<{ _id: string; day: string }>("/staff-attendance/extra-classes", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteStaffExtraClass = (id: string) =>
+  api<{ _id: string }>(`/staff-attendance/extra-classes/${id}`, { method: "DELETE" });
 
 export type StaffAttendanceExportFormat = "xlsx" | "pdf";
 

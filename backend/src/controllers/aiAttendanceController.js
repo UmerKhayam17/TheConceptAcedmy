@@ -225,6 +225,30 @@ const saveStaffPeriodAttendance = catchAsync(async (req, res) => {
   res.status(201).json({ success: true, data });
 });
 
+const extraClassPeriodOptions = catchAsync(async (req, res) => {
+  const data = await staffPeriodAttendanceService.extraClassPeriodOptions({
+    sessionId: req.query.sessionId,
+    sectionId: req.query.sectionId || undefined,
+  });
+  res.json({ success: true, data });
+});
+
+/** Extra classes feed staff attendance, so the same admin-only marking rule applies. */
+const createStaffExtraClass = catchAsync(async (req, res) => {
+  const userId = req.body?.userId;
+  if (!userId) throw new ApiError(400, 'Select a teacher');
+  assertCanMarkStaffAttendance(req, [userId]);
+  const data = await staffPeriodAttendanceService.createExtraClass(req.body, req.user._id);
+  res.status(201).json({ success: true, data });
+});
+
+const deleteStaffExtraClass = catchAsync(async (req, res) => {
+  const doc = await staffPeriodAttendanceService.getExtraClass(req.params.id);
+  assertCanMarkStaffAttendance(req, [doc.userId]);
+  const data = await staffPeriodAttendanceService.deleteExtraClass(req.params.id);
+  res.json({ success: true, data });
+});
+
 const markStaffAttendance = catchAsync(async (req, res) => {
   // No default to the caller: the staff member must be named explicitly.
   const userId = req.body.userId;
@@ -301,6 +325,7 @@ const exportStaffAttendance = catchAsync(async (req, res) => {
             absent: one.absent,
             leave: one.leave,
             left_early: one.left_early,
+            extraClasses: one.extraClasses || 0,
           }
         : dayData.summary,
     };
@@ -366,6 +391,7 @@ const exportStaffAttendance = catchAsync(async (req, res) => {
           absent: one.absent,
           leave: one.leave,
           left_early: one.left_early,
+          extraClasses: one.extraClasses || 0,
         }
       : monthData.summary,
   };
@@ -435,6 +461,9 @@ module.exports = {
   listStaffPeriodAttendance,
   listStaffPeriodMonth,
   saveStaffPeriodAttendance,
+  extraClassPeriodOptions,
+  createStaffExtraClass,
+  deleteStaffExtraClass,
   markStaffAttendance,
   exportStaffAttendance,
 };

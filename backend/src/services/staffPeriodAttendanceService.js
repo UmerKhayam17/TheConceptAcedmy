@@ -3,13 +3,16 @@ const Session = require('../models/Session');
 const User = require('../models/User');
 const TimetableVersion = require('../models/timetable/TimetableVersion');
 const ScheduleSlot = require('../models/timetable/ScheduleSlot');
-require('../models/timetable/PeriodTemplate');
 require('../models/academy/AcademyClass');
 require('../models/academy/AcademySection');
 require('../models/academy/AcademySubject');
 const Role = require('../models/Role');
 const StaffPeriodAttendance = require('../models/StaffPeriodAttendance');
 const StaffAttendance = require('../models/StaffAttendance');
+const StaffExtraClass = require('../models/StaffExtraClass');
+const PeriodTemplate = require('../models/timetable/PeriodTemplate');
+const AcademySection = require('../models/academy/AcademySection');
+const AcademySubject = require('../models/academy/AcademySubject');
 const {
   weekdayName,
   dayBounds,
@@ -371,6 +374,15 @@ function publicPeriod(row, status, review = null) {
     sectionLabel: sectionLabel(row),
     subjectLabel: subjectLabel(row),
     status: defaultStatus(status),
+    ...(row.extra
+      ? {
+          isExtra: true,
+          extraClassId: row.extra.id,
+          extraReason: row.extra.reason,
+          coveringForName: row.extra.coveringForName,
+          extraNote: row.extra.note,
+        }
+      : {}),
   };
 }
 
@@ -391,6 +403,8 @@ function teacherShape(user, periods, attendanceType = 'class', scan = {}) {
     isActive: user.isActive !== false,
     role: user.role && typeof user.role === 'object' ? user.role.name || '' : '',
     ...counts,
+    /** Classes added for a date outside the timetable (already inside totalClasses). */
+    extraClasses: periods.filter((p) => p.isExtra).length,
     attendancePercent: attendancePercent(counts),
     periods,
   };
@@ -407,13 +421,24 @@ async function marksForDays(sessionId, days, userId) {
   return map;
 }
 
-function periodsForTeacher(byWeekday, weekday, teacherId, day, markMap, dailyMap, timeZone) {
-  const byPeriod = byWeekday.get(weekday)?.get(teacherId);
-  if (!byPeriod) return [];
+function periodsForTeacher(
+  byWeekday,
+  weekday,
+  teacherId,
+  day,
+  markMap,
+  dailyMap,
+  timeZone,
+  extrasMap = new Map(),
+  includeTimetable = true
+) {
+  const byPeriod = includeTimetable ? byWeekday.get(weekday)?.get(teacherId) : null;
+  const extras = extrasMap.get(`${teacherId}|${day}`) || [];
+  if (!byPeriod && !extras.length) return [];
   const daily = dailyMap.get(`${teacherId}|${day}`);
   const times = scanTimes(daily, timeZone);
   const nowMin = nowMinutesFor(day, timeZone);
-  return sortPeriods([...byPeriod.values()]).map((row) => {
+  return sortPeriods([...(byPeriod ? byPeriod.values() : []), ...extras]).map((row) => {
     const saved = markMap.get(`${teacherId}|${day}|${row.periodKey}`);
     // A saved mark is the admin's decision — nothing left to review.
     if (saved) return publicPeriod(row, saved);
@@ -468,7 +493,10 @@ async function listDay({ sessionId, date, userId }) {
   const weekday = weekdayForDay(ymd, session.timezone);
   const byWeekday = await loadWeekdayPeriods(sessionId);
   const byTeacher = byWeekday.get(weekday) || new Map();
-  let teacherIds = [...byTeacher.keys()];
+  const extrasMap = await extrasForDays(session._id, [ymd], userId || undefined);
+  const idSet = new Set(byTeacher.keys());
+  extrasMap.forEach((_rows, key) => idSet.add(key.split('|')[0]));
+  let teacherIds = [...idSet];
   if (userId) teacherIds = teacherIds.filter((id) => id === String(userId));
 
   const users = await teacherUsers(teacherIds);
@@ -484,16 +512,31 @@ async function listDay({ sessionId, date, userId }) {
     .filter(Boolean)
     .map((user) => {
       const id = String(user._id);
-      if (closed.teachers && !savedOnDay(markMap, id, ymd) && !dailyMap.has(`${id}|${ymd}`)) {
+      const holidayOff =
+        closed.teachers && !savedOnDay(markMap, id, ymd) && !dailyMap.has(`${id}|${ymd}`);
+      // On a holiday only extra classes deliberately added for that date still count.
+      if (holidayOff && !extrasMap.has(`${id}|${ymd}`)) {
         return holidayShape(user, 'class', closed.name);
       }
-      const periods = periodsForTeacher(byWeekday, weekday, id, ymd, markMap, dailyMap, session.timezone);
+      const periods = periodsForTeacher(
+        byWeekday,
+        weekday,
+        id,
+        ymd,
+        markMap,
+        dailyMap,
+        session.timezone,
+        extrasMap,
+        !holidayOff
+      );
       return teacherShape(user, periods, 'class', teacherScan(id, ymd, periods, dailyMap, session.timezone));
     });
 
   let dailyStaff = [];
   if (isWorkingDay(session, weekday)) {
-    dailyStaff = (await dailyStaffUsers(allTimetableTeacherIds(byWeekday)))
+    const exclude = allTimetableTeacherIds(byWeekday);
+    teacherIds.forEach((id) => exclude.add(id));
+    dailyStaff = (await dailyStaffUsers(exclude))
       .filter((user) => !userId || String(user._id) === String(userId))
       .map((user) => {
         const id = String(user._id);
@@ -517,7 +560,7 @@ async function listDay({ sessionId, date, userId }) {
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   );
 
-  const summary = { ...emptyCounts(), needsReview: 0 };
+  const summary = { ...emptyCounts(), needsReview: 0, extraClasses: 0 };
   teachers.forEach((t) => {
     summary.totalClasses += t.totalClasses;
     summary.present += t.present;
@@ -526,6 +569,7 @@ async function listDay({ sessionId, date, userId }) {
     summary.leave += t.leave;
     summary.left_early += t.left_early;
     summary.needsReview += t.needsReview;
+    summary.extraClasses += t.extraClasses || 0;
   });
 
   return {
@@ -548,14 +592,20 @@ async function listMonth({ sessionId, month, year, userId }) {
   byWeekday.forEach((byTeacher) => {
     byTeacher.forEach((_periods, teacherId) => teacherIds.add(teacherId));
   });
+  // Days after today have not happened yet — they would all count as absent.
+  const today = todayYmd(session.timezone);
+  const pastDays = days.filter(({ day }) => day <= today);
+  const extrasMap = await extrasForDays(
+    session._id,
+    pastDays.map((d) => d.day),
+    userId || undefined
+  );
+  extrasMap.forEach((_rows, key) => teacherIds.add(key.split('|')[0]));
   let ids = [...teacherIds];
   if (userId) ids = ids.filter((id) => id === String(userId));
 
   const users = await teacherUsers(ids);
   const closure = await holidayClosureForSession(session._id);
-  // Days after today have not happened yet — they would all count as absent.
-  const today = todayYmd(session.timezone);
-  const pastDays = days.filter(({ day }) => day <= today);
   const [markMap, dailyMap] = await Promise.all([
     marksForDays(
       sessionId,
@@ -575,7 +625,11 @@ async function listMonth({ sessionId, month, year, userId }) {
       const detail = [];
       pastDays.forEach(({ day, weekday }) => {
         const closed = closure(day);
-        if (closed.teachers && !savedOnDay(markMap, String(user._id), day) && !dailyMap.has(`${user._id}|${day}`)) {
+        const holidayOff =
+          closed.teachers &&
+          !savedOnDay(markMap, String(user._id), day) &&
+          !dailyMap.has(`${user._id}|${day}`);
+        if (holidayOff && !extrasMap.has(`${user._id}|${day}`)) {
           return;
         }
         periodsForTeacher(
@@ -585,7 +639,9 @@ async function listMonth({ sessionId, month, year, userId }) {
           day,
           markMap,
           dailyMap,
-          session.timezone
+          session.timezone,
+          extrasMap,
+          !holidayOff
         ).forEach((period) => {
           detail.push({
             day,
@@ -627,7 +683,7 @@ async function listMonth({ sessionId, month, year, userId }) {
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   );
 
-  const summary = { ...emptyCounts(), needsReview: 0 };
+  const summary = { ...emptyCounts(), needsReview: 0, extraClasses: 0 };
   teachers.forEach((t) => {
     summary.totalClasses += t.totalClasses;
     summary.present += t.present;
@@ -636,6 +692,7 @@ async function listMonth({ sessionId, month, year, userId }) {
     summary.leave += t.leave;
     summary.left_early += t.left_early;
     summary.needsReview += t.needsReview;
+    summary.extraClasses += t.extraClasses || 0;
   });
 
   return {
@@ -648,6 +705,205 @@ async function listMonth({ sessionId, month, year, userId }) {
     teachers,
     summary: { ...summary, attendancePercent: attendancePercent(summary) },
   };
+}
+
+// ─── Extra classes (taken on a date, not on the timetable) ─────────────────────
+
+const EXTRA_KEY_PREFIX = 'extra:';
+const EXTRA_REASONS = new Set(['extra', 'makeup', 'cover']);
+const EXTRA_REASON_LABELS = { extra: 'Extra class', makeup: 'Make-up class', cover: 'Covering' };
+
+/** Extra classes for the given days, as period rows keyed `${userId}|${day}`. */
+async function extrasForDays(sessionId, days, userId) {
+  const map = new Map();
+  if (!days.length) return map;
+  const q = { sessionId, day: { $in: days } };
+  if (userId) q.userId = userId;
+  const rows = await StaffExtraClass.find(q)
+    .populate('classId', 'className')
+    .populate('sectionId', 'sectionName')
+    .populate('subjectId', 'subjectName')
+    .populate('coveringFor', 'name')
+    .lean();
+  rows.forEach((row) => {
+    const key = `${row.userId}|${row.day}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push({
+      periodKey: `${EXTRA_KEY_PREFIX}${row._id}`,
+      label: row.label || EXTRA_REASON_LABELS[row.reason] || 'Extra class',
+      startTime: row.startTime,
+      endTime: row.endTime,
+      order: Number(row.order) || 0,
+      classes: [
+        {
+          id: String(row._id),
+          className: row.classId?.className || '',
+          sectionName: row.sectionId?.sectionName || '',
+          subjectName: row.subjectId?.subjectName || '',
+        },
+      ],
+      extra: {
+        id: String(row._id),
+        reason: row.reason || 'extra',
+        coveringForName: row.coveringFor?.name || '',
+        note: row.note || '',
+      },
+    });
+  });
+  return map;
+}
+
+/**
+ * Period configuration that applies to a section: its published timetable's template,
+ * else the session's default (or first active) configuration.
+ */
+async function templateForSection(sessionId, sectionId) {
+  if (sectionId) {
+    const version = await TimetableVersion.findOne({
+      session: sessionId,
+      section: sectionId,
+      status: 'published',
+    })
+      .select('periodTemplate')
+      .lean();
+    if (version?.periodTemplate) {
+      const t = await PeriodTemplate.findById(version.periodTemplate).lean();
+      if (t) return t;
+    }
+  }
+  return (
+    (await PeriodTemplate.findOne({
+      session: sessionId,
+      isDefault: true,
+      isActive: { $ne: false },
+    }).lean()) ||
+    (await PeriodTemplate.findOne({ session: sessionId, isActive: { $ne: false } })
+      .sort({ createdAt: 1 })
+      .lean())
+  );
+}
+
+function lectureSlots(template) {
+  return (template?.slots || [])
+    .filter((slot) => !slot.type || CLASS_PERIOD_TYPES.has(slot.type))
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
+/** Configured lecture periods a new extra class can be placed in. */
+async function extraClassPeriodOptions({ sessionId, sectionId }) {
+  const session = await resolveSession(sessionId);
+  const template = await templateForSection(session._id, sectionId);
+  return {
+    periodTemplateId: template ? String(template._id) : '',
+    periodTemplateName: template?.name || '',
+    periods: lectureSlots(template).map((slot) => ({
+      _id: String(slot._id),
+      label: slot.label,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      order: slot.order,
+    })),
+  };
+}
+
+async function createExtraClass(body, actorId) {
+  const session = await resolveSession(body.sessionId);
+  const ymd = dayBounds(body.date, session.timezone).ymd;
+  const userId = String(body.userId || '');
+  if (!userId) throw new ApiError(400, 'Select a teacher');
+  if (!body.classId) throw new ApiError(400, 'Select a class');
+  if (!body.subjectId) throw new ApiError(400, 'Select a subject');
+  if (!body.periodId) throw new ApiError(400, 'Select a period');
+  const reason = EXTRA_REASONS.has(body.reason) ? body.reason : 'extra';
+
+  const teacher = await User.findById(userId).select('name role').populate('role', 'name').lean();
+  if (!teacher) throw new ApiError(404, 'Teacher not found');
+  const roleName = teacher.role && typeof teacher.role === 'object' ? teacher.role.name : '';
+  if (roleName !== 'teacher') {
+    throw new ApiError(400, 'Extra classes can only be added for teachers');
+  }
+
+  if (body.sectionId) {
+    const section = await AcademySection.findById(body.sectionId).select('classId').lean();
+    if (!section || String(section.classId) !== String(body.classId)) {
+      throw new ApiError(400, 'That section does not belong to the selected class');
+    }
+  }
+  const subject = await AcademySubject.findById(body.subjectId).select('classId').lean();
+  if (!subject || String(subject.classId) !== String(body.classId)) {
+    throw new ApiError(400, 'That subject does not belong to the selected class');
+  }
+
+  const template = await templateForSection(session._id, body.sectionId);
+  const slot = lectureSlots(template).find((s) => String(s._id) === String(body.periodId));
+  if (!slot) throw new ApiError(400, 'That period is not in the timetable configuration');
+
+  let coveringFor = null;
+  if (reason === 'cover' && body.coveringFor) {
+    if (String(body.coveringFor) === userId) {
+      throw new ApiError(400, 'A teacher cannot cover for themselves');
+    }
+    coveringFor = body.coveringFor;
+  }
+
+  // Clash with the teacher's own timetable class in the same period that day.
+  const weekday = weekdayForDay(ymd, session.timezone);
+  const byWeekday = await loadWeekdayPeriods(session._id);
+  const own = byWeekday.get(weekday)?.get(userId);
+  if (own?.has(periodKeyOf(slot.startTime, slot.endTime))) {
+    throw new ApiError(
+      400,
+      `${teacher.name || 'This teacher'} already has a timetable class in ${slot.label}`
+    );
+  }
+
+  try {
+    const doc = await StaffExtraClass.create({
+      userId,
+      sessionId: session._id,
+      day: ymd,
+      periodTemplateId: template?._id,
+      periodSlotId: slot._id,
+      label: slot.label,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      order: slot.order,
+      classId: body.classId,
+      sectionId: body.sectionId || null,
+      subjectId: body.subjectId,
+      reason,
+      coveringFor,
+      note: String(body.note || '').slice(0, 300),
+      createdBy: actorId,
+    });
+    return { _id: String(doc._id), day: ymd };
+  } catch (err) {
+    if (err?.code === 11000) {
+      throw new ApiError(
+        409,
+        `${teacher.name || 'This teacher'} already has an extra class in ${slot.label}`
+      );
+    }
+    throw err;
+  }
+}
+
+async function getExtraClass(id) {
+  const doc = await StaffExtraClass.findById(id).lean();
+  if (!doc) throw new ApiError(404, 'Extra class not found');
+  return doc;
+}
+
+async function deleteExtraClass(id) {
+  const doc = await getExtraClass(id);
+  await StaffPeriodAttendance.deleteMany({
+    userId: doc.userId,
+    sessionId: doc.sessionId,
+    day: doc.day,
+    periodKey: `${EXTRA_KEY_PREFIX}${doc._id}`,
+  });
+  await StaffExtraClass.deleteOne({ _id: doc._id });
+  return { _id: String(doc._id) };
 }
 
 async function saveMarks({ sessionId, date, marks, markedBy }) {
@@ -696,4 +952,8 @@ module.exports = {
   listMonth,
   saveMarks,
   attendancePercent,
+  extraClassPeriodOptions,
+  createExtraClass,
+  getExtraClass,
+  deleteExtraClass,
 };

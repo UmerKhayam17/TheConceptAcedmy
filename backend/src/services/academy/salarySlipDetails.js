@@ -65,7 +65,8 @@ async function periodAttendance(staffId, month, year) {
   });
   const teacher = (data.teachers || []).find((t) => t.userId === String(staffId));
   const today = todayYmd();
-  const periods = (teacher?.periods || []).filter((p) => !p.day || p.day <= today);
+  // Extra (off-timetable) classes are attendance-only for now; they do not change salary.
+  const periods = (teacher?.periods || []).filter((p) => (!p.day || p.day <= today) && !p.isExtra);
 
   const summary = emptyCounts();
   const byClass = new Map();

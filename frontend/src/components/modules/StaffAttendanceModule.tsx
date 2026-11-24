@@ -18,8 +18,10 @@ import {
   Eye,
   MoreVertical,
   PlaneTakeoff,
+  Plus,
   Save,
   Timer,
+  Trash2,
   UserCheck,
   Users,
   X,
@@ -50,12 +52,16 @@ import FilterToolbar, { FilterToolbarActions } from "@/components/modules/Filter
 import { DefaulterListDownload } from "@/components/modules/student-management/DefaulterListDownload";
 import { usePanelSessionOptional } from "@/components/panel-header/PanelSessionContext";
 import type { ModuleActionCaps } from "@/lib/permissions";
+import ExtraClassDialog from "@/components/modules/staff-attendance/ExtraClassDialog";
 import {
+  deleteStaffExtraClass,
+  EXTRA_CLASS_REASON_LABELS,
   exportStaffAttendanceReport,
   fetchStaffPeriodDay,
   fetchStaffPeriodMonth,
   saveStaffPeriodMarks,
   type StaffAttendanceExportFormat,
+  type StaffPeriodRow,
   type StaffPeriodStatus,
   type StaffPeriodTeacher,
 } from "@/lib/aiAttendanceApi";
@@ -195,6 +201,11 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   const [savingAll, setSavingAll] = useState(false);
   const [exporting, setExporting] = useState<StaffAttendanceExportFormat | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [extraDialog, setExtraDialog] = useState<{
+    open: boolean;
+    teacherId?: string;
+    teacherName?: string;
+  }>({ open: false });
 
   const { data: dayData, isLoading: dayLoading, isError: dayError, error: dayErr } = useQuery({
     queryKey: ["staff-period-day", date, sessionId],
@@ -329,6 +340,33 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
   const updatePeriod = (userId: string, periodKey: string, status: StaffPeriodStatus) => {
     const key = periodDraftKey(userId, periodKey);
     setDrafts((prev) => ({ ...prev, [key]: { status, dirty: true } }));
+  };
+
+  const refreshStaffPeriods = () => {
+    qc.invalidateQueries({ queryKey: ["staff-period-day"] });
+    qc.invalidateQueries({ queryKey: ["staff-period-month"] });
+  };
+
+  const removeExtraClass = async (teacher: StaffPeriodTeacher, period: StaffPeriodRow) => {
+    if (!period.extraClassId) return;
+    const what = [period.classLabel, period.sectionLabel, period.subjectLabel].filter(Boolean).join(" · ");
+    if (!window.confirm(`Remove the extra class${what ? ` (${what})` : ""} for ${teacher.name}?`)) return;
+    try {
+      await deleteStaffExtraClass(period.extraClassId);
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[periodDraftKey(teacher.userId, period.periodKey)];
+        return next;
+      });
+      refreshStaffPeriods();
+      toast({ title: "Extra class removed" });
+    } catch (e) {
+      toast({
+        title: "Could not remove extra class",
+        description: e instanceof Error ? e.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const markingTeachers = useMemo(() => {
@@ -542,6 +580,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
 
   const stats = useMemo(() => {
     const counts = { totalClasses: 0, present: 0, late: 0, absent: 0, leave: 0, left_early: 0 };
+    let extraClasses = 0;
     if (view === "daily") {
       markingTeachers.forEach((teacher) =>
         teacher.periods.forEach((period) => {
@@ -550,11 +589,13 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
           );
           counts.totalClasses += 1;
           counts[status] += 1;
+          if (period.isExtra) extraClasses += 1;
         })
       );
     } else {
       monthTeachers.forEach((t) => {
         counts.totalClasses += t.totalClasses;
+        extraClasses += t.extraClasses || 0;
         counts.present += t.present;
         counts.late += t.late;
         counts.absent += t.absent;
@@ -566,7 +607,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
     const attendancePercent = counts.totalClasses
       ? Math.round((marked / counts.totalClasses) * 100)
       : 0;
-    return { ...counts, attendancePercent };
+    return { ...counts, extraClasses, attendancePercent };
   }, [view, markingTeachers, monthTeachers, drafts]);
 
   const statsHint = view === "daily" ? date : `${MONTH_NAMES[month - 1]} ${year}`;
@@ -630,7 +671,11 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
           <PanelStatCard
             label="Total classes"
             value={stats.totalClasses}
-            hint={`${stats.attendancePercent}% attendance`}
+            hint={
+              stats.extraClasses
+                ? `${stats.attendancePercent}% attendance · ${stats.extraClasses} extra`
+                : `${stats.attendancePercent}% attendance`
+            }
             icon={BookOpen}
             iconWrapClass="bg-[#e0f2fe]"
             iconClass="text-[#0284c7]"
@@ -887,9 +932,22 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               Teacher attendance — {date}
               {dayData?.weekday ? ` · ${weekdayLabel(dayData.weekday)}` : ""}
             </span>
-            <span className="flex shrink-0 items-center gap-1.5 pl-7 text-xs font-medium text-slate-500 sm:pl-0">
-              <Users className="h-4 w-4" />
-              {dayLoading ? "Loading timetable…" : `${classTeachers.length} teachers`}
+            <span className="flex shrink-0 items-center gap-3 pl-7 text-xs font-medium text-slate-500 sm:pl-0">
+              <span className="flex items-center gap-1.5">
+                <Users className="h-4 w-4" />
+                {dayLoading ? "Loading timetable…" : `${classTeachers.length} teachers`}
+              </span>
+              {canMark ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5"
+                  onClick={() => setExtraDialog({ open: true })}
+                >
+                  <Plus className="h-4 w-4" />
+                  Extra Class
+                </Button>
+              ) : null}
             </span>
           </div>
           <div className="min-w-0 px-3 pb-3 sm:px-4 sm:pb-4">
@@ -943,9 +1001,26 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               onToggleSelectOne={toggleSelectOne}
               onChange={updatePeriod}
               onViewDetails={viewStaffDetails}
+              onAddExtra={(teacher) =>
+                setExtraDialog({ open: true, teacherId: teacher.userId, teacherName: teacher.name })
+              }
+              onRemoveExtra={removeExtraClass}
             />
           </div>
         </Card>
+      )}
+
+      {sessionId && (
+        <ExtraClassDialog
+          open={extraDialog.open}
+          onOpenChange={(open) => setExtraDialog((prev) => ({ ...prev, open }))}
+          sessionId={sessionId}
+          date={date}
+          teacherId={extraDialog.teacherId}
+          teacherName={extraDialog.teacherName}
+          lockedUserId={lockedUserId}
+          onCreated={refreshStaffPeriods}
+        />
       )}
 
       {view === "daily" && sessionId && !dayLoading && dailyStaff.length > 0 && (
@@ -1306,6 +1381,8 @@ function DayClassGrid({
   onToggleSelectOne,
   onChange,
   onViewDetails,
+  onAddExtra,
+  onRemoveExtra,
 }: {
   subjectColorByKey: Map<string, number>;
   teachers: StaffPeriodTeacher[];
@@ -1321,6 +1398,8 @@ function DayClassGrid({
   onToggleSelectOne: (userId: string) => void;
   onChange: (userId: string, periodKey: string, status: StaffPeriodStatus) => void;
   onViewDetails?: (userId: string) => void;
+  onAddExtra?: (teacher: StaffPeriodTeacher) => void;
+  onRemoveExtra?: (teacher: StaffPeriodTeacher, period: StaffPeriodRow) => void;
 }) {
   const classCount = teachers.reduce((max, teacher) => Math.max(max, teacher.periods.length), 0);
   if (loading) return <p className="p-2 text-sm text-muted-foreground">Loading timetable…</p>;
@@ -1360,6 +1439,9 @@ function DayClassGrid({
             .filter((period) => period.review)
             .forEach((period) => onChange(teacher.userId, period.periodKey, "left_early")),
       },
+      ...(onAddExtra
+        ? [{ key: "extra", label: "Add extra class", icon: Plus, onClick: () => onAddExtra(teacher) }]
+        : []),
     ].filter((item) => item.key !== "left_early" || teacher.periods.some((p) => p.review));
     const canMark = canMarkAny && String(teacher.userId) !== String(lockedUserId);
     const selectable = canMark && teacher.periods.length > 0;
@@ -1479,10 +1561,50 @@ function DayClassGrid({
                     );
                   }
                   return (
-                    <td key={period.periodKey} className={cellClass} style={{ width: classWidth, minWidth: classWidth }}>
+                    <td
+                      key={period.periodKey}
+                      className={cn(cellClass, period.isExtra && "bg-amber-50/60 dark:bg-amber-950/20")}
+                      style={{ width: classWidth, minWidth: classWidth }}
+                    >
+                      {period.isExtra ? (
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span
+                            className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                            title={[
+                              period.extraReason ? EXTRA_CLASS_REASON_LABELS[period.extraReason] : "Extra class",
+                              period.coveringForName ? `for ${period.coveringForName}` : "",
+                              period.extraNote || "",
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          >
+                            {period.extraReason === "cover"
+                              ? "Cover"
+                              : period.extraReason === "makeup"
+                                ? "Make-up"
+                                : "Extra"}
+                          </span>
+                          {canMark && onRemoveExtra ? (
+                            <button
+                              type="button"
+                              className="rounded p-0.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                              aria-label="Remove extra class"
+                              title="Remove extra class"
+                              onClick={() => onRemoveExtra(teacher, period)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <p className="text-[13px] font-semibold leading-snug text-[#1a2b4b] dark:text-slate-100">
                         {[period.classLabel, period.sectionLabel].filter(Boolean).join(" · ") || "—"}
                       </p>
+                      {period.isExtra && period.coveringForName ? (
+                        <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                          Covering {period.coveringForName}
+                        </p>
+                      ) : null}
                       <SubjectChip
                         subjectLabel={period.subjectLabel}
                         fallback={period.label || "Class"}
@@ -1520,6 +1642,28 @@ function DayClassGrid({
           </tbody>
         </table>
     </div>
+  );
+}
+
+/** Small "Extra / Make-up / Cover" tag for an off-timetable class in report tables. */
+function ExtraBadge({ period }: { period: StaffPeriodRow }) {
+  if (!period.isExtra) return null;
+  const text =
+    period.extraReason === "cover" ? "Cover" : period.extraReason === "makeup" ? "Make-up" : "Extra";
+  const title = [
+    period.extraReason ? EXTRA_CLASS_REASON_LABELS[period.extraReason] : "Extra class",
+    period.coveringForName ? `for ${period.coveringForName}` : "",
+    period.extraNote || "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <span
+      className="ml-1.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+      title={title}
+    >
+      {text}
+    </span>
   );
 }
 
@@ -1807,7 +1951,10 @@ function TeacherSummaryTable({
             {isDailyTable ? (
               <th className={cn(headClass, "min-w-[8rem] text-left")}>Role</th>
             ) : (
-              <th className={numHead}>Classes</th>
+              <>
+                <th className={numHead}>Classes</th>
+                <th className={numHead}>Extra</th>
+              </>
             )}
             <th className={numHead}>Days</th>
             <th className={numHead}>Present</th>
@@ -1821,7 +1968,7 @@ function TeacherSummaryTable({
         <tbody>
           {teachers.length === 0 && (
             <tr>
-              <td colSpan={9} className="p-8 text-center text-muted-foreground">
+              <td colSpan={isDailyTable ? 9 : 10} className="p-8 text-center text-muted-foreground">
                 {emptyLabel}
               </td>
             </tr>
@@ -1854,9 +2001,14 @@ function TeacherSummaryTable({
                     </span>
                   </td>
                 ) : (
-                  <td className={cn(numClass, "font-semibold text-[#1a2b4b] dark:text-slate-100")}>
-                    {t.totalClasses}
-                  </td>
+                  <>
+                    <td className={cn(numClass, "font-semibold text-[#1a2b4b] dark:text-slate-100")}>
+                      {t.totalClasses}
+                    </td>
+                    <td className={cn(numClass, "text-amber-700 dark:text-amber-400")}>
+                      {t.extraClasses || 0}
+                    </td>
+                  </>
                 )}
                 <td className={cn(numClass, "font-semibold text-[#1a2b4b] dark:text-slate-100")}>
                   {workingDayCount(t)}
@@ -1957,6 +2109,12 @@ function PeriodMarkTable({
     <div className="space-y-2">
       <h2 className="text-sm font-semibold text-primary">
         {teacher.name} — {teacher.totalClasses} class{teacher.totalClasses === 1 ? "" : "es"}
+        {teacher.extraClasses ? (
+          <span className="font-normal text-amber-700 dark:text-amber-400">
+            {" "}
+            (incl. {teacher.extraClasses} extra)
+          </span>
+        ) : null}
       </h2>
       <div className="w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain">
         <table className="w-full min-w-[50rem] border-collapse text-sm">
@@ -1996,7 +2154,7 @@ function PeriodMarkTable({
             {teacher.periods.length === 0 && (
               <tr>
                 <td colSpan={showDate ? 2 : 6} className="p-6 text-center text-muted-foreground">
-                  No periods on the timetable.
+                  No timetable or extra classes.
                 </td>
               </tr>
             )}
@@ -2023,7 +2181,10 @@ function PeriodMarkTable({
                               index < group.periods.length - 1 && "border-b border-border/70"
                             )}
                           >
-                            <span>{period.label || "—"}</span>
+                            <span>
+                              {period.label || "—"}
+                              <ExtraBadge period={period} />
+                            </span>
                             <span className="whitespace-nowrap">
                               {period.startTime ? formatWallClockRange(period.startTime, period.endTime, "–") : "—"}
                             </span>
@@ -2047,7 +2208,10 @@ function PeriodMarkTable({
                       key={`${period.day || "day"}-${period.periodKey}-${period.classLabel}`}
                       className="border-b last:border-0"
                     >
-                      <td className="whitespace-nowrap p-2.5">{period.label || "—"}</td>
+                      <td className="whitespace-nowrap p-2.5">
+                        {period.label || "—"}
+                        <ExtraBadge period={period} />
+                      </td>
                       <td className="whitespace-nowrap p-2.5">
                         {period.startTime ? formatWallClockRange(period.startTime, period.endTime, "–") : "—"}
                       </td>
