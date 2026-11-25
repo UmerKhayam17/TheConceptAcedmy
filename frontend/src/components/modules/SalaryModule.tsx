@@ -1,8 +1,9 @@
 import type { ModuleActionCaps, PermLevel } from "@/lib/permissions";
 import AcademySalaryManagement from "@/components/modules/student-management/AcademySalaryManagement";
 import AcademySalaryDetailPage from "@/components/modules/student-management/AcademySalaryDetailPage";
-import StaffAdvancesTab from "@/components/modules/student-management/StaffAdvancesTab";
-import StaffAdvanceDetailPage from "@/components/modules/student-management/StaffAdvanceDetailPage";
+import { Navigate, useParams } from "react-router-dom";
+import type { Role } from "@/lib/auth";
+import { advanceDetailHref, advancesHref } from "@/lib/panelMenus";
 
 /** Panel Teacher salary — live staff payroll from the API */
 const SalaryModule = ({
@@ -16,13 +17,12 @@ const SalaryModule = ({
   section?: string;
   action?: string;
 }) => {
-  // /panel/:role/salary/advances → Advances & Loans (own sidebar entry, salary permissions)
+  const { role: roleParam } = useParams<{ role: string }>();
+  const role = (roleParam || "admin") as Role;
+  // Old links: /salary/advances[/:id] → Advances & Loans module (own permission)
   if (section === "advances") {
-    // /panel/:role/salary/advances/:advanceId → one advance / loan
-    if (action && /^[a-f0-9]{24}$/i.test(action)) {
-      return <StaffAdvanceDetailPage advanceId={action} caps={caps} />;
-    }
-    return <StaffAdvancesTab caps={caps} />;
+    const id = action && /^[a-f0-9]{24}$/i.test(action) ? action : undefined;
+    return <Navigate to={id ? advanceDetailHref(role, id) : advancesHref(role)} replace />;
   }
 
   // /panel/:role/salary/:salaryId → voucher detail page

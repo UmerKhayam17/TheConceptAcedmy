@@ -46,6 +46,8 @@ const ExamsModule = lazy(() => import("@/components/modules/ExamsModule"));
 const FeesModule = lazy(() => import("@/components/modules/FeesModule"));
 const SalaryModule = lazy(() => import("@/components/modules/SalaryModule"));
 const ExpensesModule = lazy(() => import("@/components/modules/ExpensesModule"));
+const StaffAdvancesTab = lazy(() => import("@/components/modules/student-management/StaffAdvancesTab"));
+const StaffAdvanceDetailPage = lazy(() => import("@/components/modules/student-management/StaffAdvanceDetailPage"));
 const ChatModule = lazy(() => import("@/components/modules/ChatModule"));
 const AnnouncementsModule = lazy(() => import("@/components/modules/AnnouncementsModule"));
 // Reports module hidden for now
@@ -492,6 +494,12 @@ const Panel = () => {
       case "fees":          return <FeesModule perm={perm} caps={caps} />;
       case "salary":        return <SalaryModule perm={perm} caps={caps} section={section} action={action} />;
       case "expenses":      return <ExpensesModule perm={perm} caps={caps} />;
+      case "advances-loans":
+        // /panel/:role/advances-loans/:advanceId → one advance / loan
+        if (section && /^[a-f0-9]{24}$/i.test(section)) {
+          return <StaffAdvanceDetailPage advanceId={section} caps={caps} />;
+        }
+        return <StaffAdvancesTab caps={caps} />;
       case "chat":          return <ChatModule user={session} perm={perm} caps={caps} />;
       case "announcements": return <AnnouncementsModule perm={perm} caps={caps} />;
       case "notifications": return <NotificationsModule />;

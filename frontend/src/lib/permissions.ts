@@ -84,6 +84,7 @@ export type ModuleKey =
   | "fee-structure"
   | "fees"
   | "salary"
+  | "advances-loans"
   | "expenses"
   | "chat"
   | "announcements"
@@ -269,6 +270,13 @@ export const MODULES: ModuleDef[] = [
   { key: "fee-structure", label: "Fee Structure", icon: "Wallet", desc: "Define fee structures" },
   { key: "fees", label: "Fee management", icon: "Wallet", desc: "Collect and track fees" },
   { key: "salary", label: "Staff salary", icon: "DollarSign", desc: "Monthly teacher & staff payroll" },
+  {
+    key: "advances-loans",
+    label: "Advances & Loans",
+    shortLabel: "Advances",
+    icon: "HandCoins",
+    desc: "Staff advances and loans recovered from salary",
+  },
   { key: "expenses", label: "Academy expenses", icon: "Receipt", desc: "Operating costs & expenses" },
   { key: "chat", label: "Messages", icon: "MessageSquare", desc: "Messaging with students, parents, and staff" },
   {
@@ -388,7 +396,7 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
   {
     id: "finance",
     label: "Finance",
-    modules: ["finance-dashboard", "fee-structure", "fees", "salary", "expenses"],
+    modules: ["finance-dashboard", "fee-structure", "fees", "salary", "advances-loans", "expenses"],
   },
   {
     id: "communication",
@@ -455,6 +463,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, Record<ModuleKey, PermLevel>> = {
     "finance-dashboard": "view",
     fees: "crud",
     salary: "process",
+    "advances-loans": "grade",
     expenses: "crud",
     chat: "view",
     reports: "view",
@@ -639,6 +648,7 @@ export const BACKEND_MODULE_KEY_MAP: Record<string, ModuleKey> = {
   reports: "reports",
   datasheets: "datasheets",
   salary: "salary",
+  staffAdvance: "advances-loans",
   academyExpense: "expenses",
   role: "permissions",
   parentUsers: "parents",

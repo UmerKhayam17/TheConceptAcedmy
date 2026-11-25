@@ -8,9 +8,14 @@ import type { ModuleActionCaps } from "@/lib/permissions";
 import type { Role } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { advanceDetailHref } from "@/lib/panelMenus";
+import { useToast } from "@/hooks/use-toast";
+import { deliverReportBlob, openReportPreviewTab, type ReportFileFormat } from "@/lib/reportDownload";
+import { DefaulterListDownload } from "./DefaulterListDownload";
 import {
+  exportStaffAdvanceReport,
   fetchStaffAdvanceSummary,
   fetchStaffAdvances,
+  type StaffAdvanceReportKind,
   type StaffAdvance,
   type StaffAdvanceStatus,
   type StaffAdvanceType,
@@ -35,6 +40,8 @@ import {
   staffOf,
 } from "./staffAdvanceShared";
 
+type ExportParams = { type?: string; status?: string; search?: string; staffId?: string; ids?: string[] };
+
 const selectClass =
   "h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[7.5rem] shrink-0";
 
@@ -53,6 +60,30 @@ export default function StaffAdvancesTab({
   const navigate = useNavigate();
   const { role = "admin" } = useParams<{ role: Role }>();
   const locked = Boolean(staffId);
+  const { toast } = useToast();
+  const [exporting, setExporting] = useState<ReportFileFormat | null>(null);
+  const handleExport = async (format: ReportFileFormat, kind: StaffAdvanceReportKind, params: ExportParams) => {
+    setExporting(format);
+    const preview = openReportPreviewTab(format);
+    try {
+      const blob = await exportStaffAdvanceReport({ kind, ...params }, format);
+      const base = kind === "repayments" ? "Advance-Loan-Repayments" : "Staff-Advances-Loans";
+      const mode = deliverReportBlob(blob, `${base}_${new Date().toISOString().slice(0, 10)}.${format}`, format, preview);
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description: mode === "preview" ? "Use Print or Download from the preview window." : "Advances & loans report downloaded.",
+      });
+    } catch (e) {
+      preview?.close();
+      toast({
+        title: "Export failed",
+        description: e instanceof Error ? e.message : "Could not export",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const [typeFilter, setTypeFilter] = useState<StaffAdvanceType | "">("");
   const [statusFilter, setStatusFilter] = useState<StaffAdvanceStatus | "">(locked ? "" : "active");
@@ -95,7 +126,6 @@ export default function StaffAdvancesTab({
   const showingFrom = pagination && pagination.total > 0 ? (page - 1) * pagination.limit + 1 : 0;
   const showingTo = pagination ? Math.min(page * pagination.limit, pagination.total) : 0;
   const colCount = locked ? 8 : 9;
-  const canWrite = caps.canCreate || caps.canEdit;
 
   const openCreate = () => {
     setEditing(null);
@@ -183,8 +213,27 @@ export default function StaffAdvancesTab({
             </div>
           ) : null}
 
-          {canWrite ? (
-            <FilterToolbarActions className="sm:ml-auto">
+          <FilterToolbarActions className="sm:ml-auto">
+            <DefaulterListDownload
+              variant="default"
+              size="default"
+              className="shrink-0"
+              label="Print / Export"
+              exporting={exporting}
+              reportKinds={[
+                { id: "list", label: "Advances & Loans Report" },
+                { id: "repayments", label: "Repayment History" },
+              ]}
+              onDownload={(format, kind) =>
+                void handleExport(format, kind === "repayments" ? "repayments" : "list", {
+                  type: typeFilter || undefined,
+                  status: statusFilter || undefined,
+                  search: debounced || undefined,
+                  staffId: staffId || undefined,
+                })
+              }
+            />
+            {caps.canCreate ? (
               <Button
                 className="gap-2 h-10 shrink-0 rounded-md bg-slate-900 text-white hover:bg-slate-800"
                 onClick={openCreate}
@@ -192,8 +241,8 @@ export default function StaffAdvancesTab({
                 <Plus className="h-4 w-4" />
                 Give Advance / Loan
               </Button>
-            </FilterToolbarActions>
-          ) : null}
+            ) : null}
+          </FilterToolbarActions>
         </FilterToolbar>
       </div>
 
@@ -327,7 +376,7 @@ export default function StaffAdvancesTab({
                             <Pencil className="h-4 w-4" />
                           </Button>
                         ) : null}
-                        {caps.canEdit && isActive && a.recoveredAmount <= 0 ? (
+                        {caps.canDelete && isActive && a.recoveredAmount <= 0 ? (
                           <Button
                             variant="ghost"
                             size="icon"

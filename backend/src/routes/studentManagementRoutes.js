@@ -693,40 +693,45 @@ router.patch(
 // Staff advances & loans (recovered from salary vouchers)
 router.get(
   '/staff-advances/summary',
-  requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
+  requireModulePermission('staffAdvance', ['view', 'create', 'edit', 'delete', 'record']),
   advanceCtrl.summary
 );
 router.get(
   '/staff-advances',
-  requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
+  requireModulePermission('staffAdvance', ['view', 'create', 'edit', 'delete', 'record']),
   advanceCtrl.list
 );
 router.get(
+  '/staff-advances/export-report',
+  requireModulePermission('staffAdvance', ['view', 'create', 'edit', 'delete', 'record']),
+  advanceCtrl.exportReport
+);
+router.get(
   '/staff-advances/:id',
-  requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
+  requireModulePermission('staffAdvance', ['view', 'create', 'edit', 'delete', 'record']),
   advanceCtrl.getOne
 );
 router.post(
   '/staff-advances',
-  requirePermission('manage_academy_salaries'),
+  requireModulePermission('staffAdvance', 'create'),
   validate(schemas.staffAdvanceCreate),
   advanceCtrl.create
 );
 router.patch(
   '/staff-advances/:id',
-  requirePermission('manage_academy_salaries'),
+  requireModulePermission('staffAdvance', 'edit'),
   validate(schemas.staffAdvancePatch),
   advanceCtrl.update
 );
 router.post(
   '/staff-advances/:id/repay',
-  requirePermission('manage_academy_salaries'),
+  requireModulePermission('staffAdvance', 'record'),
   validate(schemas.staffAdvanceRepay),
   advanceCtrl.repay
 );
 router.post(
   '/staff-advances/:id/cancel',
-  requirePermission('manage_academy_salaries'),
+  requireModulePermission('staffAdvance', 'delete'),
   advanceCtrl.cancel
 );
 

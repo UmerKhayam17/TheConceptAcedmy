@@ -396,6 +396,16 @@ const SYSTEM_MODULES = [
     parentGroup: 'finance',
   },
   {
+    key: 'staffAdvance',
+    panelSlug: 'advances-loans',
+    label: 'Advances & Loans',
+    icon: 'HandCoins',
+    description: 'Staff advances and loans recovered from salary',
+    order: 75.5,
+    actions: ['view', 'create', 'edit', 'delete', 'record'],
+    parentGroup: 'finance',
+  },
+  {
     key: 'academyExpense',
     panelSlug: 'expenses',
     label: 'Academy expenses',

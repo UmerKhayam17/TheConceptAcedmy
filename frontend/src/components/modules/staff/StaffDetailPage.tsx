@@ -54,7 +54,14 @@ import { formatPkr, MONTH_NAMES } from "@/components/modules/student-management/
 import { DAY_LABELS, DAY_ORDER, subjectColor } from "@/components/modules/timetable/constants";
 import type { Weekday } from "@/lib/configApi";
 import { moduleHref } from "@/lib/panelMenus";
-import { emptyActionCaps, type ModuleActionCaps } from "@/lib/permissions";
+import {
+  applyBackendModulePermissions,
+  emptyActionCaps,
+  resolveModuleCaps,
+  type ModuleActionCaps,
+} from "@/lib/permissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import type { Role } from "@/lib/auth";
 import StaffAdvancesTab from "@/components/modules/student-management/StaffAdvancesTab";
 import { cn, formatClockTime } from "@/lib/utils";
 
@@ -215,6 +222,16 @@ export default function StaffDetailPage({
 }) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { perms } = usePermissions();
+  const viewerRole = (user?.role ?? "admin") as Role;
+  // Advances & Loans has its own permission — only show the block to people who can view it.
+  const canViewAdvances = resolveModuleCaps(
+    "advances-loans",
+    applyBackendModulePermissions(perms[viewerRole], user?.modulePermissions, viewerRole, user?.isSystemAdmin)["advances-loans"],
+    user?.modulePermissions,
+    viewerRole,
+    user?.isSystemAdmin,
+  ).canView;
   const role = user?.role || "admin";
   const backHref = moduleHref(role, "staff-management");
   const now = new Date();
@@ -605,11 +622,13 @@ export default function StaffDetailPage({
               </table>
             </div>
           </Card>
-          <div className="pt-2">
-            <div className="mb-2 font-semibold text-primary">Advances & loans</div>
-            {/* Read-only here; give / edit from Staff Salary → Advances & Loans. */}
-            <StaffAdvancesTab caps={{ ...emptyActionCaps(), canView: true }} staffId={staffId} />
-          </div>
+          {canViewAdvances ? (
+            <div className="pt-2">
+              <div className="mb-2 font-semibold text-primary">Advances & loans</div>
+              {/* Read-only here; give / edit from Finance → Advances & Loans. */}
+              <StaffAdvancesTab caps={{ ...emptyActionCaps(), canView: true }} staffId={staffId} />
+            </div>
+          ) : null}
         </TabsContent>
 
         <TabsContent value="attendance" className="mt-4 space-y-3">

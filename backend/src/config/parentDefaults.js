@@ -34,6 +34,7 @@ const PARENT_FORBIDDEN_MODULE_KEYS = [
   'studentRegistration',
   'changeSection',
   'salary',
+  'staffAdvance',
   'academyExpense',
   'expenseCategories',
   'role',

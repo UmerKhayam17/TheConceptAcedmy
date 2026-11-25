@@ -14,6 +14,7 @@ const ACCOUNTANT_DEFAULT_MODULE_PERMISSIONS = {
   feeStructure: ['view', 'create', 'edit', 'record', 'generate'],
   fee: ['view', 'create', 'edit', 'generate', 'record'],
   salary: ['view', 'process', 'generate', 'record'],
+  staffAdvance: ['view', 'create', 'edit', 'record'],
   academyExpense: ['view', 'create', 'edit', 'delete', 'record'],
   attendance: ['view'],
   examTests: ['view'],

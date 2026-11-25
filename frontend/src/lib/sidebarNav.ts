@@ -420,19 +420,13 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: DollarSign,
         moduleKey: "salary",
         href: (role) => moduleHref(role, "salary"),
-        isActive: (pathname, role) => {
-          const base = moduleHref(role, "salary");
-          if (pathname.startsWith(`${base}/advances`)) return false;
-          return pathname === base || pathname.startsWith(`${base}/`);
-        },
       },
       {
         id: "advances-loans",
         label: "Advances & Loans",
         icon: HandCoins,
-        moduleKey: "salary",
-        href: (role) => `${moduleHref(role, "salary")}/advances`,
-        isActive: (pathname, role) => pathname.startsWith(`${moduleHref(role, "salary")}/advances`),
+        moduleKey: "advances-loans",
+        href: (role) => moduleHref(role, "advances-loans"),
       },
       {
         id: "academy-expenses",
@@ -1006,19 +1000,13 @@ export const ACCOUNTANT_SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: DollarSign,
         moduleKey: "salary",
         href: (role) => moduleHref(role, "salary"),
-        isActive: (pathname, role) => {
-          const base = moduleHref(role, "salary");
-          if (pathname.startsWith(`${base}/advances`)) return false;
-          return pathname === base || pathname.startsWith(`${base}/`);
-        },
       },
       {
         id: "advances-loans",
         label: "Advances & Loans",
         icon: HandCoins,
-        moduleKey: "salary",
-        href: (role) => `${moduleHref(role, "salary")}/advances`,
-        isActive: (pathname, role) => pathname.startsWith(`${moduleHref(role, "salary")}/advances`),
+        moduleKey: "advances-loans",
+        href: (role) => moduleHref(role, "advances-loans"),
       },
       {
         id: "academy-expenses",

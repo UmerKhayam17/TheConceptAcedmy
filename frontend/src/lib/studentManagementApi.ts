@@ -2287,6 +2287,35 @@ export const payAcademySalariesBulk = (body: {
 
 export type SalaryReportFormat = "xlsx" | "pdf";
 
+export type StaffAdvanceReportKind = "list" | "repayments";
+
+/** Advances & Loans report — `list` (one row per advance / loan) or `repayments` (history). */
+export const exportStaffAdvanceReport = async (
+  params: {
+    kind: StaffAdvanceReportKind;
+    type?: string;
+    status?: string;
+    search?: string;
+    staffId?: string;
+    ids?: string[];
+  },
+  format: SalaryReportFormat = "xlsx",
+) => {
+  const q = new URLSearchParams();
+  q.set("format", format);
+  q.set("kind", params.kind);
+  if (params.type) q.set("type", params.type);
+  if (params.status) q.set("status", params.status);
+  if (params.search) q.set("search", params.search);
+  if (params.staffId) q.set("staffId", params.staffId);
+  if (params.ids?.length) q.set("ids", params.ids.join(","));
+  const res = await authedFetch(`/student-management/staff-advances/export-report?${q}`, {
+    method: "GET",
+  });
+  if (!res.ok) throw new Error("Export failed");
+  return res.blob();
+};
+
 export const exportAcademySalaryReport = async (
   params?: {
     month?: number;

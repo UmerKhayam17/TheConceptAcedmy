@@ -40,6 +40,7 @@ const MODULE_ICONS: Record<string, LucideIcon> = {
   exam: ClipboardList,
   fee: Wallet,
   salary: Wallet,
+  staffAdvance: Wallet,
   academyExpense: Wallet,
   chat: MessageSquare,
   announcement: MessageSquare,

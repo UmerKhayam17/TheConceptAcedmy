@@ -3,7 +3,7 @@ import {
   BookOpen, DollarSign, Calendar, Bell, BarChart3, UserCog, ClipboardList,
   Wallet, MessageSquare, Award, Receipt, Settings as SettingsIcon, FileText, School, KeyRound, ListTree,
   SlidersHorizontal, Tags, NotebookPen, FolderOpen, ListChecks, TrendingUp, ShieldAlert, UsersRound,
-  ScanFace, Shield, Phone,
+  ScanFace, Shield, Phone, HandCoins,
   Video, Library, CalendarRange, BellRing, Palmtree, Clock, User,
 } from "lucide-react";
 import { Role } from "./auth";
@@ -26,7 +26,7 @@ export const ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   BookOpen, Award, Wallet, DollarSign, MessageSquare, Bell, BarChart3,
   Settings: SettingsIcon, FileText, KeyRound, ListTree, School, SlidersHorizontal, Receipt, Tags,
   NotebookPen, FolderOpen, ListChecks, TrendingUp, ShieldAlert, UsersRound,
-  Video, Library, CalendarRange, BellRing, Palmtree, Clock, User, ScanFace, Shield, Phone,
+  Video, Library, CalendarRange, BellRing, Palmtree, Clock, User, ScanFace, Shield, Phone, HandCoins,
 };
 
 export type MenuItem = ModuleDef & {
@@ -169,9 +169,9 @@ export const moduleHref = (
 };
 
 /** Advances & Loans list and one record's detail page. */
-export const advancesHref = (role: Role) => `${moduleHref(role, "salary")}/advances`;
+export const advancesHref = (role: Role) => moduleHref(role, "advances-loans");
 export const advanceDetailHref = (role: Role, advanceId: string) =>
-  `${moduleHref(role, "salary")}/advances/${advanceId}`;
+  `${moduleHref(role, "advances-loans")}/${advanceId}`;
 
 /** Staff salary voucher detail page. */
 export const salaryDetailHref = (role: Role, salaryId: string) =>

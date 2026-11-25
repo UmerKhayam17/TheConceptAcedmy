@@ -23,6 +23,7 @@ module.exports = {
   feeStructureCrud: (action, id) => syncResource(SM, 'feeStructures', action, id),
   feeCrud: (action, id, extra) => syncResource('fee', 'fees', action, id, extra),
   salaryCrud: (action, id) => syncResource('salary', 'salaries', action, id),
+  staffAdvanceCrud: (action, id) => syncResource('staffAdvance', 'staffAdvances', action, id),
   expenseCrud: (action, id) => syncResource('academyExpense', 'expenses', action, id),
   attendanceCrud: (action, id) => syncResource('attendance', 'attendance', action, id),
   assessmentCrud: (action, id) => syncResource('exam', 'assessments', action, id),

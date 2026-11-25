@@ -23,7 +23,15 @@ import type { Role } from "@/lib/auth";
 import { salaryDetailHref } from "@/lib/panelMenus";
 import { resolveUploadUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { fetchStaffAdvance, type StaffAdvanceDetail } from "@/lib/studentManagementApi";
+import { useToast } from "@/hooks/use-toast";
+import { deliverReportBlob, openReportPreviewTab, type ReportFileFormat } from "@/lib/reportDownload";
+import { DefaulterListDownload } from "./DefaulterListDownload";
+import {
+  exportStaffAdvanceReport,
+  fetchStaffAdvance,
+  type StaffAdvanceDetail,
+  type StaffAdvanceReportKind,
+} from "@/lib/studentManagementApi";
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { MetricCard } from "./AcademySalaryManagement";
 import {
@@ -95,6 +103,8 @@ function personName(v: StaffAdvanceDetail["createdBy"]) {
 }
 
 /** One advance / loan: summary, recovery progress, history and upcoming salary deductions. */
+type ExportParams = { type?: string; status?: string; search?: string; staffId?: string; ids?: string[] };
+
 export default function StaffAdvanceDetailPage({
   advanceId,
   caps,
@@ -107,6 +117,30 @@ export default function StaffAdvanceDetailPage({
   const [editOpen, setEditOpen] = useState(false);
   const [repayFor, setRepayFor] = useState<AdvanceLike | null>(null);
   const [cancelFor, setCancelFor] = useState<AdvanceLike | null>(null);
+  const { toast } = useToast();
+  const [exporting, setExporting] = useState<ReportFileFormat | null>(null);
+  const handleExport = async (format: ReportFileFormat, kind: StaffAdvanceReportKind, params: ExportParams) => {
+    setExporting(format);
+    const preview = openReportPreviewTab(format);
+    try {
+      const blob = await exportStaffAdvanceReport({ kind, ...params }, format);
+      const base = kind === "repayments" ? "Advance-Loan-Repayments" : "Staff-Advances-Loans";
+      const mode = deliverReportBlob(blob, `${base}_${new Date().toISOString().slice(0, 10)}.${format}`, format, preview);
+      toast({
+        title: mode === "preview" ? "Report preview opened" : "Excel downloaded",
+        description: mode === "preview" ? "Use Print or Download from the preview window." : "Advances & loans report downloaded.",
+      });
+    } catch (e) {
+      preview?.close();
+      toast({
+        title: "Export failed",
+        description: e instanceof Error ? e.message : "Could not export",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["staff-advance", advanceId],
@@ -270,14 +304,29 @@ export default function StaffAdvanceDetailPage({
       </Card>
 
       {/* Action bar — same card + toolbar as the list page filter bar */}
-      {caps.canEdit && isActive ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
           <FilterToolbar>
             <p className="text-sm text-slate-500">
-              Staff paid money back directly? Record it here.
+              {caps.canEdit && isActive
+                ? "Staff paid money back directly? Record it here."
+                : "Print or export this record and its repayments."}
             </p>
             <FilterToolbarActions>
-              {a.recoveredAmount <= 0 ? (
+              <DefaulterListDownload
+                variant="outline"
+                size="default"
+                className="shrink-0"
+                label="Print / Export"
+                exporting={exporting}
+                reportKinds={[
+                  { id: "repayments", label: "Repayment Statement" },
+                  { id: "list", label: `${TYPE_LABEL[a.type]} Summary` },
+                ]}
+                onDownload={(format, kind) =>
+                  void handleExport(format, kind === "list" ? "list" : "repayments", { ids: [a._id] })
+                }
+              />
+              {caps.canDelete && isActive && a.recoveredAmount <= 0 ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -288,26 +337,29 @@ export default function StaffAdvanceDetailPage({
                   Cancel
                 </Button>
               ) : null}
-              <Button
-                type="button"
-                className="gap-2 h-10 shrink-0 rounded-md bg-sky-500 px-5 font-semibold text-white shadow-md hover:bg-sky-600"
-                onClick={() => setEditOpen(true)}
-              >
-                <Pencil className="h-4 w-4" />
-                Edit
-              </Button>
-              <Button
-                type="button"
-                className="gap-2 h-10 shrink-0 rounded-md px-5 font-semibold shadow-md"
-                onClick={() => setRepayFor(asRow)}
-              >
-                <Banknote className="h-4 w-4" />
-                Receive payment
-              </Button>
+              {caps.canEdit && isActive ? (
+                <>
+                  <Button
+                    type="button"
+                    className="gap-2 h-10 shrink-0 rounded-md bg-sky-500 px-5 font-semibold text-white shadow-md hover:bg-sky-600"
+                    onClick={() => setEditOpen(true)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    className="gap-2 h-10 shrink-0 rounded-md px-5 font-semibold shadow-md"
+                    onClick={() => setRepayFor(asRow)}
+                  >
+                    <Banknote className="h-4 w-4" />
+                    Receive payment
+                  </Button>
+                </>
+              ) : null}
             </FilterToolbarActions>
           </FilterToolbar>
         </div>
-      ) : null}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         {/* History */}
