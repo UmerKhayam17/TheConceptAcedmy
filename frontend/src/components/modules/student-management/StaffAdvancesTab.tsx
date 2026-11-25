@@ -23,7 +23,8 @@ import {
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
-import { MetricCard } from "./AcademySalaryManagement";
+import { MetricCard, SquareCheckbox, StaffAvatar } from "./AcademySalaryManagement";
+import { Card } from "@/components/ui/card";
 import {
   AdvancePanel,
   advTable,
@@ -96,12 +97,16 @@ export default function StaffAdvancesTab({
   const [editing, setEditing] = useState<StaffAdvance | null>(null);
   const [repayFor, setRepayFor] = useState<StaffAdvance | null>(null);
   const [cancelFor, setCancelFor] = useState<StaffAdvance | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300);
     return () => clearTimeout(t);
   }, [search]);
-  useEffect(() => setPage(1), [typeFilter, statusFilter, debounced, pageSize]);
+  useEffect(() => {
+    setPage(1);
+    setSelectedIds([]);
+  }, [typeFilter, statusFilter, debounced, pageSize]);
 
   const { data: summary } = useQuery({
     queryKey: ["staff-advance-summary", staffId || "", typeFilter],
@@ -126,6 +131,15 @@ export default function StaffAdvancesTab({
   const showingFrom = pagination && pagination.total > 0 ? (page - 1) * pagination.limit + 1 : 0;
   const showingTo = pagination ? Math.min(page * pagination.limit, pagination.total) : 0;
   const colCount = locked ? 8 : 9;
+  const pageIds = records.map((r) => r._id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+  const somePageSelected = pageIds.some((id) => selectedIds.includes(id));
+  const toggleSelectAllPage = () =>
+    setSelectedIds((prev) =>
+      allPageSelected ? prev.filter((id) => !pageIds.includes(id)) : [...new Set([...prev, ...pageIds])],
+    );
+  const toggleSelectOne = (id: string) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const openCreate = () => {
     setEditing(null);
@@ -230,6 +244,7 @@ export default function StaffAdvancesTab({
                   status: statusFilter || undefined,
                   search: debounced || undefined,
                   staffId: staffId || undefined,
+                  ids: selectedIds.length > 0 ? selectedIds : undefined,
                 })
               }
             />
@@ -246,173 +261,379 @@ export default function StaffAdvancesTab({
         </FilterToolbar>
       </div>
 
-      <AdvancePanel
-        title="Advances & Loans"
-        icon={HandCoins}
-        right={pagination ? `${pagination.total} ${pagination.total === 1 ? "record" : "records"}` : undefined}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className={advTable.head}>
-              <tr>
-                {!locked ? <th className={advTable.th}>Staff</th> : null}
-                <th className={advTable.th}>Type</th>
-                <th className={advTable.th}>Amount</th>
-                <th className={advTable.th}>Monthly deduction</th>
-                <th className={cn(advTable.th, "min-w-[10rem]")}>Recovered</th>
-                <th className={advTable.th}>Remaining</th>
-                <th className={advTable.th}>Given on</th>
-                <th className={advTable.th}>Status</th>
-                <th className={advTable.thRight}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
+      {locked ? (
+        <AdvancePanel
+          title="Advances & Loans"
+          icon={HandCoins}
+          right={pagination ? `${pagination.total} ${pagination.total === 1 ? "record" : "records"}` : undefined}
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className={advTable.head}>
                 <tr>
-                  <td colSpan={colCount} className="p-10 text-center text-muted-foreground">
-                    Loading…
-                  </td>
+                  {!locked ? <th className={advTable.th}>Staff</th> : null}
+                  <th className={advTable.th}>Type</th>
+                  <th className={advTable.th}>Amount</th>
+                  <th className={advTable.th}>Monthly deduction</th>
+                  <th className={cn(advTable.th, "min-w-[10rem]")}>Recovered</th>
+                  <th className={advTable.th}>Remaining</th>
+                  <th className={advTable.th}>Given on</th>
+                  <th className={advTable.th}>Status</th>
+                  <th className={advTable.thRight}>Actions</th>
                 </tr>
-              ) : null}
-              {!isLoading && records.length === 0 ? (
-                <tr>
-                  <td colSpan={colCount} className="p-10 text-center text-muted-foreground">
-                    No advances or loans {statusFilter === "active" ? "are owed right now" : "found"}.
-                  </td>
-                </tr>
-              ) : null}
-              {records.map((a) => {
-                const staff = staffOf(a);
-                const pct = a.amount > 0 ? Math.min(100, (a.recoveredAmount / a.amount) * 100) : 0;
-                const months = monthsToRecover(a.remainingAmount, a.installmentAmount);
-                const detailHref = advanceDetailHref(role, a._id);
-                const isActive = a.status === "active";
-                return (
-                  <tr
-                    key={a._id}
-                    className={cn(advTable.row, "align-middle cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40")}
-                    onClick={() => navigate(detailHref)}
-                    title="Open details"
-                  >
-                    {!locked ? (
-                      <td className="px-4 py-3.5">
-                        <div className="font-medium text-primary">{staff?.name || "—"}</div>
-                        <div className="text-[11px] capitalize text-muted-foreground">
-                          {staff?.designation || staff?.role?.name?.replace(/_/g, " ") || ""}
-                        </div>
-                      </td>
-                    ) : null}
-                    <td className="px-4 py-3.5">
-                      <TypeBadge type={a.type} />
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold tabular-nums">{formatRs(a.amount)}</td>
-                    <td className="px-4 py-3.5 tabular-nums">
-                      {a.type === "loan" ? (
-                        <>
-                          {formatRs(a.installmentAmount)}
-                          {isActive && months > 0 ? (
-                            <span className="block text-[11px] text-muted-foreground">
-                              ~{months} month{months === 1 ? "" : "s"} left
-                            </span>
-                          ) : null}
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">Full, next salary</span>
-                      )}
-                      <span className="block text-[11px] text-muted-foreground">
-                        from {periodShort(a.startMonth, a.startYear)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="tabular-nums text-[#16A66A] font-medium">{formatRs(a.recoveredAmount)}</div>
-                      <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
-                        <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold tabular-nums text-[#EA580C]">
-                      {a.status === "cancelled" ? "—" : formatRs(a.remainingAmount)}
-                    </td>
-                    <td className="px-4 py-3.5 text-muted-foreground">
-                      {fmtDate(a.givenDate)}
-                      <span className="block text-[11px]">{METHOD_LABEL[a.paymentMethod || ""] || ""}</span>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <StatusBadge status={a.status} />
-                    </td>
-                    <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-0.5">
-                        {caps.canEdit && isActive ? (
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="h-8 gap-1 mr-1"
-                            onClick={() => setRepayFor(a)}
-                            title="Receive payment"
-                          >
-                            <Banknote className="h-3.5 w-3.5" /> Receive
-                          </Button>
-                        ) : null}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-primary"
-                          asChild
-                          aria-label="View details"
-                          title="View details"
-                        >
-                          <Link to={detailHref}>
-                            <Eye className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        {caps.canEdit && isActive ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-sky-600 hover:text-sky-700"
-                            onClick={() => openEdit(a)}
-                            aria-label="Edit"
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        ) : null}
-                        {caps.canDelete && isActive && a.recoveredAmount <= 0 ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setCancelFor(a)}
-                            aria-label="Cancel"
-                            title="Cancel"
-                          >
-                            <Ban className="h-4 w-4 text-destructive" />
-                          </Button>
-                        ) : null}
-                      </div>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={colCount} className="p-10 text-center text-muted-foreground">
+                      Loading…
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {pagination && pagination.total > 0 ? (
-          <ListPagination
-            page={page}
-            totalPages={pagination.pages}
-            total={pagination.total}
-            from={showingFrom}
-            to={showingTo}
-            pageSize={pageSize}
-            onPageSizeChange={(n) => {
-              setPageSize(n);
-              setPage(1);
-            }}
-            onPageChange={setPage}
-            noun="records"
-          />
-        ) : null}
-      </AdvancePanel>
+                ) : null}
+                {!isLoading && records.length === 0 ? (
+                  <tr>
+                    <td colSpan={colCount} className="p-10 text-center text-muted-foreground">
+                      No advances or loans {statusFilter === "active" ? "are owed right now" : "found"}.
+                    </td>
+                  </tr>
+                ) : null}
+                {records.map((a) => {
+                  const staff = staffOf(a);
+                  const pct = a.amount > 0 ? Math.min(100, (a.recoveredAmount / a.amount) * 100) : 0;
+                  const months = monthsToRecover(a.remainingAmount, a.installmentAmount);
+                  const detailHref = advanceDetailHref(role, a._id);
+                  const isActive = a.status === "active";
+                  return (
+                    <tr
+                      key={a._id}
+                      className={cn(advTable.row, "align-middle cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40")}
+                      onClick={() => navigate(detailHref)}
+                      title="Open details"
+                    >
+                      {!locked ? (
+                        <td className="px-4 py-3.5">
+                          <div className="font-medium text-primary">{staff?.name || "—"}</div>
+                          <div className="text-[11px] capitalize text-muted-foreground">
+                            {staff?.designation || staff?.role?.name?.replace(/_/g, " ") || ""}
+                          </div>
+                        </td>
+                      ) : null}
+                      <td className="px-4 py-3.5">
+                        <TypeBadge type={a.type} />
+                      </td>
+                      <td className="px-4 py-3.5 font-semibold tabular-nums">{formatRs(a.amount)}</td>
+                      <td className="px-4 py-3.5 tabular-nums">
+                        {a.type === "loan" ? (
+                          <>
+                            {formatRs(a.installmentAmount)}
+                            {isActive && months > 0 ? (
+                              <span className="block text-[11px] text-muted-foreground">
+                                ~{months} month{months === 1 ? "" : "s"} left
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">Full, next salary</span>
+                        )}
+                        <span className="block text-[11px] text-muted-foreground">
+                          from {periodShort(a.startMonth, a.startYear)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="tabular-nums text-[#16A66A] font-medium">{formatRs(a.recoveredAmount)}</div>
+                        <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
+                          <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 font-semibold tabular-nums text-[#EA580C]">
+                        {a.status === "cancelled" ? "—" : formatRs(a.remainingAmount)}
+                      </td>
+                      <td className="px-4 py-3.5 text-muted-foreground">
+                        {fmtDate(a.givenDate)}
+                        <span className="block text-[11px]">{METHOD_LABEL[a.paymentMethod || ""] || ""}</span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <StatusBadge status={a.status} />
+                      </td>
+                      <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-0.5">
+                          {caps.canEdit && isActive ? (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-8 gap-1 mr-1"
+                              onClick={() => setRepayFor(a)}
+                              title="Receive payment"
+                            >
+                              <Banknote className="h-3.5 w-3.5" /> Receive
+                            </Button>
+                          ) : null}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            asChild
+                            aria-label="View details"
+                            title="View details"
+                          >
+                            <Link to={detailHref}>
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                          {caps.canEdit && isActive ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-sky-600 hover:text-sky-700"
+                              onClick={() => openEdit(a)}
+                              aria-label="Edit"
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                          {caps.canDelete && isActive && a.recoveredAmount <= 0 ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => setCancelFor(a)}
+                              aria-label="Cancel"
+                              title="Cancel"
+                            >
+                              <Ban className="h-4 w-4 text-destructive" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {pagination && pagination.total > 0 ? (
+            <ListPagination
+              page={page}
+              totalPages={pagination.pages}
+              total={pagination.total}
+              from={showingFrom}
+              to={showingTo}
+              pageSize={pageSize}
+              onPageSizeChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+              onPageChange={setPage}
+              noun="records"
+            />
+          ) : null}
+        </AdvancePanel>
+      ) : (
+        <Card className="overflow-hidden shadow-sm border-border/80">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 border-b">
+                <tr>
+                  <th className="w-10 p-3 text-center">
+                    <SquareCheckbox
+                      checked={allPageSelected}
+                      indeterminate={!allPageSelected && somePageSelected}
+                      onChange={toggleSelectAllPage}
+                      aria-label="Select all on this page"
+                    />
+                  </th>
+                  <th className="text-left p-3 font-medium">Staff</th>
+                  <th className="text-left p-3 font-medium">Type</th>
+                  <th className="text-left p-3 font-medium">Amount</th>
+                  <th className="text-left p-3 font-medium whitespace-nowrap">Monthly deduction</th>
+                  <th className="text-left p-3 font-medium min-w-[9rem]">Recovered</th>
+                  <th className="text-left p-3 font-medium">Remaining</th>
+                  <th className="text-left p-3 font-medium whitespace-nowrap">Given on</th>
+                  <th className="text-left p-3 font-medium">Status</th>
+                  <th className="text-right p-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={10} className="p-10 text-center text-muted-foreground">
+                      Loading advances & loans…
+                    </td>
+                  </tr>
+                ) : null}
+                {!isLoading && records.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="p-10 text-center text-muted-foreground">
+                      No advances or loans {statusFilter === "active" ? "are owed right now" : "found"}.
+                    </td>
+                  </tr>
+                ) : null}
+                {records.map((a) => {
+                  const staff = staffOf(a);
+                  const name = staff?.name || "—";
+                  const roleText = staff?.designation || staff?.role?.name?.replace(/_/g, " ") || "—";
+                  const detailHref = advanceDetailHref(role, a._id);
+                  const isActive = a.status === "active";
+                  const isSelected = selectedIds.includes(a._id);
+                  const months = monthsToRecover(a.remainingAmount, a.installmentAmount);
+                  const canCancel = caps.canDelete && isActive && a.recoveredAmount <= 0;
+                  const pct = a.amount > 0 ? Math.min(100, (a.recoveredAmount / a.amount) * 100) : 0;
+                  return (
+                    <tr
+                      key={a._id}
+                      className={cn(
+                        "border-b last:border-0 hover:bg-muted/20 cursor-pointer",
+                        isSelected && "bg-muted/40",
+                      )}
+                      onClick={() => navigate(detailHref)}
+                      title="Open details"
+                    >
+                      <td className="w-10 p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <SquareCheckbox
+                          checked={isSelected}
+                          onChange={() => toggleSelectOne(a._id)}
+                          aria-label={`Select ${name}`}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <StaffAvatar name={name} profileImage={staff?.profileImage} />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-[#1a2b4b] truncate hover:underline">{name}</div>
+                            <div className="text-xs capitalize text-muted-foreground">{roleText}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        {a.type === "loan" ? (
+                          <span className="inline-flex items-center rounded-full bg-[#ede9fe] px-2.5 py-0.5 text-xs font-semibold text-[#7c3aed]">
+                            Loan
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-[#ccfbf1] px-2.5 py-0.5 text-xs font-semibold text-[#0f766e]">
+                            Advance
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 font-semibold text-[#16A66A] whitespace-nowrap">{formatRs(a.amount)}</td>
+                      <td className="p-3 text-slate-600 whitespace-nowrap">
+                        {a.type === "loan" ? (
+                          <>
+                            {formatRs(a.installmentAmount)}
+                            {isActive && months > 0 ? (
+                              <span className="block text-xs text-muted-foreground">
+                                ~{months} month{months === 1 ? "" : "s"} left
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">Full, next salary</span>
+                        )}
+                        <span className="block text-xs text-muted-foreground">
+                          from {periodShort(a.startMonth, a.startYear)}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <div className="font-semibold text-[#16A66A] whitespace-nowrap">{formatRs(a.recoveredAmount)}</div>
+                        <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
+                          <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
+                        </div>
+                      </td>
+                      <td className="p-3 font-semibold text-[#EA580C] whitespace-nowrap">
+                        {a.status === "cancelled" ? "—" : formatRs(a.remainingAmount)}
+                      </td>
+                      <td className="p-3 text-slate-600 whitespace-nowrap">
+                        {fmtDate(a.givenDate)}
+                        <span className="block text-xs text-muted-foreground">{METHOD_LABEL[a.paymentMethod || ""] || ""}</span>
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                            a.status === "active" && "bg-orange-50 text-orange-700",
+                            a.status === "closed" && "bg-emerald-50 text-emerald-700",
+                            a.status === "cancelled" && "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {a.status === "active" ? "Active" : a.status === "closed" ? "Recovered" : "Cancelled"}
+                        </span>
+                      </td>
+                      <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-0.5">
+                          {caps.canEdit && isActive ? (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-8 gap-1 mr-1"
+                              onClick={() => setRepayFor(a)}
+                              title="Receive payment"
+                            >
+                              <Banknote className="h-3.5 w-3.5" /> Receive
+                            </Button>
+                          ) : null}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            asChild
+                            aria-label="View details"
+                            title="View details"
+                          >
+                            <Link to={detailHref}>
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                          {caps.canEdit && isActive ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-sky-600 hover:text-sky-700"
+                              onClick={() => openEdit(a)}
+                              aria-label="Edit"
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                          {canCancel ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => setCancelFor(a)}
+                              aria-label="Cancel"
+                              title="Cancel"
+                            >
+                              <Ban className="h-4 w-4 text-destructive" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {pagination && pagination.total > 0 ? (
+            <ListPagination
+              page={page}
+              totalPages={pagination.pages}
+              total={pagination.total}
+              from={showingFrom}
+              to={showingTo}
+              pageSize={pageSize}
+              onPageSizeChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+              onPageChange={setPage}
+              noun="records"
+            />
+          ) : null}
+        </Card>
+      )}
 
       <AdvanceFormDialog open={formOpen} onOpenChange={setFormOpen} editing={editing} lockedStaffId={staffId} />
       <RepayAdvanceDialog advance={repayFor} onClose={() => setRepayFor(null)} />

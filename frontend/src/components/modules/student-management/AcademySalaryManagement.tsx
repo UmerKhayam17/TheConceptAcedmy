@@ -104,7 +104,7 @@ function initialOf(name?: string) {
   return ch || "?";
 }
 
-function SquareCheckbox({
+export function SquareCheckbox({
   checked,
   indeterminate = false,
   onChange,
@@ -137,7 +137,7 @@ function SquareCheckbox({
   );
 }
 
-function StaffAvatar({ name, profileImage }: { name: string; profileImage?: string }) {
+export function StaffAvatar({ name, profileImage }: { name: string; profileImage?: string }) {
   const src = profileImage ? resolveUploadUrl(profileImage) : null;
   if (src) {
     return (
