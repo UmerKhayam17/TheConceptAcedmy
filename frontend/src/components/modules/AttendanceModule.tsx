@@ -4,6 +4,7 @@ import { format, isValid, parseISO } from "date-fns";
 import {
   BellRing,
   CalendarDays,
+  CalendarOff,
   CheckCircle2,
   ClipboardList,
   Clock3,
@@ -42,7 +43,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionScope } from "@/components/modules/timetable/SessionBar";
 import { usePanelSession } from "@/components/panel-header/PanelSessionContext";
-import { localTodayYmd } from "@/lib/localDate";
+import { localTodayYmd, SCHOOL_TIME_ZONE } from "@/lib/localDate";
 import ParentAttendancePanel from "@/components/modules/parent/ParentAttendancePanel";
 import ParentMobileAttendance from "@/components/modules/parent/ParentMobileAttendance";
 import PanelStatCard from "@/components/modules/PanelStatCard";
@@ -51,6 +52,32 @@ import { deliverReportBlob, openReportPreviewTab } from "@/lib/reportDownload";
 import { compareClassLevels } from "@/lib/configApi";
 
 const today = () => localTodayYmd();
+
+const schoolClockFormat = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SCHOOL_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/** School-time "YYYY-MM-DD" and "HH:MM" right now (refreshed every minute). */
+function useSchoolClock() {
+  const read = () => {
+    const parts = Object.fromEntries(
+      schoolClockFormat.formatToParts(new Date()).map((p) => [p.type, p.value]),
+    ) as Record<string, string>;
+    return { ymd: `${parts.year}-${parts.month}-${parts.day}`, hm: `${parts.hour}:${parts.minute}` };
+  };
+  const [clock, setClock] = useState(read);
+  useEffect(() => {
+    const id = window.setInterval(() => setClock(read()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return clock;
+}
 
 type AttendanceView = "mark" | "absent";
 
@@ -120,6 +147,7 @@ function statusBadgeClass(status: string) {
   if (status === "present") return "border-primary/20 bg-primary/10 text-primary";
   if (status === "late") return "border-amber-200 bg-amber-100 text-amber-800";
   if (status === "holiday") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "off") return "border-slate-200 bg-slate-100 text-slate-600";
   if (status === "absent") return "border-rose-200 bg-rose-100 text-rose-800";
   if (status === "leave") return "border-sky-200 bg-sky-100 text-sky-800";
   return "border-border bg-muted text-muted-foreground";
@@ -129,6 +157,7 @@ function statusDotClass(status: string) {
   if (status === "present") return "bg-primary";
   if (status === "late") return "bg-amber-500";
   if (status === "holiday") return "bg-emerald-500";
+  if (status === "off") return "bg-slate-400";
   if (status === "absent") return "bg-rose-600";
   if (status === "leave") return "bg-sky-600";
   return "bg-muted-foreground";
@@ -137,6 +166,7 @@ function statusDotClass(status: string) {
 function statusLabel(status: string) {
   if (!status) return "—";
   if (status === "holiday") return "Holiday";
+  if (status === "off") return "Off day";
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
@@ -349,19 +379,31 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
     () => new Set(data?.holidayStudentIds || []),
     [data?.holidayStudentIds],
   );
+  /** Students whose session has this weekday off — no marking, never absent. */
+  const offDayIds = useMemo(
+    () => new Set(data?.offDayStudentIds || []),
+    [data?.offDayStudentIds],
+  );
+  const isOffDay = Boolean(data?.offDay);
+
+  // Today's absent alerts appear only after the end-of-day cut-off (default 7:30 PM),
+  // once the day is over and unmarked students are really absent. Past days: always.
+  const schoolClock = useSchoolClock();
+  const cutoff = data?.autoAbsentTime || "19:30";
+  const absentAlertsOpen = date < schoolClock.ymd || (date === schoolClock.ymd && schoolClock.hm >= cutoff);
 
   const visibleSummary = useMemo(() => {
     const counts = { present: 0, absent: 0, leave: 0, late: 0 };
     studentsFiltered.forEach((s) => {
       const rec = recordMap.get(s._id);
       if (!rec) {
-        if (!holidayIds.has(s._id)) counts.absent += 1;
+        if (!holidayIds.has(s._id) && !offDayIds.has(s._id)) counts.absent += 1;
         return;
       }
       if (rec.status in counts) (counts as Record<string, number>)[rec.status] += 1;
     });
     return counts;
-  }, [studentsFiltered, recordMap, holidayIds]);
+  }, [studentsFiltered, recordMap, holidayIds, offDayIds]);
 
   /**
    * Pending parent alerts = saved absents not yet notified, plus default absents
@@ -377,13 +419,14 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
           ? String((r.studentId as { _id?: string })._id || "")
           : String(r.studentId || "");
       if (sid) marked.add(sid);
+      if (sid && offDayIds.has(sid)) return;
       if (r.status === "absent" && !r.parentNotifiedAt) n += 1;
     });
     (data?.students ?? []).forEach((s) => {
-      if (!marked.has(s._id) && !holiday.has(s._id)) n += 1;
+      if (!marked.has(s._id) && !holiday.has(s._id) && !offDayIds.has(s._id)) n += 1;
     });
     return n;
-  }, [data?.records, data?.students, holidayIds]);
+  }, [data?.records, data?.students, holidayIds, offDayIds]);
 
   /** Flat rows for the absent list — same date filter as the toolbar. */
   const absentRows = useMemo(() => {
@@ -457,7 +500,20 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
     }
   };
 
+  const offDayNotice = () =>
+    toast({
+      title: `${data?.offDayName || "This day"} is not a working day`,
+      description: `Attendance can only be marked on working days${
+        data?.workingDaysText ? ` (${data.workingDaysText})` : ""
+      }. Change working days in Configuration → Session.`,
+      variant: "destructive",
+    });
+
   const mark = (studentId: string, status: "present" | "absent" | "late" | "leave") => {
+    if (offDayIds.has(studentId)) {
+      offDayNotice();
+      return;
+    }
     if (!writable) {
       toast({
         title: "Read-only session",
@@ -515,8 +571,11 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
       });
       return;
     }
-    const ids = visibleIds.filter((id) => selectedIds.has(id));
-    if (!ids.length) return;
+    const ids = visibleIds.filter((id) => selectedIds.has(id) && !offDayIds.has(id));
+    if (!ids.length) {
+      if (visibleIds.some((id) => selectedIds.has(id))) offDayNotice();
+      return;
+    }
     markMut.mutate(
       ids.map((studentId) => ({ studentId, status })),
       {
@@ -700,7 +759,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                   type="button"
                   size="sm"
                   className="h-9 gap-1.5 bg-primary text-primary-foreground hover:bg-primary"
-                  disabled={markMut.isPending}
+                  disabled={markMut.isPending || isOffDay}
                   onClick={() => markSelected("present")}
                 >
                   Present
@@ -710,7 +769,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                   variant="outline"
                   size="sm"
                   className="h-9 border-amber-300 text-amber-800 hover:bg-amber-50"
-                  disabled={markMut.isPending}
+                  disabled={markMut.isPending || isOffDay}
                   onClick={() => markSelected("late")}
                 >
                   Late
@@ -720,7 +779,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                   variant="outline"
                   size="sm"
                   className="h-9 border-rose-300 text-rose-800 hover:bg-rose-50"
-                  disabled={markMut.isPending}
+                  disabled={markMut.isPending || isOffDay}
                   onClick={() => markSelected("absent")}
                 >
                   Absent
@@ -730,7 +789,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                   variant="outline"
                   size="sm"
                   className="h-9 border-sky-300 text-sky-800 hover:bg-sky-50"
-                  disabled={markMut.isPending}
+                  disabled={markMut.isPending || isOffDay}
                   onClick={() => markSelected("leave")}
                 >
                   Leave
@@ -751,6 +810,19 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
           </Card>
         )}
 
+        {view === "mark" && isOffDay && (
+          <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <CalendarOff className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+            <p>
+              <span className="font-semibold text-[#1a2b4b]">
+                {data?.offDayName || "This day"} is not a working day.
+              </span>{" "}
+              Session working days are {data?.workingDaysText || "set in Configuration → Session"}, so
+              attendance can&apos;t be marked and no student is counted absent.
+            </p>
+          </div>
+        )}
+
         {data?.holiday && data.holidayName && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
             <span className="font-semibold">{data.holidayName}</span>
@@ -758,7 +830,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
           </div>
         )}
 
-        {isAdmin && canMark && view === "mark" && pendingAbsentNotifyCount > 0 && (
+        {isAdmin && canMark && view === "mark" && !isOffDay && absentAlertsOpen && pendingAbsentNotifyCount > 0 && (
           <Card className="border-rose-200/80 bg-rose-50/60 p-3 shadow-sm sm:px-4 sm:py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
@@ -840,8 +912,9 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                 )}
                 {studentsFiltered.map((s) => {
                   const record = recordMap.get(s._id);
+                  const offDay = offDayIds.has(s._id);
                   const onHoliday = !record && holidayIds.has(s._id);
-                  const cur = record?.status ?? (onHoliday ? "holiday" : "absent");
+                  const cur = record?.status ?? (offDay ? "off" : onHoliday ? "holiday" : "absent");
                   return (
                     <tr
                       key={s._id}
@@ -893,9 +966,11 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                                 key={btn.status}
                                 size="sm"
                                 variant="outline"
-                                disabled={markMut.isPending}
+                                disabled={markMut.isPending || offDay}
+                                title={offDay ? "Not a working day" : undefined}
                                 className={cn(
                                   "h-9 rounded-md border px-3 text-xs font-semibold",
+                                  offDay && "opacity-40",
                                   cur === btn.status ? btn.on : btn.off,
                                 )}
                                 onClick={() => mark(s._id, btn.status)}

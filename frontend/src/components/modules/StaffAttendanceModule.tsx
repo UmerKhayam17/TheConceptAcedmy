@@ -26,6 +26,7 @@ import {
   Users,
   X,
   type LucideIcon,
+  CalendarOff,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -937,7 +938,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                 <Users className="h-4 w-4" />
                 {dayLoading ? "Loading timetable…" : `${classTeachers.length} teachers`}
               </span>
-              {canMark ? (
+              {canMark && !dayData?.offDay ? (
                 <Button
                   size="sm"
                   variant="outline"
@@ -956,6 +957,18 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
                 {dayErr instanceof Error ? dayErr.message : "Could not load the timetable."}
               </p>
             )}
+            {dayData?.offDay ? (
+              <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-700">
+                <CalendarOff className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                <p>
+                  <span className="font-semibold text-[#1a2b4b]">
+                    {dayData.offDayName || "This day"} is not a working day.
+                  </span>{" "}
+                  Session working days are {dayData.workingDaysText || "set in Configuration → Session"}, so
+                  teacher attendance can&apos;t be marked and nobody is counted absent.
+                </p>
+              </div>
+            ) : (
             <DayClassGrid
               subjectColorByKey={subjectColorByKey}
               teachers={classTeachers}
@@ -1006,6 +1019,7 @@ export default function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps
               }
               onRemoveExtra={removeExtraClass}
             />
+            )}
           </div>
         </Card>
       )}

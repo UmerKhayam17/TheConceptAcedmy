@@ -1,5 +1,11 @@
 const ApiError = require('../utils/ApiError');
-const { dayBounds } = require('../utils/schoolDay');
+const { dayBounds, formatDateInTz } = require('../utils/schoolDay');
+const { activeSession } = require('./aiAttendance/attendanceStatusFromTimetable');
+const {
+  offDayMessage,
+  weekdayOfYmd,
+  DEFAULT_WORKING_DAYS,
+} = require('./academy/attendanceExpectationService');
 const StaffAttendance = require('../models/StaffAttendance');
 const User = require('../models/User');
 const Role = require('../models/Role');
@@ -134,6 +140,13 @@ async function listByMonth({ month, year, userId }) {
 
 async function markManual({ date, userId, status, checkIn, checkOut, notes }, markedBy) {
   const { start, end } = dayRange(date);
+  // Manual marks only on the active session's working days.
+  const session = await activeSession();
+  if (session) {
+    const ymd = formatDateInTz(start);
+    const working = session.workingDays?.length ? session.workingDays : DEFAULT_WORKING_DAYS;
+    if (!working.includes(weekdayOfYmd(ymd))) throw new ApiError(400, offDayMessage(ymd, working));
+  }
   const user = await User.findById(userId).select('_id').lean();
   if (!user) throw new ApiError(404, 'Staff user not found');
 

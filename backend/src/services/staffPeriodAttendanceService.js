@@ -22,6 +22,11 @@ const {
 } = require('../utils/schoolDay');
 const { publicEmail } = require('../config/staffRoles');
 const { holidayClosureForSession } = require('./holidayService');
+const {
+  offDayMessage,
+  workingDaysText,
+  DEFAULT_WORKING_DAYS,
+} = require('./academy/attendanceExpectationService');
 const { staffGraceMinutes: graceMinutes, hhmmToMinutes } = require('./aiAttendance/attendanceStatusFromTimetable');
 
 /** left_early is only ever set by an admin (it counts as missed, like absent). */
@@ -237,6 +242,17 @@ async function dailyStaffUsers(timetableTeacherIds) {
 function isWorkingDay(session, weekday) {
   const days = Array.isArray(session.workingDays) ? session.workingDays : [];
   return days.length === 0 || days.includes(weekday);
+}
+
+function sessionWorkingDays(session) {
+  return session.workingDays?.length ? session.workingDays : DEFAULT_WORKING_DAYS;
+}
+
+/** Manual marks and extra classes only on the session's working days. */
+function assertWorkingDay(session, ymd) {
+  if (!isWorkingDay(session, weekdayForDay(ymd, session.timezone))) {
+    throw new ApiError(400, offDayMessage(ymd, sessionWorkingDays(session)));
+  }
 }
 
 /** Saved period mark when there is one; otherwise the camera-derived status (default absent). */
@@ -494,6 +510,23 @@ async function listDay({ sessionId, date, userId }) {
   const session = await resolveSession(sessionId);
   const ymd = dayBounds(date, session.timezone).ymd;
   const weekday = weekdayForDay(ymd, session.timezone);
+
+  // Not a working day (Configuration → Session → Working days): nobody is expected or marked.
+  if (!isWorkingDay(session, weekday)) {
+    return {
+      date: ymd,
+      weekday,
+      sessionId: String(session._id),
+      sessionName: session.name || '',
+      holiday: null,
+      offDay: true,
+      offDayName: weekday.charAt(0).toUpperCase() + weekday.slice(1),
+      workingDaysText: workingDaysText(sessionWorkingDays(session)),
+      teachers: [],
+      summary: { ...emptyCounts(), needsReview: 0, extraClasses: 0, attendancePercent: 0 },
+    };
+  }
+
   const byWeekday = await loadWeekdayPeriods(sessionId);
   const byTeacher = byWeekday.get(weekday) || new Map();
   const extrasMap = await extrasForDays(session._id, [ymd], userId || undefined);
@@ -596,8 +629,9 @@ async function listMonth({ sessionId, month, year, userId }) {
     byTeacher.forEach((_periods, teacherId) => teacherIds.add(teacherId));
   });
   // Days after today have not happened yet — they would all count as absent.
+  // Days off in the session's working days are skipped for everyone.
   const today = todayYmd(session.timezone);
-  const pastDays = days.filter(({ day }) => day <= today);
+  const pastDays = days.filter(({ day, weekday }) => day <= today && isWorkingDay(session, weekday));
   const extrasMap = await extrasForDays(
     session._id,
     pastDays.map((d) => d.day),
@@ -812,6 +846,7 @@ async function extraClassPeriodOptions({ sessionId, sectionId }) {
 async function createExtraClass(body, actorId) {
   const session = await resolveSession(body.sessionId);
   const ymd = dayBounds(body.date, session.timezone).ymd;
+  assertWorkingDay(session, ymd);
   const userId = String(body.userId || '');
   if (!userId) throw new ApiError(400, 'Select a teacher');
   if (!body.classId) throw new ApiError(400, 'Select a class');
@@ -913,6 +948,8 @@ async function saveMarks({ sessionId, date, marks, markedBy }) {
   if (!Array.isArray(marks) || marks.length === 0) {
     throw new ApiError(400, 'Select a status for at least one period');
   }
+  const session = await resolveSession(sessionId);
+  assertWorkingDay(session, dayBounds(date, session.timezone).ymd);
   const day = await listDay({ sessionId, date });
   const allowed = new Map();
   day.teachers.forEach((teacher) => {

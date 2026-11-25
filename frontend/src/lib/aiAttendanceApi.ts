@@ -352,6 +352,12 @@ export type StaffPeriodReport = {
     attendancePercent?: number;
   };
   holiday?: { name: string; teachers?: boolean; staff?: boolean } | null;
+  /** Not a working day in the session configuration — nobody is listed or marked. */
+  offDay?: boolean;
+  /** e.g. "Saturday" */
+  offDayName?: string;
+  /** e.g. "Mon–Fri" */
+  workingDaysText?: string;
 };
 
 export const fetchStaffPeriodDay = (date: string, sessionId: string, userId?: string) => {

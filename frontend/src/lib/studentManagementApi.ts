@@ -2754,6 +2754,16 @@ export interface AcademyAttendanceDay {
   holiday?: boolean;
   holidayName?: string;
   holidayStudentIds?: string[];
+  /** Every student's session has this weekday off (Configuration → Session → Working days). */
+  offDay?: boolean;
+  /** Students whose session has this weekday off — they can't be marked and aren't absent. */
+  offDayStudentIds?: string[];
+  /** e.g. "Saturday" */
+  offDayName?: string;
+  /** e.g. "Mon–Fri" */
+  workingDaysText?: string;
+  /** "HH:MM" — end-of-day auto-absent cut-off (school time). */
+  autoAbsentTime?: string;
   summary: {
     present: number;
     absent: number;

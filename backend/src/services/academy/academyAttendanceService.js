@@ -2,11 +2,22 @@ const ApiError = require('../../utils/ApiError');
 const AcademyStudent = require('../../models/academy/AcademyStudent');
 const AcademyAttendance = require('../../models/academy/AcademyAttendance');
 const AcademyClass = require('../../models/academy/AcademyClass');
-const { loadExpectationContext } = require('./attendanceExpectationService');
+const {
+  loadExpectationContext,
+  loadWorkingDayContext,
+  workingDaysText,
+  offDayMessage,
+  weekdayOfYmd,
+} = require('./attendanceExpectationService');
 const { loadStudentHolidayContext } = require('../holidayService');
 const { dayBounds, formatDateInTz, monthBounds } = require('../../utils/schoolDay');
 const { sortStudentsByClassThenRoll } = require('../../utils/academyStudentSort');
 const parentNotify = require('../parentNotifyService');
+const { autoAbsentTime } = require('./autoAbsentService');
+
+function capitalize(word) {
+  return word ? word.charAt(0).toUpperCase() + word.slice(1) : '';
+}
 
 /** Inclusive calendar-day cap for custom attendance report ranges. */
 const MAX_RANGE_DAYS = 93;
@@ -126,6 +137,9 @@ async function listByDate({
     : [];
 
   const recordByStudent = preferEarlierCheckIn(records);
+  const { isWorkingDay, workingDaysFor } = await loadWorkingDayContext(students);
+  const offDayStudentIds = students.filter((s) => !isWorkingDay(s, ymd)).map((s) => String(s._id));
+  const offDaySet = new Set(offDayStudentIds);
   const { isStudentHoliday, holidayName } = await loadStudentHolidayContext(students);
   const holidayStudentIds = students.filter((s) => isStudentHoliday(s, ymd)).map((s) => String(s._id));
   const holidayNames = [...new Set(holidayStudentIds.map((id) => {
@@ -133,12 +147,13 @@ async function listByDate({
     return holidayName(student, ymd);
   }).filter(Boolean))];
 
-  // Students without a saved mark count as absent, except on an approved holiday.
+  // Students without a saved mark count as absent, except on an approved holiday
+  // or a day that is not a working day in the session configuration.
   const summary = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
   students.forEach((s) => {
     const rec = recordByStudent.get(String(s._id));
     if (!rec) {
-      if (holidayStudentIds.includes(String(s._id))) summary.unmarked += 1;
+      if (holidayStudentIds.includes(String(s._id)) || offDaySet.has(String(s._id))) summary.unmarked += 1;
       else summary.absent += 1;
     } else if (summary[rec.status] !== undefined) summary[rec.status] += 1;
   });
@@ -153,6 +168,13 @@ async function listByDate({
     holiday: holidayStudentIds.length > 0,
     holidayName: holidayNames.join(', '),
     holidayStudentIds,
+    // Not a working day (Configuration → Session → Working days): no marking, nobody absent.
+    offDay: students.length > 0 && offDayStudentIds.length === students.length,
+    offDayStudentIds,
+    offDayName: capitalize(weekdayOfYmd(ymd)),
+    workingDaysText: students.length ? workingDaysText(workingDaysFor(students[0])) : '',
+    // "HH:MM" school time — today's absent alerts are shown only after this cut-off.
+    autoAbsentTime: autoAbsentTime().label,
   };
 }
 
@@ -218,12 +240,14 @@ async function listByDateRange({
 
   const dayCount = days.length;
   const { isStudentHoliday } = await loadStudentHolidayContext(students);
+  const { isWorkingDay } = await loadWorkingDayContext(students);
   const summary = { present: 0, absent: 0, leave: 0, late: 0, unmarked: 0 };
   const studentSummaries = students.map((s) => {
     const counts = { present: 0, absent: 0, leave: 0, late: 0 };
     let countable = 0;
     days.forEach((ymd) => {
       if (isStudentHoliday(s, ymd)) return;
+      if (!isWorkingDay(s, ymd)) return;
       countable += 1;
       const rec = byStudentDay.get(`${String(s._id)}|${ymd}`);
       const status = rec?.status && counts[rec.status] !== undefined ? rec.status : 'absent';
@@ -306,15 +330,17 @@ async function listAbsentByDateRange({
 
   const singleDay = days.length === 1;
   const { isStudentHoliday } = await loadStudentHolidayContext(students);
+  const { isWorkingDay } = await loadWorkingDayContext(students);
   const byDate = [];
   let totalAbsent = 0;
 
   days.forEach((ymd) => {
     if (!singleDay && !daysWithMarks.has(ymd)) return;
     const absentees = students.filter((s) => {
+      if (!isWorkingDay(s, ymd) || isStudentHoliday(s, ymd)) return false;
       const rec = byStudentDay.get(`${String(s._id)}|${ymd}`);
-      if (!rec) return !isStudentHoliday(s, ymd);
-      return rec.status === 'absent' && !isStudentHoliday(s, ymd);
+      if (!rec) return true;
+      return rec.status === 'absent';
     });
     if (absentees.length === 0) return;
     totalAbsent += absentees.length;
@@ -418,9 +444,17 @@ async function listRegisterByDateRange({
 }
 
 async function markAttendance({ date, entries }, userId, { assertStudentAccess } = {}) {
-  const { start, end } = resolveDay(date);
+  const { start, end, ymd } = resolveDay(date);
   const results = [];
   const changed = [];
+
+  // Manual marking only on the session's working days (Configuration → Session → Working days).
+  const markedStudents = await AcademyStudent.find({ _id: { $in: entries.map((e) => e.studentId) } })
+    .select('_id classId')
+    .lean();
+  const { isWorkingDay, workingDaysFor } = await loadWorkingDayContext(markedStudents);
+  const offDayStudent = markedStudents.find((s) => !isWorkingDay(s, ymd));
+  if (offDayStudent) throw new ApiError(400, offDayMessage(ymd, workingDaysFor(offDayStudent)));
 
   for (const e of entries) {
     if (typeof assertStudentAccess === 'function') {
@@ -496,7 +530,13 @@ async function confirmAbsentNotifications(
   { assertStudentAccess } = {}
 ) {
   const { start, end, ymd } = resolveDay(date);
-  const students = await resolveStudents({ classId, sectionId, sessionId });
+  const allStudents = await resolveStudents({ classId, sectionId, sessionId });
+  // Only students whose session has this weekday as a working day can be confirmed absent.
+  const { isWorkingDay, workingDaysFor } = await loadWorkingDayContext(allStudents);
+  const students = allStudents.filter((s) => isWorkingDay(s, ymd));
+  if (allStudents.length && !students.length) {
+    throw new ApiError(400, offDayMessage(ymd, workingDaysFor(allStudents[0])));
+  }
   const studentIds = students.map((s) => s._id);
   if (!studentIds.length) {
     return { date: ymd, pending: 0, notified: 0, materialized: 0, parentAlerts: 0 };

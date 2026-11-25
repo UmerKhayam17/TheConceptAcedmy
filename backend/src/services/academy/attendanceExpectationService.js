@@ -5,6 +5,8 @@
  *   in one of the student's subjects (full-package / no subjects selected → any class).
  * - No published timetable → expected on the session's working days (default Mon–Sat).
  * - Never expected before the student joined (activatedAt / enrolledAt).
+ * - Never expected on a day that is not a working day in the session configuration —
+ *   the session's working days win over the timetable.
  *
  * Used by the 7:30 PM auto-absent job and the absent / attendance registers so both agree.
  */
@@ -48,6 +50,69 @@ async function sessionIdsForStudents(students) {
   return sessionByClass;
 }
 
+const DAY_SHORT = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' };
+const WEEK_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+/** "Mon–Fri", or "Mon, Wed, Fri" when the days are not consecutive. */
+function workingDaysText(days) {
+  const list = WEEK_ORDER.filter((d) => (days || []).includes(d));
+  if (!list.length) return '';
+  const first = WEEK_ORDER.indexOf(list[0]);
+  const consecutive = list.every((d, i) => WEEK_ORDER.indexOf(d) === first + i);
+  if (consecutive && list.length > 2) return `${DAY_SHORT[list[0]]}–${DAY_SHORT[list[list.length - 1]]}`;
+  return list.map((d) => DAY_SHORT[d]).join(', ');
+}
+
+function capitalizeWord(word) {
+  return word ? word.charAt(0).toUpperCase() + word.slice(1) : '';
+}
+
+/** "Saturday, 14 Nov 2026 is not a working day (session working days: Mon–Fri)…" */
+function offDayMessage(ymd, workingDays) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  const pretty = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  return (
+    `${capitalizeWord(weekdayOfYmd(ymd))}, ${pretty} is not a working day ` +
+    `(session working days: ${workingDaysText(workingDays)}). ` +
+    'Attendance can only be marked on working days.'
+  );
+}
+
+/**
+ * Working days from each student's session (Configuration → Session → Working days).
+ * Returns { isWorkingDay(student, ymd), workingDaysFor(student) }.
+ */
+async function loadWorkingDayContext(students) {
+  const list = students || [];
+  const sessionByClass = await sessionIdsForStudents(list);
+  const sessionIds = [...new Set([...sessionByClass.values()].filter(Boolean))];
+  const sessions = sessionIds.length
+    ? await Session.find({ _id: { $in: sessionIds } }).select('_id workingDays').lean()
+    : [];
+  const workingBySession = new Map(
+    sessions.map((s) => [
+      String(s._id),
+      (s.workingDays?.length ? s.workingDays : DEFAULT_WORKING_DAYS).map((d) => String(d).toLowerCase()),
+    ])
+  );
+
+  function workingDaysFor(student) {
+    const sessionId = sessionByClass.get(idOf(student.classId));
+    return workingBySession.get(sessionId) || DEFAULT_WORKING_DAYS;
+  }
+
+  function isWorkingDay(student, ymd) {
+    return workingDaysFor(student).includes(weekdayOfYmd(ymd));
+  }
+
+  return { isWorkingDay, workingDaysFor };
+}
+
 /**
  * Loads timetable + session data once for a set of students.
  * Returns { isExpected(student, ymd) }.
@@ -81,24 +146,14 @@ async function loadExpectationContext(students) {
     });
   }
 
-  const sessionByClass = await sessionIdsForStudents(list);
-  const sessionIds = [...new Set([...sessionByClass.values()].filter(Boolean))];
-  const sessions = sessionIds.length
-    ? await Session.find({ _id: { $in: sessionIds } }).select('_id workingDays').lean()
-    : [];
-  const workingBySession = new Map(
-    sessions.map((s) => [
-      String(s._id),
-      new Set((s.workingDays?.length ? s.workingDays : DEFAULT_WORKING_DAYS).map((d) => String(d).toLowerCase())),
-    ])
-  );
-  const defaultWorking = new Set(DEFAULT_WORKING_DAYS);
+  const { isWorkingDay } = await loadWorkingDayContext(list);
   const { isStudentHoliday } = await loadStudentHolidayContext(list);
 
   function isExpected(student, ymd) {
     const joined = student.activatedAt || student.enrolledAt;
     if (joined && ymd < formatDateInTz(new Date(joined))) return false;
     if (isStudentHoliday(student, ymd)) return false;
+    if (!isWorkingDay(student, ymd)) return false;
 
     const weekday = weekdayOfYmd(ymd);
     const sectionId = idOf(student.sectionId);
@@ -111,15 +166,17 @@ async function loadExpectationContext(students) {
       return selected.some((id) => taught.has(idOf(id)));
     }
 
-    const sessionId = sessionByClass.get(idOf(student.classId));
-    const working = workingBySession.get(sessionId) || defaultWorking;
-    return working.has(weekday);
+    return true;
   }
 
-  return { isExpected };
+  return { isExpected, isWorkingDay };
 }
 
 module.exports = {
   loadExpectationContext,
+  loadWorkingDayContext,
+  workingDaysText,
+  offDayMessage,
   weekdayOfYmd,
+  DEFAULT_WORKING_DAYS,
 };
