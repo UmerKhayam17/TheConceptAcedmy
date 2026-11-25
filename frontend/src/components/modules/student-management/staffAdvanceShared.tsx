@@ -29,6 +29,65 @@ import { MONTH_NAMES } from "./studentDisplayUtils";
 
 /** Shared helpers + modals for Advances & Loans (list page, detail page, staff profile). */
 
+/** Table styling shared by the list and detail pages (navy title bar, light column header). */
+export const advTable = {
+  head: "bg-slate-100/80 dark:bg-slate-800/60",
+  th: "px-4 py-3.5 text-left font-medium text-[#1a2b4b] dark:text-slate-200",
+  thRight: "px-4 py-3.5 text-right font-medium text-[#1a2b4b] dark:text-slate-200",
+  row: "border-t border-slate-100 dark:border-slate-800",
+  td: "px-4 py-3.5",
+  totalRow: "border-t border-emerald-100 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30",
+};
+
+/** White card with a dark navy title bar: icon, title, and an optional note on the right. */
+export function AdvancePanel({
+  title,
+  icon: Icon,
+  iconClassName,
+  right,
+  tone = "dark",
+  children,
+  className,
+}: {
+  title: string;
+  icon: LucideIcon;
+  iconClassName?: string;
+  right?: ReactNode;
+  /** "dark" = navy bar (main tables), "soft" = pale blue bar (small side cards). */
+  tone?: "dark" | "soft";
+  children: ReactNode;
+  className?: string;
+}) {
+  const dark = tone === "dark";
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border bg-card shadow-sm",
+        dark ? "border-[#14213d]/10" : "border-blue-100 dark:border-slate-800",
+        className,
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center justify-between gap-3 px-4 py-3 sm:px-5",
+          dark
+            ? "bg-[#14213d] text-white"
+            : "border-b border-blue-100 bg-blue-50/70 text-[#14213d] dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-100",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-2.5 font-semibold">
+          <Icon className={cn("h-5 w-5 shrink-0", iconClassName ?? (dark ? "text-white" : "text-[#14213d] dark:text-slate-100"))} />
+          <span className="truncate">{title}</span>
+        </div>
+        {right ? (
+          <div className={cn("shrink-0 text-sm", dark ? "text-white/85" : "text-muted-foreground")}>{right}</div>
+        ) : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 /** The fields every modal needs; works for list rows and the detail record. */
 export type AdvanceLike = Pick<
   StaffAdvance,

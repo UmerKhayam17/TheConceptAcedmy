@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Ban, Banknote, Clock3, Eye, HandCoins, Landmark, Pencil, Plus, Search, Wallet } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -21,6 +20,8 @@ import { DEFAULT_PAGE_SIZE } from "./PageSizeSelect";
 import ListPagination from "./ListPagination";
 import { MetricCard } from "./AcademySalaryManagement";
 import {
+  AdvancePanel,
+  advTable,
   AdvanceFormDialog,
   CancelAdvanceDialog,
   METHOD_LABEL,
@@ -196,20 +197,24 @@ export default function StaffAdvancesTab({
         </FilterToolbar>
       </div>
 
-      <Card className="overflow-hidden shadow-sm border-border/80">
+      <AdvancePanel
+        title="Advances & Loans"
+        icon={HandCoins}
+        right={pagination ? `${pagination.total} ${pagination.total === 1 ? "record" : "records"}` : undefined}
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 border-b">
+            <thead className={advTable.head}>
               <tr>
-                {!locked ? <th className="text-left p-3 font-medium">Staff</th> : null}
-                <th className="text-left p-3 font-medium">Type</th>
-                <th className="text-left p-3 font-medium">Amount</th>
-                <th className="text-left p-3 font-medium">Monthly deduction</th>
-                <th className="text-left p-3 font-medium min-w-[10rem]">Recovered</th>
-                <th className="text-left p-3 font-medium">Remaining</th>
-                <th className="text-left p-3 font-medium">Given on</th>
-                <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-right p-3 font-medium">Actions</th>
+                {!locked ? <th className={advTable.th}>Staff</th> : null}
+                <th className={advTable.th}>Type</th>
+                <th className={advTable.th}>Amount</th>
+                <th className={advTable.th}>Monthly deduction</th>
+                <th className={cn(advTable.th, "min-w-[10rem]")}>Recovered</th>
+                <th className={advTable.th}>Remaining</th>
+                <th className={advTable.th}>Given on</th>
+                <th className={advTable.th}>Status</th>
+                <th className={advTable.thRight}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -236,23 +241,23 @@ export default function StaffAdvancesTab({
                 return (
                   <tr
                     key={a._id}
-                    className="border-t align-middle cursor-pointer transition-colors hover:bg-muted/40"
+                    className={cn(advTable.row, "align-middle cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40")}
                     onClick={() => navigate(detailHref)}
                     title="Open details"
                   >
                     {!locked ? (
-                      <td className="p-3">
+                      <td className="px-4 py-3.5">
                         <div className="font-medium text-primary">{staff?.name || "—"}</div>
                         <div className="text-[11px] capitalize text-muted-foreground">
                           {staff?.designation || staff?.role?.name?.replace(/_/g, " ") || ""}
                         </div>
                       </td>
                     ) : null}
-                    <td className="p-3">
+                    <td className="px-4 py-3.5">
                       <TypeBadge type={a.type} />
                     </td>
-                    <td className="p-3 font-semibold tabular-nums">{formatRs(a.amount)}</td>
-                    <td className="p-3 tabular-nums">
+                    <td className="px-4 py-3.5 font-semibold tabular-nums">{formatRs(a.amount)}</td>
+                    <td className="px-4 py-3.5 tabular-nums">
                       {a.type === "loan" ? (
                         <>
                           {formatRs(a.installmentAmount)}
@@ -269,23 +274,23 @@ export default function StaffAdvancesTab({
                         from {periodShort(a.startMonth, a.startYear)}
                       </span>
                     </td>
-                    <td className="p-3">
+                    <td className="px-4 py-3.5">
                       <div className="tabular-nums text-[#16A66A] font-medium">{formatRs(a.recoveredAmount)}</div>
                       <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
                         <div className="h-1.5 rounded-full bg-accent" style={{ width: `${pct}%` }} />
                       </div>
                     </td>
-                    <td className="p-3 font-semibold tabular-nums text-[#EA580C]">
+                    <td className="px-4 py-3.5 font-semibold tabular-nums text-[#EA580C]">
                       {a.status === "cancelled" ? "—" : formatRs(a.remainingAmount)}
                     </td>
-                    <td className="p-3 text-muted-foreground">
+                    <td className="px-4 py-3.5 text-muted-foreground">
                       {fmtDate(a.givenDate)}
                       <span className="block text-[11px]">{METHOD_LABEL[a.paymentMethod || ""] || ""}</span>
                     </td>
-                    <td className="p-3">
+                    <td className="px-4 py-3.5">
                       <StatusBadge status={a.status} />
                     </td>
-                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-0.5">
                         {caps.canEdit && isActive ? (
                           <Button
@@ -358,7 +363,7 @@ export default function StaffAdvancesTab({
             noun="records"
           />
         ) : null}
-      </Card>
+      </AdvancePanel>
 
       <AdvanceFormDialog open={formOpen} onOpenChange={setFormOpen} editing={editing} lockedStaffId={staffId} />
       <RepayAdvanceDialog advance={repayFor} onClose={() => setRepayFor(null)} />

@@ -27,6 +27,8 @@ import { fetchStaffAdvance, type StaffAdvanceDetail } from "@/lib/studentManagem
 import FilterToolbar, { FilterToolbarActions } from "@/components/modules/FilterToolbar";
 import { MetricCard } from "./AcademySalaryManagement";
 import {
+  AdvancePanel,
+  advTable,
   AdvanceFormDialog,
   CancelAdvanceDialog,
   METHOD_LABEL,
@@ -42,38 +44,11 @@ import {
   type AdvanceLike,
 } from "./staffAdvanceShared";
 
-function SectionCard({
-  title,
-  icon: Icon,
-  right,
-  children,
-  className,
-}: {
-  title: string;
-  icon: typeof Receipt;
-  right?: ReactNode;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <Card className={cn("overflow-hidden shadow-sm border-border/80", className)}>
-      <div className="flex items-center justify-between gap-3 border-b bg-muted/40 px-4 py-3">
-        <div className="flex items-center gap-2 font-semibold text-primary">
-          <Icon className="h-4 w-4" />
-          {title}
-        </div>
-        {right}
-      </div>
-      {children}
-    </Card>
-  );
-}
-
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium text-[#1a2b4b]">{children}</span>
+    <div className="flex items-center justify-between gap-4 px-4 py-2 text-sm">
+      <span className="text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="text-right font-medium text-[#14213d] dark:text-slate-100">{children}</span>
     </div>
   );
 }
@@ -227,47 +202,6 @@ export default function StaffAdvanceDetailPage({
         </div>
       </div>
 
-      {/* Action bar — same card + toolbar as the list page filter bar */}
-      {caps.canEdit && isActive ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-          <FilterToolbar>
-            <p className="text-sm text-slate-500">
-              Staff paid money back directly? Record it here.
-            </p>
-            <FilterToolbarActions>
-              {a.recoveredAmount <= 0 ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="gap-2 h-10 shrink-0 rounded-md border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => setCancelFor(asRow)}
-                >
-                  <Ban className="h-4 w-4" />
-                  Cancel
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2 h-10 shrink-0 rounded-md border-sky-200 text-sky-600 hover:bg-sky-50 hover:text-sky-700"
-                onClick={() => setEditOpen(true)}
-              >
-                <Pencil className="h-4 w-4" />
-                Edit
-              </Button>
-              <Button
-                type="button"
-                className="gap-2 h-10 shrink-0 rounded-md px-5 font-semibold shadow-md"
-                onClick={() => setRepayFor(asRow)}
-              >
-                <Banknote className="h-4 w-4" />
-                Receive payment
-              </Button>
-            </FilterToolbarActions>
-          </FilterToolbar>
-        </div>
-      ) : null}
-
       {/* Figures */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard
@@ -335,22 +269,62 @@ export default function StaffAdvanceDetailPage({
         </div>
       </Card>
 
+      {/* Action bar — same card + toolbar as the list page filter bar */}
+      {caps.canEdit && isActive ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+          <FilterToolbar>
+            <p className="text-sm text-slate-500">
+              Staff paid money back directly? Record it here.
+            </p>
+            <FilterToolbarActions>
+              {a.recoveredAmount <= 0 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 h-10 shrink-0 rounded-md border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setCancelFor(asRow)}
+                >
+                  <Ban className="h-4 w-4" />
+                  Cancel
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                className="gap-2 h-10 shrink-0 rounded-md bg-sky-500 px-5 font-semibold text-white shadow-md hover:bg-sky-600"
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
+              <Button
+                type="button"
+                className="gap-2 h-10 shrink-0 rounded-md px-5 font-semibold shadow-md"
+                onClick={() => setRepayFor(asRow)}
+              >
+                <Banknote className="h-4 w-4" />
+                Receive payment
+              </Button>
+            </FilterToolbarActions>
+          </FilterToolbar>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         {/* History */}
-        <SectionCard
-          title="Repayment history"
-          icon={Receipt}
-          className="xl:col-span-2"
-          right={<span className="text-xs text-muted-foreground">{a.repayments.length} entries</span>}
+        <AdvancePanel
+          title="Repayment History"
+          icon={CalendarDays}
+          className="xl:col-span-2 self-start"
+          right={`${a.repayments.length} ${a.repayments.length === 1 ? "entry" : "entries"}`}
         >
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b bg-white">
-                <tr className="text-muted-foreground">
-                  <th className="text-left p-3 font-medium">Date</th>
-                  <th className="text-left p-3 font-medium">Recovered through</th>
-                  <th className="text-left p-3 font-medium">Salary month</th>
-                  <th className="text-right p-3 font-medium">Amount</th>
+              <thead className={advTable.head}>
+                <tr>
+                  <th className={advTable.th}>Date</th>
+                  <th className={advTable.th}>Recovered through</th>
+                  <th className={advTable.th}>Salary month</th>
+                  <th className={advTable.thRight}>Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -365,29 +339,34 @@ export default function StaffAdvanceDetailPage({
                     const voucher = r.salaryRecordId && typeof r.salaryRecordId === "object" ? r.salaryRecordId : null;
                     const voucherId = voucher?._id || (typeof r.salaryRecordId === "string" ? r.salaryRecordId : "");
                     return (
-                      <tr key={r._id} className="border-t">
-                        <td className="p-3">{fmtDate(r.paidAt)}</td>
-                        <td className="p-3">
+                      <tr key={r._id} className={advTable.row}>
+                        <td className={advTable.td}>
+                          <span className="inline-flex items-center gap-2 whitespace-nowrap text-[#14213d] dark:text-slate-100">
+                            <CalendarDays className="h-4 w-4 text-slate-500" />
+                            {fmtDate(r.paidAt)}
+                          </span>
+                        </td>
+                        <td className={advTable.td}>
                           {voucherId ? (
                             <button
                               type="button"
                               className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
                               onClick={() => navigate(salaryDetailHref(role, voucherId))}
                             >
-                              <Receipt className="h-3.5 w-3.5" />
+                              <Receipt className="h-4 w-4" />
                               Salary {voucher?.voucherNumber || "voucher"}
                             </button>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 text-[#1a2b4b]">
-                              <Banknote className="h-3.5 w-3.5 text-violet-600" />
+                            <span className="inline-flex items-center gap-2 text-[#14213d] dark:text-slate-100">
+                              <CreditCard className="h-4 w-4 text-violet-600" />
                               Paid back directly
                             </span>
                           )}
                         </td>
-                        <td className="p-3 text-muted-foreground">
+                        <td className={cn(advTable.td, "text-slate-500")}>
                           {voucherId ? periodShort(voucher?.month ?? r.month, voucher?.year ?? r.year) : "—"}
                         </td>
-                        <td className="p-3 text-right font-semibold tabular-nums text-[#16A66A]">
+                        <td className={cn(advTable.td, "text-right font-semibold tabular-nums text-[#16A66A]")}>
                           {formatRs(r.amount)}
                         </td>
                       </tr>
@@ -397,23 +376,27 @@ export default function StaffAdvanceDetailPage({
               </tbody>
               {repayments.length > 0 ? (
                 <tfoot>
-                  <tr className="border-t bg-muted/30 font-semibold">
-                    <td colSpan={3} className="p-3 text-[#1a2b4b]">
+                  <tr className={advTable.totalRow}>
+                    <td colSpan={3} className={cn(advTable.td, "font-bold text-[#14213d] dark:text-slate-100")}>
                       Total recovered
                     </td>
-                    <td className="p-3 text-right tabular-nums text-[#16A66A]">{formatRs(a.recoveredAmount)}</td>
+                    <td className={cn(advTable.td, "text-right text-base font-bold tabular-nums text-[#16A66A]")}>
+                      {formatRs(a.recoveredAmount)}
+                    </td>
                   </tr>
                 </tfoot>
               ) : null}
             </table>
           </div>
-        </SectionCard>
+        </AdvancePanel>
 
         <div className="space-y-4">
           {/* Details */}
-          <SectionCard title="Details" icon={TypeIcon}>
-            <div className="divide-y">
-              <InfoRow label="Type">{TYPE_LABEL[a.type]}</InfoRow>
+          <AdvancePanel title="Details" icon={Receipt} iconClassName="text-amber-400">
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              <InfoRow label="Type">
+                <TypeBadge type={a.type} />
+              </InfoRow>
               <InfoRow label="Amount">{formatRs(a.amount)}</InfoRow>
               {a.type === "loan" ? <InfoRow label="Monthly installment">{formatRs(a.installmentAmount)}</InfoRow> : null}
               <InfoRow label="Deduct from">{periodShort(a.startMonth, a.startYear)}</InfoRow>
@@ -428,17 +411,17 @@ export default function StaffAdvanceDetailPage({
                 </div>
               ) : null}
             </div>
-          </SectionCard>
+          </AdvancePanel>
 
           {/* Upcoming */}
           {isActive ? (
-            <SectionCard title="Next salary deductions" icon={CalendarClock}>
+            <AdvancePanel title="Next salary deductions" icon={Clock3} tone="soft">
               {a.upcomingDeductions.length === 0 ? (
                 <p className="px-4 py-6 text-center text-sm text-muted-foreground">
                   No pending salary voucher yet. It will be deducted when the next salaries are generated.
                 </p>
               ) : (
-                <div className="divide-y">
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {a.upcomingDeductions.map((u) => (
                     <button
                       key={u.salaryRecordId}
@@ -450,12 +433,12 @@ export default function StaffAdvanceDetailPage({
                         <span className="block font-medium text-[#1a2b4b]">{periodShort(u.month, u.year)}</span>
                         <span className="block text-xs text-muted-foreground">{u.voucherNumber || "Pending voucher"}</span>
                       </span>
-                      <span className="font-semibold tabular-nums text-rose-600">− {formatRs(u.amount)}</span>
+                      <span className="text-base font-bold tabular-nums text-rose-600">− {formatRs(u.amount)}</span>
                     </button>
                   ))}
                 </div>
               )}
-            </SectionCard>
+            </AdvancePanel>
           ) : null}
         </div>
       </div>
