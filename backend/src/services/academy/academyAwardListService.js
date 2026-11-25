@@ -262,14 +262,15 @@ function buildPdfFromSheets(sheets) {
       }
 
       function buildCols(tableW, dual) {
+        // The name column takes all spare width so full names fit.
         const cols = [
-          { key: 'sr', w: 28, label: 'Sr #' },
-          { key: 'roll', w: dual ? 78 : 120, label: 'Roll #' },
-          { key: 'name', w: dual ? 78 : 200, label: 'Student Name' },
-          { key: 'marks', w: dual ? 28 : 50, label: 'Marks' },
-          { key: 'sign', w: 0, label: 'Signature' },
+          { key: 'sr', w: dual ? 22 : 28, label: 'Sr #' },
+          { key: 'roll', w: dual ? 66 : 100, label: 'Roll #' },
+          { key: 'name', w: 0, label: 'Student Name' },
+          { key: 'marks', w: dual ? 30 : 50, label: 'Marks' },
+          { key: 'sign', w: dual ? 44 : 120, label: 'Signature' },
         ];
-        cols[4].w = tableW - cols[0].w - cols[1].w - cols[2].w - cols[3].w;
+        cols[2].w = tableW - cols[0].w - cols[1].w - cols[3].w - cols[4].w;
         return cols;
       }
 
@@ -300,11 +301,60 @@ function buildPdfFromSheets(sheets) {
         });
       }
 
+      /**
+       * Full text (student name / roll number), never cut off: shrinks the text a little when
+       * it is long and, if it still doesn't fit, uses two lines inside the row.
+       */
+      function drawFullText(text, x, y, w, { size: startSize = 7, align = 'left' } = {}) {
+        doc.font('Helvetica').fillColor('#000');
+        for (let size = startSize; size >= 5.5; size -= 0.25) {
+          doc.fontSize(size);
+          if (doc.widthOfString(text) <= w) {
+            doc.text(text, x, y + (rowH - size) / 2, { width: w, align, lineBreak: false });
+            return;
+          }
+        }
+        doc.fontSize(5.5);
+        doc.text(text, x, y + 1.5, { width: w, height: rowH - 2, align, lineGap: -0.5, ellipsis: true });
+      }
+
+      /**
+       * Roll number on two lines, same in every row: prefix on top, number below
+       * (e.g. "CA-2026-FSC-A-" / "0001"). Shrinks a little if the prefix is long.
+       */
+      function drawRollTwoLines(roll, x, y, w) {
+        const cut = roll.lastIndexOf('-');
+        if (cut <= 0 || cut === roll.length - 1) {
+          drawFullText(roll, x, y, w, { size: 6.5, align: 'center' });
+          return;
+        }
+        const top = roll.slice(0, cut + 1);
+        const bottom = roll.slice(cut + 1);
+        doc.font('Helvetica').fillColor('#000');
+        let size = 6.5;
+        doc.fontSize(size);
+        while (size > 4.5 && Math.max(doc.widthOfString(top), doc.widthOfString(bottom)) > w) {
+          size -= 0.25;
+          doc.fontSize(size);
+        }
+        const lineH = size + 0.4;
+        const startY = y + (rowH - size * 2 - 0.4) / 2 + 1;
+        doc.text(top, x, startY, { width: w, align: 'center', lineBreak: false });
+        doc.text(bottom, x, startY + lineH, { width: w, align: 'center', lineBreak: false });
+      }
+
       function drawStudentRow(blockX, y, sr, student, tableW, cols) {
         doc.rect(blockX, y, tableW, rowH).strokeColor(LINE).lineWidth(0.5).stroke();
         const values = [String(sr), rollOf(student), nameOf(student), '', ''];
         let x = blockX;
         cols.forEach((c, i) => {
+          if ((c.key === 'name' || c.key === 'roll') && values[i]) {
+            if (c.key === 'roll') drawRollTwoLines(values[i], x + 2, y, c.w - 4);
+            else drawFullText(values[i], x + 2, y, c.w - 4);
+            x += c.w;
+            doc.moveTo(x, y).lineTo(x, y + rowH).strokeColor(LINE).lineWidth(0.5).stroke();
+            return;
+          }
           const fontSize = c.key === 'roll' ? 6.5 : 7;
           doc.font('Helvetica').fontSize(fontSize).fillColor('#000');
           if (values[i]) {
