@@ -172,7 +172,7 @@ async function listByDate({
     offDay: students.length > 0 && offDayStudentIds.length === students.length,
     offDayStudentIds,
     offDayName: capitalize(weekdayOfYmd(ymd)),
-    workingDaysText: students.length ? workingDaysText(workingDaysFor(students[0])) : '',
+    workingDaysText: students.length ? workingDaysText(workingDaysFor(students[0], ymd)) : '',
     // "HH:MM" school time — today's absent alerts are shown only after this cut-off.
     autoAbsentTime: autoAbsentTime().label,
   };
@@ -454,7 +454,7 @@ async function markAttendance({ date, entries }, userId, { assertStudentAccess }
     .lean();
   const { isWorkingDay, workingDaysFor } = await loadWorkingDayContext(markedStudents);
   const offDayStudent = markedStudents.find((s) => !isWorkingDay(s, ymd));
-  if (offDayStudent) throw new ApiError(400, offDayMessage(ymd, workingDaysFor(offDayStudent)));
+  if (offDayStudent) throw new ApiError(400, offDayMessage(ymd, workingDaysFor(offDayStudent, ymd)));
 
   for (const e of entries) {
     if (typeof assertStudentAccess === 'function') {
@@ -535,7 +535,7 @@ async function confirmAbsentNotifications(
   const { isWorkingDay, workingDaysFor } = await loadWorkingDayContext(allStudents);
   const students = allStudents.filter((s) => isWorkingDay(s, ymd));
   if (allStudents.length && !students.length) {
-    throw new ApiError(400, offDayMessage(ymd, workingDaysFor(allStudents[0])));
+    throw new ApiError(400, offDayMessage(ymd, workingDaysFor(allStudents[0], ymd)));
   }
   const studentIds = students.map((s) => s._id);
   if (!studentIds.length) {

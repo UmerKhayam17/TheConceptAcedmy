@@ -16,6 +16,7 @@ const AcademyClass = require('../../models/academy/AcademyClass');
 const Session = require('../../models/Session');
 const { formatDateInTz } = require('../../utils/schoolDay');
 const { loadStudentHolidayContext } = require('../holidayService');
+const { workingDaysOn } = require('../../utils/workingDays');
 
 const DEFAULT_WORKING_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const WEEKDAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -92,22 +93,18 @@ async function loadWorkingDayContext(students) {
   const sessionByClass = await sessionIdsForStudents(list);
   const sessionIds = [...new Set([...sessionByClass.values()].filter(Boolean))];
   const sessions = sessionIds.length
-    ? await Session.find({ _id: { $in: sessionIds } }).select('_id workingDays').lean()
+    ? await Session.find({ _id: { $in: sessionIds } }).select('_id workingDays workingDaysHistory').lean()
     : [];
-  const workingBySession = new Map(
-    sessions.map((s) => [
-      String(s._id),
-      (s.workingDays?.length ? s.workingDays : DEFAULT_WORKING_DAYS).map((d) => String(d).toLowerCase()),
-    ])
-  );
+  const sessionById = new Map(sessions.map((s) => [String(s._id), s]));
 
-  function workingDaysFor(student) {
-    const sessionId = sessionByClass.get(idOf(student.classId));
-    return workingBySession.get(sessionId) || DEFAULT_WORKING_DAYS;
+  /** Working days of the student's session that applied on `ymd` (history-aware). */
+  function workingDaysFor(student, ymd) {
+    const session = sessionById.get(sessionByClass.get(idOf(student.classId)));
+    return session ? workingDaysOn(session, ymd) : DEFAULT_WORKING_DAYS;
   }
 
   function isWorkingDay(student, ymd) {
-    return workingDaysFor(student).includes(weekdayOfYmd(ymd));
+    return workingDaysFor(student, ymd).includes(weekdayOfYmd(ymd));
   }
 
   return { isWorkingDay, workingDaysFor };

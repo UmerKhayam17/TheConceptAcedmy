@@ -16,6 +16,20 @@ const sessionSchema = new mongoose.Schema(
       type: [{ type: String, enum: WEEKDAYS }],
       default: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'],
     },
+    /**
+     * Dated changes of `workingDays` (see utils/workingDays.js). Each entry applies from
+     * `effectiveFrom` until the next one, so a change never rewrites past attendance.
+     */
+    workingDaysHistory: {
+      type: [
+        {
+          _id: false,
+          days: [{ type: String, enum: WEEKDAYS }],
+          effectiveFrom: { type: String, match: /^\d{4}-\d{2}-\d{2}$/ },
+        },
+      ],
+      default: undefined,
+    },
     timezone: { type: String, default: 'Asia/Karachi', trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     isClosed: { type: Boolean, default: false },

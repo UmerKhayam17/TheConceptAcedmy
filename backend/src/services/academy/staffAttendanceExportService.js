@@ -175,6 +175,7 @@ function selectRegisterDays(days, workingDays, teachers) {
     .map((day) => ({
       day: String(day.day || '').slice(0, 10),
       weekday: String(day.weekday || '').toLowerCase(),
+      working: typeof day.working === 'boolean' ? day.working : undefined,
     }))
     .filter((day) => day.day)
     .sort((a, b) => a.day.localeCompare(b.day));
@@ -190,7 +191,10 @@ function selectRegisterDays(days, workingDays, teachers) {
       if (day) taught.add(day);
     });
   });
-  return source.filter((day) => working.has(day.weekday) || taught.has(day.day));
+  // Prefer the per-date flag (history-aware); fall back to the weekly working days.
+  return source.filter(
+    (day) => (day.working !== undefined ? day.working : working.has(day.weekday)) || taught.has(day.day)
+  );
 }
 
 function subjectNames(teacher) {

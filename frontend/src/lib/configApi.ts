@@ -25,6 +25,12 @@ export type Weekday =
 
 export type SessionStatus = "active" | "completed" | "archived";
 
+export interface WorkingDaysChange {
+  days: Weekday[];
+  /** YYYY-MM-DD; "1970-01-01" means "from the start". */
+  effectiveFrom: string;
+}
+
 export interface AcademicSession {
   _id: string;
   name: string;
@@ -34,6 +40,10 @@ export interface AcademicSession {
   isActive: boolean;
   isClosed?: boolean;
   workingDays?: Weekday[];
+  /** Dated working-days changes; each applies from `effectiveFrom` until the next one. */
+  workingDaysHistory?: WorkingDaysChange[];
+  /** PATCH only: the date new `workingDays` start applying (default: today). */
+  workingDaysEffectiveFrom?: string;
   timezone?: string;
   completedAt?: string;
   archivedAt?: string;

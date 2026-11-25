@@ -137,7 +137,7 @@ function scheduleSlotModels() {
 
 /** Active session (timezone + working days), or null. */
 async function activeSession() {
-  return Session.findOne({ isActive: true }).select('_id timezone workingDays').lean();
+  return Session.findOne({ isActive: true }).select('_id timezone workingDays workingDaysHistory').lean();
 }
 
 /**

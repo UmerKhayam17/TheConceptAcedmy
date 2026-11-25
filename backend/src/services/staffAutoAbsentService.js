@@ -19,6 +19,7 @@ const { STAFF_ROLE_NAMES } = require('../config/staffRoles');
 const { dayBounds, todayYmd, formatDateInTz } = require('../utils/schoolDay');
 const { autoAbsentTime } = require('./academy/autoAbsentService');
 const { activeSession } = require('./aiAttendance/attendanceStatusFromTimetable');
+const { workingDaysOn } = require('../utils/workingDays');
 const { holidayClosureForSession } = require('./holidayService');
 
 const DEFAULT_WORKING_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -73,7 +74,7 @@ async function markStaffAbsentForDay(ymd = todayYmd()) {
   if (!users.length) return { date: ymd, expected: 0, alreadyMarked: 0, markedAbsent: 0 };
 
   const session = await activeSession();
-  const workingDays = session?.workingDays?.length ? session.workingDays : DEFAULT_WORKING_DAYS;
+  const workingDays = session ? workingDaysOn(session, ymd) : DEFAULT_WORKING_DAYS;
   const byTeacher = await teachingWeekdays(session?._id);
   const closure = await holidayClosureForSession(session?._id);
   const closed = closure(ymd);

@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { formatPkr } from "@/lib/financeDashboardData";
 import { fetchOpeningBalance, saveOpeningBalance } from "@/lib/studentManagementApi";
-import { patchSession, type Weekday } from "@/lib/configApi";
+import { patchSession, type Weekday, type WorkingDaysChange } from "@/lib/configApi";
+import { localTodayYmd } from "@/lib/localDate";
 import { normalizeWorkingDays } from "./constants";
 import WorkingDaysPicker, { weeklyOffDays, weeklyOffText } from "./WorkingDaysPicker";
 
@@ -35,6 +36,48 @@ function formatDate(value: string) {
 
 const sameDays = (a: Weekday[], b: Weekday[]) => a.length === b.length && a.every((d) => b.includes(d));
 
+const DAY_SHORT: Record<string, string> = {
+  monday: "Mon",
+  tuesday: "Tue",
+  wednesday: "Wed",
+  thursday: "Thu",
+  friday: "Fri",
+  saturday: "Sat",
+  sunday: "Sun",
+};
+const WEEK: Weekday[] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+/** "Mon–Fri", or "Mon, Wed, Fri" when not consecutive. */
+function daysText(days: Weekday[]) {
+  const list = WEEK.filter((d) => days.includes(d));
+  if (!list.length) return "—";
+  const first = WEEK.indexOf(list[0]);
+  const consecutive = list.every((d, i) => WEEK.indexOf(d) === first + i);
+  if (consecutive && list.length > 2) return `${DAY_SHORT[list[0]]}–${DAY_SHORT[list[list.length - 1]]}`;
+  return list.map((d) => DAY_SHORT[d]).join(", ");
+}
+
+/** Past changes as "Mon–Sat until 15 Nov 2026", "Mon–Fri from 16 Nov 2026". */
+function historyLines(history?: WorkingDaysChange[]) {
+  const list = [...(history || [])]
+    .filter((h) => h.days?.length && h.effectiveFrom)
+    .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+  if (list.length < 2) return [];
+  return list.map((h, i) => {
+    const from = h.effectiveFrom <= "1970-01-01" ? "" : `from ${formatDate(h.effectiveFrom)}`;
+    const next = list[i + 1];
+    const until = next ? `until ${formatDate(prevYmd(next.effectiveFrom))}` : "onward";
+    return `${daysText(h.days)} ${[from, until].filter(Boolean).join(" ")}`;
+  });
+}
+
+function prevYmd(ymd: string) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return dt.toISOString().slice(0, 10);
+}
+
 /** Edit a session's opening balance and working days (weekly off). */
 export default function SessionOpeningBalanceButton({
   session,
@@ -42,7 +85,14 @@ export default function SessionOpeningBalanceButton({
   variant = "ghost",
   iconOnly = false,
 }: {
-  session: { _id: string; name: string; startDate: string; endDate: string; workingDays?: Weekday[] };
+  session: {
+    _id: string;
+    name: string;
+    startDate: string;
+    endDate: string;
+    workingDays?: Weekday[];
+    workingDaysHistory?: WorkingDaysChange[];
+  };
   className?: string;
   variant?: "ghost" | "outline";
   iconOnly?: boolean;
@@ -52,6 +102,8 @@ export default function SessionOpeningBalanceButton({
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [days, setDays] = useState<Weekday[]>(() => normalizeWorkingDays(session.workingDays));
+  /** Date the new working days start applying; earlier days keep the old rule. */
+  const [effectiveFrom, setEffectiveFrom] = useState(() => localTodayYmd());
   const seeded = useRef(false);
   const start = sessionYmd(session.startDate);
   const end = sessionYmd(session.endDate);
@@ -75,6 +127,7 @@ export default function SessionOpeningBalanceButton({
 
   const openDialog = () => {
     setDays(normalizeWorkingDays(session.workingDays));
+    setEffectiveFrom(localTodayYmd());
     setOpen(true);
   };
 
@@ -86,13 +139,18 @@ export default function SessionOpeningBalanceButton({
       const daysChanged = !sameDays(days, savedDays);
       if (trimmed !== "" && (!Number.isFinite(value) || value < 0)) throw new Error("Enter a valid opening balance");
       if (!days.length) throw new Error("Select at least one working day");
+      if (daysChanged && !/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) {
+        throw new Error("Pick the date the new working days apply from");
+      }
       if (!amountChanged && !daysChanged) return { amountRow: null, daysSaved: false };
       if (amountChanged && !start) throw new Error("This session has no start date");
 
       const amountRow = amountChanged
         ? await saveOpeningBalance({ amount: value, sessionId: session._id, asOf: start })
         : null;
-      if (daysChanged) await patchSession(session._id, { workingDays: days });
+      if (daysChanged) {
+        await patchSession(session._id, { workingDays: days, workingDaysEffectiveFrom: effectiveFrom });
+      }
       return { amountRow, daysSaved: daysChanged };
     },
     onSuccess: ({ amountRow, daysSaved }) => {
@@ -103,7 +161,9 @@ export default function SessionOpeningBalanceButton({
       const off = weeklyOffDays(days);
       const parts = [
         amountRow ? `Opening balance ${formatPkr(amountRow.amount)}.` : null,
-        daysSaved ? (off.length ? `Weekly off: ${weeklyOffText(off)}.` : "All days are working days.") : null,
+        daysSaved
+          ? `${off.length ? `Weekly off: ${weeklyOffText(off)}` : "All days are working days"} from ${formatDate(effectiveFrom)}. Earlier days keep the old working days.`
+          : null,
       ].filter(Boolean);
       toast({
         title: parts.length ? "Session updated" : "No changes to save",
@@ -171,6 +231,35 @@ export default function SessionOpeningBalanceButton({
               </p>
             </div>
             <WorkingDaysPicker label="Working Days" value={days} onChange={setDays} disabled={saveMut.isPending} />
+            {!sameDays(days, savedDays) ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                <Label htmlFor={`wd-from-${session._id}`}>Apply new working days from</Label>
+                <Input
+                  id={`wd-from-${session._id}`}
+                  type="date"
+                  className="mt-1 bg-white"
+                  value={effectiveFrom}
+                  min={start || undefined}
+                  max={end || undefined}
+                  onChange={(e) => setEffectiveFrom(e.target.value)}
+                  disabled={saveMut.isPending}
+                />
+                <p className="mt-1 text-xs text-amber-900">
+                  Days before this date keep the current working days ({daysText(savedDays)}), so past
+                  attendance and reports don&apos;t change.
+                </p>
+              </div>
+            ) : null}
+            {historyLines(session.workingDaysHistory).length ? (
+              <div>
+                <Label>Working days history</Label>
+                <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                  {historyLines(session.workingDaysHistory).map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={saveMut.isPending} onClick={() => setOpen(false)}>

@@ -10,6 +10,8 @@ const {
   activateExclusively,
 } = require('../services/session/sessionGuard');
 const Session = require('../models/Session');
+const { applyWorkingDaysChange } = require('../utils/workingDays');
+const { todayYmd } = require('../utils/schoolDay');
 const AcademyClass = require('../models/academy/AcademyClass');
 const AcademySection = require('../models/academy/AcademySection');
 const AcademySubject = require('../models/academy/AcademySubject');
@@ -136,6 +138,8 @@ const patchSession = catchAsync(async (req, res) => {
   }
 
   const updates = { ...req.body };
+  // History is only written by the working-days change below, never directly.
+  delete updates.workingDaysHistory;
   if (updates.status === 'archived' || updates.status === 'completed') {
     throw new ApiError(400, 'Use session lifecycle endpoints to complete or archive a session');
   }
@@ -156,8 +160,19 @@ const patchSession = catchAsync(async (req, res) => {
       throw new ApiError(400, 'Pick at least one valid working day');
     }
     // Keep Monday→Sunday order so every screen lists days the same way.
-    updates.workingDays = VALID_DAYS.filter((d) => days.includes(d));
+    const nextDays = VALID_DAYS.filter((d) => days.includes(d));
+    if (nextDays.join(',') !== (session.workingDays || []).join(',')) {
+      // Record the change with the date it applies from, so earlier days keep the old rule.
+      const effectiveFrom = String(updates.workingDaysEffectiveFrom || todayYmd(session.timezone)).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) {
+        throw new ApiError(400, 'Pick a valid date for when the new working days apply');
+      }
+      Object.assign(updates, applyWorkingDaysChange(session.toObject(), nextDays, effectiveFrom));
+    } else {
+      updates.workingDays = nextDays;
+    }
   }
+  delete updates.workingDaysEffectiveFrom;
 
   if (wantsActive) {
     const currentStatus = resolveSessionStatus(session);

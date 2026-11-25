@@ -22,11 +22,8 @@ const {
 } = require('../utils/schoolDay');
 const { publicEmail } = require('../config/staffRoles');
 const { holidayClosureForSession } = require('./holidayService');
-const {
-  offDayMessage,
-  workingDaysText,
-  DEFAULT_WORKING_DAYS,
-} = require('./academy/attendanceExpectationService');
+const { offDayMessage, workingDaysText } = require('./academy/attendanceExpectationService');
+const { workingDaysOn, isWorkingDayOn } = require('../utils/workingDays');
 const { staffGraceMinutes: graceMinutes, hhmmToMinutes } = require('./aiAttendance/attendanceStatusFromTimetable');
 
 /** left_early is only ever set by an admin (it counts as missed, like absent). */
@@ -86,7 +83,7 @@ function periodKeyOf(startTime, endTime) {
 
 async function resolveSession(sessionId) {
   if (!sessionId) throw new ApiError(400, 'Select an academic session');
-  const session = await Session.findById(sessionId).select('name timezone workingDays').lean();
+  const session = await Session.findById(sessionId).select('name timezone workingDays workingDaysHistory').lean();
   if (!session) throw new ApiError(404, 'Session not found');
   return session;
 }
@@ -239,19 +236,15 @@ async function dailyStaffUsers(timetableTeacherIds) {
   return users;
 }
 
-function isWorkingDay(session, weekday) {
-  const days = Array.isArray(session.workingDays) ? session.workingDays : [];
-  return days.length === 0 || days.includes(weekday);
-}
-
-function sessionWorkingDays(session) {
-  return session.workingDays?.length ? session.workingDays : DEFAULT_WORKING_DAYS;
+/** Working day on `ymd` by the rule in force that day (Configuration → Session → Working days). */
+function isWorkingDay(session, ymd) {
+  return isWorkingDayOn(session, ymd);
 }
 
 /** Manual marks and extra classes only on the session's working days. */
 function assertWorkingDay(session, ymd) {
-  if (!isWorkingDay(session, weekdayForDay(ymd, session.timezone))) {
-    throw new ApiError(400, offDayMessage(ymd, sessionWorkingDays(session)));
+  if (!isWorkingDay(session, ymd)) {
+    throw new ApiError(400, offDayMessage(ymd, workingDaysOn(session, ymd)));
   }
 }
 
@@ -512,7 +505,7 @@ async function listDay({ sessionId, date, userId }) {
   const weekday = weekdayForDay(ymd, session.timezone);
 
   // Not a working day (Configuration → Session → Working days): nobody is expected or marked.
-  if (!isWorkingDay(session, weekday)) {
+  if (!isWorkingDay(session, ymd)) {
     return {
       date: ymd,
       weekday,
@@ -521,7 +514,7 @@ async function listDay({ sessionId, date, userId }) {
       holiday: null,
       offDay: true,
       offDayName: weekday.charAt(0).toUpperCase() + weekday.slice(1),
-      workingDaysText: workingDaysText(sessionWorkingDays(session)),
+      workingDaysText: workingDaysText(workingDaysOn(session, ymd)),
       teachers: [],
       summary: { ...emptyCounts(), needsReview: 0, extraClasses: 0, attendancePercent: 0 },
     };
@@ -569,7 +562,7 @@ async function listDay({ sessionId, date, userId }) {
     });
 
   let dailyStaff = [];
-  if (isWorkingDay(session, weekday)) {
+  if (isWorkingDay(session, ymd)) {
     const exclude = allTimetableTeacherIds(byWeekday);
     teacherIds.forEach((id) => exclude.add(id));
     dailyStaff = (await dailyStaffUsers(exclude))
@@ -631,7 +624,7 @@ async function listMonth({ sessionId, month, year, userId }) {
   // Days after today have not happened yet — they would all count as absent.
   // Days off in the session's working days are skipped for everyone.
   const today = todayYmd(session.timezone);
-  const pastDays = days.filter(({ day, weekday }) => day <= today && isWorkingDay(session, weekday));
+  const pastDays = days.filter(({ day }) => day <= today && isWorkingDay(session, day));
   const extrasMap = await extrasForDays(
     session._id,
     pastDays.map((d) => d.day),
@@ -691,7 +684,7 @@ async function listMonth({ sessionId, month, year, userId }) {
       return shaped;
     });
 
-  const workingDays = pastDays.filter(({ weekday }) => isWorkingDay(session, weekday));
+  const workingDays = pastDays;
   const dailyStaff = (await dailyStaffUsers(teacherIds))
     .filter((user) => !userId || String(user._id) === String(userId))
     .map((user) =>
@@ -737,7 +730,8 @@ async function listMonth({ sessionId, month, year, userId }) {
     year: Number(year),
     sessionId: String(session._id),
     sessionName: session.name || '',
-    days,
+    // `working` = working day by the rule in force on that date (used by the register export).
+    days: days.map((d) => ({ ...d, working: isWorkingDay(session, d.day) })),
     workingDays: Array.isArray(session.workingDays) ? session.workingDays : [],
     teachers,
     summary: { ...summary, attendancePercent: attendancePercent(summary) },
