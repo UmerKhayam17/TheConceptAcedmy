@@ -229,9 +229,9 @@ export default function StaffAdvancesTab({
 
           <FilterToolbarActions className="sm:ml-auto">
             <DefaulterListDownload
-              variant="default"
+              variant="outline"
               size="default"
-              className="shrink-0"
+              className="shrink-0 bg-white"
               label="Print / Export"
               exporting={exporting}
               reportKinds={[
@@ -250,7 +250,7 @@ export default function StaffAdvancesTab({
             />
             {caps.canCreate ? (
               <Button
-                className="gap-2 h-10 shrink-0 rounded-md bg-slate-900 text-white hover:bg-slate-800"
+                className="gap-2 h-10 shrink-0 rounded-md font-semibold shadow-md"
                 onClick={openCreate}
               >
                 <Plus className="h-4 w-4" />
