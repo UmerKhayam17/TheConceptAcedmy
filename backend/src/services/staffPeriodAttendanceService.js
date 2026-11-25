@@ -442,6 +442,9 @@ function periodsForTeacher(
     const saved = markMap.get(`${teacherId}|${day}|${row.periodKey}`);
     // A saved mark is the admin's decision — nothing left to review.
     if (saved) return publicPeriod(row, saved);
+    // Extra classes are absent until the admin marks them — a gate check-in alone
+    // does not prove the extra class was taken.
+    if (row.extra) return publicPeriod(row, 'absent');
     const status = autoPeriodStatus(row, daily, timeZone);
     const review = status === 'present' || status === 'late' ? reviewFor(row, daily, times, nowMin) : null;
     return publicPeriod(row, status, review);
