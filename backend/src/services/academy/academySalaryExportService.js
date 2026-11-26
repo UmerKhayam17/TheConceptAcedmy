@@ -374,33 +374,29 @@ function buildColumns(classLabels, { forPdf = false } = {}) {
   }));
 
   if (forPdf) {
-    // PDF: no Period column, short voucher, capitalised role, full amounts (shrink, never "...").
-    const pdfClassCols = classCols.map((c) => ({
-      ...c,
-      pdfWidth: 44,
-      numFmt: '#,##0.00',
-      shrinkToFit: true,
-    }));
+    // PDF: no Period column, short voucher, capitalised role; widths are auto-fitted to content.
+    const pdfClassCols = classCols.map((c) => ({ ...c, numFmt: '#,##0.00' }));
     return [
-      { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 30, align: 'center' },
-      { key: 'voucherShort', header: 'Voucher', excelWidth: 16, pdfWidth: 50, align: 'center', shrinkToFit: true },
-      { key: 'staff', header: 'Staff', excelWidth: 18, pdfWidth: 96, wrap: true },
-      { key: 'roleCap', header: 'Role', excelWidth: 12, pdfWidth: 46 },
-      { key: 'payType', header: 'Pay type', excelWidth: 12, pdfWidth: 56, align: 'center' },
+      { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 24, align: 'center' },
+      { key: 'voucherShort', header: 'Voucher', excelWidth: 16, pdfWidth: 42, align: 'center' },
+      { key: 'staff', header: 'Staff', excelWidth: 18, pdfWidth: 80, wrap: true },
+      { key: 'roleCap', header: 'Role', excelWidth: 12, pdfWidth: 48, wrap: true },
+      { key: 'payType', header: 'Pay type', excelWidth: 12, pdfWidth: 48, align: 'center' },
       ...pdfClassCols,
-      { key: 'rate', header: 'Rate / Base', excelWidth: 12, pdfWidth: 42, align: 'center', shrinkToFit: true },
+      { key: 'rate', header: 'Rate / Base', excelWidth: 12, pdfWidth: 42, align: 'center' },
+      { key: 'amount', header: 'Amount', excelWidth: 14, pdfWidth: 60, align: 'center', numFmt: '#,##0.00' },
+      { key: 'status', header: 'Status', excelWidth: 10, pdfWidth: 44, align: 'center' },
+      // Paid on gets a little extra room; Method stays narrow (wraps "Bank / Transfer").
+      { key: 'paidAt', header: 'Paid on', excelWidth: 12, pdfWidth: 48, align: 'center', autoFitExtra: 8 },
       {
-        key: 'amount',
-        header: 'Amount',
+        key: 'methodCap',
+        header: 'Method',
         excelWidth: 14,
-        pdfWidth: 62,
+        pdfWidth: 52,
         align: 'center',
-        numFmt: '#,##0.00',
-        shrinkToFit: true,
+        wrap: true,
+        autoFitNoGrow: true,
       },
-      { key: 'status', header: 'Status', excelWidth: 10, pdfWidth: 48, align: 'center', shrinkToFit: true },
-      { key: 'paidAt', header: 'Paid on', excelWidth: 12, pdfWidth: 52, align: 'center', shrinkToFit: true },
-      { key: 'methodCap', header: 'Method', excelWidth: 14, pdfWidth: 56, align: 'center', shrinkToFit: true },
     ];
   }
 
@@ -500,6 +496,8 @@ async function exportSalaryReport(filters = {}) {
     confidentialLabel: 'Staff salary report',
     subject: 'Staff salaries',
     columns: buildColumns(classLabels, { forPdf: format === 'pdf' }),
+    autoFitColumns: format === 'pdf',
+    mergeTotalLabel: format === 'pdf',
     rows: reportRows,
     meta,
     emptyMessage: 'No salary vouchers match the selected filters.',

@@ -224,7 +224,14 @@ function estimateExcelRowHeight(row, columns) {
   return Math.min(72, Math.max(20, 12 + lines * 13));
 }
 
-function drawPdfColumnLines(doc, columns, startX, y, height, { plain = false, brand, outer = false } = {}) {
+function drawPdfColumnLines(
+  doc,
+  columns,
+  startX,
+  y,
+  height,
+  { plain = false, brand, outer = false, skipInnerBefore = 0 } = {}
+) {
   const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
   doc.save();
   if (plain) {
@@ -234,7 +241,8 @@ function drawPdfColumnLines(doc, columns, startX, y, height, { plain = false, br
   }
   let x = startX;
   for (let i = 0; i <= columns.length; i += 1) {
-    doc.moveTo(x, y).lineTo(x, y + height).stroke();
+    // skipInnerBefore: no divider lines inside a merged label cell (e.g. "Grand Total").
+    if (!(i > 0 && i < skipInnerBefore)) doc.moveTo(x, y).lineTo(x, y + height).stroke();
     if (i < columns.length) x += columns[i].pdfWidth;
   }
   doc.moveTo(startX, y).lineTo(startX + tableWidth, y).stroke();
@@ -378,7 +386,7 @@ function drawPdfRow(
   y,
   zebra,
   brand,
-  { plain = false, fontSize: fontSizeOpt, minRowH: minRowHOpt, fixedRowH } = {}
+  { plain = false, fontSize: fontSizeOpt, minRowH: minRowHOpt, fixedRowH, mergeTotalLabel = false } = {}
 ) {
   const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
   const pad = plain ? 4 : 4;
@@ -460,7 +468,12 @@ function drawPdfRow(
     });
   }
   if (plain) {
-    drawPdfColumnLines(doc, columns, startX, y, rowH, { plain: true, brand, outer: true });
+    drawPdfColumnLines(doc, columns, startX, y, rowH, {
+      plain: true,
+      brand,
+      outer: true,
+      skipInnerBefore: mergeTotalLabel && totalRow ? firstTotalAmountIdx(columns) : 0,
+    });
     if (totalRow) {
       doc.save();
       doc.strokeColor('#111111').lineWidth(1.1);
@@ -619,6 +632,83 @@ function drawPdfFooterTextPlain(doc, brand, confidentialLabel, meta, page, pages
   pdfLine(doc, `Page ${page} of ${pages}`, left, y, { width: right - left, align: 'right' });
 }
 
+/**
+ * Opt-in (autoFitColumns): size every column from its real content so nothing is cut
+ * with "..." and every cell uses the SAME font size. Wrap columns may use 2+ lines
+ * (never splitting a word). If the table is still too wide, the whole table steps
+ * down one font size at a time — never a single cell.
+ */
+function autoFitPdfColumns(
+  doc,
+  columns,
+  rows,
+  usableWidth,
+  { pad = 4, startSize = 7, minSize = 5, headerSize = 7 } = {}
+) {
+  const fonts = pdfBodyFonts(doc);
+  const unicode = fonts.regular !== 'Helvetica';
+  const measure = (size) =>
+    columns.map((col) => {
+      let minW = 0;
+      let fullW = 0;
+      // Headings are drawn at a fixed size; they may break at spaces and hyphens only.
+      doc.font('Helvetica-Bold').fontSize(headerSize);
+      String(col.header || '')
+        .split(/\s+|(?<=-)/)
+        .forEach((w) => {
+          minW = Math.max(minW, doc.widthOfString(w));
+        });
+      rows.forEach((row) => {
+        const raw = formatPdfCellValue(col, row[col.key], { unicode });
+        if (!raw) return;
+        doc.font(isPdfTotalRow(row) ? fonts.bold : fonts.regular).fontSize(size);
+        const w = doc.widthOfString(raw);
+        fullW = Math.max(fullW, w);
+        if (col.wrap) {
+          raw.split(/\s+/).forEach((word) => {
+            minW = Math.max(minW, doc.widthOfString(word));
+          });
+        } else {
+          minW = Math.max(minW, w);
+        }
+      });
+      fullW = Math.max(fullW, minW);
+      const extra = Number(col.autoFitExtra) || 0;
+      return { min: Math.ceil(minW + pad * 2 + 1 + extra), full: Math.ceil(fullW + pad * 2 + 1 + extra) };
+    });
+
+  let size = startSize;
+  let m = measure(size);
+  while (size > minSize && m.reduce((a, c) => a + c.min, 0) > usableWidth) {
+    size -= 0.25;
+    m = measure(size);
+  }
+  const widths = m.map((c) => c.min);
+  let spare = usableWidth - widths.reduce((a, b) => a + b, 0);
+  // First let wrapped columns grow toward one line, then share what is left evenly.
+  if (spare > 0) {
+    columns.forEach((col, i) => {
+      if (!col.wrap || col.autoFitNoGrow || spare <= 0) return;
+      const add = Math.min(spare, m[i].full - widths[i]);
+      if (add > 0) {
+        widths[i] += add;
+        spare -= add;
+      }
+    });
+  }
+  if (spare > 0) {
+    const growable = columns.map((c, i) => (c.autoFitNoGrow ? -1 : i)).filter((i) => i >= 0);
+    const each = spare / Math.max(1, growable.length);
+    growable.forEach((i) => {
+      widths[i] += each;
+    });
+  }
+  const fitted = columns.map((col, i) => ({ ...col, pdfWidth: Math.floor(widths[i]) }));
+  const sum = fitted.reduce((a, c) => a + c.pdfWidth, 0);
+  fitted[fitted.length - 1].pdfWidth += usableWidth - sum;
+  return { columns: fitted, fontSize: size };
+}
+
 function scalePdfColumns(columns, usableWidth, plain) {
   let scaled = columns;
   const rawWidth = columns.reduce((sum, c) => sum + (Number(c.pdfWidth) || 0), 0);
@@ -648,6 +738,8 @@ async function renderBrandedPdf({
   fitOnePage = false,
   lightHeader = false,
   headerFill = null,
+  autoFitColumns = false,
+  mergeTotalLabel = false,
 }) {
   const brand = ACADEMY_BRAND;
   const logoPath = resolveLogoPath();
@@ -720,7 +812,18 @@ async function renderBrandedPdf({
       };
 
       const drawTable = (pageTitle, pageMeta, tableColumns, tableRows, emptyMsg) => {
-        const scaledColumns = scalePdfColumns(tableColumns, usableWidth, plain);
+        let scaledColumns;
+        let autoFontSize = null;
+        if (autoFitColumns && tableRows.length) {
+          const fit = autoFitPdfColumns(doc, tableColumns, tableRows, usableWidth, {
+            startSize: plain ? 7 : 7.5,
+            headerSize: plain ? (headerFill ? 6 : 7) : 7.5,
+          });
+          scaledColumns = fit.columns;
+          autoFontSize = fit.fontSize;
+        } else {
+          scaledColumns = scalePdfColumns(tableColumns, usableWidth, plain);
+        }
         const tableWidth = scaledColumns.reduce((sum, c) => sum + c.pdfWidth, 0);
         const sectionMeta = { ...pageMeta, _rowCount: tableRows.length };
         let y = startTablePage(pageTitle, sectionMeta, scaledColumns);
@@ -733,7 +836,8 @@ async function renderBrandedPdf({
           return;
         }
 
-        let rowOpts = { plain };
+        let rowOpts = autoFontSize != null ? { plain, fontSize: autoFontSize } : { plain };
+        if (mergeTotalLabel) rowOpts.mergeTotalLabel = true;
         // Fit one page only while rows stay readable; otherwise spill to page 2 with wrapping.
         let useFitOnePage = fitOnePage;
         if (fitOnePage) {
@@ -757,6 +861,7 @@ async function renderBrandedPdf({
             const nextRowH = pdfRowHeight(doc, scaledColumns, row, {
               pad: plain ? 4 : 4,
               minRowH: isPdfTotalRow(row) ? 18 : 16,
+              ...(autoFontSize != null ? { fontSize: autoFontSize } : {}),
             });
             if (y + nextRowH > bottomLimit()) {
               doc.addPage();
