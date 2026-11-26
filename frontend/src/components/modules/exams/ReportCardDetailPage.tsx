@@ -39,6 +39,7 @@ import {
 } from "@/lib/examApi";
 import { matchesPanelSearch } from "@/lib/panelSearch";
 import { recordIsAbsent } from "@/lib/marksValidation";
+import { gradeRemarks, isUngraded, letterGrade } from "@/lib/examGrading";
 import { cn } from "@/lib/utils";
 import { AbsentBadge } from "@/components/modules/exams/MarksAbsentToggle";
 
@@ -87,18 +88,6 @@ function reportPct(obtained: number, total: number) {
   return Math.round((obtained / total) * 1000) / 10;
 }
 
-function reportLetterGrade(pct: number) {
-  if (pct >= 95) return "A+";
-  if (pct >= 85) return "A";
-  if (pct >= 75) return "B";
-  if (pct >= 60) return "C";
-  if (pct >= 50) return "D";
-  return "F";
-}
-
-function reportOverallResult(pct: number) {
-  return pct < 50 ? "Fail" : "Pass";
-}
 
 const tableHeadClass = "p-3 font-medium text-slate-600 text-left";
 const tableCellClass = "p-3 border-t border-slate-100";
@@ -299,37 +288,40 @@ export default function ReportCardDetailPage({
   const stats = useMemo(() => {
     if (kind === "test") {
       const total = allTestStudents.length;
-      let passed = 0;
+      let graded = 0;
       let pctSum = 0;
       allTestStudents.forEach((row) => {
         const pct = reportPct(row.obtainedTotal, row.marksTotal);
         pctSum += pct;
-        if (reportOverallResult(pct) === "Pass") passed += 1;
+        if (!row.isFullyAbsent && !isUngraded(pct)) graded += 1;
       });
       return {
         total,
-        passed,
-        failed: Math.max(0, total - passed),
+        graded,
+        ungraded: Math.max(0, total - graded),
         avgPct: total ? Math.round((pctSum / total) * 10) / 10 : 0,
       };
     }
     const total = allExamStudents.length;
-    let passed = 0;
+    let graded = 0;
     let pctSum = 0;
     allExamStudents.forEach((r) => {
       const obtained = Number(r.obtainedMarks) || 0;
       const marks = Number(r.totalMarks) || 0;
+      const subjectMarks = r.subjectMarks || [];
+      const isFullyAbsent =
+        subjectMarks.length > 0 && subjectMarks.every((m) => recordIsAbsent(m));
       const pct =
         r.percentage != null
           ? Math.round(Number(r.percentage) * 10) / 10
           : reportPct(obtained, marks);
       pctSum += pct;
-      if (reportOverallResult(pct) === "Pass") passed += 1;
+      if (!isFullyAbsent && !isUngraded(pct)) graded += 1;
     });
     return {
       total,
-      passed,
-      failed: Math.max(0, total - passed),
+      graded,
+      ungraded: Math.max(0, total - graded),
       avgPct: total ? Math.round((pctSum / total) * 10) / 10 : 0,
     };
   }, [kind, allTestStudents, allExamStudents]);
@@ -466,17 +458,17 @@ export default function ReportCardDetailPage({
           iconClass="text-[#2563eb]"
         />
         <PanelStatCard
-          label="Passed"
-          value={studentsLoading ? "…" : stats.passed}
-          hint={stats.total ? `${Math.round((stats.passed / stats.total) * 100)}% of class` : "—"}
+          label="Graded"
+          value={studentsLoading ? "…" : stats.graded}
+          hint={stats.total ? `${Math.round((stats.graded / stats.total) * 100)}% ≥ 40%` : "—"}
           icon={CheckCircle2}
           iconWrapClass="bg-[#d1fae5]"
           iconClass="text-[#059669]"
         />
         <PanelStatCard
-          label="Failed"
-          value={studentsLoading ? "…" : stats.failed}
-          hint={stats.total ? `${Math.round((stats.failed / stats.total) * 100)}% of class` : "—"}
+          label="Ungraded"
+          value={studentsLoading ? "…" : stats.ungraded}
+          hint={stats.total ? `${Math.round((stats.ungraded / stats.total) * 100)}% below 40%` : "—"}
           icon={XCircle}
           iconWrapClass="bg-[#fee2e2]"
           iconClass="text-[#dc2626]"
@@ -561,7 +553,7 @@ export default function ReportCardDetailPage({
                   <th className={tableHeadClass}>Total marks</th>
                   <th className={tableHeadClass}>%age</th>
                   <th className={tableHeadClass}>Grade</th>
-                  <th className={tableHeadClass}>Result</th>
+                  <th className={tableHeadClass}>Remarks</th>
                   <th className={cn(tableHeadClass, "text-right")}>Action</th>
                 </tr>
               </thead>
@@ -573,11 +565,9 @@ export default function ReportCardDetailPage({
                   const obtained = row.obtainedTotal;
                   const total = row.marksTotal;
                   const pct = reportPct(obtained, total);
-                  const grade = row.isFullyAbsent ? "—" : reportLetterGrade(pct);
-                  const result = row.isFullyAbsent
-                    ? "Absent"
-                    : reportOverallResult(pct);
-                  const fail = result === "Fail";
+                  const grade = row.isFullyAbsent ? "—" : letterGrade(pct);
+                  const remarks = row.isFullyAbsent ? "Absent" : gradeRemarks(pct);
+                  const low = remarks === "Absent" || isUngraded(pct);
                   return (
                     <tr key={row.student._id} className="hover:bg-slate-50/60">
                       <td className={cn(tableCellClass, "tabular-nums text-muted-foreground")}>
@@ -622,10 +612,10 @@ export default function ReportCardDetailPage({
                           <AbsentBadge />
                         ) : (
                           <Badge
-                            variant={fail ? "destructive" : "secondary"}
+                            variant={low ? "destructive" : "secondary"}
                             className="text-[10px]"
                           >
-                            {result}
+                            {remarks}
                           </Badge>
                         )}
                       </td>
@@ -684,7 +674,7 @@ export default function ReportCardDetailPage({
                   <th className={tableHeadClass}>Total marks</th>
                   <th className={tableHeadClass}>%age</th>
                   <th className={tableHeadClass}>Grade</th>
-                  <th className={tableHeadClass}>Result</th>
+                  <th className={tableHeadClass}>Remarks</th>
                   <th className={cn(tableHeadClass, "text-right")}>Action</th>
                 </tr>
               </thead>
@@ -703,13 +693,9 @@ export default function ReportCardDetailPage({
                     r.percentage != null
                       ? Math.round(Number(r.percentage) * 10) / 10
                       : reportPct(obtained, total);
-                  const grade = isFullyAbsent
-                    ? "—"
-                    : r.grade || reportLetterGrade(pct);
-                  const result = isFullyAbsent
-                    ? "Absent"
-                    : reportOverallResult(pct);
-                  const fail = result === "Fail";
+                  const grade = isFullyAbsent ? "—" : letterGrade(pct);
+                  const remarks = isFullyAbsent ? "Absent" : gradeRemarks(pct);
+                  const low = remarks === "Absent" || isUngraded(pct);
                   return (
                     <tr key={r._id} className="hover:bg-slate-50/60">
                       <td className={cn(tableCellClass, "tabular-nums text-muted-foreground")}>
@@ -759,10 +745,10 @@ export default function ReportCardDetailPage({
                           <AbsentBadge />
                         ) : (
                           <Badge
-                            variant={fail ? "destructive" : "secondary"}
+                            variant={low ? "destructive" : "secondary"}
                             className="text-[10px]"
                           >
-                            {result}
+                            {remarks}
                           </Badge>
                         )}
                       </td>

@@ -1,6 +1,6 @@
 const PDFDocument = require('pdfkit');
 const { ACADEMY_BRAND, resolveLogoPath } = require('../config/academyBrand');
-const { letterGrade } = require('./exam/examGrading');
+const { letterGrade, gradeRemarks, isUngraded, PASS_MIN_PCT } = require('./exam/examGrading');
 
 const LINE = '#C5CED9';
 const LINE_STRONG = '#0E2A4E';
@@ -35,23 +35,29 @@ function subjectNameOf(sm) {
   return 'Subject';
 }
 
-function isFailMark(obtained, total, remarks) {
-  const rem = String(remarks || '').toLowerCase();
-  if (rem.includes('absent')) return true;
+function isAbsentMark(remarks, isAbsentFlag) {
+  if (isAbsentFlag) return true;
+  return String(remarks || '')
+    .toLowerCase()
+    .includes('absent');
+}
+
+function isLowMark(obtained, total, remarks, isAbsentFlag) {
+  if (isAbsentMark(remarks, isAbsentFlag)) return true;
   const t = Number(total) || 0;
   const o = Number(obtained);
   if (Number.isNaN(o)) return true;
   if (t <= 0) return false;
-  return (o / t) * 100 < 33;
+  return (o / t) * 100 < PASS_MIN_PCT;
 }
 
-function overallResultLabel(result) {
-  const grade = String(result.grade || '').toUpperCase();
-  const pct = Number(result.percentage) || 0;
-  if (grade === 'F' || pct < 50) return 'Fail';
+function overallRemarksLabel(result) {
   const marks = result.subjectMarks || [];
-  if (marks.some((sm) => isFailMark(sm.obtained, sm.total, sm.remarks))) return 'Fail';
-  return 'Pass';
+  if (marks.length && marks.every((sm) => isAbsentMark(sm.remarks, sm.isAbsent))) {
+    return 'Absent';
+  }
+  const pct = Number(result.percentage) || 0;
+  return gradeRemarks(pct);
 }
 
 function fitText(doc, text, maxWidth) {
@@ -253,8 +259,8 @@ async function renderResultCardPdf(result) {
       const examType = String(exam.type || '').trim();
       const sessionLabel = String(exam.sessionLabel || '').trim();
       const subjects = Array.isArray(result.subjectMarks) ? result.subjectMarks : [];
-      const resultLabel = overallResultLabel(result);
-      const isFail = resultLabel === 'Fail';
+      const remarksLabel = overallRemarksLabel(result);
+      const isLowOverall = remarksLabel === 'Absent' || isUngraded(Number(result.percentage) || 0);
 
       // —— Letterhead ——
       let y = drawLetterhead(doc, ACADEMY_BRAND, logoPath, margin);
@@ -326,8 +332,8 @@ async function renderResultCardPdf(result) {
       y += infoH + 12;
 
       // —— Marks table ——
-      const headers = ['Sr.', 'Subject', 'Total', 'Obtained', '%age', 'Grade'];
-      const colWs = [32, contentW - 32 - 58 - 62 - 52 - 48, 58, 62, 52, 48];
+      const headers = ['Sr.', 'Subject', 'Total', 'Obtained', '%age', 'Grade', 'Remarks'];
+      const colWs = [28, contentW - 28 - 50 - 54 - 44 - 40 - 78, 50, 54, 44, 40, 78];
       const rowH = 20;
       const headerH = 22;
 
@@ -389,13 +395,12 @@ async function renderResultCardPdf(result) {
           const obtained = sm.obtained;
           const total = sm.total;
           const rem = String(sm.remarks || '');
-          const absent = rem.toLowerCase().includes('absent');
+          const absent = isAbsentMark(rem, sm.isAbsent);
           const omText = absent ? 'Absent' : obtained != null ? String(obtained) : '—';
           const pct = absent ? 0 : pctOf(obtained, total);
-          const failCell = isFailMark(obtained, total, rem);
-          const grade =
-            sm.grade ||
-            (absent ? '—' : Number.isFinite(pct) ? letterGrade(pct) : '—');
+          const lowCell = isLowMark(obtained, total, rem, sm.isAbsent);
+          const grade = absent ? '—' : Number.isFinite(pct) ? letterGrade(pct) : '—';
+          const subjectRemarks = absent ? 'Absent' : gradeRemarks(pct);
           const zebra = idx % 2 === 1 ? ZEBRA : WHITE;
 
           const cells = [
@@ -405,13 +410,14 @@ async function renderResultCardPdf(result) {
             omText,
             `${pct}%`,
             grade || '—',
+            subjectRemarks,
           ];
           x = margin;
           cells.forEach((text, i) => {
-            const highlight = failCell && (i === 3 || i === 4 || i === 5);
+            const highlight = lowCell && (i === 3 || i === 4 || i === 5 || i === 6);
             drawCell(doc, text, x, y, colWs[i], rowH, {
               bold: i === 1 || highlight,
-              fontSize: 9,
+              fontSize: i === 6 ? 7.5 : 9,
               fill: highlight ? FAIL_BG : zebra,
               textColor: highlight ? FAIL_TEXT : '#111111',
               align: i === 1 ? 'left' : 'center',
@@ -433,7 +439,7 @@ async function renderResultCardPdf(result) {
         result.percentage != null
           ? Math.round(Number(result.percentage) * 10) / 10
           : pctOf(obtainedMarks, totalMarks);
-      const overallGrade = result.grade || letterGrade(overallPct);
+      const overallGrade = letterGrade(overallPct);
       const gpaText = result.gpa != null ? Number(result.gpa).toFixed(1) : '—';
 
       const summaryH = 42;
@@ -443,7 +449,7 @@ async function renderResultCardPdf(result) {
         { label: 'PERCENTAGE', value: `${overallPct}%` },
         { label: 'GRADE', value: overallGrade || '—' },
         { label: 'GPA', value: gpaText },
-        { label: 'RESULT', value: resultLabel.toUpperCase(), isResult: true },
+        { label: 'REMARKS', value: remarksLabel, isRemarks: true },
       ];
       const sColW = contentW / sCols.length;
 
@@ -466,21 +472,21 @@ async function renderResultCardPdf(result) {
         doc.font('Helvetica').fontSize(6.5).fillColor(MUTED);
         doc.text(c.label, cx + 4, y + 7, { width: sColW - 8, align: 'center', lineBreak: false });
 
-        if (c.isResult) {
-          const badgeW = Math.min(64, sColW - 12);
+        if (c.isRemarks) {
+          const badgeW = Math.min(88, sColW - 8);
           const badgeH = 15;
           const badgeX = cx + (sColW - badgeW) / 2;
           const badgeY = y + 20;
           drawRoundedRect(doc, badgeX, badgeY, badgeW, badgeH, 8, {
-            fill: isFail ? FAIL_BG : '#E8F5E9',
-            stroke: isFail ? FAIL_TEXT : PASS_TEXT,
+            fill: isLowOverall ? FAIL_BG : '#E8F5E9',
+            stroke: isLowOverall ? FAIL_TEXT : PASS_TEXT,
             lineWidth: 0.7,
           });
           doc
             .font('Helvetica-Bold')
-            .fontSize(8.5)
-            .fillColor(isFail ? FAIL_TEXT : PASS_TEXT)
-            .text(c.value, badgeX, badgeY + 3, {
+            .fontSize(7)
+            .fillColor(isLowOverall ? FAIL_TEXT : PASS_TEXT)
+            .text(fitText(doc, c.value, badgeW - 6), badgeX, badgeY + 3.5, {
               width: badgeW,
               align: 'center',
               lineBreak: false,
@@ -499,27 +505,27 @@ async function renderResultCardPdf(result) {
       });
       y += summaryH + 10;
 
-      // —— Remarks ——
+      // —— Teacher / examiner note (optional free text) ——
       if (result.remarks) {
-        const remarksH = 32;
-        drawRoundedRect(doc, margin, y, contentW, remarksH, 3, {
+        const notesH = 32;
+        drawRoundedRect(doc, margin, y, contentW, notesH, 3, {
           fill: '#FAFBFC',
           stroke: LINE,
         });
         doc.font('Helvetica-Bold').fontSize(7.5).fillColor(NAVY);
-        doc.text('REMARKS', margin + 10, y + 6, { lineBreak: false });
+        doc.text('NOTES', margin + 10, y + 6, { lineBreak: false });
         doc.font('Helvetica').fontSize(8.5).fillColor('#222222');
         doc.text(fitText(doc, String(result.remarks), contentW - 20), margin + 10, y + 17, {
           width: contentW - 20,
           lineBreak: false,
         });
-        y += remarksH + 8;
+        y += notesH + 8;
       }
 
       // —— Grade key (compact) ——
-      doc.font('Helvetica').fontSize(6.5).fillColor(MUTED);
+      doc.font('Helvetica').fontSize(6).fillColor(MUTED);
       doc.text(
-        'Grading: A+ ≥95  ·  A ≥85  ·  B ≥75  ·  C ≥60  ·  D ≥50  ·  F <50    |    Subject fail below 33%',
+        'Grading: A++ 96–100 · A+ 91–95 · A 86–90 · B++ 81–85 · B+ 76–80 · B 71–75 · C+ 61–70 · C 51–60 · D 40–50 · U below 40',
         margin,
         y,
         { width: contentW, align: 'center', lineBreak: false }

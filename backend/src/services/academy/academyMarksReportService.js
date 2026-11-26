@@ -13,16 +13,14 @@ const AcademyClassTest = require('../../models/academy/AcademyClassTest');
 const AcademyAssessment = require('../../models/academy/AcademyAssessment');
 const ApiError = require('../../utils/ApiError');
 const { isEnrolledInSubject } = require('./studentEnrollment');
-const { letterGrade } = require('../exam/examGrading');
+const { letterGrade, gradeRemarks, isUngraded, PASS_MIN_PCT } = require('../exam/examGrading');
 const { renderResultCardPdf } = require('../pdfService');
 const { sortStudentsByRollAsc } = require('../../utils/academyStudentSort');
 
 const LINE = '#000000';
 const GRAY = '#D0D0D0';
-const FAIL_PCT = 33;
-const OVERALL_FAIL_PCT = 50;
-/** Highlight cells at or below this share of subject total (matches sample sheet). */
-const LOW_MARK_PCT = 40;
+/** Highlight cells at or below this share of subject total (U / Ungraded band). */
+const LOW_MARK_PCT = PASS_MIN_PCT;
 
 function formatDate(value) {
   if (!value) return '';
@@ -129,14 +127,14 @@ function cellIsAbsent(cell) {
   return isAbsent(cell.remarks, cell.isAbsent);
 }
 
-function isFailMark(obtained, total, remarks, isAbsentFlag) {
+function isLowMark(obtained, total, remarks, isAbsentFlag) {
   if (isAbsent(remarks, isAbsentFlag)) return true;
   if (obtained == null || obtained === '') return false;
   const t = Number(total) || 0;
   const o = Number(obtained);
   if (Number.isNaN(o)) return true;
   if (t <= 0) return false;
-  return (o / t) * 100 < FAIL_PCT;
+  return (o / t) * 100 < PASS_MIN_PCT;
 }
 
 function shouldHighlightMark(obtained, total, remarks, isAbsentFlag) {
@@ -146,23 +144,15 @@ function shouldHighlightMark(obtained, total, remarks, isAbsentFlag) {
   const t = Number(total) || 0;
   if (Number.isNaN(o)) return true;
   if (o === 0) return true;
-  if (t > 0 && (o / t) * 100 <= LOW_MARK_PCT) return true;
-  return isFailMark(obtained, total, remarks, isAbsentFlag);
+  if (t > 0 && (o / t) * 100 < LOW_MARK_PCT) return true;
+  return isLowMark(obtained, total, remarks, isAbsentFlag);
 }
 
-function overallResultLabel({ percentage, grade, subjectCells }) {
-  const g = String(grade || '').toUpperCase();
-  const pct = Number(percentage) || 0;
-  if (g === 'F' || pct < OVERALL_FAIL_PCT) return 'Fail';
-  if (
-    (subjectCells || []).some(
-      (c) => c && isFailMark(c.obtained, c.total, c.remarks, c.isAbsent)
-    )
-  ) {
-    return 'Fail';
-  }
-  if ((subjectCells || []).some((c) => c && cellIsAbsent(c))) return 'Fail';
-  return 'Pass';
+/** Grade-scale remarks (Extraordinary…Ungraded), or Absent. */
+function overallRemarksLabel({ percentage, subjectCells }) {
+  const cells = (subjectCells || []).filter(Boolean);
+  if (cells.length && cells.every((c) => cellIsAbsent(c))) return 'Absent';
+  return gradeRemarks(Number(percentage) || 0);
 }
 
 function drawCell(doc, text, x, y, w, h, opts = {}) {
@@ -315,7 +305,7 @@ function drawReportHeader(doc, meta, margin = 36, contentW) {
 
 /**
  * Excel-style class marksheet (matches academy Test/Exam result sheet):
- * Row1: Subject | Biology | … | Total | Result
+ * Row1: Subject | Biology | … | Total | Remarks
  * Row2: Total Marks | 25 | … | 175 |
  * Row3: Sr.# | Student Id | Name | Matric % | O.M | %age | … | Obtained | %age |
  */
@@ -342,7 +332,7 @@ function renderClassMarksheetPdf(payload) {
     const matricW = 40;
     const totalOmW = 44;
     const totalPctW = 40;
-    const resultW = 40;
+    const resultW = 72;
     const identityW = srW + idW + nameW + matricW;
     const fixedRight = totalOmW + totalPctW + resultW;
     const subjectBudget = Math.max(70, contentW - identityW - fixedRight);
@@ -355,7 +345,7 @@ function renderClassMarksheetPdf(payload) {
     function drawTableHeader(y) {
       let x = margin;
 
-      // —— Row 1: Subject | subject names | Total | Result ——
+      // —— Row 1: Subject | subject names | Total | Remarks ——
       drawCell(doc, 'Subject', x, y, identityW, hSubject, {
         bold: true,
         fontSize: 7,
@@ -373,7 +363,7 @@ function renderClassMarksheetPdf(payload) {
         fill: GRAY,
       });
       x += totalOmW + totalPctW;
-      drawCell(doc, 'Result', x, y, resultW, headerH, {
+      drawCell(doc, 'Remarks', x, y, resultW, headerH, {
         bold: true,
         fontSize: 7,
         fill: GRAY,
@@ -494,9 +484,8 @@ function renderClassMarksheetPdf(payload) {
         }
       });
 
-      // Pass/Fail only when every enrolled subject on this sheet is completed.
-      // Partial entry → provisional % from marked subjects only; Result stays blank
-      // (avoids false Pass on one subject and false Fail from blank columns).
+      // Remarks only when every enrolled subject on this sheet is completed.
+      // Partial entry → provisional % from marked subjects only; Remarks stays blank.
       const sheetComplete =
         enrolledCount > 0 && completedCount === enrolledCount;
 
@@ -522,16 +511,14 @@ function renderClassMarksheetPdf(payload) {
             ? pctOf(obtainedTotal, marksTotal)
             : null;
 
-      const result =
-        row.result ||
-        (sheetComplete && percentage != null
-          ? overallResultLabel({
+      const remarks =
+        sheetComplete && percentage != null
+          ? overallRemarksLabel({
               percentage,
-              grade: row.grade,
               subjectCells: row.cells,
             })
-          : '');
-      const isFail = result === 'Fail';
+          : '';
+      const isLow = remarks === 'Absent' || (remarks && isUngraded(percentage));
 
       drawCell(
         doc,
@@ -548,11 +535,11 @@ function renderClassMarksheetPdf(payload) {
         bold: true,
       });
       x += totalPctW;
-      drawCell(doc, result, x, y, resultW, rowH, {
-        fontSize: fs,
+      drawCell(doc, remarks, x, y, resultW, rowH, {
+        fontSize: Math.min(fs, 5.5),
         bold: true,
-        fill: result ? GRAY : null,
-        textColor: isFail ? '#B91C1C' : '#000',
+        fill: remarks ? GRAY : null,
+        textColor: isLow ? '#B91C1C' : '#000',
       });
     }
 
@@ -791,9 +778,8 @@ async function renderExamStudentWisePdf(exam, students, resultByStudent, student
         first = false;
         const result = resultByStudent[String(student._id)];
         const subjects = Array.isArray(result.subjectMarks) ? result.subjectMarks : [];
-        const resultLabel = overallResultLabel({
+        const remarksLabel = overallRemarksLabel({
           percentage: result.percentage,
-          grade: result.grade,
           subjectCells: subjects.map((sm) => ({
             obtained: sm.obtained,
             total: sm.total,
@@ -801,7 +787,7 @@ async function renderExamStudentWisePdf(exam, students, resultByStudent, student
             isAbsent: Boolean(sm.isAbsent),
           })),
         });
-        const isFail = resultLabel === 'Fail';
+        const isLow = remarksLabel === 'Absent' || isUngraded(Number(result.percentage) || 0);
 
         const subjectNames = subjects
           .map((sm) =>
@@ -874,7 +860,7 @@ async function renderExamStudentWisePdf(exam, students, resultByStudent, student
           const absent = cellIsAbsent(sm);
           const omText = absent ? 'Absent' : sm.obtained != null ? String(sm.obtained) : '—';
           const pct = absent ? 0 : pctOf(sm.obtained, sm.total);
-          const fail = isFailMark(sm.obtained, sm.total, sm.remarks, sm.isAbsent);
+          const fail = isLowMark(sm.obtained, sm.total, sm.remarks, sm.isAbsent);
           const subName =
             typeof sm.subject === 'object' && sm.subject
               ? sm.subject.subjectName || sm.subject.subjectCode || 'Subject'
@@ -885,7 +871,7 @@ async function renderExamStudentWisePdf(exam, students, resultByStudent, student
             String(sm.total ?? '—'),
             omText,
             `${pct}%`,
-            sm.grade || letterGrade(pct),
+            absent ? '—' : letterGrade(pct),
           ];
           x = margin;
           vals.forEach((text, i) => {
@@ -911,15 +897,15 @@ async function renderExamStudentWisePdf(exam, students, resultByStudent, student
                 ? `${Math.round(Number(result.percentage) * 10) / 10}%`
                 : '',
           },
-          { label: 'Result', value: resultLabel },
+          { label: 'Remarks', value: remarksLabel },
         ];
         const sw = contentW / summary.length;
         summary.forEach((c, i) => {
           drawCell(doc, `${c.label}: ${c.value}`, margin + i * sw, y, sw, 24, {
             bold: true,
-            fontSize: 9,
-            fill: c.label === 'Result' ? GRAY : null,
-            textColor: c.label === 'Result' && isFail ? '#B91C1C' : '#000',
+            fontSize: c.label === 'Remarks' ? 7.5 : 9,
+            fill: c.label === 'Remarks' ? GRAY : null,
+            textColor: c.label === 'Remarks' && isLow ? '#B91C1C' : '#000',
           });
         });
       });
@@ -1265,12 +1251,11 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
         const totalSum = subjectRows.reduce((sum, c) => sum + (Number(c.total) || 0), 0);
         const pct = pctOf(obtainedSum, totalSum);
         const grade = letterGrade(pct);
-        const overallResult = overallResultLabel({
+        const overallRemarks = overallRemarksLabel({
           percentage: pct,
-          grade,
           subjectCells,
         });
-        const failOverall = overallResult === 'Fail';
+        const lowOverall = overallRemarks === 'Absent' || isUngraded(pct);
 
         let y = drawReportHeader(
           doc,
@@ -1333,8 +1318,8 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
         doc.text('SUBJECT-WISE RESULT', margin, y, { lineBreak: false });
         y += 10;
 
-        const headers = ['Sr.', 'Subject', 'Total', 'Obtained', '%age', 'Grade', 'Result'];
-        const colWs = [36, contentW - 36 - 58 - 62 - 52 - 48 - 58, 58, 62, 52, 48, 58];
+        const headers = ['Sr.', 'Subject', 'Total', 'Obtained', '%age', 'Grade', 'Remarks'];
+        const colWs = [32, contentW - 32 - 50 - 54 - 44 - 40 - 78, 50, 54, 44, 40, 78];
         const rowH = 22;
         const headerH = 24;
         let x = margin;
@@ -1352,8 +1337,8 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
           const absent = cellIsAbsent(cell);
           const cellPct = absent ? 0 : pctOf(cell.obtained, cell.total);
           const cellGrade = absent ? '—' : letterGrade(cellPct);
-          const cellFail = isFailMark(cell.obtained, cell.total, cell.remarks, cell.isAbsent);
-          const subjectResult = absent ? 'Absent' : cellFail ? 'Fail' : 'Pass';
+          const cellLow = isLowMark(cell.obtained, cell.total, cell.remarks, cell.isAbsent);
+          const subjectRemarks = absent ? 'Absent' : gradeRemarks(cellPct);
           const zebra = idx % 2 === 1 ? '#F4F4F4' : null;
           const vals = [
             String(idx + 1),
@@ -1362,16 +1347,16 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
             absent ? 'Absent' : cell.obtained == null ? '—' : String(cell.obtained),
             cell.obtained == null && !absent ? '—' : `${cellPct}%`,
             cellGrade,
-            subjectResult,
+            subjectRemarks,
           ];
           x = margin;
           vals.forEach((text, i) => {
-            const isResultCol = i === 6;
+            const isRemarksCol = i === 6;
             drawCell(doc, text, x, y, colWs[i], rowH, {
-              bold: i === 1 || isResultCol,
-              fontSize: 9,
-              fill: isResultCol && cellFail ? GRAY : zebra,
-              textColor: isResultCol && cellFail ? '#B91C1C' : '#000',
+              bold: i === 1 || isRemarksCol,
+              fontSize: isRemarksCol ? 7.5 : 9,
+              fill: isRemarksCol && cellLow ? GRAY : zebra,
+              textColor: isRemarksCol && cellLow ? '#B91C1C' : '#000',
               align: i === 1 ? 'left' : 'center',
             });
             x += colWs[i];
@@ -1383,7 +1368,7 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
         y += 10;
         const sumH = 28;
         doc.save();
-        doc.rect(margin, y, contentW, sumH).fill(failOverall ? GRAY : '#E8EEF5');
+        doc.rect(margin, y, contentW, sumH).fill(lowOverall ? GRAY : '#E8EEF5');
         doc.restore();
         doc.rect(margin, y, contentW, sumH).strokeColor(LINE).lineWidth(0.8).stroke();
 
@@ -1391,7 +1376,7 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
           { label: 'Obtained', value: `${obtainedSum} / ${totalSum}` },
           { label: 'Percentage', value: `${pct}%` },
           { label: 'Grade', value: grade || '—' },
-          { label: 'Overall Result', value: overallResult },
+          { label: 'Remarks', value: overallRemarks },
         ];
         const sw = contentW / summaryCols.length;
         summaryCols.forEach((c, i) => {
@@ -1400,8 +1385,8 @@ async function renderClassTestStudentWisePdf(test, rows, labels) {
           doc.text(c.label, sx + 6, y + 4, { width: sw - 12, align: 'center', lineBreak: false });
           doc
             .font('Helvetica-Bold')
-            .fontSize(10)
-            .fillColor(c.label === 'Overall Result' && failOverall ? '#B91C1C' : '#000');
+            .fontSize(c.label === 'Remarks' ? 8.5 : 10)
+            .fillColor(c.label === 'Remarks' && lowOverall ? '#B91C1C' : '#000');
           doc.text(c.value, sx + 6, y + 14, { width: sw - 12, align: 'center', lineBreak: false });
         });
       });

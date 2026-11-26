@@ -18,6 +18,7 @@ import {
   type AcademyStudent,
 } from "@/lib/studentManagementApi";
 import { downloadBlobFile } from "@/lib/downloadFile";
+import { letterGrade } from "@/lib/examGrading";
 import { classLabel } from "@/components/modules/student-management/studentDisplayUtils";
 import { cn } from "@/lib/utils";
 
@@ -71,14 +72,6 @@ function classSectionLine(student: AcademyStudent) {
   return [className, section].filter(Boolean).join(" · ");
 }
 
-function pctToGrade(pct: number): string {
-  if (pct >= 90) return "A+";
-  if (pct >= 80) return "A";
-  if (pct >= 70) return "B+";
-  if (pct >= 60) return "B";
-  if (pct >= 50) return "C";
-  return "D";
-}
 
 function subjectMarkLabel(mark: ExamResult["subjectMarks"][number]): string {
   const subject = mark.subject;
@@ -149,7 +142,7 @@ function subjectLinesFor(row: ReportRow): SubjectLine[] {
         name: subjectMarkLabel(mark),
         total: mark.total,
         obtained: mark.obtained,
-        grade: mark.grade || pctToGrade(pct),
+        grade: mark.grade || letterGrade(pct),
       };
     });
   }
@@ -163,7 +156,7 @@ function subjectLinesFor(row: ReportRow): SubjectLine[] {
       name: subject,
       total: item.totalMarks,
       obtained: item.obtainedMarks,
-      grade: pctToGrade(pct),
+      grade: letterGrade(pct),
     };
   });
 }
@@ -237,7 +230,7 @@ export default function ParentMobileReportCard() {
           totalMarks: result.totalMarks,
           obtainedMarks: result.obtainedMarks,
           percentage: Number(result.percentage) || 0,
-          grade: result.grade || pctToGrade(Number(result.percentage) || 0),
+          grade: result.grade || letterGrade(Number(result.percentage) || 0),
           examResult: result,
         };
       });
@@ -264,7 +257,7 @@ export default function ParentMobileReportCard() {
         totalMarks,
         obtainedMarks,
         percentage: pct,
-        grade: pctToGrade(pct),
+        grade: letterGrade(pct),
         assessments: byDate,
       };
     });

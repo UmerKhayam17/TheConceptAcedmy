@@ -67,6 +67,7 @@ import { classLabel as academyClassLabel } from "@/components/modules/student-ma
 import { formatDateSheetDate } from "@/components/modules/exams/dateSheetBatch";
 import { ParentStudentBanner } from "@/components/modules/timetable/parent-schedule/ParentStudentBanner";
 import { cn, formatWallClock } from "@/lib/utils";
+import { gradeRemarks, isUngraded, letterGrade } from "@/lib/examGrading";
 import { recordIsAbsent } from "@/lib/marksValidation";
 import { AbsentBadge } from "@/components/modules/exams/MarksAbsentToggle";
 import { useToast } from "@/hooks/use-toast";
@@ -250,14 +251,6 @@ function isStillUpcoming(sortKey: string, time?: string): boolean {
   return now.getHours() * 60 + now.getMinutes() <= endMins;
 }
 
-function pctToGrade(pct: number): string {
-  if (pct >= 90) return "A+";
-  if (pct >= 80) return "A";
-  if (pct >= 70) return "B+";
-  if (pct >= 60) return "B";
-  if (pct >= 50) return "C";
-  return "D";
-}
 
 function formatShortDate(value?: string) {
   if (!value) return "—";
@@ -307,9 +300,6 @@ function formatSlashDate(value?: string) {
   return `${dd}/${mm}/${d.getFullYear()}`;
 }
 
-function passFail(pct: number) {
-  return pct >= 40 ? "Pass" : "Fail";
-}
 
 function UnderlineField({
   label,
@@ -464,7 +454,7 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
         totalMarks: r.totalMarks,
         obtainedMarks: r.obtainedMarks,
         percentage: Number(r.percentage) || 0,
-        grade: r.grade || pctToGrade(Number(r.percentage) || 0),
+        grade: r.grade || letterGrade(Number(r.percentage) || 0),
         isFullyAbsent,
         hasAbsent,
         examResult: r,
@@ -488,7 +478,7 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
         totalMarks: a.totalMarks,
         obtainedMarks: a.obtainedMarks,
         percentage: pct,
-        grade: pctToGrade(pct),
+        grade: letterGrade(pct),
         isFullyAbsent: absent,
         hasAbsent: absent,
         assessment: a,
@@ -1581,8 +1571,8 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                     total: m.total,
                     obtained: m.obtained,
                     pct,
-                    grade: absent ? "—" : m.grade || pctToGrade(pct),
-                    result: absent ? "Absent" : passFail(pct),
+                    grade: absent ? "—" : letterGrade(pct),
+                    result: absent ? "Absent" : gradeRemarks(pct),
                     isAbsent: absent,
                   };
                 })
@@ -1607,10 +1597,10 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                     pct: Number(viewRow.percentage) || 0,
                     grade: viewRow.isFullyAbsent
                       ? "—"
-                      : viewRow.grade || pctToGrade(Number(viewRow.percentage) || 0),
+                      : letterGrade(Number(viewRow.percentage) || 0),
                     result: viewRow.isFullyAbsent
                       ? "Absent"
-                      : passFail(Number(viewRow.percentage) || 0),
+                      : gradeRemarks(Number(viewRow.percentage) || 0),
                     isAbsent: viewRow.isFullyAbsent,
                   },
                 ];
@@ -1619,7 +1609,7 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
             const overallPct = Number(viewRow.percentage) || 0;
             const overallResult = viewRow.isFullyAbsent
               ? "Absent"
-              : passFail(overallPct);
+              : gradeRemarks(overallPct);
             const ct =
               viewRow.kind === "test" && viewRow.assessment
                 ? viewRow.assessment.classTestId
@@ -1785,7 +1775,7 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                             Grade
                           </th>
                           <th className="border-b border-[#0F172A] px-2 py-1.5 font-bold text-center">
-                            Result
+                            Remarks
                           </th>
                         </tr>
                       </thead>
@@ -1820,9 +1810,10 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                             <td
                               className={cn(
                                 "border-t border-slate-300 px-2 py-1.5 text-center font-bold",
-                                row.result === "Pass"
-                                  ? "text-[#0F172A]"
-                                  : "text-rose-700",
+                                row.result === "Absent" ||
+                                  row.result === "Ungraded"
+                                  ? "text-rose-700"
+                                  : "text-[#0F172A]",
                               )}
                             >
                               {row.result}
@@ -1852,11 +1843,9 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                       ],
                       [
                         "Grade",
-                        viewRow.isFullyAbsent
-                          ? "—"
-                          : viewRow.grade || pctToGrade(overallPct),
+                        viewRow.isFullyAbsent ? "—" : letterGrade(overallPct),
                       ],
-                      ["Overall Result", overallResult],
+                      ["Remarks", overallResult],
                     ] as const
                   ).map(([label, value], i) => (
                     <div
@@ -1870,7 +1859,10 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
                       <p
                         className={cn(
                           "mt-0.5 text-base font-bold tabular-nums",
-                          label === "Overall Result" && overallResult === "Fail"
+                          label === "Remarks" &&
+                            (overallResult === "Absent" ||
+                              overallResult === "Ungraded" ||
+                              isUngraded(overallPct))
                             ? "text-rose-700"
                             : "text-[#0F172A]",
                         )}
@@ -1883,7 +1875,7 @@ export default function ParentExamsPanel({ section }: { section: TestExamsSectio
 
                 {(viewRow.assessment?.remarks || viewRow.examResult?.remarks) && (
                   <p className="mx-5 mb-4 text-[12px] text-slate-600">
-                    <span className="font-bold text-[#0F172A]">Remarks: </span>
+                    <span className="font-bold text-[#0F172A]">Notes: </span>
                     {viewRow.assessment?.remarks || viewRow.examResult?.remarks}
                   </p>
                 )}

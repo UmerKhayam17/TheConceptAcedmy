@@ -57,6 +57,8 @@ import {
 import { classLabel as academyClassLabel } from "@/components/modules/student-management/studentDisplayUtils";
 import { ParentStudentBanner } from "@/components/modules/timetable/parent-schedule/ParentStudentBanner";
 import { subjectTheme } from "@/lib/subjectTheme";
+import { gradeRemarks, letterGrade } from "@/lib/examGrading";
+import { recordIsAbsent } from "@/lib/marksValidation";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import academyLogo from "@/assets/logo.png";
@@ -91,6 +93,7 @@ type ReportRow = {
   obtainedMarks: number;
   percentage: number;
   grade: string;
+  isFullyAbsent?: boolean;
   examResult?: ExamResult;
   assessment?: AcademyAssessmentRecord;
 };
@@ -148,21 +151,6 @@ function formatSlashDate(value?: string) {
   return `${dd}/${mm}/${d.getFullYear()}`;
 }
 
-function pctToGrade(pct: number): string {
-  if (pct >= 90) return "A+";
-  if (pct >= 80) return "A";
-  if (pct >= 70) return "B+";
-  if (pct >= 60) return "B";
-  if (pct >= 50) return "C";
-  return "D";
-}
-
-function statusFromPct(pct: number): string {
-  if (pct >= 85) return "Excellent";
-  if (pct >= 70) return "Good";
-  if (pct >= 50) return "Average";
-  return "Needs Work";
-}
 
 function gradeTone(grade?: string) {
   const g = String(grade || "").toUpperCase();
@@ -224,10 +212,6 @@ function ordinal(n: number) {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
-}
-
-function passFail(pct: number) {
-  return pct >= 40 ? "Pass" : "Fail";
 }
 
 function UnderlineField({
@@ -321,6 +305,9 @@ export default function ParentReportCardPanel() {
     const examRows: ReportRow[] = publishedResults.map((r) => {
       const end =
         r.exam && typeof r.exam === "object" ? String(r.exam.endDate || "") : "";
+      const marks = r.subjectMarks || [];
+      const isFullyAbsent =
+        marks.length > 0 && marks.every((m) => recordIsAbsent(m));
       return {
         id: `exam-${r._id}`,
         kind: "exam",
@@ -332,7 +319,8 @@ export default function ParentReportCardPanel() {
         totalMarks: r.totalMarks,
         obtainedMarks: r.obtainedMarks,
         percentage: Number(r.percentage) || 0,
-        grade: r.grade || pctToGrade(Number(r.percentage) || 0),
+        grade: isFullyAbsent ? "—" : r.grade || letterGrade(Number(r.percentage) || 0),
+        isFullyAbsent,
         examResult: r,
       };
     });
@@ -343,6 +331,7 @@ export default function ParentReportCardPanel() {
         ASSESSMENT_TYPE_LABELS[a.assessmentType as keyof typeof ASSESSMENT_TYPE_LABELS] ||
         a.assessmentType?.replace(/_/g, " ") ||
         "Class test";
+      const isFullyAbsent = recordIsAbsent(a);
       return {
         id: `test-${a._id}`,
         kind: "test",
@@ -354,7 +343,8 @@ export default function ParentReportCardPanel() {
         totalMarks: a.totalMarks,
         obtainedMarks: a.obtainedMarks,
         percentage: pct,
-        grade: pctToGrade(pct),
+        grade: isFullyAbsent ? "—" : letterGrade(pct),
+        isFullyAbsent,
         assessment: a,
       };
     });
@@ -435,8 +425,8 @@ export default function ParentReportCardPanel() {
           total: v.total,
           obtained: v.obtained,
           pct,
-          grade: pctToGrade(pct),
-          status: statusFromPct(pct),
+          grade: letterGrade(pct),
+          status: gradeRemarks(pct),
         };
       })
       .sort((a, b) => b.pct - a.pct);
@@ -1099,6 +1089,7 @@ export default function ParentReportCardPanel() {
             const subjectLines: SubjectRow[] =
               viewRow.kind === "exam" && viewRow.examResult?.subjectMarks?.length
                 ? viewRow.examResult.subjectMarks.map((m) => {
+                    const absent = recordIsAbsent(m);
                     const pct =
                       m.total > 0
                         ? Math.round((m.obtained / m.total) * 1000) / 10
@@ -1108,8 +1099,8 @@ export default function ParentReportCardPanel() {
                       total: m.total,
                       obtained: m.obtained,
                       pct,
-                      grade: m.grade || pctToGrade(pct),
-                      status: passFail(pct),
+                      grade: absent ? "—" : letterGrade(pct),
+                      status: absent ? "Absent" : gradeRemarks(pct),
                     };
                   })
                 : [
@@ -1131,14 +1122,16 @@ export default function ParentReportCardPanel() {
                       total: viewRow.totalMarks,
                       obtained: viewRow.obtainedMarks,
                       pct: Number(viewRow.percentage) || 0,
-                      grade: viewRow.grade,
-                      status: passFail(Number(viewRow.percentage) || 0),
+                      grade: viewRow.isFullyAbsent ? "—" : viewRow.grade,
+                      status: viewRow.isFullyAbsent
+                        ? "Absent"
+                        : gradeRemarks(Number(viewRow.percentage) || 0),
                     },
                   ];
 
             const subjectsLabel = subjectLines.map((r) => r.name).join(", ");
             const overall = Number(viewRow.percentage) || 0;
-            const resultLabel = passFail(overall);
+            const resultLabel = viewRow.isFullyAbsent ? "Absent" : gradeRemarks(overall);
             const ct =
               viewRow.kind === "test" && viewRow.assessment
                 ? viewRow.assessment.classTestId
@@ -1271,7 +1264,7 @@ export default function ParentReportCardPanel() {
                     <table className="w-full text-[12px]">
                       <thead>
                         <tr className="bg-slate-200 text-left">
-                          {["Sr.", "Subject", "Total", "Obtained", "%age", "Grade", "Result"].map(
+                          {["Sr.", "Subject", "Total", "Obtained", "%age", "Grade", "Remarks"].map(
                             (h) => (
                               <th
                                 key={h}
@@ -1323,8 +1316,11 @@ export default function ParentReportCardPanel() {
                     [
                       ["Obtained", `${viewRow.obtainedMarks} / ${viewRow.totalMarks}`],
                       ["Percentage", `${Math.round(overall)}%`],
-                      ["Grade", viewRow.grade || pctToGrade(overall)],
-                      ["Overall Result", resultLabel],
+                      [
+                        "Grade",
+                        viewRow.isFullyAbsent ? "—" : letterGrade(overall),
+                      ],
+                      ["Remarks", resultLabel],
                     ] as const
                   ).map(([label, value], i) => (
                     <div
