@@ -135,7 +135,7 @@ async function dailyAttendance(staffId, month, year) {
   return { totalDays: rows.length, ...counts };
 }
 
-async function buildSalaryAttendance(staffId, month, year) {
+async function buildSalaryAttendance(staffId, month, year, options = {}) {
   const result = {
     period: `${year}-${pad2(month)}`,
     classes: null,
@@ -146,10 +146,12 @@ async function buildSalaryAttendance(staffId, month, year) {
   } catch (err) {
     console.error('[salary] Could not load period attendance:', err?.message || err);
   }
-  try {
-    result.daily = await dailyAttendance(staffId, month, year);
-  } catch (err) {
-    console.error('[salary] Could not load daily attendance:', err?.message || err);
+  if (!options.skipDaily) {
+    try {
+      result.daily = await dailyAttendance(staffId, month, year);
+    } catch (err) {
+      console.error('[salary] Could not load daily attendance:', err?.message || err);
+    }
   }
   return result;
 }
@@ -159,8 +161,9 @@ async function buildSalaryAttendance(staffId, month, year) {
  * Weight = class periods scheduled this month (from attendance); equal split when none.
  * Rounding remainder goes on the last line so the lines add up to the voucher amount.
  */
-async function buildFixedClassAllocation(staffId, amount, attendance) {
+async function buildFixedClassAllocation(staffId, amount, attendance, options = {}) {
   const total = Number(amount) || 0;
+  const skipStudents = Boolean(options.skipStudents);
   const combos = await loadTeacherTeachingCombos(staffId);
   const lines = [];
 
@@ -168,17 +171,19 @@ async function buildFixedClassAllocation(staffId, amount, attendance) {
     const subj = c.subject;
     if (!subj || !subj.subjectName || subj.status === 'inactive') continue;
     const sectionId = c.section?._id || c.section;
-    const students = sectionId
-      ? sortStudentsByRollAsc(
-          await AcademyStudent.find({
-            sectionId,
-            status: 'active',
-            selectedSubjects: subj._id,
-          })
-            .select('studentName rollNumber studentId registrationNumber')
-            .lean()
-        )
-      : [];
+    let students = [];
+    if (!skipStudents && sectionId) {
+      // eslint-disable-next-line no-await-in-loop
+      students = sortStudentsByRollAsc(
+        await AcademyStudent.find({
+          sectionId,
+          status: 'active',
+          selectedSubjects: subj._id,
+        })
+          .select('studentName rollNumber studentId registrationNumber')
+          .lean()
+      );
+    }
     lines.push({
       subjectId: subj._id,
       subjectName: subj.subjectName,

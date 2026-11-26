@@ -890,8 +890,16 @@ function populateExcelSheet(workbook, {
     const leftText = meta.leftFilter || '';
     const centerText = meta.centerFilter || countLabel || '';
     const rightText = meta.rightFilter || meta.filterLine || '';
-    const leftEnd = Math.max(1, Math.floor(lastCol / 3));
-    const midEnd = Math.max(leftEnd + 1, Math.floor((2 * lastCol) / 3));
+    const leftCols = Number(meta.filterLeftCols);
+    const rightCols = Number(meta.filterRightCols);
+    const leftEnd =
+      Number.isFinite(leftCols) && leftCols > 0
+        ? Math.min(lastCol - 1, Math.max(1, Math.floor(leftCols)))
+        : Math.max(1, Math.floor(lastCol / 3));
+    const midEnd =
+      Number.isFinite(rightCols) && rightCols > 0
+        ? Math.max(leftEnd + 1, lastCol - Math.max(1, Math.floor(rightCols)))
+        : Math.max(leftEnd + 1, Math.floor((2 * lastCol) / 3));
     const filterFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F6FA' } };
     const filterFont = { name: 'Calibri', size: 9, bold: true, color: { argb: navy } };
     const applyFilterBand = (start, end, value, align) => {
