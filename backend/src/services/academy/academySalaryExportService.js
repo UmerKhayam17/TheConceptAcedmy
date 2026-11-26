@@ -375,16 +375,25 @@ function buildColumns(classLabels, { forPdf = false } = {}) {
 
   if (forPdf) {
     // PDF: no Period column, short voucher, capitalised role; widths are auto-fitted to content.
-    const pdfClassCols = classCols.map((c) => ({ ...c, numFmt: '#,##0.00' }));
+    // Money columns are bold and one size bigger so they read clearly.
+    const MONEY_STYLE = { bold: true, sizeBoost: 1 };
+    const pdfClassCols = classCols.map((c) => ({ ...c, numFmt: '#,##0.00', ...MONEY_STYLE }));
     return [
       { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 24, align: 'center' },
-      { key: 'voucherShort', header: 'Voucher', excelWidth: 16, pdfWidth: 42, align: 'center' },
       { key: 'staff', header: 'Staff', excelWidth: 18, pdfWidth: 80, wrap: true },
       { key: 'roleCap', header: 'Role', excelWidth: 12, pdfWidth: 48, wrap: true },
       { key: 'payType', header: 'Pay type', excelWidth: 12, pdfWidth: 48, align: 'center' },
       ...pdfClassCols,
-      { key: 'rate', header: 'Rate / Base', excelWidth: 12, pdfWidth: 42, align: 'center' },
-      { key: 'amount', header: 'Amount', excelWidth: 14, pdfWidth: 60, align: 'center', numFmt: '#,##0.00' },
+      { key: 'rate', header: 'Rate / Base', excelWidth: 12, pdfWidth: 42, align: 'center', ...MONEY_STYLE },
+      {
+        key: 'amount',
+        header: 'Amount',
+        excelWidth: 14,
+        pdfWidth: 60,
+        align: 'center',
+        numFmt: '#,##0.00',
+        ...MONEY_STYLE,
+      },
       { key: 'status', header: 'Status', excelWidth: 10, pdfWidth: 44, align: 'center' },
       // Paid on gets a little extra room; Method stays narrow (wraps "Bank / Transfer").
       { key: 'paidAt', header: 'Paid on', excelWidth: 12, pdfWidth: 48, align: 'center', autoFitExtra: 8 },

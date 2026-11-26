@@ -426,7 +426,8 @@ function drawPdfRow(
       if (idx >= firstAmountIdx) {
         const raw = formatPdfCellValue(col, row[col.key], { unicode });
         const innerW = Math.max(8, col.pdfWidth - pad * 2);
-        let size = fontSize;
+        let size = fontSize + (Number(col.sizeBoost) || 0);
+        doc.fontSize(size);
         if (col.shrinkToFit) {
           while (size > 4.5 && doc.fontSize(size).widthOfString(raw) > innerW) size -= 0.25;
           doc.fontSize(size);
@@ -451,6 +452,16 @@ function drawPdfRow(
         const textH = doc.heightOfString(raw, { width: innerW, lineGap: 0.5 });
         const textY = y + Math.max(3, (rowH - textH) / 2);
         doc.text(raw, x + pad, textY, { width: innerW, lineBreak: true, align, lineGap: 0.5 });
+      } else if (raw && (col.bold || col.sizeBoost)) {
+        // Opt-in emphasis (e.g. money columns): bold and/or a slightly larger size.
+        let cellSize = fontSize + (Number(col.sizeBoost) || 0);
+        doc.font(col.bold ? fonts.bold : fonts.regular).fontSize(cellSize);
+        if (col.shrinkToFit) {
+          while (cellSize > 4.5 && doc.fontSize(cellSize).widthOfString(raw) > innerW) cellSize -= 0.25;
+          doc.fontSize(cellSize);
+        }
+        pdfLine(doc, fitText(doc, raw, innerW), x + pad, y + (rowH - cellSize) / 2, { width: innerW, align });
+        doc.font(fonts.regular).fontSize(fontSize);
       } else if (col.shrinkToFit && raw && doc.widthOfString(raw) > innerW) {
         // Opt-in: shrink the font so the full value shows instead of "...".
         let size = fontSize;
@@ -647,6 +658,7 @@ function autoFitPdfColumns(
 ) {
   const fonts = pdfBodyFonts(doc);
   const unicode = fonts.regular !== 'Helvetica';
+  let boost = true;
   const measure = (size) =>
     columns.map((col) => {
       let minW = 0;
@@ -661,7 +673,9 @@ function autoFitPdfColumns(
       rows.forEach((row) => {
         const raw = formatPdfCellValue(col, row[col.key], { unicode });
         if (!raw) return;
-        doc.font(isPdfTotalRow(row) ? fonts.bold : fonts.regular).fontSize(size);
+        doc
+          .font(isPdfTotalRow(row) || col.bold ? fonts.bold : fonts.regular)
+          .fontSize(size + (boost ? Number(col.sizeBoost) || 0 : 0));
         const w = doc.widthOfString(raw);
         fullW = Math.max(fullW, w);
         if (col.wrap) {
@@ -683,7 +697,23 @@ function autoFitPdfColumns(
     size -= 0.25;
     m = measure(size);
   }
-  const widths = m.map((c) => c.min);
+  const totalMin = () => m.reduce((a, c) => a + c.min, 0);
+  // Still too wide: first drop the extra size on emphasised columns…
+  if (totalMin() > usableWidth) {
+    boost = false;
+    m = measure(size);
+  }
+  let widths = m.map((c) => c.min);
+  let squeezed = false;
+  // …then, as a last resort, scale every column down to the page width.
+  if (totalMin() > usableWidth) {
+    // Keep wrapped text columns wide enough for their longest word; squeeze the rest.
+    const wrapW = columns.reduce((a, c, i) => a + (c.wrap ? widths[i] : 0), 0);
+    const otherW = totalMin() - wrapW;
+    const k = Math.max(0.3, (usableWidth - wrapW) / Math.max(1, otherW));
+    widths = widths.map((w, i) => (columns[i].wrap ? w : w * k));
+    squeezed = true;
+  }
   let spare = usableWidth - widths.reduce((a, b) => a + b, 0);
   // First let wrapped columns grow toward one line, then share what is left evenly.
   if (spare > 0) {
@@ -703,7 +733,12 @@ function autoFitPdfColumns(
       widths[i] += each;
     });
   }
-  const fitted = columns.map((col, i) => ({ ...col, pdfWidth: Math.floor(widths[i]) }));
+  const fitted = columns.map((col, i) => ({
+    ...col,
+    pdfWidth: widths[i],
+    ...(boost ? {} : { sizeBoost: 0 }),
+    ...(squeezed ? { shrinkToFit: true } : {}),
+  }));
   const sum = fitted.reduce((a, c) => a + c.pdfWidth, 0);
   fitted[fitted.length - 1].pdfWidth += usableWidth - sum;
   return { columns: fitted, fontSize: size };
