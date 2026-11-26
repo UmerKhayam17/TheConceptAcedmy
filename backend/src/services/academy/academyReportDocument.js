@@ -386,10 +386,17 @@ function drawPdfRow(
   y,
   zebra,
   brand,
-  { plain = false, fontSize: fontSizeOpt, minRowH: minRowHOpt, fixedRowH, mergeTotalLabel = false } = {}
+  {
+    plain = false,
+    fontSize: fontSizeOpt,
+    minRowH: minRowHOpt,
+    fixedRowH,
+    mergeTotalLabel = false,
+    pad: padOpt,
+  } = {}
 ) {
   const tableWidth = columns.reduce((sum, c) => sum + c.pdfWidth, 0);
-  const pad = plain ? 4 : 4;
+  const pad = padOpt ?? 4;
   const fontSize = fontSizeOpt ?? (plain ? 7 : 7.5);
   const totalRow = isPdfTotalRow(row);
   const defaultMin = totalRow ? 20 : 17;
@@ -649,6 +656,8 @@ function drawPdfFooterTextPlain(doc, brand, confidentialLabel, meta, page, pages
  * (never splitting a word). If the table is still too wide, the whole table steps
  * down one font size at a time — never a single cell.
  */
+const AUTO_FIT_PAD = 2.5;
+
 function autoFitPdfColumns(
   doc,
   columns,
@@ -851,7 +860,10 @@ async function renderBrandedPdf({
         let autoFontSize = null;
         if (autoFitColumns && tableRows.length) {
           const fit = autoFitPdfColumns(doc, tableColumns, tableRows, usableWidth, {
-            startSize: plain ? 7 : 7.5,
+            // Bigger text: start large, use tighter cell padding, and stop at a readable minimum.
+            pad: AUTO_FIT_PAD,
+            startSize: 9,
+            minSize: 6.5,
             headerSize: plain ? (headerFill ? 6 : 7) : 7.5,
           });
           scaledColumns = fit.columns;
@@ -871,7 +883,8 @@ async function renderBrandedPdf({
           return;
         }
 
-        let rowOpts = autoFontSize != null ? { plain, fontSize: autoFontSize } : { plain };
+        let rowOpts =
+          autoFontSize != null ? { plain, fontSize: autoFontSize, pad: AUTO_FIT_PAD } : { plain };
         if (mergeTotalLabel) rowOpts.mergeTotalLabel = true;
         // Fit one page only while rows stay readable; otherwise spill to page 2 with wrapping.
         let useFitOnePage = fitOnePage;
@@ -894,7 +907,7 @@ async function renderBrandedPdf({
         tableRows.forEach((row, idx) => {
           if (!useFitOnePage) {
             const nextRowH = pdfRowHeight(doc, scaledColumns, row, {
-              pad: plain ? 4 : 4,
+              pad: autoFontSize != null ? AUTO_FIT_PAD : 4,
               minRowH: isPdfTotalRow(row) ? 18 : 16,
               ...(autoFontSize != null ? { fontSize: autoFontSize } : {}),
             });
