@@ -375,8 +375,8 @@ function buildColumns(classLabels, { forPdf = false } = {}) {
 
   if (forPdf) {
     // PDF: no Period column, short voucher, capitalised role; widths are auto-fitted to content.
-    // Money columns are bold and one size bigger so they read clearly.
-    const MONEY_STYLE = { bold: true, sizeBoost: 1 };
+    // Money columns are larger (not bold) so they read clearly.
+    const MONEY_STYLE = { sizeBoost: 1.5 };
     const pdfClassCols = classCols.map((c) => ({ ...c, numFmt: '#,##0.00', ...MONEY_STYLE }));
     return [
       { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 24, align: 'center' },
@@ -475,12 +475,14 @@ async function exportSalaryReport(filters = {}) {
   };
 
   const reportRows = [...rows];
-  // PDF only: hide class columns that have no amount for anyone, so the rest stay readable.
-  const pdfClassLabels = (classLabels || []).filter((label) =>
-    rows.some((r) => {
-      const v = r[`class:${label}`];
-      return typeof v === 'number' && v !== 0;
-    })
+  // PDF only: hide "LEFT" classes and class columns with no amount for anyone.
+  const pdfClassLabels = (classLabels || []).filter(
+    (label) =>
+      !/(^|[\s_-])left([\s_-]|$)/i.test(String(label)) &&
+      rows.some((r) => {
+        const v = r[`class:${label}`];
+        return typeof v === 'number' && v !== 0;
+      })
   );
   if (rows.length) {
     const blankClasses = Object.fromEntries(
