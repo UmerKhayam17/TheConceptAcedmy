@@ -418,10 +418,16 @@ function drawPdfRow(
       if (idx >= firstAmountIdx) {
         const raw = formatPdfCellValue(col, row[col.key], { unicode });
         const innerW = Math.max(8, col.pdfWidth - pad * 2);
-        pdfLine(doc, fitText(doc, raw, innerW), x + pad, y + (rowH - fontSize) / 2, {
+        let size = fontSize;
+        if (col.shrinkToFit) {
+          while (size > 4.5 && doc.fontSize(size).widthOfString(raw) > innerW) size -= 0.25;
+          doc.fontSize(size);
+        }
+        pdfLine(doc, fitText(doc, raw, innerW), x + pad, y + (rowH - size) / 2, {
           width: innerW,
           align: plainCellAlign(col),
         });
+        doc.fontSize(fontSize);
       }
       x += col.pdfWidth;
     });
@@ -437,6 +443,13 @@ function drawPdfRow(
         const textH = doc.heightOfString(raw, { width: innerW, lineGap: 0.5 });
         const textY = y + Math.max(3, (rowH - textH) / 2);
         doc.text(raw, x + pad, textY, { width: innerW, lineBreak: true, align, lineGap: 0.5 });
+      } else if (col.shrinkToFit && raw && doc.widthOfString(raw) > innerW) {
+        // Opt-in: shrink the font so the full value shows instead of "...".
+        let size = fontSize;
+        while (size > 4.5 && doc.fontSize(size).widthOfString(raw) > innerW) size -= 0.25;
+        doc.fontSize(size);
+        pdfLine(doc, fitText(doc, raw, innerW), x + pad, y + (rowH - size) / 2, { width: innerW, align });
+        doc.fontSize(fontSize);
       } else {
         pdfLine(doc, fitText(doc, raw, innerW), x + pad, y + (rowH - fontSize) / 2, {
           width: innerW,

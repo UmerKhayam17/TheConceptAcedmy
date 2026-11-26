@@ -41,6 +41,14 @@ function staffRole(rec) {
   return r.name || '—';
 }
 
+function shortVoucher(v) {
+  const parts = String(v || '').split('-');
+  if (parts.length >= 3 && parts[0].toUpperCase() === 'SAL') return parts[1];
+  // Any other format: show the last part (e.g. "DUMMY-SAL-202610-001" → "001").
+  if (parts.length >= 2 && parts[parts.length - 1]) return parts[parts.length - 1];
+  return v || '—';
+}
+
 function isTeacherRecord(rec) {
   const s = rec.staffId && typeof rec.staffId === 'object' ? rec.staffId : null;
   const r = s?.role;
@@ -305,8 +313,11 @@ async function loadSalaryData(filters) {
     return {
       serial: idx + 1,
       voucher: r.voucherNumber || '—',
+      // PDF only: "SAL-C2C3BD-202611" → "C2C3BD".
+      voucherShort: shortVoucher(r.voucherNumber),
       staff: String(staffName(r) || '—').toUpperCase(),
       role: staffRole(r),
+      roleCap: String(staffRole(r)).replace(/^\w/, (c) => c.toUpperCase()),
       period: `${MONTHS[(r.month || 1) - 1] || ''} ${r.year || ''}`.trim(),
       payType: payType === 'percentage' ? 'Percentage' : 'Fixed',
       ...classFields,
@@ -315,6 +326,12 @@ async function loadSalaryData(filters) {
       status: String(r.status || '').replace(/^\w/, (c) => c.toUpperCase()),
       paidAt: r.paidAt ? formatDate(r.paidAt) : '—',
       method: r.paymentMethod ? String(r.paymentMethod).replace(/_/g, ' ') : '—',
+      // PDF only: "bank transfer" → "Bank Transfer".
+      methodCap: r.paymentMethod
+        ? String(r.paymentMethod)
+            .replace(/_/g, ' ')
+            .replace(/(^|\s)(\w)/g, (m, sp, c) => sp + c.toUpperCase())
+        : '—',
     };
   });
 
@@ -355,6 +372,37 @@ function buildColumns(classLabels, { forPdf = false } = {}) {
     pdfWidth: forPdf ? 28 : 36,
     align: 'center',
   }));
+
+  if (forPdf) {
+    // PDF: no Period column, short voucher, capitalised role, full amounts (shrink, never "...").
+    const pdfClassCols = classCols.map((c) => ({
+      ...c,
+      pdfWidth: 44,
+      numFmt: '#,##0.00',
+      shrinkToFit: true,
+    }));
+    return [
+      { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 30, align: 'center' },
+      { key: 'voucherShort', header: 'Voucher', excelWidth: 16, pdfWidth: 50, align: 'center', shrinkToFit: true },
+      { key: 'staff', header: 'Staff', excelWidth: 18, pdfWidth: 96, wrap: true },
+      { key: 'roleCap', header: 'Role', excelWidth: 12, pdfWidth: 46 },
+      { key: 'payType', header: 'Pay type', excelWidth: 12, pdfWidth: 56, align: 'center' },
+      ...pdfClassCols,
+      { key: 'rate', header: 'Rate / Base', excelWidth: 12, pdfWidth: 42, align: 'center', shrinkToFit: true },
+      {
+        key: 'amount',
+        header: 'Amount',
+        excelWidth: 14,
+        pdfWidth: 62,
+        align: 'center',
+        numFmt: '#,##0.00',
+        shrinkToFit: true,
+      },
+      { key: 'status', header: 'Status', excelWidth: 10, pdfWidth: 48, align: 'center', shrinkToFit: true },
+      { key: 'paidAt', header: 'Paid on', excelWidth: 12, pdfWidth: 52, align: 'center', shrinkToFit: true },
+      { key: 'methodCap', header: 'Method', excelWidth: 14, pdfWidth: 56, align: 'center', shrinkToFit: true },
+    ];
+  }
 
   return [
     { key: 'serial', header: 'S.No', excelWidth: 8, pdfWidth: 28, align: 'center' },
@@ -430,6 +478,9 @@ async function exportSalaryReport(filters = {}) {
       _isTotal: true,
       serial: '',
       voucher: '',
+      voucherShort: '',
+      roleCap: '',
+      methodCap: '',
       staff: 'Total',
       role: '',
       period: '',
