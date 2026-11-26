@@ -466,6 +466,13 @@ async function exportSalaryReport(filters = {}) {
   };
 
   const reportRows = [...rows];
+  // PDF only: hide class columns that have no amount for anyone, so the rest stay readable.
+  const pdfClassLabels = (classLabels || []).filter((label) =>
+    rows.some((r) => {
+      const v = r[`class:${label}`];
+      return typeof v === 'number' && v !== 0;
+    })
+  );
   if (rows.length) {
     const blankClasses = Object.fromEntries(
       (classLabels || []).map((label) => [`class:${label}`, ''])
@@ -495,7 +502,7 @@ async function exportSalaryReport(filters = {}) {
     sheetName: 'Salaries',
     confidentialLabel: 'Staff salary report',
     subject: 'Staff salaries',
-    columns: buildColumns(classLabels, { forPdf: format === 'pdf' }),
+    columns: buildColumns(format === 'pdf' ? pdfClassLabels : classLabels, { forPdf: format === 'pdf' }),
     autoFitColumns: format === 'pdf',
     mergeTotalLabel: format === 'pdf',
     rows: reportRows,
