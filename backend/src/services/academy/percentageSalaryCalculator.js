@@ -155,6 +155,12 @@ async function loadTeacherTeachingCombos(teacherId) {
   return [...map.values()];
 }
 
+/** True for "LEFT" classes/sections (students who have left), e.g. "9TH-LEFT", "LEFT 9TH". */
+function isLeftClass(className, sectionName) {
+  const rx = /(^|[\s_-])left([\s_-]|$)/i;
+  return rx.test(String(className || '')) || rx.test(String(sectionName || ''));
+}
+
 /**
  * Compute percentage salary for one teacher from tuition pools × teacher %.
  * @returns {{ amount: number, breakdown: object[], salaryPercentage: number }}
@@ -194,6 +200,8 @@ async function calculateTeacherPercentageSalary(teacherId, teacherDoc) {
   for (const a of combos) {
     const subj = a.subject;
     if (!subj || !subj.subjectName || subj.status === 'inactive') continue;
+    // LEFT classes hold students who have left — they earn the teacher nothing.
+    if (isLeftClass(a.class?.className, a.section?.sectionName)) continue;
 
     const sectionId = idOf(a.section);
     if (!sectionId) continue;

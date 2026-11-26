@@ -251,6 +251,10 @@ function amountsEqualSplit(labels, amount) {
   return map;
 }
 
+function isLeftClassLabel(label) {
+  return /(^|[\s_-])left([\s_-]|$)/i.test(String(label || ''));
+}
+
 function classAmountsForRecord(rec, teachingLabelsByStaff) {
   const fromBreakdown = amountsFromBreakdown(rec.calculationBreakdown);
   if (fromBreakdown.size) return fromBreakdown;
@@ -259,8 +263,11 @@ function classAmountsForRecord(rec, teachingLabelsByStaff) {
 
   const staffId = String(rec.staffId?._id || rec.staffId || '');
   if (!staffId) return new Map();
-  const labels = teachingLabelsByStaff.get(staffId);
-  return amountsEqualSplit(labels, rec.amount);
+  const labels = Array.from(teachingLabelsByStaff.get(staffId) || []);
+  // Fixed salary is shared only across regular classes — LEFT classes get no share
+  // (unless the teacher teaches nothing else).
+  const regular = labels.filter((l) => !isLeftClassLabel(l));
+  return amountsEqualSplit(regular.length ? regular : labels, rec.amount);
 }
 
 async function loadSalaryData(filters) {
@@ -478,7 +485,7 @@ async function exportSalaryReport(filters = {}) {
   // PDF only: hide "LEFT" classes and class columns with no amount for anyone.
   const pdfClassLabels = (classLabels || []).filter(
     (label) =>
-      !/(^|[\s_-])left([\s_-]|$)/i.test(String(label)) &&
+      !isLeftClassLabel(label) &&
       rows.some((r) => {
         const v = r[`class:${label}`];
         return typeof v === 'number' && v !== 0;
