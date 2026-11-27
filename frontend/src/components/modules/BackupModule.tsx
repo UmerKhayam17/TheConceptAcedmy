@@ -44,6 +44,20 @@ import {
 } from "@/lib/backupApi";
 import { cn } from "@/lib/utils";
 
+/** Same modal chrome as Give advance / loan. */
+const restoreFormLabelClass = "text-sm font-medium text-muted-foreground";
+const restoreFormControlClass =
+  "h-10 min-w-0 rounded-md border-input bg-background text-sm font-mono tracking-wide focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0";
+const restoreSectionTitleClass = "text-sm font-semibold text-primary";
+const restoreSectionCardClass = "rounded-md border bg-background p-4 space-y-3";
+const restoreCancelBtnClass =
+  "h-10 w-full gap-2 border-primary text-primary hover:bg-primary/5 hover:text-primary sm:w-auto";
+const restorePrimaryBtnClass = "h-10 w-full gap-2 sm:w-auto";
+const restoreDialogShellClass = cn(
+  "flex w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:w-full sm:max-w-[36rem] sm:p-0 max-h-[94dvh]",
+  "[&>button]:right-5 [&>button]:top-5 [&>button]:text-primary-foreground [&>button]:opacity-100 [&>button]:hover:text-primary-foreground",
+);
+
 function formatDate(iso?: string) {
   if (!iso) return "unknown date";
   const d = new Date(iso);
@@ -53,6 +67,39 @@ function formatDate(iso?: string) {
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function restoreDialogTitle(opts: {
+  result: RestoreResult | null;
+  error: string | null;
+  restoring: boolean;
+}) {
+  if (opts.result) return "Restore complete";
+  if (opts.error) return "Restore failed";
+  if (opts.restoring) return "Restoring…";
+  return "Confirm full restore";
+}
+
+function restoreDialogDescription(opts: {
+  result: RestoreResult | null;
+  error: string | null;
+  restoring: boolean;
+}) {
+  if (opts.result) return "The system has been replaced with the selected backup.";
+  if (opts.error) return "Previous data should have been put back if a safety copy was made.";
+  if (opts.restoring) return "Keep this window open until every step finishes.";
+  return "This will replace the live database and uploaded files.";
+}
+
+function restoreDialogIcon(opts: {
+  result: RestoreResult | null;
+  error: string | null;
+  restoring: boolean;
+}) {
+  if (opts.result) return CheckCircle2;
+  if (opts.error) return XCircle;
+  if (opts.restoring) return Loader2;
+  return DatabaseBackup;
 }
 
 /** Steps shown in the restore progress list, in order. */
@@ -151,6 +198,7 @@ const BackupModule = () => {
   });
 
   const restoring = Boolean(progress) && !result && !error;
+  const RestoreHeaderIcon = restoreDialogIcon({ result, error, restoring });
 
   const handleDownload = async () => {
     if (!pathConfigured) {
@@ -531,7 +579,7 @@ const BackupModule = () => {
         }}
       >
         <DialogContent
-          className="sm:max-w-md"
+          className={restoreDialogShellClass}
           onClose={() => {
             if (!restoring) closeDialog();
           }}
@@ -542,170 +590,193 @@ const BackupModule = () => {
             if (restoring) e.preventDefault();
           }}
         >
-          <DialogHeader>
-            <DialogTitle>
-              {result
-                ? "Restore complete"
-                : error
-                  ? "Restore failed"
-                  : restoring
-                    ? "Restoring…"
-                    : "Confirm full restore"}
+          <DialogHeader className="shrink-0 space-y-1 bg-primary px-6 py-4 pr-12 text-left text-primary-foreground">
+            <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-primary-foreground">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-foreground/15">
+                <RestoreHeaderIcon
+                  className={cn("h-5 w-5", restoring && !result && !error && "animate-spin")}
+                />
+              </span>
+              {restoreDialogTitle({ result, error, restoring })}
             </DialogTitle>
-            <DialogDescription>
-              {result
-                ? "The system has been replaced with the selected backup."
-                : error
-                  ? "Previous data should have been put back if a safety copy was made."
-                  : restoring
-                    ? "Keep this window open until every step finishes."
-                    : "This will replace the live database and uploaded files."}
+            <DialogDescription className="pl-12 text-primary-foreground/80">
+              {restoreDialogDescription({ result, error, restoring })}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="rounded-md bg-muted px-3 py-2.5 text-sm">
-              <div className="flex items-start gap-2.5">
-                <FileArchive className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 space-y-1">
-                  <p className="truncate font-medium text-foreground">{file?.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {file ? formatSize(file.size) : ""}
-                    {info ? ` · Made ${formatDate(info.createdAt)}` : ""}
-                  </p>
-                  {info ? (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-muted/30 px-5 py-4">
+            <div className="space-y-4">
+              <section className={restoreSectionCardClass}>
+                <p className={restoreSectionTitleClass}>Backup file</p>
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                    <FileArchive className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 space-y-1">
+                    <p className="truncate text-sm font-semibold text-foreground">{file?.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {info.totalDocs.toLocaleString()} records · {info.collections.length} tables
-                      {info.files
-                        ? ` · ${info.files.count.toLocaleString()} files (${formatSize(info.files.bytes)})`
-                        : ""}
+                      {file ? formatSize(file.size) : ""}
+                      {info ? ` · Made ${formatDate(info.createdAt)}` : ""}
                     </p>
-                  ) : null}
-                  {info && !info.files ? (
-                    <p className="pt-1 text-xs text-amber-700">
-                      Older backup: no uploaded files inside. Current photos and documents stay as
-                      they are.
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            {progress || result || error ? (
-              <div className="space-y-3">
-                {!error ? (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{result ? "Finished" : "Overall progress"}</span>
-                      <span className="font-medium tabular-nums text-foreground">
-                        {Math.round(result ? 100 : progress?.percent ?? 0)}%
-                      </span>
-                    </div>
-                    <Progress value={result ? 100 : progress?.percent ?? 0} className="h-2" />
+                    {info ? (
+                      <p className="text-xs text-muted-foreground">
+                        {info.totalDocs.toLocaleString()} records · {info.collections.length} tables
+                        {info.files
+                          ? ` · ${info.files.count.toLocaleString()} files (${formatSize(info.files.bytes)})`
+                          : ""}
+                      </p>
+                    ) : null}
+                    {info && !info.files ? (
+                      <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+                        Older backup: no uploaded files inside. Current photos and documents stay as
+                        they are.
+                      </p>
+                    ) : null}
                   </div>
-                ) : null}
-                <ul className="space-y-2 rounded-md border border-border bg-background p-3">
-                  {STEPS.map((step) => {
-                    const state = result ? "done" : stepState(step.phase, progress?.phase ?? null);
-                    const failedHere = Boolean(error) && state === "active";
-                    return (
-                      <li key={step.phase} className="flex items-center gap-2 text-sm">
-                        {failedHere ? (
-                          <XCircle className="h-4 w-4 shrink-0 text-destructive" />
-                        ) : state === "done" ? (
-                          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                        ) : state === "active" ? (
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
-                        ) : (
-                          <Circle className="h-4 w-4 shrink-0 text-muted-foreground/40" />
-                        )}
-                        <span
-                          className={cn(
-                            "leading-snug",
-                            state === "todo" ? "text-muted-foreground" : "text-foreground",
-                            state === "active" && !error && "font-medium",
-                          )}
-                        >
-                          {step.phase === "restoring" && progress?.phase === "rolling_back"
-                            ? "Something failed: putting previous data back"
-                            : step.label}
-                          {state === "active" && !error && progress && progress.total > 1
-                            ? ` (${Math.round(progress.stepPercent)}%)`
-                            : ""}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-
-                {result ? (
-                  <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                    {result.restoredDocs.toLocaleString()} records and{" "}
-                    {result.restoredFiles.toLocaleString()} files restored from{" "}
-                    {formatDate(result.createdAt)}.{" "}
-                    {result.signedIn
-                      ? "You are still signed in."
-                      : "Your account was not in this backup. You will be signed out to log in again."}
-                  </p>
-                ) : null}
-                {error ? (
-                  <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                    {error}
-                  </p>
-                ) : null}
-              </div>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  All current data and uploaded files will be <strong className="text-foreground">replaced</strong> by
-                  this backup. Anything entered after it was made will be lost.
-                </p>
-                <div className="space-y-1.5">
-                  <Label htmlFor="restore-confirm">
-                    Type <span className="font-mono">RESTORE</span> to confirm
-                  </Label>
-                  <Input
-                    id="restore-confirm"
-                    value={confirmText}
-                    onChange={(e) => setConfirmText(e.target.value)}
-                    autoComplete="off"
-                    placeholder="RESTORE"
-                    className="font-mono tracking-wide"
-                  />
-                  <p className="text-xs text-muted-foreground">Required exactly as shown, in capitals.</p>
                 </div>
-              </>
-            )}
+              </section>
+
+              {progress || result || error ? (
+                <section className={restoreSectionCardClass}>
+                  <p className={restoreSectionTitleClass}>
+                    {result ? "Result" : error ? "Progress" : "Progress"}
+                  </p>
+                  {!error ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{result ? "Finished" : "Overall progress"}</span>
+                        <span className="font-medium tabular-nums text-foreground">
+                          {Math.round(result ? 100 : progress?.percent ?? 0)}%
+                        </span>
+                      </div>
+                      <Progress value={result ? 100 : progress?.percent ?? 0} className="h-2" />
+                    </div>
+                  ) : null}
+                  <ul className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+                    {STEPS.map((step) => {
+                      const state = result ? "done" : stepState(step.phase, progress?.phase ?? null);
+                      const failedHere = Boolean(error) && state === "active";
+                      return (
+                        <li key={step.phase} className="flex items-center gap-2 text-sm">
+                          {failedHere ? (
+                            <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                          ) : state === "done" ? (
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                          ) : state === "active" ? (
+                            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                          ) : (
+                            <Circle className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+                          )}
+                          <span
+                            className={cn(
+                              "leading-snug",
+                              state === "todo" ? "text-muted-foreground" : "text-foreground",
+                              state === "active" && !error && "font-medium",
+                            )}
+                          >
+                            {step.phase === "restoring" && progress?.phase === "rolling_back"
+                              ? "Something failed: putting previous data back"
+                              : step.label}
+                            {state === "active" && !error && progress && progress.total > 1
+                              ? ` (${Math.round(progress.stepPercent)}%)`
+                              : ""}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+
+                  {result ? (
+                    <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-900">
+                      {result.restoredDocs.toLocaleString()} records and{" "}
+                      {result.restoredFiles.toLocaleString()} files restored from{" "}
+                      {formatDate(result.createdAt)}.{" "}
+                      {result.signedIn
+                        ? "You are still signed in."
+                        : "Your account was not in this backup. You will be signed out to log in again."}
+                    </p>
+                  ) : null}
+                  {error ? (
+                    <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+                      {error}
+                    </p>
+                  ) : null}
+                </section>
+              ) : (
+                <>
+                  <section className={restoreSectionCardClass}>
+                    <p className={cn(restoreSectionTitleClass, "flex items-center gap-1.5")}>
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                      Warning
+                    </p>
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      All current data and uploaded files will be{" "}
+                      <strong className="text-foreground">replaced</strong> by this backup. Anything
+                      entered after it was made will be lost.
+                    </p>
+                  </section>
+
+                  <section className={restoreSectionCardClass}>
+                    <p className={restoreSectionTitleClass}>Confirmation</p>
+                    <div className="min-w-0 space-y-1.5">
+                      <Label htmlFor="restore-confirm" className={restoreFormLabelClass}>
+                        Type <span className="font-mono font-semibold text-foreground">RESTORE</span>{" "}
+                        to confirm
+                      </Label>
+                      <Input
+                        id="restore-confirm"
+                        value={confirmText}
+                        onChange={(e) => setConfirmText(e.target.value)}
+                        autoComplete="off"
+                        placeholder="RESTORE"
+                        className={restoreFormControlClass}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Required exactly as shown, in capitals.
+                      </p>
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 flex-col gap-2 border-t bg-background px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:space-x-0">
             {result ? (
               result.signedIn ? (
-                <Button
-                  className="bg-[#1a2b4b] text-white hover:bg-[#142238]"
-                  onClick={finishAndReload}
-                >
+                <Button className={restorePrimaryBtnClass} onClick={finishAndReload}>
                   Reload academy
                 </Button>
               ) : null
             ) : (
               <>
-                <Button variant="outline" onClick={closeDialog} disabled={restoring}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={restoreCancelBtnClass}
+                  onClick={closeDialog}
+                  disabled={restoring}
+                >
                   {error ? "Close" : "Cancel"}
                 </Button>
                 {!error ? (
                   <Button
+                    type="button"
                     variant="destructive"
+                    className={restorePrimaryBtnClass}
                     disabled={restoring || confirmText !== "RESTORE"}
                     onClick={() => void handleRestore()}
                   >
                     {restoring ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin" />
                         Restoring…
                       </>
                     ) : (
-                      "Restore database"
+                      <>
+                        <DatabaseBackup className="h-4 w-4" />
+                        Restore database
+                      </>
                     )}
                   </Button>
                 ) : null}
