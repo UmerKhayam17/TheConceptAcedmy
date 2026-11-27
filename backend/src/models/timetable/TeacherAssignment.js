@@ -7,6 +7,12 @@ const teacherAssignmentSchema = new mongoose.Schema(
     section: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademySection', required: true },
     subject: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademySubject', required: true },
     teacher: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    /**
+     * YYYY-MM-DD from which this teacher is expected for this section+subject.
+     * Attendance (and salary attendance) ignore timetable periods before this date.
+     * Null/missing = no start filter (legacy rows).
+     */
+    assignedFrom: { type: String, default: null, trim: true },
     isPrimary: { type: Boolean, default: true },
     priority: { type: Number, default: 1, min: 1 },
     isActive: { type: Boolean, default: true },

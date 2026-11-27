@@ -269,8 +269,26 @@ async function upsertSlot(timetableVersionId, body, { excludeSlotId, userId } = 
     return sanitizeSlot(slot);
   };
 
+  // Attendance starts from assignment date — ensure TeacherAssignment rows exist for slot teachers.
+  const { ensureAssignmentForSlot } = require('./teacherAssignmentService');
+  const ensureAssignments = async () => {
+    for (const entry of entries) {
+      // eslint-disable-next-line no-await-in-loop
+      await ensureAssignmentForSlot({
+        session: version.session,
+        class: classId,
+        section: sectionId,
+        subject: entry.subject,
+        teacher: entry.teacher,
+        userId,
+      });
+    }
+  };
+
   if (!multiDay) {
-    return writeDay(targetDays[0]);
+    const slot = await writeDay(targetDays[0]);
+    await ensureAssignments();
+    return slot;
   }
 
   const slots = [];
@@ -278,6 +296,7 @@ async function upsertSlot(timetableVersionId, body, { excludeSlotId, userId } = 
     // eslint-disable-next-line no-await-in-loop
     slots.push(await writeDay(day));
   }
+  await ensureAssignments();
   return { days: targetDays, created: slots.length, slots };
 }
 

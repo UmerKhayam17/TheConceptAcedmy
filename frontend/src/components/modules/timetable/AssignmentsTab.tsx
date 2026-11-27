@@ -4,8 +4,24 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   AlertTriangle,
   BookOpen,
+  CalendarDays,
   CheckCircle2,
   FileBarChart2,
   MoreVertical,
@@ -33,6 +49,7 @@ import {
   fetchTeacherAssignments,
   fetchTeacherProfiles,
   syncSectionSubjectTeachers,
+  updateTeacherAssignment,
 } from "@/lib/timetableApi";
 import { orderRosterForSubject, rosterTeachers } from "./teacherRoster";
 import { systemConfigHref } from "@/lib/systemConfigMenus";
@@ -41,6 +58,8 @@ import { moduleHref } from "@/lib/panelMenus";
 import { cn } from "@/lib/utils";
 
 type SectionDraft = Record<string, string>;
+/** subjectId → YYYY-MM-DD attendance start (optional until save). */
+type SectionFromDraft = Record<string, string>;
 type StatusFilter = "all" | "assigned" | "unassigned";
 type SortMode = "subject" | "status" | "teacher";
 
@@ -48,6 +67,59 @@ function classIdOf(entity: { class?: string | { _id: string } } | null | undefin
   if (!entity?.class) return "";
   return typeof entity.class === "object" ? entity.class._id : String(entity.class);
 }
+
+function todayYmdLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Display YYYY-MM-DD as "15 Nov 2026". */
+function formatAssignedFromLabel(ymd: string | null | undefined) {
+  const m = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[Number(m[2]) - 1];
+  if (!month) return "";
+  return `${Number(m[3])} ${month} ${m[1]}`;
+}
+
+function buildFromDraftFromRows(
+  sectionId: string,
+  subjects: SchoolSubject[],
+  rows: Array<{
+    section?: { _id: string };
+    subject?: { _id: string };
+    assignedFrom?: string | null;
+  }>,
+): SectionFromDraft {
+  const next: SectionFromDraft = {};
+  for (const sub of subjects) {
+    const assigned = rows.find(
+      (r) => r.section?._id === sectionId && r.subject?._id === sub._id,
+    );
+    if (assigned?.assignedFrom) next[sub._id] = assigned.assignedFrom;
+  }
+  return next;
+}
+
+type ReplaceTeacherPrompt = {
+  subjectId: string;
+  subjectName: string;
+  teacherId: string;
+  teacherName: string;
+  pickDate: boolean;
+  date: string;
+};
+
+type EditFromPrompt = {
+  assignmentId: string;
+  subjectName: string;
+  teacherName: string;
+  date: string;
+};
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -183,8 +255,11 @@ export default function AssignmentsTab({
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [sortMode, setSortMode] = useState<SortMode>("subject");
   const [draftsBySection, setDraftsBySection] = useState<Record<string, SectionDraft>>({});
+  const [fromDraftsBySection, setFromDraftsBySection] = useState<Record<string, SectionFromDraft>>({});
   const [dirtySections, setDirtySections] = useState<Set<string>>(() => new Set());
   const [subjectsByClass, setSubjectsByClass] = useState<Record<string, SchoolSubject[]>>({});
+  const [replacePrompt, setReplacePrompt] = useState<ReplaceTeacherPrompt | null>(null);
+  const [editFromPrompt, setEditFromPrompt] = useState<EditFromPrompt | null>(null);
 
   const { data: classes = [] } = useQuery({
     queryKey: ["config-classes", sessionId],
@@ -228,6 +303,7 @@ export default function AssignmentsTab({
     setClassId("");
     setSectionId("");
     setDraftsBySection({});
+    setFromDraftsBySection({});
     setDirtySections(new Set());
     setSubjectsByClass({});
   }, [sessionId]);
@@ -258,9 +334,14 @@ export default function AssignmentsTab({
       ...prev,
       [sectionId]: buildDraftFromRows(sectionId, subjects, rows),
     }));
+    setFromDraftsBySection((prev) => ({
+      ...prev,
+      [sectionId]: buildFromDraftFromRows(sectionId, subjects, rows),
+    }));
   }, [sectionId, subjects, rows, dirtySections]);
 
   const draft = draftsBySection[sectionId] || {};
+  const fromDraft = fromDraftsBySection[sectionId] || {};
   const dirty = dirtySections.size > 0;
   const currentDirty = dirtySections.has(sectionId);
 
@@ -354,13 +435,68 @@ export default function AssignmentsTab({
     return list;
   }, [subjects, search, draft, teachers, statusFilter, teacherFilter, sortMode]);
 
-  const setTeacher = (subjectId: string, teacherId: string) => {
+  const applyTeacherChange = (subjectId: string, teacherId: string, assignedFrom?: string) => {
     if (!sectionId) return;
     setDraftsBySection((prev) => ({
       ...prev,
       [sectionId]: { ...(prev[sectionId] || {}), [subjectId]: teacherId },
     }));
+    if (!teacherId) {
+      setFromDraftsBySection((prev) => {
+        const nextSec = { ...(prev[sectionId] || {}) };
+        delete nextSec[subjectId];
+        return { ...prev, [sectionId]: nextSec };
+      });
+    } else {
+      const existingFrom = rows.find(
+        (r) =>
+          r.section?._id === sectionId &&
+          r.subject?._id === subjectId &&
+          r.teacher?._id === teacherId,
+      )?.assignedFrom;
+      setFromDraftsBySection((prev) => ({
+        ...prev,
+        [sectionId]: {
+          ...(prev[sectionId] || {}),
+          [subjectId]: assignedFrom || existingFrom || todayYmdLocal(),
+        },
+      }));
+    }
     setDirtySections((prev) => new Set(prev).add(sectionId));
+  };
+
+  const setTeacher = (subjectId: string, teacherId: string, subjectName: string) => {
+    if (!sectionId) return;
+    const prevTeacher = draftsBySection[sectionId]?.[subjectId] || "";
+    if (teacherId === prevTeacher) return;
+
+    // Clear or first assign → silent today default (no interrupt).
+    if (!teacherId || !prevTeacher) {
+      applyTeacherChange(subjectId, teacherId);
+      return;
+    }
+
+    // Re-selecting a teacher who already owns this subject → keep their start date.
+    const existingSame = rows.find(
+      (r) =>
+        r.section?._id === sectionId &&
+        r.subject?._id === subjectId &&
+        r.teacher?._id === teacherId,
+    );
+    if (existingSame) {
+      applyTeacherChange(subjectId, teacherId, existingSame.assignedFrom || undefined);
+      return;
+    }
+
+    const teacherName = teachers.find((t) => t._id === teacherId)?.name || "this teacher";
+    setReplacePrompt({
+      subjectId,
+      subjectName,
+      teacherId,
+      teacherName,
+      pickDate: false,
+      date: todayYmdLocal(),
+    });
   };
 
   const resolveClassForSection = (secId: string) => {
@@ -379,6 +515,7 @@ export default function AssignmentsTab({
         if (!classSubjects.length) {
           setSubjectsByClass((prev) => ({ ...prev, [clsId]: loaded }));
         }
+        const fromDraftSec = fromDraftsBySection[secId] || {};
         await syncSectionSubjectTeachers({
           session: sessionId,
           class: clsId,
@@ -386,6 +523,7 @@ export default function AssignmentsTab({
           items: loaded.map((s) => ({
             subject: s._id,
             teacher: sectionDraft[s._id] || null,
+            assignedFrom: sectionDraft[s._id] ? fromDraftSec[s._id] || todayYmdLocal() : null,
           })),
         });
       }
@@ -403,6 +541,34 @@ export default function AssignmentsTab({
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
+
+  const updateFromMut = useMutation({
+    mutationFn: ({ id, assignedFrom }: { id: string; assignedFrom: string }) =>
+      updateTeacherAssignment(id, { assignedFrom }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["timetable-assignments", sessionId] });
+      setEditFromPrompt(null);
+      toast({ title: "Attendance start updated" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const confirmReplaceWithToday = () => {
+    if (!replacePrompt) return;
+    applyTeacherChange(replacePrompt.subjectId, replacePrompt.teacherId, todayYmdLocal());
+    setReplacePrompt(null);
+  };
+
+  const confirmReplaceWithDate = () => {
+    if (!replacePrompt?.date) return;
+    applyTeacherChange(replacePrompt.subjectId, replacePrompt.teacherId, replacePrompt.date);
+    setReplacePrompt(null);
+  };
+
+  const saveEditFrom = () => {
+    if (!editFromPrompt?.date) return;
+    updateFromMut.mutate({ id: editFromPrompt.assignmentId, assignedFrom: editFromPrompt.date });
+  };
 
   if (!sessionId) return null;
 
@@ -423,8 +589,8 @@ export default function AssignmentsTab({
           <div className="min-w-0">
             <h2 className="text-lg font-bold tracking-tight text-slate-900">Assign Subject Teachers</h2>
             <p className="mt-1 text-sm leading-snug text-slate-600 whitespace-pre-line">
-              {`Assign a session teacher to each subject. The same teacher can teach many subjects and sections.
-Add someone under Teachers if they are missing from the list.`}
+              {`Assign a session teacher to each subject. Attendance starts from today when you assign someone new.
+Use the row menu to change the start date if needed.`}
             </p>
           </div>
         </div>
@@ -674,12 +840,25 @@ Add someone under Teachers if they are missing from the list.`}
                     const teacherId = draft[sub._id] || "";
                     const unassigned = !teacherId;
                     const rosterOptions = orderRosterForSubject(teacherProfiles, sub);
-                    const assignedName = rows.find((r) => r.teacher?._id === teacherId)?.teacher?.name;
+                    const savedRow = rows.find(
+                      (r) => r.section?._id === sectionId && r.subject?._id === sub._id,
+                    );
+                    const assignedName =
+                      savedRow?.teacher?._id === teacherId
+                        ? savedRow.teacher?.name
+                        : rows.find((r) => r.teacher?._id === teacherId)?.teacher?.name;
                     const teacherOptions =
                       teacherId && !rosterOptions.some((t) => t._id === teacherId)
                         ? [...rosterOptions, { _id: teacherId, name: assignedName || "Current teacher" }]
                         : rosterOptions;
                     const teacher = teacherOptions.find((t) => t._id === teacherId);
+                    const fromValue = fromDraft[sub._id] || savedRow?.assignedFrom || "";
+                    const fromLabel = formatAssignedFromLabel(fromValue);
+                    const canEditStart =
+                      canEdit &&
+                      !!savedRow?._id &&
+                      savedRow.teacher?._id === teacherId &&
+                      !currentDirty;
                     return (
                       <tr
                         key={sub._id}
@@ -698,35 +877,44 @@ Add someone under Teachers if they are missing from the list.`}
                           </span>
                         </td>
                         <td className="px-3 py-2.5">
-                          <div className="flex min-w-[14rem] items-center gap-2">
+                          <div className="flex min-w-[14rem] items-start gap-2">
                             {teacher ? (
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-semibold text-white">
+                              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-semibold text-white">
                                 {initials(teacher.name)}
                               </span>
                             ) : (
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-400">
+                              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-400">
                                 <Users className="h-3.5 w-3.5" />
                               </span>
                             )}
-                            <select
-                              id={`teacher-select-${sub._id}`}
-                              className={cn(
-                                "h-8 min-w-[11rem] flex-1 rounded-md border bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/30",
-                                unassigned
-                                  ? "border-amber-200 text-slate-400"
-                                  : "border-slate-200 text-slate-800",
-                              )}
-                              value={teacherId}
-                              disabled={!canEdit}
-                              onChange={(e) => setTeacher(sub._id, e.target.value)}
-                            >
-                              <option value="">Select Teacher…</option>
-                              {teacherOptions.map((t) => (
-                                <option key={t._id} value={t._id}>
-                                  {t.name}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <select
+                                id={`teacher-select-${sub._id}`}
+                                className={cn(
+                                  "h-8 w-full min-w-[11rem] rounded-md border bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/30",
+                                  unassigned
+                                    ? "border-amber-200 text-slate-400"
+                                    : "border-slate-200 text-slate-800",
+                                )}
+                                value={teacherId}
+                                disabled={!canEdit}
+                                onChange={(e) =>
+                                  setTeacher(sub._id, e.target.value, subjectDisplayName(sub))
+                                }
+                              >
+                                <option value="">Select Teacher…</option>
+                                {teacherOptions.map((t) => (
+                                  <option key={t._id} value={t._id}>
+                                    {t.name}
+                                  </option>
+                                ))}
+                              </select>
+                              {!unassigned && fromLabel ? (
+                                <p className="pl-0.5 text-[11px] leading-tight text-slate-500">
+                                  From {fromLabel}
+                                </p>
+                              ) : null}
+                            </div>
                           </div>
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5">
@@ -743,17 +931,44 @@ Add someone under Teachers if they are missing from the list.`}
                           )}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                          <button
-                            type="button"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50 disabled:opacity-40"
-                            disabled={!canEdit}
-                            title="Change teacher"
-                            onClick={() =>
-                              document.getElementById(`teacher-select-${sub._id}`)?.focus()
-                            }
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                                disabled={!canEdit}
+                                aria-label="Row actions"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  document.getElementById(`teacher-select-${sub._id}`)?.focus()
+                                }
+                              >
+                                <Pencil className="mr-2 h-3.5 w-3.5" />
+                                Change teacher
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                disabled={!canEditStart}
+                                onClick={() => {
+                                  if (!savedRow?._id) return;
+                                  setEditFromPrompt({
+                                    assignmentId: savedRow._id,
+                                    subjectName: subjectDisplayName(sub),
+                                    teacherName: teacher?.name || savedRow.teacher?.name || "",
+                                    date: fromValue || todayYmdLocal(),
+                                  });
+                                }}
+                              >
+                                <CalendarDays className="mr-2 h-3.5 w-3.5" />
+                                Edit attendance start
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </td>
                       </tr>
                     );
@@ -933,6 +1148,123 @@ Add someone under Teachers if they are missing from the list.`}
           </div>
         </aside>
       </div>
+
+      <Dialog
+        open={!!replacePrompt}
+        onOpenChange={(open) => {
+          if (!open) setReplacePrompt(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" onClose={() => setReplacePrompt(null)}>
+          <DialogHeader>
+            <DialogTitle>Change teacher</DialogTitle>
+            <DialogDescription>
+              {replacePrompt
+                ? `Attendance for ${replacePrompt.subjectName} will start from today for ${replacePrompt.teacherName}. Classes before that date will not count as absent.`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          {replacePrompt?.pickDate ? (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700" htmlFor="replace-from-date">
+                Attendance starts from
+              </label>
+              <input
+                id="replace-from-date"
+                type="date"
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                value={replacePrompt.date}
+                onChange={(e) =>
+                  setReplacePrompt((prev) => (prev ? { ...prev, date: e.target.value } : prev))
+                }
+              />
+              <p className="text-xs text-slate-500">Classes before this date will not count as absent.</p>
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setReplacePrompt(null)}>
+              Cancel
+            </Button>
+            {replacePrompt?.pickDate ? (
+              <Button
+                type="button"
+                className="bg-blue-600 text-white hover:bg-blue-700"
+                disabled={!replacePrompt.date}
+                onClick={confirmReplaceWithDate}
+              >
+                Apply date
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setReplacePrompt((prev) =>
+                      prev ? { ...prev, pickDate: true, date: todayYmdLocal() } : prev,
+                    )
+                  }
+                >
+                  Pick a date
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-blue-600 text-white hover:bg-blue-700"
+                  onClick={confirmReplaceWithToday}
+                >
+                  Use today
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!editFromPrompt}
+        onOpenChange={(open) => {
+          if (!open) setEditFromPrompt(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" onClose={() => setEditFromPrompt(null)}>
+          <DialogHeader>
+            <DialogTitle>Edit attendance start</DialogTitle>
+            <DialogDescription>
+              {editFromPrompt
+                ? `${editFromPrompt.teacherName} · ${editFromPrompt.subjectName}`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700" htmlFor="edit-from-date">
+              Attendance starts from
+            </label>
+            <input
+              id="edit-from-date"
+              type="date"
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              value={editFromPrompt?.date || ""}
+              onChange={(e) =>
+                setEditFromPrompt((prev) => (prev ? { ...prev, date: e.target.value } : prev))
+              }
+            />
+            <p className="text-xs text-slate-500">Classes before this date will not count as absent.</p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setEditFromPrompt(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-blue-600 text-white hover:bg-blue-700"
+              disabled={!editFromPrompt?.date || updateFromMut.isPending}
+              onClick={saveEditFrom}
+            >
+              {updateFromMut.isPending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -96,6 +96,8 @@ export interface TeacherAssignment {
   section: { _id: string; name: string };
   subject: { _id: string; name: string; code: string };
   teacher: { _id: string; name: string; email?: string };
+  /** YYYY-MM-DD — attendance counts from this date (inclusive). */
+  assignedFrom?: string | null;
   isPrimary: boolean;
   priority: number;
 }
@@ -346,12 +348,13 @@ export const createTeacherAssignment = (body: {
   section: string;
   subject: string;
   teacher: string;
+  assignedFrom?: string;
 }) => api<TeacherAssignment>("/setup/teacher-assignments", { method: "POST", body: JSON.stringify(body) });
 
 export const bulkSyncTeacherAssignments = (body: {
   session: string;
   teacher: string;
-  assignments: Array<{ class: string; section: string; subject: string }>;
+  assignments: Array<{ class: string; section: string; subject: string; assignedFrom?: string }>;
 }) =>
   api<TeacherAssignment[]>("/setup/teacher-assignments/bulk", {
     method: "POST",
@@ -364,6 +367,7 @@ export const upsertSubjectTeacher = (body: {
   section: string;
   subject: string;
   teacher: string | null;
+  assignedFrom?: string;
 }) =>
   api<{ cleared: boolean; data: TeacherAssignment | null }>("/setup/teacher-assignments/subject-teacher", {
     method: "PUT",
@@ -374,9 +378,18 @@ export const syncSectionSubjectTeachers = (body: {
   session: string;
   class: string;
   section: string;
-  items: Array<{ subject: string; teacher: string | null }>;
+  items: Array<{ subject: string; teacher: string | null; assignedFrom?: string | null }>;
 }) =>
   api<TeacherAssignment[]>("/setup/teacher-assignments/section-subjects", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+
+export const updateTeacherAssignment = (
+  id: string,
+  body: { teacher?: string; assignedFrom?: string | null; isPrimary?: boolean; priority?: number },
+) =>
+  api<TeacherAssignment>(`/setup/teacher-assignments/${id}`, {
     method: "PUT",
     body: JSON.stringify(body),
   });

@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -24,6 +25,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   AlertCircle,
+  BookOpen,
+  CalendarDays,
+  Check,
   Circle,
   DoorOpen,
   Eraser,
@@ -41,6 +45,20 @@ import {
   Users,
 } from "lucide-react";
 import { cn, formatWallClockRange } from "@/lib/utils";
+
+/** Same modal chrome as Give advance / loan. */
+const lessonFormLabelClass = "text-sm font-medium text-muted-foreground";
+const lessonFormSelectClass =
+  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-70";
+const lessonSectionTitleClass = "text-sm font-semibold text-primary";
+const lessonSectionCardClass = "rounded-md border bg-background p-4 space-y-4";
+const lessonCancelBtnClass =
+  "h-10 w-full gap-2 border-primary text-primary hover:bg-primary/5 hover:text-primary sm:w-auto";
+const lessonPrimaryBtnClass = "h-10 w-full gap-2 sm:w-auto";
+const lessonDialogShellClass = cn(
+  "flex w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:w-full sm:max-w-[36rem] sm:p-0 max-h-[94dvh]",
+  "[&>button]:right-5 [&>button]:top-5 [&>button]:text-primary-foreground [&>button]:opacity-100 [&>button]:hover:text-primary-foreground",
+);
 import { useToast } from "@/hooks/use-toast";
 import { subjectIcon } from "@/lib/subjectTheme";
 import type { ModuleActionCaps } from "@/lib/permissions";
@@ -1463,299 +1481,396 @@ export default function ClassBoardTab({
       </div>
 
       <Dialog open={Boolean(dialog)} onOpenChange={(o) => !o && setDialog(null)}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {dialog?.existing ? "Edit lesson" : "Place lesson"} · {dialog?.period.label}
+        <DialogContent className={lessonDialogShellClass}>
+          <DialogHeader className="shrink-0 space-y-1 bg-primary px-6 py-4 pr-12 text-left text-primary-foreground">
+            <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-primary-foreground">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-foreground/15">
+                <BookOpen className="h-5 w-5" />
+              </span>
+              {dialog?.existing ? "Edit lesson" : "Place lesson"}
+              {dialog?.period.label ? ` · ${dialog.period.label}` : ""}
             </DialogTitle>
+            <DialogDescription className="pl-12 text-primary-foreground/80">
+              {dialog
+                ? `${DAY_FULL_LABELS[day]} · ${formatWallClockRange(dialog.period.startTime, dialog.period.endTime, "–")}`
+                : ""}
+            </DialogDescription>
           </DialogHeader>
-          {dialog && (
-            <div className="space-y-3 text-sm">
-              <p className="text-muted-foreground">
-                {DAY_FULL_LABELS[day]} · {formatWallClockRange(dialog.period.startTime, dialog.period.endTime, "–")}
-              </p>
 
-              {lecturePeriods.length > 1 && (
-                <div className="space-y-1.5">
-                  <Label>Period</Label>
-                  <select
-                    className="w-full h-9 rounded-md border px-2"
-                    value={dialog.period._id}
-                    onChange={(e) => {
-                      const period = lecturePeriods.find((p) => p._id === e.target.value);
-                      if (period) setDialog((d) => (d ? { ...d, period } : d));
-                    }}
-                  >
-                    {lecturePeriods.map((p) => (
-                      <option key={p._id} value={p._id}>
-                        {p.label || `P${p.order}`} ({formatWallClockRange(p.startTime, p.endTime, "–")})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+          {dialog ? (
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-muted/30 px-5 py-4">
+              <div className="space-y-4">
+                {lecturePeriods.length > 1 ? (
+                  <section className={lessonSectionCardClass}>
+                    <p className={lessonSectionTitleClass}>Period</p>
+                    <div className="min-w-0 space-y-1.5">
+                      <Label className={lessonFormLabelClass}>Period</Label>
+                      <select
+                        className={lessonFormSelectClass}
+                        value={dialog.period._id}
+                        onChange={(e) => {
+                          const period = lecturePeriods.find((p) => p._id === e.target.value);
+                          if (period) setDialog((d) => (d ? { ...d, period } : d));
+                        }}
+                      >
+                        {lecturePeriods.map((p) => (
+                          <option key={p._id} value={p._id}>
+                            {p.label || `P${p.order}`} ({formatWallClockRange(p.startTime, p.endTime, "–")})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </section>
+                ) : (
+                  <section className={lessonSectionCardClass}>
+                    <p className={lessonSectionTitleClass}>Period</p>
+                    <div className="min-w-0 space-y-1.5">
+                      <Label className={lessonFormLabelClass}>Period</Label>
+                      <div className="flex h-10 items-center rounded-md border border-input bg-muted/40 px-3 text-sm text-foreground">
+                        {dialog.period.label || `P${dialog.period.order}`} (
+                        {formatWallClockRange(dialog.period.startTime, dialog.period.endTime, "–")})
+                      </div>
+                    </div>
+                  </section>
+                )}
 
-              <div className="space-y-2 rounded-md border p-3">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <Checkbox
-                    className="mt-0.5"
-                    checked={form.combineSubjects}
-                    onCheckedChange={(v) => {
-                      const on = v === true;
-                      setForm((f) => {
-                        if (!on) {
+                <section className={lessonSectionCardClass}>
+                  <p className={lessonSectionTitleClass}>Lesson</p>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-primary/20 bg-muted/20 p-3">
+                    <Checkbox
+                      className="mt-0.5"
+                      checked={form.combineSubjects}
+                      onCheckedChange={(v) => {
+                        const on = v === true;
+                        setForm((f) => {
+                          if (!on) {
+                            return {
+                              ...f,
+                              combineSubjects: false,
+                              customSubjectIds: [],
+                              optionKey: f.optionKey,
+                              teachersBySubject: {},
+                            };
+                          }
+                          const seed =
+                            f.customSubjectIds.length >= 2
+                              ? f.customSubjectIds
+                              : selectedOption?.subjectIds || (f.optionKey ? [f.optionKey] : []);
                           return {
                             ...f,
-                            combineSubjects: false,
-                            customSubjectIds: [],
-                            optionKey: f.optionKey,
-                            teachersBySubject: {},
+                            combineSubjects: true,
+                            optionKey: "",
+                            customSubjectIds: seed.filter(Boolean),
+                            teachersBySubject: f.teachersBySubject,
                           };
-                        }
-                        const seed =
-                          f.customSubjectIds.length >= 2
-                            ? f.customSubjectIds
-                            : selectedOption?.subjectIds ||
-                              (f.optionKey ? [f.optionKey] : []);
-                        return {
-                          ...f,
-                          combineSubjects: true,
-                          optionKey: "",
-                          customSubjectIds: seed.filter(Boolean),
-                          teachersBySubject: f.teachersBySubject,
-                        };
-                      });
-                    }}
-                  />
-                  <span>
-                    <span className="block text-sm font-medium">
-                      Combine subjects in this period
+                        });
+                      }}
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-foreground">
+                        Combine subjects in this period
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                        Timetable only (e.g. Pst / Isl) — does not change admission choice groups.
+                      </span>
                     </span>
-                    <span className="block text-xs text-muted-foreground">
-                      Timetable only (e.g. Pst / Isl) — does not change admission choice groups.
-                    </span>
-                  </span>
-                </label>
-              </div>
+                  </label>
 
-              {form.combineSubjects ? (
-                <div className="space-y-2 rounded-md border p-3">
-                  <Label>Subjects (pick 2 or more)</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Each subject needs a different teacher. Cell shows as Subject / Subject.
+                  {form.combineSubjects ? (
+                    <div className="space-y-2">
+                      <Label className={lessonFormLabelClass}>Subjects (pick 2 or more)</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Each subject needs a different teacher. Cell shows as Subject / Subject.
+                      </p>
+                      <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto min-[480px]:grid-cols-2">
+                        {subjects.map((s) => {
+                          if (!s._id) return null;
+                          const checked = form.customSubjectIds.includes(s._id);
+                          return (
+                            <label
+                              key={s._id}
+                              className={cn(
+                                "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-colors",
+                                checked
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-primary/20 bg-background text-foreground hover:bg-primary/5",
+                              )}
+                            >
+                              <Checkbox
+                                checked={checked}
+                                className={checked ? "border-primary-foreground data-[state=checked]:bg-primary-foreground data-[state=checked]:text-primary" : undefined}
+                                onCheckedChange={(v) => {
+                                  setForm((f) => {
+                                    const next = new Set(f.customSubjectIds);
+                                    if (v) next.add(s._id);
+                                    else next.delete(s._id);
+                                    const customSubjectIds = [...next];
+                                    const teachersBySubject = { ...f.teachersBySubject };
+                                    for (const id of Object.keys(teachersBySubject)) {
+                                      if (!next.has(id)) delete teachersBySubject[id];
+                                    }
+                                    return { ...f, customSubjectIds, teachersBySubject };
+                                  });
+                                }}
+                              />
+                              {s.name || "Untitled"}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {subjects.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Add subjects for this class in Academic Setup first.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="min-w-0 space-y-1.5">
+                      <Label className={lessonFormLabelClass}>Subject</Label>
+                      <select
+                        className={lessonFormSelectClass}
+                        value={form.optionKey}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            optionKey: e.target.value,
+                            teachersBySubject: {},
+                          }))
+                        }
+                      >
+                        <option value="">Select Subject</option>
+                        {subjectOptions.map((o) => (
+                          <option key={o.key} value={o.key}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedOption?.kind === "choice" ? (
+                        <p className="text-xs text-muted-foreground">
+                          Admission choice group — students pick from these subjects. Assign one
+                          teacher each.
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {activeSubjectIds.map((sid) => {
+                    const subj = subjects.find((s) => s._id === sid);
+                    return (
+                      <div key={sid} className="min-w-0 space-y-1.5">
+                        <Label className={lessonFormLabelClass}>
+                          Teacher{multiSubjectLesson ? ` · ${subj?.name || ""}` : ""}
+                        </Label>
+                        <select
+                          className={lessonFormSelectClass}
+                          value={form.teachersBySubject[sid] || ""}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              teachersBySubject: {
+                                ...f.teachersBySubject,
+                                [sid]: e.target.value,
+                              },
+                            }))
+                          }
+                        >
+                          <option value="">Select Teacher</option>
+                          {teachersForSubject(sid).map((t) => (
+                            <option key={t._id} value={t._id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                        {teacherProfiles.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Add this person under System Config → Teachers for the current session.
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+
+                  <div className="min-w-0 space-y-1.5">
+                    <Label className={lessonFormLabelClass}>Room (optional)</Label>
+                    <select
+                      className={lessonFormSelectClass}
+                      value={form.roomId}
+                      onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
+                    >
+                      <option value="">No Room</option>
+                      {rooms.map((r) => (
+                        <option key={r._id} value={r._id}>
+                          {r.code || r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </section>
+
+                <section className={lessonSectionCardClass}>
+                  <p className={cn(lessonSectionTitleClass, "flex items-center gap-1.5")}>
+                    <Users className="h-3.5 w-3.5" />
+                    Apply to sections
                   </p>
-                  <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-                    {subjects.map((s) => {
-                      if (!s._id) return null;
-                      const checked = form.customSubjectIds.includes(s._id);
+                  <p className="text-xs text-muted-foreground">
+                    Select more than one for a shared lesson (same teacher allowed at the same
+                    time).
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2">
+                    {dialogSectionRows.map((row) => {
+                      const checked = form.sectionIds.includes(row.section?._id);
+                      const label = classSectionBoardLabel(
+                        row.class?.name,
+                        row.section?.name,
+                        row.section?.label,
+                      );
                       return (
-                        <label key={s._id} className="flex items-center gap-2 text-sm">
+                        <label
+                          key={row.section?._id || label}
+                          className={cn(
+                            "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
+                            checked
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-primary/20 bg-background text-foreground hover:bg-primary/5",
+                          )}
+                        >
                           <Checkbox
                             checked={checked}
+                            className={
+                              checked
+                                ? "border-primary-foreground data-[state=checked]:bg-primary-foreground data-[state=checked]:text-primary"
+                                : undefined
+                            }
                             onCheckedChange={(v) => {
+                              const sectionId = row.section?._id;
+                              if (!sectionId) return;
                               setForm((f) => {
-                                const next = new Set(f.customSubjectIds);
-                                if (v) next.add(s._id);
-                                else next.delete(s._id);
-                                const customSubjectIds = [...next];
-                                const teachersBySubject = { ...f.teachersBySubject };
-                                for (const id of Object.keys(teachersBySubject)) {
-                                  if (!next.has(id)) delete teachersBySubject[id];
-                                }
-                                return { ...f, customSubjectIds, teachersBySubject };
+                                const next = new Set(f.sectionIds);
+                                if (v) next.add(sectionId);
+                                else next.delete(sectionId);
+                                if (!next.size) next.add(dialog.sectionId);
+                                return { ...f, sectionIds: [...next] };
                               });
                             }}
                           />
-                          {s.name || "Untitled"}
+                          {label}
                         </label>
                       );
                     })}
                   </div>
-                  {subjects.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Add subjects for this class in Academic Setup first.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <Label>Subject</Label>
-                  <select
-                    className="w-full h-9 rounded-md border px-2"
-                    value={form.optionKey}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, optionKey: e.target.value, teachersBySubject: {} }))
-                    }
-                  >
-                    <option value="">Select Subject</option>
-                    {subjectOptions.map((o) => (
-                      <option key={o.key} value={o.key}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedOption?.kind === "choice" && (
-                    <p className="text-xs text-muted-foreground">
-                      Admission choice group — students pick from these subjects. Assign one teacher
-                      each.
-                    </p>
-                  )}
-                </div>
-              )}
+                </section>
 
-              {activeSubjectIds.map((sid) => {
-                const subj = subjects.find((s) => s._id === sid);
-                return (
-                  <div key={sid} className="space-y-1.5">
-                    <Label>
-                      Teacher{multiSubjectLesson ? ` · ${subj?.name || ""}` : ""}
-                    </Label>
-                    <select
-                      className="w-full h-9 rounded-md border px-2"
-                      value={form.teachersBySubject[sid] || ""}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          teachersBySubject: { ...f.teachersBySubject, [sid]: e.target.value },
-                        }))
-                      }
-                    >
-                      <option value="">Select Teacher</option>
-                      {teachersForSubject(sid).map((t) => (
-                        <option key={t._id} value={t._id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                    {teacherProfiles.length === 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Add this person under System Config → Teachers for the current session.
-                      </p>
-                    )}
+                <section className={lessonSectionCardClass}>
+                  <p className={cn(lessonSectionTitleClass, "flex items-center gap-1.5")}>
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Also apply to days
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-3">
+                    {(
+                      [
+                        ["single", "This day only", "Only the selected weekday"],
+                        ["fullWeek", "Mon–Fri", "Same lesson across the school week"],
+                        ["custom", "Custom", "Pick specific weekdays"],
+                      ] as const
+                    ).map(([mode, label, hint]) => {
+                      const on = form.dayApplyMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, dayApplyMode: mode }))}
+                          className={cn(
+                            "flex flex-col items-start gap-0.5 rounded-lg border p-3 text-left transition-colors",
+                            on
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-primary/30 bg-background text-primary hover:bg-primary/5",
+                          )}
+                        >
+                          <span className="text-sm font-semibold">{label}</span>
+                          <span
+                            className={cn(
+                              "text-xs leading-snug",
+                              on ? "text-primary-foreground/80" : "text-muted-foreground",
+                            )}
+                          >
+                            {hint}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                );
-              })}
-
-              <div className="space-y-1.5">
-                <Label>Room (optional)</Label>
-                <select
-                  className="w-full h-9 rounded-md border px-2"
-                  value={form.roomId}
-                  onChange={(e) => setForm((f) => ({ ...f, roomId: e.target.value }))}
-                >
-                  <option value="">No Room</option>
-                  {rooms.map((r) => (
-                    <option key={r._id} value={r._id}>
-                      {r.code || r.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2 rounded-md border p-3">
-                <Label className="flex items-center gap-1.5">
-                  <Users className="h-3.5 w-3.5" />
-                  Apply to sections
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Select more than one for a shared lesson (same teacher allowed at the same time).
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {dialogSectionRows.map((row) => {
-                    const checked = form.sectionIds.includes(row.section?._id);
-                    const label = classSectionBoardLabel(
-                      row.class?.name,
-                      row.section?.name,
-                      row.section?.label
-                    );
-                    return (
-                      <label key={row.section?._id || label} className="flex items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(v) => {
-                            const sectionId = row.section?._id;
-                            if (!sectionId) return;
-                            setForm((f) => {
-                              const next = new Set(f.sectionIds);
-                              if (v) next.add(sectionId);
-                              else next.delete(sectionId);
-                              if (!next.size) next.add(dialog.sectionId);
-                              return { ...f, sectionIds: [...next] };
-                            });
-                          }}
-                        />
-                        {label}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-2 rounded-md border p-3">
-                <Label>Also apply to days</Label>
-                <div className="flex flex-wrap gap-2">
-                  {(
-                    [
-                      ["single", "This day only"],
-                      ["fullWeek", "Mon–Fri"],
-                      ["custom", "Custom"],
-                    ] as const
-                  ).map(([mode, label]) => (
-                    <Button
-                      key={mode}
-                      type="button"
-                      size="sm"
-                      variant={form.dayApplyMode === mode ? "default" : "outline"}
-                      onClick={() => setForm((f) => ({ ...f, dayApplyMode: mode }))}
-                    >
-                      {label}
-                    </Button>
-                  ))}
-                </div>
-                {form.dayApplyMode === "custom" && (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {FULL_WEEK_DAYS.map((d) => (
-                      <label key={d} className="flex items-center gap-1.5 text-xs">
-                        <Checkbox
-                          checked={form.selectedDays.includes(d)}
-                          onCheckedChange={(v) => {
-                            setForm((f) => {
-                              const next = new Set(f.selectedDays);
-                              if (v) next.add(d);
-                              else next.delete(d);
-                              return { ...f, selectedDays: [...next] as Weekday[] };
-                            });
-                          }}
-                        />
-                        {DAY_FULL_LABELS[d].slice(0, 3)}
-                      </label>
-                    ))}
-                  </div>
-                )}
+                  {form.dayApplyMode === "custom" ? (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {FULL_WEEK_DAYS.map((d) => {
+                        const checked = form.selectedDays.includes(d);
+                        return (
+                          <label
+                            key={d}
+                            className={cn(
+                              "inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                              checked
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-primary/20 bg-background text-foreground hover:bg-primary/5",
+                            )}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              className={
+                                checked
+                                  ? "border-primary-foreground data-[state=checked]:bg-primary-foreground data-[state=checked]:text-primary"
+                                  : undefined
+                              }
+                              onCheckedChange={(v) => {
+                                setForm((f) => {
+                                  const next = new Set(f.selectedDays);
+                                  if (v) next.add(d);
+                                  else next.delete(d);
+                                  return { ...f, selectedDays: [...next] as Weekday[] };
+                                });
+                              }}
+                            />
+                            {DAY_FULL_LABELS[d].slice(0, 3)}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </section>
               </div>
             </div>
-          )}
-          <DialogFooter className="gap-2 sm:gap-0">
-            {dialog?.existing && (
+          ) : null}
+
+          <DialogFooter className="shrink-0 flex-col gap-2 border-t bg-background px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:space-x-0">
+            {dialog?.existing ? (
               <Button
                 type="button"
                 variant="destructive"
-                size="sm"
-                className="mr-auto"
+                className="mr-auto h-10 w-full gap-2 sm:w-auto"
                 disabled={deleteMut.isPending}
                 onClick={() => deleteMut.mutate()}
               >
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                <Trash2 className="h-4 w-4" />
                 {dialog.existing.combinedGroupId && form.sectionIds.length > 1
                   ? "Remove shared"
                   : "Remove"}
               </Button>
-            )}
-            <Button type="button" variant="outline" onClick={() => setDialog(null)}>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              className={lessonCancelBtnClass}
+              onClick={() => setDialog(null)}
+            >
               Cancel
             </Button>
-            <Button type="button" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
-              {saveMut.isPending ? "Saving…" : "Save"}
+            <Button
+              type="button"
+              className={lessonPrimaryBtnClass}
+              disabled={saveMut.isPending}
+              onClick={() => saveMut.mutate()}
+            >
+              {dialog?.existing ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {saveMut.isPending ? "Saving…" : dialog?.existing ? "Save changes" : "Place lesson"}
             </Button>
           </DialogFooter>
         </DialogContent>

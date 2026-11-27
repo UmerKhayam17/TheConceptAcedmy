@@ -3,6 +3,7 @@ const Session = require('../models/Session');
 const User = require('../models/User');
 const TimetableVersion = require('../models/timetable/TimetableVersion');
 const ScheduleSlot = require('../models/timetable/ScheduleSlot');
+const TeacherAssignment = require('../models/timetable/TeacherAssignment');
 require('../models/academy/AcademyClass');
 require('../models/academy/AcademySection');
 require('../models/academy/AcademySubject');
@@ -165,9 +166,11 @@ async function loadWeekdayPeriods(sessionId) {
     const className = classDoc?.className || '';
     const sectionName = sectionDoc?.sectionName || '';
     const subjectName = subjectDoc?.subjectName || '';
+    const sectionId = sectionDoc?._id ? String(sectionDoc._id) : '';
+    const subjectId = subjectDoc?._id ? String(subjectDoc._id) : '';
     const id = `${className}|${sectionName}|${subjectName}`;
     if (bucket.classes.some((c) => c.id === id)) return;
-    bucket.classes.push({ id, className, sectionName, subjectName });
+    bucket.classes.push({ id, className, sectionName, subjectName, sectionId, subjectId });
   };
 
   slots.forEach((slot) => {
@@ -204,6 +207,37 @@ async function loadWeekdayPeriods(sessionId) {
   });
 
   return byWeekday;
+}
+
+/**
+ * teacherId|sectionId|subjectId → assignedFrom (YYYY-MM-DD).
+ * Only rows with a valid assignedFrom are included; missing = no start filter.
+ */
+async function loadAssignedFromMap(sessionId) {
+  const rows = await TeacherAssignment.find({ session: sessionId, isActive: true })
+    .select('teacher section subject assignedFrom')
+    .lean();
+  const map = new Map();
+  rows.forEach((r) => {
+    const from = r.assignedFrom != null ? String(r.assignedFrom).trim() : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return;
+    map.set(`${String(r.teacher)}|${String(r.section)}|${String(r.subject)}`, from);
+  });
+  return map;
+}
+
+/** Drop classes (and empty periods) before the teacher's assignment start date. */
+function filterPeriodForDay(row, day, teacherId, assignedFromMap) {
+  if (row?.extra || !assignedFromMap?.size) return row;
+  const classes = (row.classes || []).filter((c) => {
+    if (!c.sectionId || !c.subjectId) return true;
+    const from = assignedFromMap.get(`${teacherId}|${c.sectionId}|${c.subjectId}`);
+    if (!from) return true;
+    return day >= from;
+  });
+  if (!classes.length) return null;
+  if (classes.length === (row.classes || []).length) return row;
+  return { ...row, classes };
 }
 
 async function teacherUsers(ids) {
@@ -439,7 +473,8 @@ function periodsForTeacher(
   dailyMap,
   timeZone,
   extrasMap = new Map(),
-  includeTimetable = true
+  includeTimetable = true,
+  assignedFromMap = new Map()
 ) {
   const byPeriod = includeTimetable ? byWeekday.get(weekday)?.get(teacherId) : null;
   const extras = extrasMap.get(`${teacherId}|${day}`) || [];
@@ -447,17 +482,20 @@ function periodsForTeacher(
   const daily = dailyMap.get(`${teacherId}|${day}`);
   const times = scanTimes(daily, timeZone);
   const nowMin = nowMinutesFor(day, timeZone);
-  return sortPeriods([...(byPeriod ? byPeriod.values() : []), ...extras]).map((row) => {
-    const saved = markMap.get(`${teacherId}|${day}|${row.periodKey}`);
-    // A saved mark is the admin's decision — nothing left to review.
-    if (saved) return publicPeriod(row, saved);
-    // Extra classes are absent until the admin marks them — a gate check-in alone
-    // does not prove the extra class was taken.
-    if (row.extra) return publicPeriod(row, 'absent');
-    const status = autoPeriodStatus(row, daily, timeZone);
-    const review = status === 'present' || status === 'late' ? reviewFor(row, daily, times, nowMin) : null;
-    return publicPeriod(row, status, review);
-  });
+  return sortPeriods([...(byPeriod ? byPeriod.values() : []), ...extras])
+    .map((row) => filterPeriodForDay(row, day, teacherId, assignedFromMap))
+    .filter(Boolean)
+    .map((row) => {
+      const saved = markMap.get(`${teacherId}|${day}|${row.periodKey}`);
+      // A saved mark is the admin's decision — nothing left to review.
+      if (saved) return publicPeriod(row, saved);
+      // Extra classes are absent until the admin marks them — a gate check-in alone
+      // does not prove the extra class was taken.
+      if (row.extra) return publicPeriod(row, 'absent');
+      const status = autoPeriodStatus(row, daily, timeZone);
+      const review = status === 'present' || status === 'late' ? reviewFor(row, daily, times, nowMin) : null;
+      return publicPeriod(row, status, review);
+    });
 }
 
 /**
@@ -520,7 +558,10 @@ async function listDay({ sessionId, date, userId }) {
     };
   }
 
-  const byWeekday = await loadWeekdayPeriods(sessionId);
+  const [byWeekday, assignedFromMap] = await Promise.all([
+    loadWeekdayPeriods(sessionId),
+    loadAssignedFromMap(sessionId),
+  ]);
   const byTeacher = byWeekday.get(weekday) || new Map();
   const extrasMap = await extrasForDays(session._id, [ymd], userId || undefined);
   const idSet = new Set(byTeacher.keys());
@@ -556,7 +597,8 @@ async function listDay({ sessionId, date, userId }) {
         dailyMap,
         session.timezone,
         extrasMap,
-        !holidayOff
+        !holidayOff,
+        assignedFromMap
       );
       return teacherShape(user, periods, 'class', teacherScan(id, ymd, periods, dailyMap, session.timezone));
     });
@@ -615,7 +657,10 @@ async function listDay({ sessionId, date, userId }) {
 async function listMonth({ sessionId, month, year, userId }) {
   const session = await resolveSession(sessionId);
   const days = daysInMonth(month, year, session.timezone);
-  const byWeekday = await loadWeekdayPeriods(sessionId);
+  const [byWeekday, assignedFromMap] = await Promise.all([
+    loadWeekdayPeriods(sessionId),
+    loadAssignedFromMap(sessionId),
+  ]);
 
   const teacherIds = new Set();
   byWeekday.forEach((byTeacher) => {
@@ -671,7 +716,8 @@ async function listMonth({ sessionId, month, year, userId }) {
           dailyMap,
           session.timezone,
           extrasMap,
-          !holidayOff
+          !holidayOff,
+          assignedFromMap
         ).forEach((period) => {
           detail.push({
             day,

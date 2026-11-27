@@ -2,6 +2,7 @@ const TeacherAssignment = require('../../models/timetable/TeacherAssignment');
 const ApiError = require('../../utils/ApiError');
 const { assertSessionWritable } = require('../session/sessionGuard');
 const { assertTeacherOnSessionRoster } = require('./teacherProfileService');
+const { todayYmd } = require('../../utils/schoolDay');
 
 async function refreshUnpaidSalariesForTeachers(teacherIds, userId, reason = 'teacher_assignment') {
   const { safeRefreshUnpaidPercentageSalariesForStaff } = require('../academy/academySalaryService');
@@ -33,6 +34,18 @@ const populateOpts = [
   { path: 'teacher', select: 'name email' },
 ];
 
+/** YYYY-MM-DD or null. */
+function normalizeAssignedFrom(value) {
+  const s = value != null ? String(value).trim() : '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return null;
+}
+
+/** Explicit date, else today (academy TZ default). */
+function resolveAssignedFrom(explicit) {
+  return normalizeAssignedFrom(explicit) || todayYmd();
+}
+
 async function listTeacherAssignments({ sessionId, sectionId, classId, teacherId, subjectId }) {
   const q = { isActive: true };
   if (sessionId) q.session = sessionId;
@@ -52,7 +65,12 @@ async function getTeacherAssignment(id) {
 async function createTeacherAssignment(body, userId) {
   await assertSessionWritable(body.session);
   await assertTeacherOnSessionRoster(body.session, body.teacher);
-  const row = await TeacherAssignment.create({ ...body, createdBy: userId });
+  const assignedFrom = resolveAssignedFrom(body.assignedFrom);
+  const row = await TeacherAssignment.create({
+    ...body,
+    assignedFrom,
+    createdBy: userId,
+  });
   await refreshUnpaidSalariesForTeachers([body.teacher], userId, 'assignment_create');
   return row;
 }
@@ -85,6 +103,7 @@ async function bulkSyncTeacherAssignments(body, userId) {
         class: a.class,
         section: a.section,
         subject: a.subject,
+        assignedFrom: resolveAssignedFrom(a.assignedFrom),
         createdBy: userId,
       });
     }
@@ -121,8 +140,11 @@ async function upsertSubjectTeacher(body, userId) {
   const { session, class: classId, section, subject, teacher } = body;
   await assertSessionWritable(session);
 
-  const previous = await TeacherAssignment.find({ session, section, subject }).select('teacher');
+  const previous = await TeacherAssignment.find({ session, section, subject }).select(
+    'teacher assignedFrom'
+  );
   const affectedTeachers = previous.map((r) => r.teacher);
+  const sameTeacherPrev = previous.find((r) => teacher && String(r.teacher) === String(teacher));
   await TeacherAssignment.deleteMany({ session, section, subject });
 
   if (!teacher) {
@@ -132,12 +154,18 @@ async function upsertSubjectTeacher(body, userId) {
 
   await assertTeacherOnSessionRoster(session, teacher);
 
+  const assignedFrom =
+    normalizeAssignedFrom(body.assignedFrom) ||
+    (sameTeacherPrev ? normalizeAssignedFrom(sameTeacherPrev.assignedFrom) : null) ||
+    todayYmd();
+
   const row = await TeacherAssignment.create({
     session,
     class: classId,
     section,
     subject,
     teacher,
+    assignedFrom,
     isPrimary: true,
     priority: 1,
     createdBy: userId,
@@ -155,6 +183,7 @@ async function upsertSubjectTeacher(body, userId) {
 /**
  * Sync all subject→teacher mappings for one class section.
  * items[].teacher may be null/empty to leave unassigned.
+ * Keeps assignedFrom when the same teacher stays on a subject; new teachers get today (or item.assignedFrom).
  */
 async function syncSectionSubjectTeachers(body, userId) {
   const { session, class: classId, section, items } = body;
@@ -166,8 +195,9 @@ async function syncSectionSubjectTeachers(body, userId) {
         session,
         section,
         subject: { $in: subjectIds },
-      }).select('teacher')
+      }).select('teacher subject assignedFrom')
     : [];
+  const previousBySubject = new Map(previous.map((r) => [String(r.subject), r]));
   const affectedTeachers = previous.map((r) => r.teacher);
 
   if (subjectIds.length) {
@@ -180,16 +210,25 @@ async function syncSectionSubjectTeachers(body, userId) {
 
   const toCreate = items
     .filter((i) => i.teacher)
-    .map((i) => ({
-      session,
-      class: classId,
-      section,
-      subject: i.subject,
-      teacher: i.teacher,
-      isPrimary: true,
-      priority: 1,
-      createdBy: userId,
-    }));
+    .map((i) => {
+      const prev = previousBySubject.get(String(i.subject));
+      const sameTeacher = prev && String(prev.teacher) === String(i.teacher);
+      const assignedFrom =
+        normalizeAssignedFrom(i.assignedFrom) ||
+        (sameTeacher ? normalizeAssignedFrom(prev.assignedFrom) : null) ||
+        todayYmd();
+      return {
+        session,
+        class: classId,
+        section,
+        subject: i.subject,
+        teacher: i.teacher,
+        assignedFrom,
+        isPrimary: true,
+        priority: 1,
+        createdBy: userId,
+      };
+    });
 
   for (const row of toCreate) {
     // eslint-disable-next-line no-await-in-loop
@@ -210,6 +249,65 @@ async function syncSectionSubjectTeachers(body, userId) {
   return listTeacherAssignments({ sessionId: session, sectionId: section });
 }
 
+/**
+ * Ensure a TeacherAssignment exists for a timetable slot teacher.
+ * New teacher for section+subject gets assignedFrom=today; same teacher keeps existing date.
+ */
+async function ensureAssignmentForSlot({
+  session,
+  class: classId,
+  section,
+  subject,
+  teacher,
+  userId,
+  assignedFrom: explicitFrom,
+}) {
+  if (!session || !classId || !section || !subject || !teacher) return null;
+
+  const existing = await TeacherAssignment.findOne({
+    session,
+    section,
+    subject,
+    teacher,
+    isActive: true,
+  });
+  if (existing) {
+    if (!existing.assignedFrom && normalizeAssignedFrom(explicitFrom)) {
+      existing.assignedFrom = normalizeAssignedFrom(explicitFrom);
+      await existing.save();
+    }
+    return existing;
+  }
+
+  // Clear other teachers for this section+subject (one teacher per subject in Assignments).
+  const previous = await TeacherAssignment.find({ session, section, subject }).select('teacher');
+  if (previous.length) {
+    await TeacherAssignment.deleteMany({ session, section, subject });
+  }
+
+  try {
+    await assertTeacherOnSessionRoster(session, teacher);
+  } catch {
+    // Class Board may assign before roster sync; still record the date for attendance.
+  }
+
+  const row = await TeacherAssignment.create({
+    session,
+    class: classId,
+    section,
+    subject,
+    teacher,
+    assignedFrom: resolveAssignedFrom(explicitFrom),
+    isPrimary: true,
+    priority: 1,
+    createdBy: userId || undefined,
+  });
+
+  const affected = [...previous.map((r) => r.teacher), teacher];
+  await refreshUnpaidSalariesForTeachers(affected, userId, 'assignment_slot_ensure');
+  return row;
+}
+
 async function updateTeacherAssignment(id, body) {
   const existing = await TeacherAssignment.findById(id);
   if (!existing) throw new ApiError(404, 'Teacher assignment not found');
@@ -217,8 +315,12 @@ async function updateTeacherAssignment(id, body) {
   if (body.teacher) {
     await assertTeacherOnSessionRoster(existing.session, body.teacher);
   }
+  const patch = { ...body };
+  if (Object.prototype.hasOwnProperty.call(body, 'assignedFrom')) {
+    patch.assignedFrom = normalizeAssignedFrom(body.assignedFrom);
+  }
   const previousTeacher = existing.teacher;
-  const row = await TeacherAssignment.findByIdAndUpdate(id, body, {
+  const row = await TeacherAssignment.findByIdAndUpdate(id, patch, {
     new: true,
     runValidators: true,
   }).populate(populateOpts);
@@ -249,6 +351,7 @@ module.exports = {
   bulkSyncTeacherAssignments,
   upsertSubjectTeacher,
   syncSectionSubjectTeachers,
+  ensureAssignmentForSlot,
   updateTeacherAssignment,
   deleteTeacherAssignment,
 };
