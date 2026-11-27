@@ -21,7 +21,8 @@ const {
   resolveLogoPath,
 } = require('./academyReportDocument');
 const AcademySalaryRecord = require('../../models/academy/AcademySalaryRecord');
-const { getSalaryRecordById } = require('./academySalaryService');
+const ApiError = require('../../utils/ApiError');
+const { getSalaryRecordById, listSalaryRecordsForSlips } = require('./academySalaryService');
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -620,17 +621,10 @@ async function findFitScale(ctx, info) {
   return lo;
 }
 
-async function renderSalarySlipPdf(id, { variant = 'students' } = {}) {
-  const rec = await getSalaryRecordById(id);
-  // A paid slip shows what was actually paid: the breakdown saved on the voucher,
-  // not today's live recalculation (fees or assignments may have changed since).
-  if (rec.status === 'paid') {
-    const stored = await AcademySalaryRecord.findById(id).select('calculationBreakdown').lean();
-    if (stored?.calculationBreakdown?.length) rec.calculationBreakdown = stored.calculationBreakdown;
-  }
+function buildSlipCtx(rec, variant, generatedAt = new Date()) {
   const staff = rec.staffId && typeof rec.staffId === 'object' ? rec.staffId : {};
   const period = `${MONTHS[(rec.month || 1) - 1]} ${rec.year}`;
-  const ctx = {
+  return {
     rec,
     staff,
     // Support staff show their job (Guard, Sweeper, …) as the designation.
@@ -644,11 +638,22 @@ async function renderSalarySlipPdf(id, { variant = 'students' } = {}) {
     amount: Number(rec.amount) || 0,
     brand: ACADEMY_BRAND,
     logoPath: resolveLogoPath(),
-    generatedAt: new Date(),
+    generatedAt,
     variant,
   };
+}
+
+async function renderSalarySlipPdf(id, { variant = 'students' } = {}) {
+  const rec = await getSalaryRecordById(id);
+  // A paid slip shows what was actually paid: the breakdown saved on the voucher,
+  // not today's live recalculation (fees or assignments may have changed since).
+  if (rec.status === 'paid') {
+    const stored = await AcademySalaryRecord.findById(id).select('calculationBreakdown').lean();
+    if (stored?.calculationBreakdown?.length) rec.calculationBreakdown = stored.calculationBreakdown;
+  }
+  const ctx = buildSlipCtx(rec, variant);
   const info = {
-    Title: `Salary Slip — ${staff.name || ''} — ${period}`,
+    Title: `Salary Slip — ${ctx.staff.name || ''} — ${ctx.period}`,
     Author: ACADEMY_BRAND.name,
     Subject: 'Salary slip',
     Creator: ACADEMY_BRAND.legalName,
@@ -664,4 +669,70 @@ async function renderSalarySlipPdf(id, { variant = 'students' } = {}) {
   };
 }
 
-module.exports = { renderSalarySlipPdf };
+/** One PDF page per employee — summary slips only (no student lists). */
+function renderMultiPageSlips(contexts, info) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: MARGIN,
+        autoFirstPage: false,
+        info,
+      });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('error', reject);
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+
+      contexts.forEach((ctx, i) => {
+        doc.addPage({ size: 'A4', margin: MARGIN });
+        drawSlip(doc, ctx);
+        drawPdfFooterTextPlain(
+          doc,
+          ctx.brand,
+          'Salary slips',
+          { generatedAt: ctx.generatedAt },
+          i + 1,
+          contexts.length
+        );
+      });
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Combined PDF of summary salary slips for every voucher matching the filters.
+ * Always uses the summary layout (no student-wise lists).
+ */
+async function renderBulkSalarySlipsPdf(filters = {}) {
+  const records = await listSalaryRecordsForSlips(filters);
+  if (!records.length) {
+    throw new ApiError(404, 'No salary vouchers match the current filters');
+  }
+
+  const generatedAt = new Date();
+  const contexts = records.map((rec) => buildSlipCtx(rec, 'summary', generatedAt));
+  const month = filters.month ? Number(filters.month) : null;
+  const year = filters.year ? Number(filters.year) : null;
+  const periodLabel =
+    month && year ? `${MONTHS[month - 1]}-${year}` : month ? MONTHS[month - 1] : year || 'All';
+
+  const info = {
+    Title: `Salary Slips — ${periodLabel}`,
+    Author: ACADEMY_BRAND.name,
+    Subject: 'Salary slips (summary)',
+    Creator: ACADEMY_BRAND.legalName,
+  };
+
+  const buffer = await renderMultiPageSlips(contexts, info);
+  return {
+    buffer,
+    count: contexts.length,
+    fileName: `Salary-Slips-Summary_${periodLabel}.pdf`,
+  };
+}
+
+module.exports = { renderSalarySlipPdf, renderBulkSalarySlipsPdf };

@@ -1,7 +1,10 @@
 const catchAsync = require('../../utils/catchAsync');
 const salaryService = require('../../services/academy/academySalaryService');
 const salaryExportService = require('../../services/academy/academySalaryExportService');
-const { renderSalarySlipPdf } = require('../../services/academy/salarySlipPdfService');
+const {
+  renderSalarySlipPdf,
+  renderBulkSalarySlipsPdf,
+} = require('../../services/academy/salarySlipPdfService');
 const rt = require('../../services/realtime/academyRealtime');
 
 const list = catchAsync(async (req, res) => {
@@ -122,10 +125,30 @@ const exportSlip = catchAsync(async (req, res) => {
   res.send(buffer);
 });
 
+/** One PDF with a summary salary slip page for every matching employee (no student lists). */
+const exportSlips = catchAsync(async (req, res) => {
+  const ids = String(req.query.ids || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const { buffer, fileName } = await renderBulkSalarySlipsPdf({
+    month: req.query.month ? Number(req.query.month) : undefined,
+    year: req.query.year ? Number(req.query.year) : undefined,
+    status: req.query.status || undefined,
+    roleName: req.query.roleName || undefined,
+    search: req.query.search || undefined,
+    ids: ids.length ? ids : undefined,
+  });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+  res.send(buffer);
+});
+
 module.exports = {
   list,
   getOne,
   exportSlip,
+  exportSlips,
   summary,
   generate,
   recalculate,

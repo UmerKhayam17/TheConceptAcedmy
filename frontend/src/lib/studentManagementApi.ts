@@ -2354,6 +2354,31 @@ export const exportAcademySalarySlip = async (
   return res.blob();
 };
 
+/** Combined PDF of summary salary slips for all vouchers matching filters (no student lists). */
+export const exportAcademySalarySlipsBulk = async (params?: {
+  month?: number;
+  year?: number;
+  status?: string;
+  roleName?: string;
+  search?: string;
+  ids?: string[];
+}) => {
+  const q = new URLSearchParams();
+  if (params?.month) q.set("month", String(params.month));
+  if (params?.year) q.set("year", String(params.year));
+  if (params?.status) q.set("status", params.status);
+  if (params?.roleName) q.set("roleName", params.roleName);
+  if (params?.search) q.set("search", params.search);
+  if (params?.ids?.length) q.set("ids", params.ids.join(","));
+  const qs = q.toString();
+  const res = await authedFetch(
+    `/student-management/salaries/export-slips${qs ? `?${qs}` : ""}`,
+    { method: "GET" },
+  );
+  if (!res.ok) throw new Error("Could not generate salary slips");
+  return res.blob();
+};
+
 export const updateAcademySalaryAmount = (id: string, amount: number) =>
   api<AcademySalaryRecord>(`/salaries/${id}/amount`, {
     method: "PATCH",

@@ -50,20 +50,10 @@ async function sessionForMonth(month, year) {
 }
 
 /**
- * Class-period attendance (from the published timetable) for one teacher and month.
- * Days after today are left out so a current-month slip does not count future classes.
+ * Same aggregation used for one slip or bulk slips — keeps leave / class totals identical.
+ * `teacher` is one entry from staffPeriodAttendanceService.listMonth (or undefined).
  */
-async function periodAttendance(staffId, month, year) {
-  const session = await sessionForMonth(month, year);
-  if (!session?._id) return null;
-
-  const data = await staffPeriodAttendanceService.listMonth({
-    sessionId: String(session._id),
-    month,
-    year,
-    userId: String(staffId),
-  });
-  const teacher = (data.teachers || []).find((t) => t.userId === String(staffId));
+function shapeClassesFromTeacher(teacher, sessionName) {
   const today = todayYmd();
   // Extra (off-timetable) classes are attendance-only for now; they do not change salary.
   const periods = (teacher?.periods || []).filter((p) => (!p.day || p.day <= today) && !p.isExtra);
@@ -112,7 +102,7 @@ async function periodAttendance(staffId, month, year) {
   }
 
   return {
-    sessionName: data.sessionName || session.name || '',
+    sessionName: sessionName || '',
     attendanceType: teacher?.attendanceType || 'class',
     workingDaysCount: daysWithClasses.size,
     // Full leave = every scheduled period that day was absent / leave / left early.
@@ -125,14 +115,114 @@ async function periodAttendance(staffId, month, year) {
   };
 }
 
+function emptyDailyCounts() {
+  return { present: 0, late: 0, absent: 0, half_day: 0, leave: 0 };
+}
+
+function countDailyRows(rows) {
+  const counts = emptyDailyCounts();
+  (rows || []).forEach((r) => {
+    if (counts[r.status] != null) counts[r.status] += 1;
+  });
+  return { totalDays: (rows || []).length, ...counts };
+}
+
+/**
+ * Class-period attendance (from the published timetable) for one teacher and month.
+ * Days after today are left out so a current-month slip does not count future classes.
+ */
+async function periodAttendance(staffId, month, year) {
+  const session = await sessionForMonth(month, year);
+  if (!session?._id) return null;
+
+  const data = await staffPeriodAttendanceService.listMonth({
+    sessionId: String(session._id),
+    month,
+    year,
+    userId: String(staffId),
+  });
+  const teacher = (data.teachers || []).find((t) => t.userId === String(staffId));
+  return shapeClassesFromTeacher(teacher, data.sessionName || session.name || '');
+}
+
 /** Daily check-in marks (AI camera / manual) for the month. */
 async function dailyAttendance(staffId, month, year) {
   const rows = await staffAttendanceService.listForUser(staffId, { month, year });
-  const counts = { present: 0, late: 0, absent: 0, half_day: 0, leave: 0 };
-  rows.forEach((r) => {
-    if (counts[r.status] != null) counts[r.status] += 1;
-  });
-  return { totalDays: rows.length, ...counts };
+  return countDailyRows(rows);
+}
+
+/**
+ * One listMonth + one daily query per calendar month, then shape per staff.
+ * Same numbers as calling buildSalaryAttendance() once per person — far fewer DB hits.
+ */
+async function buildSalaryAttendanceForMany(pairs, options = {}) {
+  const result = new Map();
+  const byMonth = new Map();
+  for (const p of pairs || []) {
+    if (!p?.staffId || !p.month || !p.year) continue;
+    const key = `${p.year}-${Number(p.month)}`;
+    if (!byMonth.has(key)) {
+      byMonth.set(key, { month: Number(p.month), year: Number(p.year), staffIds: new Set() });
+    }
+    byMonth.get(key).staffIds.add(String(p.staffId));
+  }
+
+  for (const { month, year, staffIds } of byMonth.values()) {
+    const ids = [...staffIds];
+    const periodKey = `${year}-${pad2(month)}`;
+    let classesByStaff = new Map();
+    try {
+      const session = await sessionForMonth(month, year);
+      if (session?._id) {
+        const data = await staffPeriodAttendanceService.listMonth({
+          sessionId: String(session._id),
+          month,
+          year,
+        });
+        const teacherById = new Map(
+          (data.teachers || []).map((t) => [String(t.userId), t])
+        );
+        const sessionName = data.sessionName || session.name || '';
+        for (const id of ids) {
+          classesByStaff.set(id, shapeClassesFromTeacher(teacherById.get(id), sessionName));
+        }
+      } else {
+        for (const id of ids) classesByStaff.set(id, null);
+      }
+    } catch (err) {
+      console.error('[salary] Could not load period attendance (bulk):', err?.message || err);
+      classesByStaff = new Map(ids.map((id) => [id, null]));
+    }
+
+    let dailyByStaff = new Map();
+    if (!options.skipDaily) {
+      try {
+        const { records } = await staffAttendanceService.listByMonth({ month, year });
+        const rowsByUser = new Map(ids.map((id) => [id, []]));
+        for (const row of records || []) {
+          const uid = String(row.userId?._id || row.userId || '');
+          if (!rowsByUser.has(uid)) continue;
+          rowsByUser.get(uid).push(row);
+        }
+        for (const id of ids) {
+          dailyByStaff.set(id, countDailyRows(rowsByUser.get(id) || []));
+        }
+      } catch (err) {
+        console.error('[salary] Could not load daily attendance (bulk):', err?.message || err);
+        dailyByStaff = new Map(ids.map((id) => [id, null]));
+      }
+    }
+
+    for (const id of ids) {
+      result.set(`${id}|${periodKey}`, {
+        period: periodKey,
+        classes: classesByStaff.get(id) ?? null,
+        daily: options.skipDaily ? null : dailyByStaff.get(id) ?? null,
+      });
+    }
+  }
+
+  return result;
 }
 
 async function buildSalaryAttendance(staffId, month, year, options = {}) {
@@ -224,4 +314,8 @@ async function buildFixedClassAllocation(staffId, amount, attendance, options = 
   return { basis, lines };
 }
 
-module.exports = { buildSalaryAttendance, buildFixedClassAllocation };
+module.exports = {
+  buildSalaryAttendance,
+  buildSalaryAttendanceForMany,
+  buildFixedClassAllocation,
+};

@@ -644,6 +644,11 @@ router.get(
   salaryCtrl.exportReport
 );
 router.get(
+  '/salaries/export-slips',
+  requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
+  salaryCtrl.exportSlips
+);
+router.get(
   '/salaries/:id',
   requireAnyPermission('view_academy_salaries', 'manage_academy_salaries'),
   salaryCtrl.getOne

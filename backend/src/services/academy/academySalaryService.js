@@ -6,7 +6,11 @@ const AcademySubject = require('../../models/academy/AcademySubject');
 const { populateCreatedBy } = require('../../utils/createdBy');
 const { STAFF_ROLE_NAMES } = require('../../config/staffRoles');
 const { calculateTeacherPercentageSalary } = require('./percentageSalaryCalculator');
-const { buildSalaryAttendance, buildFixedClassAllocation } = require('./salarySlipDetails');
+const {
+  buildSalaryAttendance,
+  buildSalaryAttendanceForMany,
+  buildFixedClassAllocation,
+} = require('./salarySlipDetails');
 const advanceService = require('./staffAdvanceService');
 
 /**
@@ -609,8 +613,103 @@ async function getSalarySummary({ month, year, roleName, staffId }) {
   };
 }
 
+/**
+ * All vouchers matching filters, with attendance attached — for bulk summary salary slips.
+ * Skips live % recalculation and student class allocation (not needed for summary slips).
+ */
+async function listSalaryRecordsForSlips({
+  month,
+  year,
+  status,
+  roleName,
+  search,
+  ids,
+}) {
+  let q;
+  if (Array.isArray(ids) && ids.length) {
+    q = { _id: { $in: ids } };
+  } else {
+    q = await buildSalaryQuery({ status, month, year, roleName });
+    const s = String(search || '').trim();
+    if (s) {
+      const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = { $regex: escaped, $options: 'i' };
+      const users = await User.find({
+        $or: [{ name: rx }, { email: rx }, { phone: rx }, { designation: rx }],
+      }).select('_id');
+      q = {
+        $and: [
+          q,
+          {
+            $or: [
+              { staffId: { $in: users.map((u) => u._id) } },
+              { voucherNumber: rx },
+              { notes: rx },
+            ],
+          },
+        ],
+      };
+    }
+  }
+
+  const items = await AcademySalaryRecord.find(q)
+    .populate({
+      path: 'staffId',
+      select:
+        'name email phone salary payType salaryPercentage profileImage aiEmployeeId createdAt designation jobDescription canLogin',
+      populate: { path: 'role', select: 'name' },
+    })
+    .sort({ year: -1, month: -1, createdAt: -1 });
+
+  const enriched = await enrichBreakdownWithSubjectShares(items);
+  enriched.sort((a, b) => {
+    const an = String(a.staffId?.name || '').toLowerCase();
+    const bn = String(b.staffId?.name || '').toLowerCase();
+    return an.localeCompare(bn);
+  });
+
+  const attendancePairs = [];
+  for (const rec of enriched) {
+    const staff = rec.staffId && typeof rec.staffId === 'object' ? rec.staffId : null;
+    if (staff?._id) {
+      attendancePairs.push({ staffId: staff._id, month: rec.month, year: rec.year });
+    }
+  }
+  // One listMonth + one daily query per calendar month (not per employee).
+  const attendanceByKey = await buildSalaryAttendanceForMany(attendancePairs);
+
+  for (const rec of enriched) {
+    const staff = rec.staffId && typeof rec.staffId === 'object' ? rec.staffId : null;
+    const isPercentage =
+      rec.payType === 'percentage' ||
+      rec.calculationSource === 'tuition_pool' ||
+      staff?.payType === 'percentage';
+    rec.detailMeta = {
+      teacherPercentage:
+        typeof rec.salaryPercentage === 'number'
+          ? rec.salaryPercentage
+          : Number(staff?.salaryPercentage) || 0,
+    };
+    if (staff?._id) {
+      const key = `${staff._id}|${rec.year}-${String(rec.month).padStart(2, '0')}`;
+      rec.attendance = attendanceByKey.get(key) || {
+        period: `${rec.year}-${String(rec.month).padStart(2, '0')}`,
+        classes: null,
+        daily: null,
+      };
+    }
+    // Summary slips do not list students; keep allocation empty for fixed pay.
+    if (!isPercentage) {
+      rec.classAllocation = { basis: 'none', lines: [] };
+    }
+  }
+
+  return enriched;
+}
+
 module.exports = {
   listSalaryRecords,
+  listSalaryRecordsForSlips,
   getSalaryRecordById,
   enrichBreakdownWithSubjectShares,
   generateMonthlySalaries,

@@ -21,6 +21,8 @@ export type ReportExportKind = {
   disabled?: boolean;
   /** Shown next to the label while disabled. */
   hint?: string;
+  /** Which format rows to show; defaults to both Excel and PDF. */
+  formats?: ReportFileFormat[];
 };
 
 /** Shared Print / Export menu (Excel + PDF preview) used across fee, salary, attendance, etc. */
@@ -48,36 +50,44 @@ export function DefaulterListDownload({
   const busy = Boolean(exporting);
   const kinds = reportKinds?.length ? reportKinds : null;
 
-  const formatItems = (reportKind?: string, itemsDisabled = false) => (
+  const formatItems = (
+    reportKind?: string,
+    itemsDisabled = false,
+    formats: ReportFileFormat[] = ["xlsx", "pdf"],
+  ) => (
     <>
-      <DropdownMenuItem
-        className={itemClass}
-        disabled={itemsDisabled}
-        onClick={() => onDownload("xlsx", reportKind)}
-      >
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-          <FileSpreadsheet className="h-4 w-4" />
-        </span>
-        <span className="min-w-0">
-          <span className="block text-sm font-medium leading-tight">Excel</span>
-          <span className="block text-xs text-muted-foreground">Spreadsheet (.xlsx)</span>
-        </span>
-      </DropdownMenuItem>
-      <DropdownMenuItem
-        className={itemClass}
-        disabled={itemsDisabled}
-        onClick={() => onDownload("pdf", reportKind)}
-      >
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
-          <FileText className="h-4 w-4" />
-        </span>
-        <span className="min-w-0">
-          <span className="block text-sm font-medium leading-tight">PDF</span>
-          <span className="block text-xs text-muted-foreground">
-            Preview, then print or download
+      {formats.includes("xlsx") ? (
+        <DropdownMenuItem
+          className={itemClass}
+          disabled={itemsDisabled}
+          onClick={() => onDownload("xlsx", reportKind)}
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+            <FileSpreadsheet className="h-4 w-4" />
           </span>
-        </span>
-      </DropdownMenuItem>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium leading-tight">Excel</span>
+            <span className="block text-xs text-muted-foreground">Spreadsheet (.xlsx)</span>
+          </span>
+        </DropdownMenuItem>
+      ) : null}
+      {formats.includes("pdf") ? (
+        <DropdownMenuItem
+          className={itemClass}
+          disabled={itemsDisabled}
+          onClick={() => onDownload("pdf", reportKind)}
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+            <FileText className="h-4 w-4" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium leading-tight">PDF</span>
+            <span className="block text-xs text-muted-foreground">
+              Preview, then print or download
+            </span>
+          </span>
+        </DropdownMenuItem>
+      ) : null}
     </>
   );
 
@@ -123,13 +133,13 @@ export function DefaulterListDownload({
               {index > 0 ? <DropdownMenuSeparator className="my-1.5" /> : null}
               <DropdownMenuLabel className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 {kind.label}
-                {kind.disabled && kind.hint ? (
+                {kind.hint ? (
                   <span className="ml-1 normal-case tracking-normal text-muted-foreground/80">
                     · {kind.hint}
                   </span>
                 ) : null}
               </DropdownMenuLabel>
-              {formatItems(kind.id, kind.disabled)}
+              {formatItems(kind.id, kind.disabled, kind.formats)}
             </div>
           ))
         ) : (

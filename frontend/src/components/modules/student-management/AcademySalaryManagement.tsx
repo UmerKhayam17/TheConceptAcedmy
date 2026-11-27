@@ -42,6 +42,7 @@ import {
   fetchAcademySalaries,
   fetchAcademySalarySummary,
   exportAcademySalaryReport,
+  exportAcademySalarySlipsBulk,
   generateMonthlySalaries,
   payAcademySalary,
   payAcademySalariesBulk,
@@ -510,6 +511,42 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
     }
   };
 
+  /** Summary salary slips for all filtered employees (no student lists). */
+  const handleExportAllSlips = async () => {
+    setExporting("pdf");
+    const preview = openReportPreviewTab("pdf");
+    try {
+      const blob = await exportAcademySalarySlipsBulk({
+        month: Number(month),
+        year: Number(year),
+        status: statusFilter || undefined,
+        roleName: roleFilter || undefined,
+        search: search.trim() || undefined,
+        ids: selectedIds.length > 0 ? selectedIds : undefined,
+      });
+      const monthLabel = MONTH_NAMES[Number(month) - 1] || month;
+      deliverReportBlob(
+        blob,
+        `Salary-Slips-Summary_${monthLabel}-${year}.pdf`,
+        "pdf",
+        preview,
+      );
+      toast({
+        title: "Salary slips opened",
+        description: "Summary slips for all matching staff — use Print or Download from the preview.",
+      });
+    } catch (e) {
+      preview?.close();
+      toast({
+        title: "Could not generate slips",
+        description: e instanceof Error ? e.message : "Could not generate salary slips",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 py-6 space-y-4">
       {/* Compact theme header — matches Subjects */}
@@ -684,7 +721,19 @@ export default function AcademySalaryManagement({ caps }: { caps: ModuleActionCa
               className="shrink-0"
               label="Print / Export"
               exporting={exporting}
-              onDownload={(format) => void handleExport(format)}
+              reportKinds={[
+                { id: "report", label: "Salary report" },
+                {
+                  id: "slips",
+                  label: "All salary slips",
+                  formats: ["pdf"],
+                  hint: "summary, no students",
+                },
+              ]}
+              onDownload={(format, reportKind) => {
+                if (reportKind === "slips") void handleExportAllSlips();
+                else void handleExport(format);
+              }}
             />
           </FilterToolbarActions>
         </FilterToolbar>
