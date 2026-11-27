@@ -324,7 +324,7 @@ export interface AcademyAttendanceRecord {
   subjectId?: AcademySubject | string;
   notes?: string;
   markedBy?: string | { _id?: string; name?: string } | null;
-  /** Set after admin Confirm & notify for absent parent alerts. */
+  /** Set after admin Confirm & Notify for absent parent alerts. */
   parentNotifiedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;

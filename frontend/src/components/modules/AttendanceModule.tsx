@@ -530,7 +530,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
             title: `Marked ${status}`,
             description:
               status === "absent" && isAdmin
-                ? "Parent alert waits until you Confirm & notify."
+                ? "Parent alert waits until you Confirm & Notify."
                 : undefined,
           }),
       },
@@ -584,7 +584,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
             title: `Marked ${ids.length} ${ids.length === 1 ? "student" : "students"} ${status}`,
             description:
               status === "absent" && isAdmin
-                ? "Parent alerts wait until you Confirm & notify."
+                ? "Parent alerts wait until you Confirm & Notify."
                 : undefined,
           });
           setSelectedIds(new Set());
@@ -855,7 +855,7 @@ function StaffAttendanceModule({ caps }: { caps: ModuleActionCaps }) {
                 ) : (
                   <BellRing className="h-4 w-4" />
                 )}
-                Confirm &amp; notify
+                Confirm &amp; Notify
               </Button>
             </div>
           </Card>
