@@ -53,6 +53,7 @@ const AnnouncementsModule = lazy(() => import("@/components/modules/Announcement
 // Reports module hidden for now
 // const ReportsModule = lazy(() => import("@/components/modules/ReportsModule"));
 const SettingsModule = lazy(() => import("@/components/modules/SettingsModule"));
+const BackupModule = lazy(() => import("@/components/modules/BackupModule"));
 const ContactModule = lazy(() => import("@/components/modules/ContactModule"));
 const DatasheetsModule = lazy(() => import("@/components/modules/DatasheetsModule"));
 const PermissionsModule = lazy(() => import("@/components/modules/PermissionsModule"));
@@ -512,6 +513,7 @@ const Panel = () => {
       case "permissions":   return <PermissionsModule perm={perm} caps={caps} />;
       case "permission-catalog": return <PermissionCatalogModule role={r} />;
       case "settings":      return <SettingsModule />;
+      case "backup":        return <BackupModule />;
       case "contact":       return <ContactModule />;
       default:
         if (TEACHER_FEATURE_KEYS.has(mod.key as ModuleKey)) {

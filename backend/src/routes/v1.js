@@ -16,6 +16,9 @@ const router = Router();
 
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
+// Before roleRoutes/examRoutes: those are mounted without a prefix and require login for
+// every path, which would block the open /backup/status progress check during a restore.
+router.use('/backup', require('./backupRoutes'));
 router.use(roleRoutes);
 router.use(examRoutes);
 router.use('/announcements', announcementRoutes);

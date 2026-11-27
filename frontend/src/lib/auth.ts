@@ -434,7 +434,27 @@ export async function loginWithPassword(email: string, password: string): Promis
     const msg = body.message || (res.status === 401 ? "Invalid email or password." : "Sign-in failed.");
     throw new Error(msg);
   }
-  const { accessToken, user: u } = body.data;
+  return adoptLoginSession({ accessToken: body.data.accessToken, user: body.data.user });
+}
+
+export interface LoginSessionPayload {
+  accessToken: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role?: string;
+    profileImage?: string | null;
+    modulePermissions?: Record<string, string[]>;
+    isSystemAdmin?: boolean;
+  };
+}
+
+/**
+ * Switch this tab to a session the server just issued (login response shape).
+ * Also used after a database restore, which replaces every account's stored login.
+ */
+export function adoptLoginSession({ accessToken, user: u }: LoginSessionPayload): SessionUser {
   const role = normalizeRole(u.role);
   if (!role) throw new Error("Unknown account role.");
   const session: SessionUser = {

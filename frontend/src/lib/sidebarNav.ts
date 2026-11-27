@@ -36,6 +36,7 @@ import {
   BadgePercent,
   Phone,
   HandCoins,
+  DatabaseBackup,
 } from "lucide-react";
 import type { Role } from "./auth";
 import type { ModuleKey } from "./permissions";
@@ -516,6 +517,14 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         icon: KeyRound,
         moduleKey: "permissions",
         href: (role) => moduleHref(role, "permissions"),
+      },
+      {
+        // Shown only to the main admin (resolveModuleCaps gates "backup").
+        id: "backup",
+        label: "Database Backup",
+        icon: DatabaseBackup,
+        moduleKey: "backup",
+        href: (role) => moduleHref(role, "backup"),
       },
     ],
   },

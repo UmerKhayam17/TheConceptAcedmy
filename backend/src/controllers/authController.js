@@ -102,6 +102,26 @@ function issueTokens(user) {
   return { accessToken, refreshToken };
 }
 
+/**
+ * Start a fresh session for `user` (new tokens + cookies) and return the login payload.
+ * Used after a database restore, which replaces the stored refresh tokens.
+ */
+async function startSessionFor(req, res, user) {
+  if (!user.populated?.('role') && user.populate) await user.populate('role');
+  const { accessToken, refreshToken } = issueTokens(user);
+  user.refreshToken = hashToken(refreshToken);
+  user.refreshTokenPrev = undefined;
+  user.refreshTokenRotatedAt = new Date();
+  await user.save();
+  setRefreshCookie(res, req, refreshToken);
+  setAccessCookie(res, req, accessToken);
+  return {
+    accessToken,
+    expiresIn: ACCESS_EXPIRES(),
+    user: sessionUserPayload(user, collectSessionModulePermissions(user)),
+  };
+}
+
 const login = catchAsync(async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email: String(email).toLowerCase().trim() })
@@ -364,4 +384,4 @@ const verifyOtp = catchAsync(async (req, res) => {
   });
 });
 
-module.exports = { login, me, refresh, logout, sendOtp, verifyOtp };
+module.exports = { login, me, refresh, logout, sendOtp, verifyOtp, startSessionFor };

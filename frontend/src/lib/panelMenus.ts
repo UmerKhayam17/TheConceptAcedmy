@@ -4,7 +4,7 @@ import {
   Wallet, MessageSquare, Award, Receipt, Settings as SettingsIcon, FileText, School, KeyRound, ListTree,
   SlidersHorizontal, Tags, NotebookPen, FolderOpen, ListChecks, TrendingUp, ShieldAlert, UsersRound,
   ScanFace, Shield, Phone, HandCoins,
-  Video, Library, CalendarRange, BellRing, Palmtree, Clock, User,
+  Video, Library, CalendarRange, BellRing, Palmtree, Clock, User, DatabaseBackup,
 } from "lucide-react";
 import { Role } from "./auth";
 import { systemConfigHref } from "./systemConfigMenus";
@@ -27,6 +27,7 @@ export const ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   Settings: SettingsIcon, FileText, KeyRound, ListTree, School, SlidersHorizontal, Receipt, Tags,
   NotebookPen, FolderOpen, ListChecks, TrendingUp, ShieldAlert, UsersRound,
   Video, Library, CalendarRange, BellRing, Palmtree, Clock, User, ScanFace, Shield, Phone, HandCoins,
+  DatabaseBackup,
 };
 
 export type MenuItem = ModuleDef & {

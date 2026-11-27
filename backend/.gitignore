@@ -51,3 +51,6 @@ __pycache__/
 # Firebase service-account key (secret)
 firebase-key.json
 *firebase-adminsdk*.json
+
+# Safety copies made before a database restore
+backups/

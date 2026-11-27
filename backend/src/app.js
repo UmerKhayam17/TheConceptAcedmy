@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const v1 = require('./routes/v1');
+const backupService = require('./services/backupService');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { protectUpload } = require('./middleware/auth');
 const { setUploadSecurityHeaders } = require('./utils/uploadSafety');
@@ -69,6 +70,13 @@ app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'academy-backend' });
 });
 
+// While a database restore is replacing data, answer other API calls with 503
+// (not 401) so open pages wait instead of signing people out or writing half-restored data.
+app.use('/api/v1', (req, res, next) => {
+  if (!backupService.isRestoring() || req.path.startsWith('/backup/status/')) return next();
+  res.setHeader('Retry-After', '5');
+  return res.status(503).json({ success: false, message: 'A database restore is in progress. Please wait.' });
+});
 app.use('/api/v1', v1);
 
 app.use(notFoundHandler);

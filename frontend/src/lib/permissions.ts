@@ -93,7 +93,8 @@ export type ModuleKey =
   | "settings"
   | "contact"
   | "permissions"
-  | "permission-catalog";
+  | "permission-catalog"
+  | "backup";
 
 export interface ModuleDef {
   key: ModuleKey;
@@ -302,6 +303,14 @@ export const MODULES: ModuleDef[] = [
     showInNav: false,
   },
   { key: "settings", label: "My Profile", icon: "User", desc: "Update profile and change password" },
+  {
+    key: "backup",
+    label: "Database Backup",
+    icon: "DatabaseBackup",
+    desc: "Download or restore a full backup of the academy database",
+    // Main (system) admin only — linked from the Administration sidebar group, not role menus.
+    showInNav: false,
+  },
   {
     key: "contact",
     label: "Contact Us",
@@ -814,6 +823,9 @@ export function resolveModuleCaps(
   role?: Role,
   isSystemAdmin?: boolean,
 ): ModuleActionCaps {
+  // Full database backup/restore: main admin only, never grantable to other roles.
+  if (moduleKey === "backup") return isSystemAdmin ? capsFromPermLevel("full") : emptyActionCaps();
+
   // Seeded system admin only — full UI access to every module (including newly added ones).
   if (isSystemAdmin) return capsFromPermLevel("full");
 
