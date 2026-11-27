@@ -200,7 +200,7 @@ const PanelSidebarMain = ({ user }: { user: SessionUser }) => {
       return (
         <SidebarMenuSubItem key={`${item.id}-${childActive ? "on" : "off"}`}>
           <Collapsible defaultOpen={childActive} className="group/nested">
-            <CollapsibleTrigger className="flex h-7 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-xs text-sidebar-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+            <CollapsibleTrigger className="flex h-8 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-sm text-sidebar-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
               <Icon className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{item.label}</span>
               <ChevronDown className="ml-auto h-3 w-3 shrink-0 transition-transform group-data-[state=open]/nested:rotate-180" />
@@ -220,7 +220,7 @@ const PanelSidebarMain = ({ user }: { user: SessionUser }) => {
           <SidebarMenuSubButton
             asChild
             isActive={active}
-            className={cn("h-7 text-xs", active && activeLinkClass)}
+            className={cn("h-8 text-sm", active && activeLinkClass)}
           >
             <NavLink to={href} end={item.id === "dashboard"}>
               <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -236,11 +236,11 @@ const PanelSidebarMain = ({ user }: { user: SessionUser }) => {
           asChild
           isActive={active}
           tooltip={item.label}
-          className={cn("h-8", active && activeLinkClass)}
+          className={cn("h-9", active && activeLinkClass)}
         >
           <NavLink to={href} end={item.id === "dashboard"}>
             <Icon className="h-4 w-4 shrink-0" />
-            <span className="text-sm truncate">{item.label}</span>
+            <span className="text-[15px] truncate">{item.label}</span>
           </NavLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -262,7 +262,7 @@ const PanelSidebarMain = ({ user }: { user: SessionUser }) => {
             <SidebarMenuButton
               tooltip={group.label}
               className={cn(
-                "!h-8 min-h-8 py-1.5 items-center overflow-hidden [&>span]:truncate [&>span]:text-sm",
+                "!h-9 min-h-9 py-1.5 items-center overflow-hidden [&>span]:truncate [&>span]:text-[15px]",
                 "group-data-[state=open]/collapsible:bg-sidebar-accent/50",
               )}
             >
