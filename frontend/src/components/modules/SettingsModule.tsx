@@ -1,47 +1,38 @@
-import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { usePermissions } from "@/hooks/usePermissions";
-import { moduleHref } from "@/lib/panelMenus";
 import { Role } from "@/lib/auth";
-import {
-  applyBackendModulePermissions,
-  resolveModuleCaps,
-  type ModuleKey,
-} from "@/lib/permissions";
 import { UserAvatarBadge } from "@/components/PanelUserMenu";
 import ParentMobileProfile from "@/components/modules/parent/ParentMobileProfile";
 import { cn } from "@/lib/utils";
 
 const SettingsModule = () => {
   const { user } = useAuth();
-  const { perms } = usePermissions();
   const role = (user?.role ?? "admin") as Role;
   const isParent = role === "parent";
 
-  const rolePerms = applyBackendModulePermissions(
-    perms[role],
-    user?.modulePermissions,
-    role,
-    user?.isSystemAdmin,
-  );
-  const catalogCaps = resolveModuleCaps(
-    "permission-catalog" as ModuleKey,
-    rolePerms["permission-catalog"],
-    user?.modulePermissions,
-    role,
-    user?.isSystemAdmin,
-  );
-  const permissionsCaps = resolveModuleCaps(
-    "permissions" as ModuleKey,
-    rolePerms.permissions,
-    user?.modulePermissions,
-    role,
-    user?.isSystemAdmin,
-  );
-
-  const modulePerms = user?.modulePermissions ? Object.entries(user.modulePermissions) : [];
+  // Permission panels temporarily hidden.
+  // const { perms } = usePermissions();
+  // const rolePerms = applyBackendModulePermissions(
+  //   perms[role],
+  //   user?.modulePermissions,
+  //   role,
+  //   user?.isSystemAdmin,
+  // );
+  // const catalogCaps = resolveModuleCaps(
+  //   "permission-catalog" as ModuleKey,
+  //   rolePerms["permission-catalog"],
+  //   user?.modulePermissions,
+  //   role,
+  //   user?.isSystemAdmin,
+  // );
+  // const permissionsCaps = resolveModuleCaps(
+  //   "permissions" as ModuleKey,
+  //   rolePerms.permissions,
+  //   user?.modulePermissions,
+  //   role,
+  //   user?.isSystemAdmin,
+  // );
+  // const modulePerms = user?.modulePermissions ? Object.entries(user.modulePermissions) : [];
 
   return (
     <>
@@ -86,6 +77,7 @@ const SettingsModule = () => {
           )}
         </Card>
 
+        {/* Permission panels temporarily hidden.
         {modulePerms.length > 0 && (
           <Card className="p-4 space-y-3">
             <div className="font-semibold text-primary">Module permissions</div>
@@ -121,6 +113,7 @@ const SettingsModule = () => {
             </div>
           </Card>
         )}
+        */}
       </div>
     </>
   );

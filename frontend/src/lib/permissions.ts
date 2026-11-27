@@ -293,15 +293,17 @@ export const MODULES: ModuleDef[] = [
   { key: "parents", label: "Parents", shortLabel: "Parents", icon: "Users", desc: "Parent portal accounts" },
   { key: "staff-management", label: "Staff", shortLabel: "Staff", icon: "UserCog", desc: "Teachers and accountants" },
   { key: "admins", label: "Admins", shortLabel: "Admins", icon: "Shield", desc: "Administration accounts" },
-  { key: "permissions", label: "Permissions", icon: "KeyRound", desc: "Roles, API & module access" },
-  {
-    key: "permission-catalog",
-    label: "API permissions",
-    shortLabel: "API permissions",
-    icon: "ListTree",
-    desc: "Full table of permission definitions",
-    showInNav: false,
-  },
+  // Permission panels temporarily hidden.
+  // { key: "permissions", label: "Permissions", icon: "KeyRound", desc: "Roles, API & module access" },
+  // {
+  //   key: "permission-catalog",
+  //   label: "API permissions",
+  //   shortLabel: "API permissions",
+  //   icon: "ListTree",
+  //   desc: "Full table of permission definitions",
+  //   showInNav: false,
+  // },
+
   { key: "settings", label: "My Profile", icon: "User", desc: "Update profile and change password" },
   {
     key: "backup",
@@ -418,7 +420,8 @@ export const SIDEBAR_NAV_GROUPS: { id: string; label: string; modules: ModuleKey
   {
     id: "administration",
     label: "Administration",
-    modules: ["parents", "staff-management", "admins", "permissions", "settings"],
+    // Permission panels temporarily hidden — omit "permissions".
+    modules: ["parents", "staff-management", "admins", "settings"],
   },
 ];
 

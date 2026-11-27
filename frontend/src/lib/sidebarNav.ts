@@ -29,7 +29,7 @@ import {
   Users,
   UserCog,
   Shield,
-  KeyRound,
+  // KeyRound, // Permissions panel temporarily hidden
   Route,
   ArrowLeftRight,
   Tags,
@@ -511,13 +511,14 @@ export const SIDEBAR_NAV: SidebarNavGroup[] = [
         moduleKey: "admins",
         href: (role) => moduleHref(role, "admins"),
       },
-      {
-        id: "permissions",
-        label: "Permissions",
-        icon: KeyRound,
-        moduleKey: "permissions",
-        href: (role) => moduleHref(role, "permissions"),
-      },
+      // Permission panel temporarily hidden.
+      // {
+      //   id: "permissions",
+      //   label: "Permissions",
+      //   icon: KeyRound,
+      //   moduleKey: "permissions",
+      //   href: (role) => moduleHref(role, "permissions"),
+      // },
       {
         // Shown only to the main admin (resolveModuleCaps gates "backup").
         id: "backup",

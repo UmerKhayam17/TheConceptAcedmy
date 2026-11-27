@@ -56,9 +56,10 @@ const SettingsModule = lazy(() => import("@/components/modules/SettingsModule"))
 const BackupModule = lazy(() => import("@/components/modules/BackupModule"));
 const ContactModule = lazy(() => import("@/components/modules/ContactModule"));
 const DatasheetsModule = lazy(() => import("@/components/modules/DatasheetsModule"));
-const PermissionsModule = lazy(() => import("@/components/modules/PermissionsModule"));
+// Permission panels temporarily hidden.
+// const PermissionsModule = lazy(() => import("@/components/modules/PermissionsModule"));
 const StudentManagementModule = lazy(() => import("@/components/modules/StudentManagementModule"));
-const PermissionCatalogModule = lazy(() => import("@/components/modules/PermissionCatalogModule"));
+// const PermissionCatalogModule = lazy(() => import("@/components/modules/PermissionCatalogModule"));
 const AiAttendanceModule = lazy(() => import("@/components/modules/AiAttendanceModule"));
 const StaffAttendanceModule = lazy(() => import("@/components/modules/StaffAttendanceModule"));
 const TeacherFeatureModule = lazy(() => import("@/components/modules/TeacherFeatureModule"));
@@ -510,8 +511,9 @@ const Panel = () => {
       // Reports module hidden for now
       // case "reports":       return <ReportsModule />;
       case "datasheets":    return <DatasheetsModule perm={perm} caps={caps} />;
-      case "permissions":   return <PermissionsModule perm={perm} caps={caps} />;
-      case "permission-catalog": return <PermissionCatalogModule role={r} />;
+      // Permission panels temporarily hidden.
+      // case "permissions":   return <PermissionsModule perm={perm} caps={caps} />;
+      // case "permission-catalog": return <PermissionCatalogModule role={r} />;
       case "settings":      return <SettingsModule />;
       case "backup":        return <BackupModule />;
       case "contact":       return <ContactModule />;
