@@ -75,6 +75,9 @@ export default defineConfig(({ mode }) => ({
         target: "http://127.0.0.1:5000",
         changeOrigin: true,
         xfwd: true,
+        // Bulk salary slips / large PDF exports can take longer than the default.
+        timeout: 300_000,
+        proxyTimeout: 300_000,
       },
       "/uploads": {
         target: "http://127.0.0.1:5000",

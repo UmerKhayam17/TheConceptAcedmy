@@ -2371,11 +2371,30 @@ export const exportAcademySalarySlipsBulk = async (params?: {
   if (params?.search) q.set("search", params.search);
   if (params?.ids?.length) q.set("ids", params.ids.join(","));
   const qs = q.toString();
-  const res = await authedFetch(
-    `/student-management/salaries/export-slips${qs ? `?${qs}` : ""}`,
-    { method: "GET" },
-  );
-  if (!res.ok) throw new Error("Could not generate salary slips");
+  let res: Response;
+  try {
+    res = await authedFetch(
+      `/student-management/salaries/export-slips${qs ? `?${qs}` : ""}`,
+      { method: "GET" },
+    );
+  } catch {
+    throw new Error(
+      "Cannot reach the server. Make sure the backend is running (port 5000), then try again.",
+    );
+  }
+  if (!res.ok) {
+    let message = `Could not generate salary slips (${res.status})`;
+    try {
+      const ct = res.headers.get("content-type") || "";
+      if (ct.includes("json")) {
+        const body = (await res.json()) as { message?: string };
+        if (body?.message) message = body.message;
+      }
+    } catch {
+      /* keep status message */
+    }
+    throw new Error(message);
+  }
   return res.blob();
 };
 

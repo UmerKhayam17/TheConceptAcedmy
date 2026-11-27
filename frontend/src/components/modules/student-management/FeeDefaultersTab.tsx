@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   CalendarClock,
   CalendarX,
   FileText,
@@ -348,13 +347,6 @@ export default function FeeDefaultersTab({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="font-display text-xl font-bold text-primary flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-destructive" />
-          Fee defaulters
-        </h2>
-      </div>
-
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 min-[1101px]:grid-cols-4">
         <FeeMetricCard
           title="Defaulters"
